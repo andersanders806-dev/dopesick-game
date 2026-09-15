@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://dd3fedg1f6fva"]
+[gd_scene load_steps=18 format=3 uid="uid://dd3fedg1f6fva"]
 
 [ext_resource type="Script" uid="uid://i3ufamonaoqm" path="res://world/DiveBar.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/NPC.tscn" id="2"]
@@ -9,6 +9,11 @@
 [ext_resource type="Texture2D" path="res://assets/env/wall_tile.png" id="7"]
 [ext_resource type="Texture2D" path="res://assets/env/wood_plank.png" id="8"]
 [ext_resource type="Texture2D" path="res://assets/env/door.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/env/bar_bottles.png" id="10"]
+[ext_resource type="Texture2D" path="res://assets/env/neon_sign.png" id="11"]
+[ext_resource type="Texture2D" path="res://assets/env/jukebox.png" id="12"]
+[ext_resource type="Texture2D" path="res://assets/env/dartboard.png" id="13"]
+[ext_resource type="Texture2D" path="res://assets/env/barstool.png" id="14"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(520, 16)
@@ -86,6 +91,62 @@ stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
 shape = SubResource("RectangleShape2D_wallV")
+
+[node name="BarBottles" type="TextureRect" parent="."]
+offset_left = 66.0
+offset_top = 10.0
+offset_right = 454.0
+offset_bottom = 36.0
+texture = ExtResource("10")
+stretch_mode = 1
+
+[node name="NeonSign" type="TextureRect" parent="."]
+offset_left = 465.0
+offset_top = 8.0
+offset_right = 511.0
+offset_bottom = 28.0
+texture = ExtResource("11")
+stretch_mode = 4
+
+[node name="Jukebox" type="TextureRect" parent="."]
+offset_left = 484.0
+offset_top = 100.0
+offset_right = 508.0
+offset_bottom = 136.0
+texture = ExtResource("12")
+stretch_mode = 4
+
+[node name="Dartboard" type="TextureRect" parent="."]
+offset_left = 16.0
+offset_top = 90.0
+offset_right = 36.0
+offset_bottom = 110.0
+texture = ExtResource("13")
+stretch_mode = 4
+
+[node name="BarstoolA" type="TextureRect" parent="."]
+offset_left = 130.0
+offset_top = 62.0
+offset_right = 144.0
+offset_bottom = 80.0
+texture = ExtResource("14")
+stretch_mode = 4
+
+[node name="BarstoolB" type="TextureRect" parent="."]
+offset_left = 253.0
+offset_top = 62.0
+offset_right = 267.0
+offset_bottom = 80.0
+texture = ExtResource("14")
+stretch_mode = 4
+
+[node name="BarstoolC" type="TextureRect" parent="."]
+offset_left = 376.0
+offset_top = 62.0
+offset_right = 390.0
+offset_bottom = 80.0
+texture = ExtResource("14")
+stretch_mode = 4
 
 [node name="BarCounter" type="TextureRect" parent="."]
 offset_left = 60.0

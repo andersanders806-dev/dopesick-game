@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://world/Shop.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/Guard.tscn" id="2"]
@@ -10,6 +10,10 @@
 [ext_resource type="Texture2D" path="res://assets/env/wall_tile.png" id="8"]
 [ext_resource type="Texture2D" path="res://assets/env/wood_plank.png" id="9"]
 [ext_resource type="Texture2D" path="res://assets/env/door.png" id="10"]
+[ext_resource type="Texture2D" path="res://assets/env/product_box_a.png" id="11"]
+[ext_resource type="Texture2D" path="res://assets/env/product_box_b.png" id="12"]
+[ext_resource type="Texture2D" path="res://assets/env/register.png" id="13"]
+[ext_resource type="Texture2D" path="res://assets/env/cooler.png" id="14"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(480, 16)
@@ -105,6 +109,22 @@ offset_bottom = 60.0
 texture = ExtResource("9")
 stretch_mode = 1
 
+[node name="Register" type="TextureRect" parent="."]
+offset_left = 330.0
+offset_top = 22.0
+offset_right = 350.0
+offset_bottom = 38.0
+texture = ExtResource("13")
+stretch_mode = 4
+
+[node name="Cooler" type="TextureRect" parent="."]
+offset_left = 410.0
+offset_top = 96.0
+offset_right = 454.0
+offset_bottom = 118.0
+texture = ExtResource("14")
+stretch_mode = 4
+
 [node name="Shopkeeper" parent="." instance=ExtResource("2")]
 position = Vector2(240, 45)
 vision_range = 260.0
@@ -192,6 +212,22 @@ shape = SubResource("RectangleShape2D_shelf")
 position = Vector2(110, 131)
 item_id = "whiskey"
 
+[node name="BoxA1" type="TextureRect" parent="."]
+offset_left = 77.0
+offset_top = 125.0
+offset_right = 87.0
+offset_bottom = 137.0
+texture = ExtResource("11")
+stretch_mode = 4
+
+[node name="BoxA2" type="TextureRect" parent="."]
+offset_left = 133.0
+offset_top = 125.0
+offset_right = 143.0
+offset_bottom = 137.0
+texture = ExtResource("12")
+stretch_mode = 4
+
 [node name="ItemCigs" parent="." instance=ExtResource("3")]
 position = Vector2(240, 131)
 item_id = "cigs"
@@ -200,6 +236,22 @@ item_id = "cigs"
 position = Vector2(370, 131)
 item_id = "charger"
 
+[node name="BoxC1" type="TextureRect" parent="."]
+offset_left = 337.0
+offset_top = 125.0
+offset_right = 347.0
+offset_bottom = 137.0
+texture = ExtResource("12")
+stretch_mode = 4
+
+[node name="BoxC2" type="TextureRect" parent="."]
+offset_left = 393.0
+offset_top = 125.0
+offset_right = 403.0
+offset_bottom = 137.0
+texture = ExtResource("11")
+stretch_mode = 4
+
 [node name="ItemBatteries" parent="." instance=ExtResource("3")]
 position = Vector2(170, 211)
 item_id = "batteries"
@@ -207,6 +259,22 @@ item_id = "batteries"
 [node name="ItemWatch" parent="." instance=ExtResource("3")]
 position = Vector2(310, 211)
 item_id = "watch"
+
+[node name="BoxE1" type="TextureRect" parent="."]
+offset_left = 277.0
+offset_top = 205.0
+offset_right = 287.0
+offset_bottom = 217.0
+texture = ExtResource("11")
+stretch_mode = 4
+
+[node name="BoxE2" type="TextureRect" parent="."]
+offset_left = 333.0
+offset_top = 205.0
+offset_right = 343.0
+offset_bottom = 217.0
+texture = ExtResource("12")
+stretch_mode = 4
 
 [node name="DoorToCity" type="Area2D" parent="."]
 position = Vector2(240, 300)

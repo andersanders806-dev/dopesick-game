@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://world/WorldRoot.gd" id="1"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2"]
@@ -13,6 +13,11 @@
 [ext_resource type="Texture2D" path="res://assets/env/bed.png" id="11"]
 [ext_resource type="Texture2D" path="res://assets/env/phone.png" id="12"]
 [ext_resource type="Texture2D" path="res://assets/env/door.png" id="13"]
+[ext_resource type="Texture2D" path="res://assets/env/wall_stain.png" id="14"]
+[ext_resource type="Texture2D" path="res://assets/env/clothes_pile.png" id="15"]
+[ext_resource type="Texture2D" path="res://assets/env/bottles_pile.png" id="16"]
+[ext_resource type="Texture2D" path="res://assets/env/ashtray.png" id="17"]
+[ext_resource type="Texture2D" path="res://assets/env/pill_bottle.png" id="18"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(480, 16)
@@ -120,6 +125,54 @@ offset_top = 40.0
 offset_right = 276.0
 offset_bottom = 56.0
 texture = ExtResource("10")
+stretch_mode = 4
+
+[node name="WallStainA" type="TextureRect" parent="."]
+offset_left = 60.0
+offset_top = -2.0
+offset_right = 96.0
+offset_bottom = 22.0
+texture = ExtResource("14")
+stretch_mode = 4
+
+[node name="WallStainB" type="TextureRect" parent="."]
+offset_left = -4.0
+offset_top = 200.0
+offset_right = 32.0
+offset_bottom = 224.0
+texture = ExtResource("14")
+stretch_mode = 4
+
+[node name="ClothesPile" type="TextureRect" parent="."]
+offset_left = 150.0
+offset_top = 100.0
+offset_right = 174.0
+offset_bottom = 116.0
+texture = ExtResource("15")
+stretch_mode = 4
+
+[node name="BottlesPile" type="TextureRect" parent="."]
+offset_left = 320.0
+offset_top = 225.0
+offset_right = 340.0
+offset_bottom = 239.0
+texture = ExtResource("16")
+stretch_mode = 4
+
+[node name="Ashtray" type="TextureRect" parent="."]
+offset_left = 108.0
+offset_top = 100.0
+offset_right = 120.0
+offset_bottom = 108.0
+texture = ExtResource("17")
+stretch_mode = 4
+
+[node name="PillBottle" type="TextureRect" parent="."]
+offset_left = 122.0
+offset_top = 99.0
+offset_right = 130.0
+offset_bottom = 109.0
+texture = ExtResource("18")
 stretch_mode = 4
 
 [node name="Bed" type="Area2D" parent="."]

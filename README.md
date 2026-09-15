@@ -29,11 +29,15 @@ get well. Repeat.
    (randomized every time you visit). Talk to them to hear the request;
    bring the item back and they pay you. The bartender will also fence
    *any* stolen item you're still holding for a flat $5, no questions asked.
-4. **Shop** — five steal-able items on shelves. The shopkeeper has a sweeping
-   vision cone; get spotted mid-steal and the cops show up. Break line of
-   sight (shelves block vision) for a few seconds and they give up. Get
-   caught and you lose everything you're carrying, plus a cash fine, and
-   wake up back home (skipping the city).
+   Decorated with a back-bar bottle shelf, a neon sign, a jukebox, a
+   dartboard, and stools along the counter.
+4. **Shop** — five steal-able items on shelves, each shelf fleshed out with
+   a couple of flanking product boxes, plus a register on the counter and
+   a drinks cooler against the wall. The shopkeeper has a sweeping vision
+   cone; get spotted mid-steal and the cops show up. Break line of sight
+   (shelves block vision) for a few seconds and they give up. Get caught
+   and you lose everything you're carrying, plus a cash fine, and wake up
+   back home (skipping the city).
 5. **Craving meter** drains constantly. Low on the meter slows you down
    badly (withdrawal). A green sickness tint creeps in as it drops.
 
@@ -48,19 +52,26 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
 
 - Characters, items, and world geometry all have real (procedurally
   generated) art now — see `dev-tools/gen_sprites.py`, which writes to
-  `assets/sprites/` (characters, items) and `assets/env/` (environment,
-  including city street props: road/sidewalk tiles, streetlight, car,
-  hydrant, dumpster, window). Characters use a brighter, more saturated
-  palette with simple highlight/shadow shading bands and a dithered drop
-  shadow at their feet; floor/wall/wood textures have matching grain
-  detail (`add_grain()`). The player and police have a 3-direction,
-  2-frame walk cycle (down/up/side, side flips for left vs. right); the
-  shopkeeper, bartender, and each patron have a distinct static sprite;
-  each stealable item has its own icon auto-selected by `item_id` in
+  `assets/sprites/` (characters, items) and `assets/env/` (environment).
+  Prop choices were grounded in a quick pass of research on what real
+  dive bars, corner shops, and rundown apartments actually look like
+  (back-bar bottle displays, neon signage, gondola shelving, curated
+  "emotional anchor" clutter rather than noise) rather than guessed from
+  scratch. Characters use a brighter, more saturated palette with simple
+  highlight/shadow shading bands and a dithered drop shadow at their
+  feet; floor/wall/wood textures have matching grain detail
+  (`add_grain()`). The player and police have a 3-direction, 2-frame walk
+  cycle (down/up/side, side flips for left vs. right); the shopkeeper,
+  bartender, and each patron have a distinct static sprite; each
+  stealable item has its own icon auto-selected by `item_id` in
   `StealableItem.gd`. Floors, walls, and building facades use tileable
   textures (`TextureRect` with `stretch_mode = TILE`); the bed, phone,
-  TV, trash cans, doors, and city props are dedicated sprites. Only the
-  HUD is still flat colored rectangles.
+  TV, trash cans, doors, city street props (road/sidewalk tiles,
+  streetlight, car, hydrant, dumpster, window), bar props (bottle shelf,
+  neon sign, jukebox, dartboard, barstool), shop props (product boxes,
+  register, cooler), and apartment squalor details (wall stains, a
+  clothes pile, a bottle cluster, an ashtray, a pill bottle) are all
+  dedicated sprites. Only the HUD is still flat colored rectangles.
 - Only one shop and one bar layout; no day-to-day variety yet beyond the
   randomized patron requests. The city hub is one static street — no
   variation there either.

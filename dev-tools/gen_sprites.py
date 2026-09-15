@@ -518,6 +518,205 @@ def gen_window():
     env_save(img.resize((w, h), Image.LANCZOS), "window")
 
 
+# --- Dive Bar detail props ----------------------------------------------
+
+def gen_bar_bottles():
+    w, h, sc = 64, 26, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 18, 10, 255)
+    d.rectangle([0, 18 * sc, w * sc, 22 * sc], fill=(94, 62, 34, 255), outline=outline, width=sc // 3)
+    bottle_colors = [(60, 140, 90, 255), (150, 60, 50, 255), (200, 170, 60, 255),
+                      (70, 90, 160, 255), (110, 70, 150, 255), (190, 140, 40, 255)]
+    x = 3
+    import random
+    rng = random.Random(42)
+    while x < w - 4:
+        bw = rng.uniform(3.5, 5)
+        bh = rng.uniform(10, 16)
+        c = rng.choice(bottle_colors)
+        top = 18 - bh
+        d.rounded_rectangle([x * sc, top * sc, (x + bw) * sc, 18 * sc], radius=sc // 2, fill=c, outline=outline, width=sc // 4)
+        d.rectangle([(x + bw * 0.3) * sc, (top - 2) * sc, (x + bw * 0.7) * sc, top * sc], fill=shade(c, -0.2))
+        x += bw + 1.6
+    small = img.resize((w, h), Image.LANCZOS).convert("RGBA")
+    env_save(small, "bar_bottles")
+
+
+def gen_neon_sign():
+    w, h, sc = 46, 20, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle([0, 0, w * sc, h * sc], radius=2 * sc, fill=(18, 14, 22, 255), outline=(10, 8, 12, 255), width=sc // 2)
+    glow = (255, 70, 150, 255)
+    d.rounded_rectangle([3 * sc, 3 * sc, (w - 3) * sc, (h - 3) * sc], radius=1.5 * sc, outline=glow, width=sc // 2)
+    d.ellipse([6 * sc, 5 * sc, 16 * sc, (h - 5) * sc], outline=(90, 220, 255, 255), width=sc // 2)
+    d.line([20 * sc, 5 * sc, 20 * sc, (h - 5) * sc], fill=glow, width=sc // 2)
+    d.line([20 * sc, (h / 2) * sc, 28 * sc, (h / 2) * sc], fill=glow, width=sc // 2)
+    d.line([20 * sc, 5 * sc, 28 * sc, 5 * sc], fill=glow, width=sc // 2)
+    d.line([20 * sc, (h - 5) * sc, 28 * sc, (h - 5) * sc], fill=glow, width=sc // 2)
+    d.ellipse([32 * sc, 5 * sc, 42 * sc, (h - 5) * sc], outline=(90, 220, 255, 255), width=sc // 2)
+    env_save(img.resize((w, h), Image.LANCZOS), "neon_sign")
+
+
+def gen_jukebox():
+    w, h, sc = 24, 36, 6
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (16, 14, 12, 255)
+    body = (150, 30, 34, 255)
+    d.rounded_rectangle([1 * sc, 4 * sc, (w - 1) * sc, h * sc], radius=3 * sc, fill=body, outline=outline, width=sc // 2)
+    d.rounded_rectangle([3 * sc, 0, (w - 3) * sc, 10 * sc], radius=4 * sc, fill=(255, 214, 90, 235), outline=outline, width=sc // 3)
+    d.rectangle([4 * sc, 14 * sc, (w - 4) * sc, 26 * sc], fill=(30, 26, 24, 255), outline=outline, width=sc // 3)
+    for i in range(4):
+        cx = 6 + i * 4
+        d.ellipse([cx * sc, 16 * sc, (cx + 3) * sc, 19 * sc], fill=shade(body, 0.3 - i * 0.05))
+    d.rounded_rectangle([2 * sc, 29 * sc, (w - 2) * sc, 34 * sc], radius=sc, fill=shade(body, -0.2), outline=outline, width=sc // 3)
+    env_save(img.resize((w, h), Image.LANCZOS), "jukebox")
+
+
+def gen_dartboard():
+    w, h, sc = 20, 20, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 18, 10, 255)
+    d.ellipse([0, 0, w * sc, h * sc], fill=(70, 46, 26, 255), outline=outline, width=sc // 3)
+    rings = [(9, (210, 200, 190, 255)), (7, (30, 26, 24, 255)), (5, (210, 200, 190, 255)),
+             (3.2, (30, 26, 24, 255)), (1.6, (190, 40, 40, 255))]
+    cx, cy = w / 2, h / 2
+    for r, c in rings:
+        d.ellipse([(cx - r) * sc, (cy - r) * sc, (cx + r) * sc, (cy + r) * sc], fill=c)
+    env_save(img.resize((w, h), Image.LANCZOS), "dartboard")
+
+
+def gen_barstool():
+    w, h, sc = 14, 18, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (18, 14, 10, 255)
+    d.ellipse([1 * sc, 1 * sc, (w - 1) * sc, 9 * sc], fill=(150, 34, 30, 255), outline=outline, width=sc // 3)
+    d.ellipse([3 * sc, 2 * sc, (w - 5) * sc, 6 * sc], fill=shade((150, 34, 30, 255), 0.25))
+    d.rectangle([(w / 2 - 1.4) * sc, 8 * sc, (w / 2 + 1.4) * sc, h * sc], fill=(70, 66, 60, 255), outline=outline, width=sc // 4)
+    env_save(img.resize((w, h), Image.LANCZOS), "barstool")
+
+
+# --- Shop detail props ----------------------------------------------------
+
+def gen_product_box(name, color, seed):
+    w, h, sc = 10, 12, 10
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = shade(color, -0.35)
+    d.rounded_rectangle([0, 1 * sc, w * sc, h * sc], radius=sc, fill=color, outline=outline, width=sc // 3)
+    d.rectangle([1 * sc, 3 * sc, (w - 1) * sc, 6 * sc], fill=shade(color, 0.3))
+    env_save(img.resize((w, h), Image.LANCZOS), name)
+
+
+def gen_register():
+    w, h, sc = 20, 16, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 24, 28, 255)
+    d.rounded_rectangle([1 * sc, 6 * sc, (w - 1) * sc, h * sc], radius=1.5 * sc, fill=(70, 74, 82, 255), outline=outline, width=sc // 3)
+    d.rounded_rectangle([2 * sc, 0, (w - 6) * sc, 7 * sc], radius=sc, fill=(40, 44, 50, 255), outline=outline, width=sc // 3)
+    d.rectangle([3 * sc, 1.4 * sc, (w - 7) * sc, 4 * sc], fill=(120, 220, 150, 235))
+    d.rectangle([(w - 5) * sc, 3 * sc, (w - 1) * sc, 9 * sc], fill=(200, 200, 205, 255), outline=outline, width=sc // 4)
+    env_save(img.resize((w, h), Image.LANCZOS), "register")
+
+
+def gen_cooler():
+    w, h, sc = 44, 22, 6
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (26, 30, 34, 255)
+    d.rounded_rectangle([0, 0, w * sc, h * sc], radius=1.5 * sc, fill=(210, 214, 218, 255), outline=outline, width=sc // 2)
+    for i in range(3):
+        x0 = 2 + i * 14
+        d.rounded_rectangle([x0 * sc, 2 * sc, (x0 + 12) * sc, (h - 2) * sc], radius=sc,
+                             fill=(120, 190, 225, 200), outline=outline, width=sc // 3)
+        d.line([(x0 + 2) * sc, 4 * sc, (x0 + 2) * sc, (h - 4) * sc], fill=(220, 245, 250, 160), width=sc // 3)
+    env_save(img.resize((w, h), Image.LANCZOS), "cooler")
+
+
+# --- Apartment squalor props ----------------------------------------------
+
+def gen_wall_stain():
+    w, h, sc = 36, 24, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    import random
+    rng = random.Random(9)
+    for _ in range(5):
+        cx = rng.uniform(6, w - 6)
+        cy = rng.uniform(4, h - 4)
+        r = rng.uniform(5, 11)
+        a = rng.randint(40, 90)
+        d.ellipse([(cx - r) * sc, (cy - r * 0.7) * sc, (cx + r) * sc, (cy + r * 0.7) * sc], fill=(40, 34, 24, a))
+    env_save(img.resize((w, h), Image.LANCZOS), "wall_stain")
+
+
+def gen_clothes_pile():
+    w, h, sc = 24, 16, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    colors = [(90, 100, 130, 255), (140, 70, 70, 255), (80, 110, 80, 255), (120, 100, 60, 255)]
+    outline = (20, 20, 24, 255)
+    import random
+    rng = random.Random(5)
+    for i, c in enumerate(colors):
+        x0 = rng.uniform(0, 10)
+        y0 = rng.uniform(2, 8)
+        bw = rng.uniform(10, 16)
+        bh = rng.uniform(6, 9)
+        d.rounded_rectangle([x0 * sc, y0 * sc, (x0 + bw) * sc, (y0 + bh) * sc], radius=2 * sc,
+                             fill=c, outline=outline, width=sc // 4)
+    env_save(img.resize((w, h), Image.LANCZOS), "clothes_pile")
+
+
+def gen_bottles_pile():
+    w, h, sc = 20, 14, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (18, 24, 16, 255)
+    colors = [(60, 120, 80, 210), (90, 140, 100, 210), (50, 100, 70, 210)]
+    import random
+    rng = random.Random(3)
+    for i, c in enumerate(colors):
+        cx = 4 + i * 6
+        cy = rng.uniform(6, 10)
+        length = rng.uniform(9, 12)
+        angle = rng.uniform(-25, 25)
+        bw = 3.4
+        bottle = Image.new("RGBA", (int(bw * sc), int(length * sc)), (0, 0, 0, 0))
+        bd = ImageDraw.Draw(bottle)
+        bd.rounded_rectangle([0, 0, bw * sc, length * sc], radius=sc, fill=c, outline=outline, width=sc // 4)
+        bottle = bottle.rotate(angle, expand=True)
+        img.alpha_composite(bottle, (int(cx * sc - bottle.width / 2), int(cy * sc - bottle.height / 2)))
+    env_save(img.resize((w, h), Image.LANCZOS), "bottles_pile")
+
+
+def gen_ashtray():
+    w, h, sc = 12, 8, 10
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 24, 24, 255)
+    d.ellipse([0, 1 * sc, w * sc, (h - 1) * sc], fill=(90, 90, 96, 255), outline=outline, width=sc // 4)
+    d.ellipse([2 * sc, 2.4 * sc, (w - 2) * sc, (h - 2.4) * sc], fill=(50, 50, 54, 255))
+    for i, x in enumerate((3, 6, 9)):
+        d.line([x * sc, 3 * sc, (x + 1.6) * sc, 3.6 * sc], fill=(235, 230, 220, 230), width=sc // 5)
+    env_save(img.resize((w, h), Image.LANCZOS), "ashtray")
+
+
+def gen_pill_bottle():
+    w, h, sc = 8, 10, 12
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (90, 50, 10, 255)
+    d.rounded_rectangle([1 * sc, 2 * sc, (w - 1) * sc, h * sc], radius=sc, fill=(210, 130, 30, 220), outline=outline, width=sc // 4)
+    d.rectangle([1 * sc, 0, (w - 1) * sc, 2.4 * sc], fill=(235, 235, 230, 255), outline=outline, width=sc // 5)
+    env_save(img.resize((w, h), Image.LANCZOS), "pill_bottle")
+
+
 gen_floor_tile()
 gen_wall_tile()
 gen_wood_plank()
@@ -533,6 +732,20 @@ gen_car()
 gen_hydrant()
 gen_dumpster()
 gen_window()
+gen_bar_bottles()
+gen_neon_sign()
+gen_jukebox()
+gen_dartboard()
+gen_barstool()
+gen_product_box("product_box_a", (200, 70, 60, 255), 1)
+gen_product_box("product_box_b", (70, 140, 200, 255), 2)
+gen_register()
+gen_cooler()
+gen_wall_stain()
+gen_clothes_pile()
+gen_bottles_pile()
+gen_ashtray()
+gen_pill_bottle()
 
 print("done:", sorted(os.listdir(OUT)))
 print("env done:", sorted(os.listdir(ENV_OUT)))

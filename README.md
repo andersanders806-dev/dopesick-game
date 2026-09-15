@@ -31,7 +31,9 @@ get well. Repeat.
    hear the request; bring the item back and they pay you. The bartender
    will also fence *any* stolen item you're still holding for a flat $5,
    no questions asked. Decorated with a back-bar bottle shelf, a neon
-   sign, a jukebox, a dartboard, and stools along the counter.
+   sign, a jukebox, a dartboard, and stools along the counter. Talking to
+   the bartender or a patron shows a realistic AI-generated portrait
+   (one of 7, keyed by name) in the dialogue box.
 4. **Shop** — five steal-able items, shuffled onto a different shelf every
    visit so the layout never repeats, each shelf fleshed out with a
    couple of flanking product boxes, plus a register on the counter and a
@@ -100,3 +102,14 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   was never actually attached via a `CollisionShape2D` node, so the
   buildings had no physical collision at all — the player could walk
   straight through them until this pass added the missing shapes.
+- Dialogue portraits (`assets/portraits/`) are realistic AI-generated
+  faces — see `dev-tools/gen_portraits.py` (Pollinations.ai for the
+  image, `rembg` to cut the background out, then a corner crop to strip
+  the free-tier watermark). Deliberately scoped to portraits only, not
+  gameplay sprites: an early mockup (character cut out and composited
+  into a scaled-up room) showed that photo-generation models default to
+  front-facing portraits, not bird's-eye view, so a "realistic" character
+  standing in the top-down world just looks like a floating cardboard
+  cutout — no amount of scaling fixes a perspective the model can't
+  draw. A dialogue box, where a front-facing face is the natural framing,
+  has no such mismatch.

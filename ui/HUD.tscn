@@ -64,17 +64,25 @@ text = "Carrying: nothing"
 
 [node name="DialoguePanel" type="Control" parent="."]
 offset_left = 40.0
-offset_top = 400.0
+offset_top = 370.0
 offset_right = 920.0
 offset_bottom = 520.0
 
 [node name="Bg" type="ColorRect" parent="DialoguePanel"]
 offset_right = 880.0
-offset_bottom = 120.0
+offset_bottom = 150.0
 color = Color(0.05, 0.05, 0.06, 0.92)
 
+[node name="Portrait" type="TextureRect" parent="DialoguePanel"]
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 138.0
+offset_bottom = 138.0
+expand_mode = 1
+stretch_mode = 5
+
 [node name="SpeakerLabel" type="Label" parent="DialoguePanel"]
-offset_left = 16.0
+offset_left = 150.0
 offset_top = 8.0
 offset_right = 860.0
 offset_bottom = 30.0
@@ -83,18 +91,18 @@ theme_override_colors/font_color = Color(0.8, 0.7, 0.35, 1)
 text = "Speaker"
 
 [node name="TextLabel" type="Label" parent="DialoguePanel"]
-offset_left = 16.0
+offset_left = 150.0
 offset_top = 34.0
 offset_right = 860.0
-offset_bottom = 90.0
+offset_bottom = 120.0
 autowrap_mode = 3
 text = "..."
 
 [node name="HintLabel" type="Label" parent="DialoguePanel"]
-offset_left = 16.0
-offset_top = 94.0
-offset_right = 300.0
-offset_bottom = 112.0
+offset_left = 150.0
+offset_top = 124.0
+offset_right = 430.0
+offset_bottom = 142.0
 theme_override_colors/font_color = Color(0.5, 0.5, 0.5, 1)
 theme_override_font_sizes/font_size = 12
 text = "[E] continue"

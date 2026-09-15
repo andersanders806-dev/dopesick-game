@@ -11,7 +11,12 @@ const CRAVING_BAR_WIDTH := 120.0
 @onready var dialogue_panel: Control = $DialoguePanel
 @onready var speaker_label: Label = $DialoguePanel/SpeakerLabel
 @onready var text_label: Label = $DialoguePanel/TextLabel
+@onready var hint_label: Label = $DialoguePanel/HintLabel
+@onready var portrait_rect: TextureRect = $DialoguePanel/Portrait
 @onready var busted_overlay: Control = $BustedOverlay
+
+const TEXT_LEFT_WITH_PORTRAIT := 150.0
+const TEXT_LEFT_NO_PORTRAIT := 16.0
 
 func _ready() -> void:
 	add_to_group("hud")
@@ -51,10 +56,18 @@ func _update_inventory() -> void:
 func _update_wanted(is_wanted: bool) -> void:
 	wanted_label.visible = is_wanted
 
-func show_dialogue(speaker: String, text: String) -> void:
+func show_dialogue(speaker: String, text: String, portrait: Texture2D = null) -> void:
 	speaker_label.text = speaker
 	speaker_label.visible = speaker != ""
 	text_label.text = text
+	portrait_rect.texture = portrait
+	portrait_rect.visible = portrait != null
+
+	var text_left: float = TEXT_LEFT_WITH_PORTRAIT if portrait != null else TEXT_LEFT_NO_PORTRAIT
+	speaker_label.offset_left = text_left
+	text_label.offset_left = text_left
+	hint_label.offset_left = text_left
+
 	dialogue_panel.visible = true
 
 func advance_or_close_dialogue() -> void:

@@ -1,5 +1,15 @@
 extends Area2D
 
+const PORTRAITS := {
+	"Bartender": preload("res://assets/portraits/bartender.png"),
+	"Wiry Guy": preload("res://assets/portraits/wiry_guy.png"),
+	"Tired Woman": preload("res://assets/portraits/tired_woman.png"),
+	"Big Eddie": preload("res://assets/portraits/big_eddie.png"),
+	"Quiet Kid": preload("res://assets/portraits/quiet_kid.png"),
+	"Old Sailor": preload("res://assets/portraits/old_sailor.png"),
+	"Nervous Dave": preload("res://assets/portraits/nervous_dave.png"),
+}
+
 @export var npc_name: String = "Stranger"
 @export var is_patron: bool = false
 @export_multiline var flavor_lines: String = "..."
@@ -32,28 +42,31 @@ func interact(player: Node) -> void:
 	else:
 		_flavor_interact(hud)
 
+func _portrait() -> Texture2D:
+	return PORTRAITS.get(npc_name)
+
 func _patron_interact(hud: Node) -> void:
 	if request_id == "":
-		hud.show_dialogue(npc_name, "Not looking for anything right now.")
+		hud.show_dialogue(npc_name, "Not looking for anything right now.", _portrait())
 		return
 	if fulfilled:
-		hud.show_dialogue(npc_name, "Thanks again for that.")
+		hud.show_dialogue(npc_name, "Thanks again for that.", _portrait())
 		return
 	if GameState.has_item(request_id):
 		GameState.sell_item(request_id, request_price)
 		fulfilled = true
-		hud.show_dialogue(npc_name, "That's exactly it. Here's $%d." % request_price)
+		hud.show_dialogue(npc_name, "That's exactly it. Here's $%d." % request_price, _portrait())
 	else:
 		var item_name := GameState.item_name_for(request_id)
-		hud.show_dialogue(npc_name, "I need %s. Get it for me and I'll pay $%d." % [item_name, request_price])
+		hud.show_dialogue(npc_name, "I need %s. Get it for me and I'll pay $%d." % [item_name, request_price], _portrait())
 
 func _flavor_interact(hud: Node) -> void:
 	if not GameState.inventory.is_empty():
 		var earned := GameState.fence_everything()
-		hud.show_dialogue(npc_name, "I'll take that off your hands. Here's $%d, no questions." % earned)
+		hud.show_dialogue(npc_name, "I'll take that off your hands. Here's $%d, no questions." % earned, _portrait())
 		return
 	var lines := flavor_lines.split("\n", false)
 	if lines.is_empty():
-		hud.show_dialogue(npc_name, "...")
+		hud.show_dialogue(npc_name, "...", _portrait())
 		return
-	hud.show_dialogue(npc_name, lines[randi() % lines.size()])
+	hud.show_dialogue(npc_name, lines[randi() % lines.size()], _portrait())

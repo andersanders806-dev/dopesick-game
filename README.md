@@ -39,14 +39,18 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
 
 ## Known limitations / good next steps
 
-- Characters and items have real sprites now (`assets/sprites/`, generated
-  procedurally — see `dev-tools/gen_sprites.py`): the player and police
-  have a 3-direction, 2-frame walk cycle (down/up/side, side flips for
-  left vs. right); the shopkeeper, bartender, and each patron have a
-  distinct static sprite; each stealable item has its own icon
-  auto-selected by `item_id` in `StealableItem.gd`. World geometry (walls,
-  shelves, counters, tables, doors, bed/phone) and the HUD are still flat
-  colored rectangles — a tileset/level art pass is the natural next step.
+- Characters, items, and world geometry all have real (procedurally
+  generated) art now — see `dev-tools/gen_sprites.py`, which writes to
+  `assets/sprites/` (characters, items) and `assets/env/` (environment).
+  The player and police have a 3-direction, 2-frame walk cycle (down/up/
+  side, side flips for left vs. right); the shopkeeper, bartender, and
+  each patron have a distinct static sprite; each stealable item has its
+  own icon auto-selected by `item_id` in `StealableItem.gd`. Floors and
+  walls use tileable textures (`floor_tile.png`, `wall_tile.png` via
+  `TextureRect` with `stretch_mode = TILE`); counters/shelves/tables use
+  a tileable wood-plank texture; the bed, phone, TV, trash cans, and
+  doors are dedicated sprites. Only the HUD is still flat colored
+  rectangles.
 - Only one shop and one bar layout; no day-to-day variety yet beyond the
   randomized patron requests.
 - No sound.

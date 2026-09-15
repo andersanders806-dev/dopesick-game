@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://world/Shop.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/Guard.tscn" id="2"]
@@ -6,6 +6,10 @@
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="4"]
 [ext_resource type="PackedScene" path="res://ui/HUD.tscn" id="5"]
 [ext_resource type="Script" path="res://interactables/Door.gd" id="6"]
+[ext_resource type="Texture2D" path="res://assets/env/floor_tile.png" id="7"]
+[ext_resource type="Texture2D" path="res://assets/env/wall_tile.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/env/wood_plank.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/env/door.png" id="10"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(480, 16)
@@ -27,21 +31,23 @@ script = ExtResource("1")
 [node name="CanvasModulate" type="CanvasModulate" parent="."]
 color = Color(0.65, 0.75, 0.7, 1)
 
-[node name="Floor" type="ColorRect" parent="."]
+[node name="Floor" type="TextureRect" parent="."]
 offset_right = 480.0
 offset_bottom = 320.0
-color = Color(0.13, 0.14, 0.13, 1)
+texture = ExtResource("7")
+stretch_mode = 1
 
 [node name="WallTop" type="StaticBody2D" parent="."]
 position = Vector2(240, -8)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="WallTop"]
+[node name="Visual" type="TextureRect" parent="WallTop"]
 offset_left = -240.0
 offset_top = -8.0
 offset_right = 240.0
 offset_bottom = 8.0
-color = Color(0.07, 0.08, 0.08, 1)
+texture = ExtResource("8")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WallTop"]
 shape = SubResource("RectangleShape2D_wallH")
@@ -50,12 +56,13 @@ shape = SubResource("RectangleShape2D_wallH")
 position = Vector2(240, 328)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="WallBottom"]
+[node name="Visual" type="TextureRect" parent="WallBottom"]
 offset_left = -240.0
 offset_top = -8.0
 offset_right = 240.0
 offset_bottom = 8.0
-color = Color(0.07, 0.08, 0.08, 1)
+texture = ExtResource("8")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WallBottom"]
 shape = SubResource("RectangleShape2D_wallH")
@@ -64,12 +71,13 @@ shape = SubResource("RectangleShape2D_wallH")
 position = Vector2(-8, 160)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="WallLeft"]
+[node name="Visual" type="TextureRect" parent="WallLeft"]
 offset_left = -8.0
 offset_top = -160.0
 offset_right = 8.0
 offset_bottom = 160.0
-color = Color(0.07, 0.08, 0.08, 1)
+texture = ExtResource("8")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WallLeft"]
 shape = SubResource("RectangleShape2D_wallV")
@@ -78,22 +86,24 @@ shape = SubResource("RectangleShape2D_wallV")
 position = Vector2(488, 160)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="WallRight"]
+[node name="Visual" type="TextureRect" parent="WallRight"]
 offset_left = -8.0
 offset_top = -160.0
 offset_right = 8.0
 offset_bottom = 160.0
-color = Color(0.07, 0.08, 0.08, 1)
+texture = ExtResource("8")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="WallRight"]
 shape = SubResource("RectangleShape2D_wallV")
 
-[node name="Counter" type="ColorRect" parent="."]
+[node name="Counter" type="TextureRect" parent="."]
 offset_left = 60.0
 offset_top = 35.0
 offset_right = 420.0
 offset_bottom = 60.0
-color = Color(0.22, 0.24, 0.22, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="Shopkeeper" parent="." instance=ExtResource("2")]
 position = Vector2(240, 45)
@@ -107,12 +117,13 @@ base_facing_deg = 90.0
 position = Vector2(110, 140)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="ShelfA"]
+[node name="Visual" type="TextureRect" parent="ShelfA"]
 offset_left = -45.0
 offset_top = -9.0
 offset_right = 45.0
 offset_bottom = 9.0
-color = Color(0.28, 0.24, 0.18, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfA"]
 shape = SubResource("RectangleShape2D_shelf")
@@ -121,12 +132,13 @@ shape = SubResource("RectangleShape2D_shelf")
 position = Vector2(240, 140)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="ShelfB"]
+[node name="Visual" type="TextureRect" parent="ShelfB"]
 offset_left = -45.0
 offset_top = -9.0
 offset_right = 45.0
 offset_bottom = 9.0
-color = Color(0.28, 0.24, 0.18, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfB"]
 shape = SubResource("RectangleShape2D_shelf")
@@ -135,12 +147,13 @@ shape = SubResource("RectangleShape2D_shelf")
 position = Vector2(370, 140)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="ShelfC"]
+[node name="Visual" type="TextureRect" parent="ShelfC"]
 offset_left = -45.0
 offset_top = -9.0
 offset_right = 45.0
 offset_bottom = 9.0
-color = Color(0.28, 0.24, 0.18, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfC"]
 shape = SubResource("RectangleShape2D_shelf")
@@ -149,12 +162,13 @@ shape = SubResource("RectangleShape2D_shelf")
 position = Vector2(170, 220)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="ShelfD"]
+[node name="Visual" type="TextureRect" parent="ShelfD"]
 offset_left = -45.0
 offset_top = -9.0
 offset_right = 45.0
 offset_bottom = 9.0
-color = Color(0.28, 0.24, 0.18, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfD"]
 shape = SubResource("RectangleShape2D_shelf")
@@ -163,12 +177,13 @@ shape = SubResource("RectangleShape2D_shelf")
 position = Vector2(310, 220)
 collision_layer = 1
 
-[node name="Visual" type="ColorRect" parent="ShelfE"]
+[node name="Visual" type="TextureRect" parent="ShelfE"]
 offset_left = -45.0
 offset_top = -9.0
 offset_right = 45.0
 offset_bottom = 9.0
-color = Color(0.28, 0.24, 0.18, 1)
+texture = ExtResource("9")
+stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfE"]
 shape = SubResource("RectangleShape2D_shelf")
@@ -202,12 +217,13 @@ script = ExtResource("6")
 target_scene = "res://world/DiveBar.tscn"
 target_spawn = "SpawnFromShop"
 
-[node name="Visual" type="ColorRect" parent="DoorToDiveBar"]
+[node name="Visual" type="TextureRect" parent="DoorToDiveBar"]
 offset_left = -20.0
 offset_top = -6.0
 offset_right = 20.0
 offset_bottom = 6.0
-color = Color(0.4, 0.4, 0.35, 1)
+texture = ExtResource("10")
+stretch_mode = 4
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="DoorToDiveBar"]
 shape = SubResource("RectangleShape2D_interact")

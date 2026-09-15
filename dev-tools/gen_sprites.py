@@ -219,4 +219,146 @@ gen_charger()
 gen_batteries()
 gen_watch()
 
+
+# --- Environment (tileable + dedicated furniture) ---------------------
+
+ENV_OUT = os.path.join(OUT, "..", "env")
+ENV_OUT = os.path.normpath(ENV_OUT)
+os.makedirs(ENV_OUT, exist_ok=True)
+
+
+def env_save(img, name):
+    path = os.path.join(ENV_OUT, f"{name}.png")
+    img.save(path)
+    return path
+
+
+def gen_floor_tile():
+    tw, th, sc = 32, 32, 8
+    img = Image.new("RGBA", (tw * sc, th * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    base = (118, 106, 92, 255)
+    d.rectangle([0, 0, tw * sc, th * sc], fill=base)
+    board_h = 8
+    for row, y in enumerate(range(0, th, board_h)):
+        shade = (108, 97, 84, 255) if row % 2 == 0 else (124, 111, 96, 255)
+        d.rectangle([0, y * sc, tw * sc, (y + board_h) * sc - int(sc * 0.35)], fill=shade)
+        d.line([0, y * sc, tw * sc, y * sc], fill=(70, 62, 52, 200), width=max(1, sc // 6))
+    env_save(img.resize((tw, th), Image.LANCZOS), "floor_tile")
+
+
+def gen_wall_tile():
+    tw, th, sc = 32, 32, 8
+    img = Image.new("RGBA", (tw * sc, th * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    base = (46, 42, 40, 255)
+    mortar = (30, 27, 25, 255)
+    brick = (58, 52, 48, 255)
+    d.rectangle([0, 0, tw * sc, th * sc], fill=base)
+    brick_h = 8
+    brick_w = 16
+    for row, y in enumerate(range(0, th, brick_h)):
+        offset = 0 if row % 2 == 0 else brick_w // 2
+        d.line([0, y * sc, tw * sc, y * sc], fill=mortar, width=max(1, sc // 5))
+        x = -offset
+        while x < tw:
+            d.rectangle([x * sc, y * sc, (x + brick_w - 1) * sc, (y + brick_h - 1) * sc], fill=brick)
+            d.line([(x + brick_w - 1) * sc, y * sc, (x + brick_w - 1) * sc, (y + brick_h) * sc],
+                   fill=mortar, width=max(1, sc // 6))
+            x += brick_w
+    env_save(img.resize((tw, th), Image.LANCZOS), "wall_tile")
+
+
+def gen_wood_plank():
+    tw, th, sc = 32, 16, 8
+    img = Image.new("RGBA", (tw * sc, th * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, tw * sc, th * sc], fill=(96, 68, 40, 255))
+    for i, y in enumerate(range(0, th, 4)):
+        shade = (86, 60, 34, 255) if i % 2 == 0 else (104, 74, 44, 255)
+        d.rectangle([0, y * sc, tw * sc, (y + 4) * sc - int(sc * 0.3)], fill=shade)
+    d.line([0, sc, tw * sc, sc], fill=(140, 108, 66, 160), width=max(1, sc // 6))
+    env_save(img.resize((tw, th), Image.LANCZOS), "wood_plank")
+
+
+def gen_bed():
+    w, h, sc = 110, 50, 4
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 20, 16, 255)
+    d.rounded_rectangle([0, 0, w * sc, h * sc], radius=3 * sc, fill=(58, 46, 32, 255), outline=outline, width=sc)
+    d.rounded_rectangle([4 * sc, 4 * sc, (w - 4) * sc, (h - 4) * sc], radius=2 * sc,
+                         fill=(196, 186, 168, 255), outline=outline, width=sc // 2)
+    d.rounded_rectangle([4 * sc, 22 * sc, (w - 4) * sc, (h - 4) * sc], radius=2 * sc, fill=(84, 96, 108, 255))
+    d.rounded_rectangle([8 * sc, 6 * sc, 34 * sc, 18 * sc], radius=2 * sc,
+                         fill=(224, 218, 204, 255), outline=outline, width=sc // 2)
+    env_save(img.resize((w, h), Image.LANCZOS), "bed")
+
+
+def gen_phone():
+    w, h, sc = 20, 28, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (18, 10, 10, 255)
+    d.rounded_rectangle([3 * sc, 2 * sc, 17 * sc, 26 * sc], radius=sc,
+                         fill=(120, 40, 38, 255), outline=outline, width=sc // 2)
+    d.rounded_rectangle([1 * sc, 3 * sc, 19 * sc, 8 * sc], radius=sc,
+                         fill=(30, 26, 24, 255), outline=outline, width=sc // 2)
+    d.rectangle([6 * sc, 12 * sc, 14 * sc, 22 * sc], fill=(70, 22, 20, 255))
+    env_save(img.resize((w, h), Image.LANCZOS), "phone")
+
+
+def gen_tv():
+    w, h, sc = 60, 40, 6
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (10, 10, 12, 255)
+    d.rounded_rectangle([0, 0, w * sc, (h - 6) * sc], radius=2 * sc, fill=(22, 22, 26, 255), outline=outline, width=sc)
+    d.rectangle([5 * sc, 4 * sc, (w - 5) * sc, (h - 12) * sc], fill=(58, 74, 60, 255))
+    import random
+    random.seed(7)
+    for _ in range(40):
+        x = random.uniform(6, w - 6)
+        y = random.uniform(5, h - 13)
+        c = random.choice([(80, 100, 82, 255), (40, 54, 42, 255), (100, 120, 100, 255)])
+        d.point([(x * sc, y * sc)], fill=c)
+    d.rectangle([(w // 2 - 8) * sc, (h - 6) * sc, (w // 2 + 8) * sc, h * sc], fill=(30, 30, 34, 255))
+    env_save(img.resize((w, h), Image.LANCZOS), "tv")
+
+
+def gen_trash():
+    w, h, sc = 18, 18, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (18, 22, 16, 255)
+    d.polygon([(3 * sc, 3 * sc), (15 * sc, 3 * sc), (13 * sc, 17 * sc), (5 * sc, 17 * sc)],
+              fill=(70, 76, 66, 255), outline=outline)
+    d.rectangle([2 * sc, 1 * sc, 16 * sc, 3 * sc], fill=(88, 94, 82, 255), outline=outline, width=sc // 3)
+    d.line([6 * sc, 5 * sc, 5 * sc, 14 * sc], fill=(50, 55, 46, 255), width=sc // 3)
+    d.line([12 * sc, 5 * sc, 13 * sc, 14 * sc], fill=(50, 55, 46, 255), width=sc // 3)
+    env_save(img.resize((w, h), Image.LANCZOS), "trash")
+
+
+def gen_door():
+    w, h, sc = 40, 14, 8
+    img = Image.new("RGBA", (w * sc, h * sc), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    outline = (24, 16, 8, 255)
+    d.rounded_rectangle([0, 0, w * sc, h * sc], radius=sc, fill=(96, 66, 34, 255), outline=outline, width=sc // 2)
+    for x in (10, 20, 30):
+        d.line([x * sc, 2 * sc, x * sc, (h - 2) * sc], fill=(74, 50, 24, 255), width=max(1, sc // 6))
+    d.ellipse([(w - 8) * sc, (h / 2 - 1.5) * sc, (w - 5) * sc, (h / 2 + 1.5) * sc], fill=(210, 190, 120, 255))
+    env_save(img.resize((w, h), Image.LANCZOS), "door")
+
+
+gen_floor_tile()
+gen_wall_tile()
+gen_wood_plank()
+gen_bed()
+gen_phone()
+gen_tv()
+gen_trash()
+gen_door()
+
 print("done:", sorted(os.listdir(OUT)))
+print("env done:", sorted(os.listdir(ENV_OUT)))

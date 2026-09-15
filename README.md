@@ -85,5 +85,18 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   `world/WorldRoot.gd`) instead of beelining at the player, and only
   re-aims while it actually has line of sight — losing sight means it
   commits to the last-seen spot and gives up after 4s if the player
-  doesn't reappear. Only the Shop scene has a nav region since police
-  never spawns elsewhere.
+  doesn't reappear. All four rooms (Apartment, City, Dive Bar, Shop) now
+  have a nav region, so any future threat isn't limited to the Shop —
+  though police itself still only ever spawns there today (the shop's
+  `_on_spotted_theft()` is the only trigger that exists). Fixed two bugs
+  found while wiring this up: `_bake_navigation()` was casting each
+  room's `Floor` node `as ColorRect`, which silently failed (returned
+  null) after Floor became a `TextureRect` in the art pass, so every
+  room's nav outline was quietly using a hardcoded fallback size instead
+  of its real floor bounds — harmless where the fallback happened to be
+  close enough (Shop/Dive Bar/Apartment), but it clipped a third of
+  City's wider street. And City's three building facades had a
+  `StaticBody2D` wrapper declared with a collision shape resource that
+  was never actually attached via a `CollisionShape2D` node, so the
+  buildings had no physical collision at all — the player could walk
+  straight through them until this pass added the missing shapes.

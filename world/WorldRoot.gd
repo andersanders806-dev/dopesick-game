@@ -13,7 +13,7 @@ func _bake_navigation() -> void:
 
 	var top_left := Vector2(4, 4)
 	var bottom_right := Vector2(476, 316)
-	var floor_rect := get_node_or_null("Floor") as ColorRect
+	var floor_rect := get_node_or_null("Floor") as Control
 	if floor_rect:
 		top_left = Vector2(floor_rect.offset_left, floor_rect.offset_top) + Vector2(4, 4)
 		bottom_right = Vector2(floor_rect.offset_right, floor_rect.offset_bottom) - Vector2(4, 4)

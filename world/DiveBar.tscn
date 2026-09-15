@@ -23,7 +23,7 @@ size = Vector2(44, 44)
 script = ExtResource("1")
 
 [node name="CanvasModulate" type="CanvasModulate" parent="."]
-color = Color(0.9, 0.7, 0.6, 1)
+color = Color(1.05, 0.85, 0.7, 1)
 
 [node name="Floor" type="TextureRect" parent="."]
 offset_right = 520.0
@@ -142,16 +142,16 @@ position = Vector2(400, 215)
 npc_name = "Big Eddie"
 is_patron = true
 
-[node name="DoorToApartment" type="Area2D" parent="."]
-position = Vector2(40, 300)
+[node name="DoorToCity" type="Area2D" parent="."]
+position = Vector2(260, 300)
 collision_layer = 4
 collision_mask = 0
 monitoring = false
 script = ExtResource("5")
-target_scene = "res://world/Apartment.tscn"
-target_spawn = "SpawnFromDiveBar"
+target_scene = "res://world/City.tscn"
+target_spawn = "SpawnFromBar"
 
-[node name="Visual" type="TextureRect" parent="DoorToApartment"]
+[node name="Visual" type="TextureRect" parent="DoorToCity"]
 offset_left = -20.0
 offset_top = -6.0
 offset_right = 20.0
@@ -159,34 +159,11 @@ offset_bottom = 6.0
 texture = ExtResource("9")
 stretch_mode = 4
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="DoorToApartment"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DoorToCity"]
 shape = SubResource("RectangleShape2D_interact")
 
-[node name="DoorToShop" type="Area2D" parent="."]
-position = Vector2(480, 300)
-collision_layer = 4
-collision_mask = 0
-monitoring = false
-script = ExtResource("5")
-target_scene = "res://world/Shop.tscn"
-target_spawn = "SpawnFromDiveBar"
-
-[node name="Visual" type="TextureRect" parent="DoorToShop"]
-offset_left = -20.0
-offset_top = -6.0
-offset_right = 20.0
-offset_bottom = 6.0
-texture = ExtResource("9")
-stretch_mode = 4
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="DoorToShop"]
-shape = SubResource("RectangleShape2D_interact")
-
-[node name="SpawnFromApartment" type="Marker2D" parent="."]
-position = Vector2(40, 270)
-
-[node name="SpawnFromShop" type="Marker2D" parent="."]
-position = Vector2(480, 270)
+[node name="SpawnFromCity" type="Marker2D" parent="."]
+position = Vector2(260, 270)
 
 [node name="Player" parent="." instance=ExtResource("3")]
 position = Vector2(260, 200)

@@ -15,8 +15,12 @@ const ICONS := {
 
 func _ready() -> void:
 	add_to_group("interactable")
-	if ICONS.has(item_id):
-		sprite.texture = ICONS[item_id]
+	set_item_id(item_id)
+
+func set_item_id(id: String) -> void:
+	item_id = id
+	if ICONS.has(id):
+		sprite.texture = ICONS[id]
 
 func interact(player: Node) -> void:
 	GameState.steal_item(item_id)

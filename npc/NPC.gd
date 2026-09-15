@@ -4,6 +4,8 @@ extends Area2D
 @export var is_patron: bool = false
 @export_multiline var flavor_lines: String = "..."
 
+@onready var sprite: Sprite2D = $Body
+
 var request_id: String = ""
 var request_price: int = 0
 var fulfilled: bool = false
@@ -15,6 +17,9 @@ func set_request(id: String, price: int) -> void:
 	request_id = id
 	request_price = price
 	fulfilled = false
+
+func set_skin(texture: Texture2D) -> void:
+	sprite.texture = texture
 
 func interact(player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")

@@ -22,18 +22,20 @@ get well. Repeat.
    the city.
 2. **City** — the hub between all three interiors. A street with three
    building fronts (Home, Dive Bar, Shop), each with its own door, plus
-   streetlights, a parked car, a fire hydrant, and a dumpster for flavor.
-   Exiting any interior always lands you back here, next to that building's
-   door.
-3. **Dive Bar** — three patrons, each wanting a different stolen item
-   (randomized every time you visit). Talk to them to hear the request;
-   bring the item back and they pay you. The bartender will also fence
-   *any* stolen item you're still holding for a flat $5, no questions asked.
-   Decorated with a back-bar bottle shelf, a neon sign, a jukebox, a
-   dartboard, and stools along the counter.
-4. **Shop** — five steal-able items on shelves, each shelf fleshed out with
-   a couple of flanking product boxes, plus a register on the counter and
-   a drinks cooler against the wall. The shopkeeper has a sweeping vision
+   streetlights, a fire hydrant, a dumpster, and a parked car (a random
+   color tint each visit) for flavor. Exiting any interior always lands
+   you back here, next to that building's door.
+3. **Dive Bar** — three patrons, randomized every visit both in *who* shows
+   up (name + sprite skin, picked from a pool of 6 names / 4 skins) and
+   *what they want* (a different stolen item each time). Talk to them to
+   hear the request; bring the item back and they pay you. The bartender
+   will also fence *any* stolen item you're still holding for a flat $5,
+   no questions asked. Decorated with a back-bar bottle shelf, a neon
+   sign, a jukebox, a dartboard, and stools along the counter.
+4. **Shop** — five steal-able items, shuffled onto a different shelf every
+   visit so the layout never repeats, each shelf fleshed out with a
+   couple of flanking product boxes, plus a register on the counter and a
+   drinks cooler against the wall. The shopkeeper has a sweeping vision
    cone; get spotted mid-steal and the cops show up. Break line of sight
    (shelves block vision) for a few seconds and they give up. Get caught
    and you lose everything you're carrying, plus a cash fine, and wake up
@@ -72,9 +74,12 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   register, cooler), and apartment squalor details (wall stains, a
   clothes pile, a bottle cluster, an ashtray, a pill bottle) are all
   dedicated sprites. Only the HUD is still flat colored rectangles.
-- Only one shop and one bar layout; no day-to-day variety yet beyond the
-  randomized patron requests. The city hub is one static street — no
-  variation there either.
+- Shop item placement, Dive Bar patron identity/requests, and the City's
+  parked-car color all reshuffle on every visit (see `Shop.gd`'s
+  `_shuffle_items()`, `DiveBar.gd`'s `_randomize_patrons()`, and
+  `City.gd`). Still only one physical room layout per location though —
+  the furniture/wall arrangement itself never changes, just what's on it
+  and who's there.
 - No sound.
 - Police AI paths around obstacles via a baked `NavigationRegion2D` (see
   `world/WorldRoot.gd`) instead of beelining at the player, and only

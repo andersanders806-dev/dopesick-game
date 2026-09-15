@@ -14,16 +14,29 @@ func _ready() -> void:
 	add_to_group("police")
 	GameState.set_wanted(true)
 	catch_zone.body_entered.connect(_on_catch_body_entered)
+	var player := get_tree().get_first_node_in_group("player")
+	if player:
+		nav_agent.target_position = player.global_position
 
 func _physics_process(delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null or not is_instance_valid(player):
 		return
 
-	_retarget_timer -= delta
-	if _retarget_timer <= 0.0:
-		_retarget_timer = RETARGET_INTERVAL
-		nav_agent.target_position = player.global_position
+	# Only re-aim while we can actually see the player, so losing sight
+	# means committing to their last known position instead of tracking
+	# them straight through walls.
+	if _has_line_of_sight(player):
+		_lose_timer = 0.0
+		_retarget_timer -= delta
+		if _retarget_timer <= 0.0:
+			_retarget_timer = RETARGET_INTERVAL
+			nav_agent.target_position = player.global_position
+	else:
+		_lose_timer += delta
+		if _lose_timer >= LOSE_SIGHT_TIME:
+			_give_up()
+			return
 
 	if nav_agent.is_navigation_finished():
 		velocity = Vector2.ZERO
@@ -31,13 +44,6 @@ func _physics_process(delta: float) -> void:
 		var next_point: Vector2 = nav_agent.get_next_path_position()
 		velocity = (next_point - global_position).normalized() * SPEED
 	move_and_slide()
-
-	if _has_line_of_sight(player):
-		_lose_timer = 0.0
-	else:
-		_lose_timer += delta
-		if _lose_timer >= LOSE_SIGHT_TIME:
-			_give_up()
 
 func _has_line_of_sight(player: Node) -> bool:
 	var space_state := get_world_2d().direct_space_state

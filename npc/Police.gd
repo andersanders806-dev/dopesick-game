@@ -11,15 +11,22 @@ const FRAMES := {
 	"side": [preload("res://assets/sprites/police_side_0.png"), preload("res://assets/sprites/police_side_1.png")],
 }
 
+const BEACON_FLIP_TIME := 0.3
+const BEACON_RED := Color(1, 0.15, 0.1, 1)
+const BEACON_BLUE := Color(0.15, 0.35, 1, 1)
+
 @onready var catch_zone: Area2D = $CatchZone
 @onready var nav_agent: NavigationAgent2D = $NavAgent
 @onready var sprite: Sprite2D = $Body
+@onready var beacon: PointLight2D = $Beacon
 
 var _lose_timer: float = 0.0
 var _retarget_timer: float = 0.0
 var _facing: String = "down"
 var _anim_frame: int = 0
 var _frame_timer: float = 0.0
+var _beacon_timer: float = 0.0
+var _beacon_red: bool = true
 
 func _ready() -> void:
 	add_to_group("police")
@@ -57,6 +64,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	_update_animation(velocity, delta)
+	_update_beacon(delta)
 
 func _update_animation(vel: Vector2, delta: float) -> void:
 	if vel.length() > 1.0:
@@ -74,6 +82,13 @@ func _update_animation(vel: Vector2, delta: float) -> void:
 		_anim_frame = 0
 		_frame_timer = 0.0
 	sprite.texture = FRAMES[_facing][_anim_frame]
+
+func _update_beacon(delta: float) -> void:
+	_beacon_timer += delta
+	if _beacon_timer >= BEACON_FLIP_TIME:
+		_beacon_timer = 0.0
+		_beacon_red = not _beacon_red
+		beacon.color = BEACON_RED if _beacon_red else BEACON_BLUE
 
 func _has_line_of_sight(player: Node) -> bool:
 	var space_state := get_world_2d().direct_space_state

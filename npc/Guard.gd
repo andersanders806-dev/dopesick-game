@@ -8,8 +8,8 @@ signal spotted_theft
 @export var sweep_speed: float = 0.6
 @export var base_facing_deg: float = 90.0
 
-const VISION_COLOR_CALM := Color(0.85, 0.8, 0.3, 0.15)
-const VISION_COLOR_ALERT := Color(0.9, 0.2, 0.2, 0.28)
+const VISION_COLOR_CALM := Color(0.5, 0.95, 1.0, 0.45)
+const VISION_COLOR_ALERT := Color(1.0, 0.15, 0.15, 0.65)
 
 @onready var vision_cone: Polygon2D = $VisionCone
 

@@ -747,5 +747,27 @@ gen_bottles_pile()
 gen_ashtray()
 gen_pill_bottle()
 
+
+# --- Lighting -------------------------------------------------------------
+
+def gen_light_gradient():
+    import math
+    fx_out = os.path.normpath(os.path.join(OUT, "..", "fx"))
+    os.makedirs(fx_out, exist_ok=True)
+    size = 256
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    px = img.load()
+    cx = cy = size / 2
+    maxr = size / 2
+    for y in range(size):
+        for x in range(size):
+            d = math.hypot(x - cx, y - cy) / maxr
+            a = 0 if d >= 1.0 else int(255 * (1 - d) ** 1.8)
+            px[x, y] = (255, 255, 255, a)
+    img.save(os.path.join(fx_out, "light_gradient.png"))
+
+
+gen_light_gradient()
+
 print("done:", sorted(os.listdir(OUT)))
 print("env done:", sorted(os.listdir(ENV_OUT)))

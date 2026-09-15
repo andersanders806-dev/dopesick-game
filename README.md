@@ -44,6 +44,16 @@ get well. Repeat.
    back home (skipping the city).
 5. **Craving meter** drains constantly. Low on the meter slows you down
    badly (withdrawal). A green sickness tint creeps in as it drops.
+6. **Lighting.** Every room is dim/nighttime now, lit only by real
+   `PointLight2D` fixtures (ceiling lights, the neon sign, the jukebox,
+   streetlights, window glow, a TV's blue flicker) that cast proper hard
+   shadows off shelves, tables, counters, and building facades via
+   `LightOccluder2D` — walk near a shelf and it throws a real shadow. The
+   player has a soft warm glow so you're never lost in the dark; Police
+   has a flashing red/blue beacon light to match its siren. A full-screen
+   post-process shader (`assets/fx/postfx.gdshader`, applied in
+   `HUD.tscn`) adds a vignette and film grain on top for a moodier,
+   more graded look.
 
 ## Opening the project
 
@@ -113,3 +123,12 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   cutout — no amount of scaling fixes a perspective the model can't
   draw. A dialogue box, where a front-facing face is the natural framing,
   has no such mismatch.
+- Found another real bug while adding the lighting pass and verifying the
+  shopkeeper's vision cone was still legible against the new darker
+  rooms: the cone's `Polygon2D` had `z_index = -1` in `Guard.tscn`,
+  which sorts it *behind* the floor (`z_index = 0`) — meaning it has
+  been fully invisible to players this whole time, pre-dating this
+  session's lighting work entirely. It still worked mechanically
+  (`can_see_player` was computed correctly), just never rendered. Fixed
+  by giving it `z_index = 5` and brightening its color for contrast
+  against both the dark unlit floor and the warm lit pools.

@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://world/Shop.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/Guard.tscn" id="2"]
@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" path="res://assets/env/product_box_b.png" id="12"]
 [ext_resource type="Texture2D" path="res://assets/env/register.png" id="13"]
 [ext_resource type="Texture2D" path="res://assets/env/cooler.png" id="14"]
+[ext_resource type="Texture2D" path="res://assets/fx/light_gradient.png" id="15"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(480, 16)
@@ -27,13 +28,42 @@ size = Vector2(90, 18)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_interact"]
 size = Vector2(44, 44)
 
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_shelf"]
+polygon = PackedVector2Array(-45, -9, 45, -9, 45, 9, -45, 9)
+
+[sub_resource type="OccluderPolygon2D" id="OccluderPolygon2D_counter"]
+polygon = PackedVector2Array(-180, -12.5, 180, -12.5, 180, 12.5, -180, 12.5)
+
 [node name="Shop" type="Node2D"]
 script = ExtResource("1")
 
 [node name="NavRegion" type="NavigationRegion2D" parent="."]
 
 [node name="CanvasModulate" type="CanvasModulate" parent="."]
-color = Color(0.9, 1.0, 0.92, 1)
+color = Color(0.22, 0.24, 0.26, 1)
+
+[node name="LightCeilingA" type="PointLight2D" parent="."]
+position = Vector2(150, 110)
+color = Color(0.85, 0.95, 1, 1)
+energy = 1.3
+texture = ExtResource("15")
+texture_scale = 1.6
+shadow_enabled = true
+
+[node name="LightCeilingB" type="PointLight2D" parent="."]
+position = Vector2(330, 110)
+color = Color(0.85, 0.95, 1, 1)
+energy = 1.3
+texture = ExtResource("15")
+texture_scale = 1.6
+shadow_enabled = true
+
+[node name="LightCooler" type="PointLight2D" parent="."]
+position = Vector2(432, 107)
+color = Color(0.6, 0.85, 1, 1)
+energy = 0.9
+texture = ExtResource("15")
+texture_scale = 0.6
 
 [node name="Floor" type="TextureRect" parent="."]
 offset_right = 480.0
@@ -109,6 +139,10 @@ offset_bottom = 60.0
 texture = ExtResource("9")
 stretch_mode = 1
 
+[node name="CounterOccluder" type="LightOccluder2D" parent="."]
+position = Vector2(240, 47.5)
+occluder = SubResource("OccluderPolygon2D_counter")
+
 [node name="Register" type="TextureRect" parent="."]
 offset_left = 330.0
 offset_top = 22.0
@@ -148,6 +182,9 @@ stretch_mode = 1
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfA"]
 shape = SubResource("RectangleShape2D_shelf")
 
+[node name="Occluder" type="LightOccluder2D" parent="ShelfA"]
+occluder = SubResource("OccluderPolygon2D_shelf")
+
 [node name="ShelfB" type="StaticBody2D" parent="."]
 position = Vector2(240, 140)
 collision_layer = 1
@@ -162,6 +199,9 @@ stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfB"]
 shape = SubResource("RectangleShape2D_shelf")
+
+[node name="Occluder" type="LightOccluder2D" parent="ShelfB"]
+occluder = SubResource("OccluderPolygon2D_shelf")
 
 [node name="ShelfC" type="StaticBody2D" parent="."]
 position = Vector2(370, 140)
@@ -178,6 +218,9 @@ stretch_mode = 1
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfC"]
 shape = SubResource("RectangleShape2D_shelf")
 
+[node name="Occluder" type="LightOccluder2D" parent="ShelfC"]
+occluder = SubResource("OccluderPolygon2D_shelf")
+
 [node name="ShelfD" type="StaticBody2D" parent="."]
 position = Vector2(170, 220)
 collision_layer = 1
@@ -193,6 +236,9 @@ stretch_mode = 1
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfD"]
 shape = SubResource("RectangleShape2D_shelf")
 
+[node name="Occluder" type="LightOccluder2D" parent="ShelfD"]
+occluder = SubResource("OccluderPolygon2D_shelf")
+
 [node name="ShelfE" type="StaticBody2D" parent="."]
 position = Vector2(310, 220)
 collision_layer = 1
@@ -207,6 +253,9 @@ stretch_mode = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="ShelfE"]
 shape = SubResource("RectangleShape2D_shelf")
+
+[node name="Occluder" type="LightOccluder2D" parent="ShelfE"]
+occluder = SubResource("OccluderPolygon2D_shelf")
 
 [node name="ItemWhiskey" parent="." instance=ExtResource("3")]
 position = Vector2(110, 131)

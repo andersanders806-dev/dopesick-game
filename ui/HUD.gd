@@ -71,6 +71,7 @@ func show_dialogue(speaker: String, text: String, portrait: Texture2D = null) ->
 	dialogue_panel.visible = true
 
 func advance_or_close_dialogue() -> void:
+	SFX.play("blip", -4.0, 0.85)
 	dialogue_panel.visible = false
 	var player := get_tree().get_first_node_in_group("player")
 	if player:

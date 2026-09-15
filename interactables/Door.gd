@@ -9,5 +9,6 @@ func _ready() -> void:
 func interact(_player: Node) -> void:
 	if target_scene == "":
 		return
+	SFX.play("door")
 	GameState.pending_spawn = target_spawn
 	get_tree().change_scene_to_file(target_scene)

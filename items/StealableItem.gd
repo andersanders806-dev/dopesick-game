@@ -23,6 +23,7 @@ func set_item_id(id: String) -> void:
 		sprite.texture = ICONS[id]
 
 func interact(player: Node) -> void:
+	SFX.play("steal")
 	GameState.steal_item(item_id)
 	if player.has_method("begin_theft_window"):
 		player.begin_theft_window(theft_window)

@@ -54,6 +54,15 @@ get well. Repeat.
    post-process shader (`assets/fx/postfx.gdshader`, applied in
    `HUD.tscn`) adds a vignette and film grain on top for a moodier,
    more graded look.
+7. **Sound.** Footsteps alternate with your walk cycle; doors, theft,
+   sales, fencing, buying a fix, and sleeping each have their own cue;
+   getting busted plays a harsh alarm. Getting spotted starts a looping
+   police siren for as long as you're wanted, and the craving meter adds
+   a low heartbeat loop once it drops critical — both stop automatically
+   when the state clears. Every sound is procedurally synthesized (no
+   samples or licensing), via `dev-tools/gen_sfx.py` and a small `SFX`
+   autoload that pools one-shot players and drives the two ambient loops
+   off `GameState`'s existing signals.
 
 ## Opening the project
 
@@ -92,7 +101,6 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   `City.gd`). Still only one physical room layout per location though —
   the furniture/wall arrangement itself never changes, just what's on it
   and who's there.
-- No sound.
 - Police AI paths around obstacles via a baked `NavigationRegion2D` (see
   `world/WorldRoot.gd`) instead of beelining at the player, and only
   re-aims while it actually has line of sight — losing sight means it

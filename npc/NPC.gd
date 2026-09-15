@@ -36,6 +36,7 @@ func interact(player: Node) -> void:
 	if hud == null:
 		return
 	player.dialogue_active = true
+	SFX.play("blip")
 
 	if is_patron:
 		_patron_interact(hud)
@@ -55,6 +56,7 @@ func _patron_interact(hud: Node) -> void:
 	if GameState.has_item(request_id):
 		GameState.sell_item(request_id, request_price)
 		fulfilled = true
+		SFX.play("cash")
 		hud.show_dialogue(npc_name, "That's exactly it. Here's $%d." % request_price, _portrait())
 	else:
 		var item_name := GameState.item_name_for(request_id)
@@ -63,6 +65,7 @@ func _patron_interact(hud: Node) -> void:
 func _flavor_interact(hud: Node) -> void:
 	if not GameState.inventory.is_empty():
 		var earned := GameState.fence_everything()
+		SFX.play("cash")
 		hud.show_dialogue(npc_name, "I'll take that off your hands. Here's $%d, no questions." % earned, _portrait())
 		return
 	var lines := flavor_lines.split("\n", false)

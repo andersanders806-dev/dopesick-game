@@ -59,6 +59,7 @@ func _update_animation(dir: Vector2, delta: float) -> void:
 		if _frame_timer >= FRAME_TIME:
 			_frame_timer = 0.0
 			_anim_frame = 1 - _anim_frame
+			SFX.play("footstep_a" if _anim_frame == 0 else "footstep_b", -6.0)
 	else:
 		_anim_frame = 0
 		_frame_timer = 0.0

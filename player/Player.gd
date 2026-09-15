@@ -3,20 +3,30 @@ extends CharacterBody2D
 const BASE_SPEED := 145.0
 const SICK_SPEED_MULT := 0.55
 const SICK_THRESHOLD := 20.0
+const FRAME_TIME := 0.14
+
+const FRAMES := {
+	"down": [preload("res://assets/sprites/player_down_0.png"), preload("res://assets/sprites/player_down_1.png")],
+	"up": [preload("res://assets/sprites/player_up_0.png"), preload("res://assets/sprites/player_up_1.png")],
+	"side": [preload("res://assets/sprites/player_side_0.png"), preload("res://assets/sprites/player_side_1.png")],
+}
 
 @onready var interact_zone: Area2D = $InteractZone
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: Sprite2D = $Sprite
 
 var nearby: Array = []
 var dialogue_active: bool = false
 var is_stealing: bool = false
+var _facing: String = "down"
+var _anim_frame: int = 0
+var _frame_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("player")
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if dialogue_active:
 		velocity = Vector2.ZERO
 		move_and_slide()
@@ -35,8 +45,24 @@ func _physics_process(_delta: float) -> void:
 	velocity = dir * speed
 	move_and_slide()
 
+	_update_animation(dir, delta)
+
+func _update_animation(dir: Vector2, delta: float) -> void:
 	if dir.length() > 0.1:
-		sprite.rotation = 0.0
+		if absf(dir.x) > absf(dir.y):
+			_facing = "side"
+			sprite.flip_h = dir.x < 0.0
+		else:
+			_facing = "down" if dir.y > 0.0 else "up"
+			sprite.flip_h = false
+		_frame_timer += delta
+		if _frame_timer >= FRAME_TIME:
+			_frame_timer = 0.0
+			_anim_frame = 1 - _anim_frame
+	else:
+		_anim_frame = 0
+		_frame_timer = 0.0
+	sprite.texture = FRAMES[_facing][_anim_frame]
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):

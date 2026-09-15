@@ -1,10 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=9 format=3 uid="uid://dd3fedg1f6fva"]
 
-[ext_resource type="Script" path="res://world/DiveBar.gd" id="1"]
+[ext_resource type="Script" uid="uid://i3ufamonaoqm" path="res://world/DiveBar.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/NPC.tscn" id="2"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="3"]
 [ext_resource type="PackedScene" path="res://ui/HUD.tscn" id="4"]
-[ext_resource type="Script" path="res://interactables/Door.gd" id="5"]
+[ext_resource type="Script" uid="uid://c8sq8g0ve6ula" path="res://interactables/Door.gd" id="5"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(520, 16)
@@ -28,7 +28,6 @@ color = Color(0.18, 0.13, 0.1, 1)
 
 [node name="WallTop" type="StaticBody2D" parent="."]
 position = Vector2(260, -8)
-collision_layer = 1
 
 [node name="Visual" type="ColorRect" parent="WallTop"]
 offset_left = -260.0
@@ -42,7 +41,6 @@ shape = SubResource("RectangleShape2D_wallH")
 
 [node name="WallBottom" type="StaticBody2D" parent="."]
 position = Vector2(260, 328)
-collision_layer = 1
 
 [node name="Visual" type="ColorRect" parent="WallBottom"]
 offset_left = -260.0
@@ -56,7 +54,6 @@ shape = SubResource("RectangleShape2D_wallH")
 
 [node name="WallLeft" type="StaticBody2D" parent="."]
 position = Vector2(-8, 160)
-collision_layer = 1
 
 [node name="Visual" type="ColorRect" parent="WallLeft"]
 offset_left = -8.0
@@ -70,7 +67,6 @@ shape = SubResource("RectangleShape2D_wallV")
 
 [node name="WallRight" type="StaticBody2D" parent="."]
 position = Vector2(528, 160)
-collision_layer = 1
 
 [node name="Visual" type="ColorRect" parent="WallRight"]
 offset_left = -8.0
@@ -113,8 +109,10 @@ color = Color(0.24, 0.18, 0.12, 1)
 [node name="Bartender" parent="." instance=ExtResource("2")]
 position = Vector2(260, 45)
 npc_name = "Bartender"
-is_patron = false
-flavor_lines = "Rough night?\nYou look like hell, you know that.\nDrink first, talk later.\nStill breathing. That's something."
+flavor_lines = "Rough night?
+You look like hell, you know that.
+Drink first, talk later.
+Still breathing. That's something."
 
 [node name="Patron1" parent="." instance=ExtResource("2")]
 position = Vector2(120, 235)

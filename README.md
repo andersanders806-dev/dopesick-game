@@ -39,11 +39,20 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
 
 ## Known limitations / good next steps
 
-- All art is placeholder colored rectangles — no sprites/animation yet.
+- Characters and items have real sprites now (`assets/sprites/`, generated
+  procedurally — see `dev-tools/gen_sprites.py`): the player and police
+  have a 3-direction, 2-frame walk cycle (down/up/side, side flips for
+  left vs. right); the shopkeeper, bartender, and each patron have a
+  distinct static sprite; each stealable item has its own icon
+  auto-selected by `item_id` in `StealableItem.gd`. World geometry (walls,
+  shelves, counters, tables, doors, bed/phone) and the HUD are still flat
+  colored rectangles — a tileset/level art pass is the natural next step.
 - Only one shop and one bar layout; no day-to-day variety yet beyond the
   randomized patron requests.
 - No sound.
-- Police AI now paths around obstacles via a baked `NavigationRegion2D`
-  (see `world/WorldRoot.gd`) instead of beelining at the player, but only
-  the Shop scene has a nav region — Dive Bar/Apartment don't need one yet
-  since police never spawns there.
+- Police AI paths around obstacles via a baked `NavigationRegion2D` (see
+  `world/WorldRoot.gd`) instead of beelining at the player, and only
+  re-aims while it actually has line of sight — losing sight means it
+  commits to the last-seen spot and gives up after 4s if the player
+  doesn't reappear. Only the Shop scene has a nav region since police
+  never spawns elsewhere.

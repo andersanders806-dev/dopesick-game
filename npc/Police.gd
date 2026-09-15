@@ -3,12 +3,23 @@ extends CharacterBody2D
 const SPEED := 165.0
 const LOSE_SIGHT_TIME := 4.0
 const RETARGET_INTERVAL := 0.25
+const FRAME_TIME := 0.14
+
+const FRAMES := {
+	"down": [preload("res://assets/sprites/police_down_0.png"), preload("res://assets/sprites/police_down_1.png")],
+	"up": [preload("res://assets/sprites/police_up_0.png"), preload("res://assets/sprites/police_up_1.png")],
+	"side": [preload("res://assets/sprites/police_side_0.png"), preload("res://assets/sprites/police_side_1.png")],
+}
 
 @onready var catch_zone: Area2D = $CatchZone
 @onready var nav_agent: NavigationAgent2D = $NavAgent
+@onready var sprite: Sprite2D = $Body
 
 var _lose_timer: float = 0.0
 var _retarget_timer: float = 0.0
+var _facing: String = "down"
+var _anim_frame: int = 0
+var _frame_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("police")
@@ -44,6 +55,25 @@ func _physics_process(delta: float) -> void:
 		var next_point: Vector2 = nav_agent.get_next_path_position()
 		velocity = (next_point - global_position).normalized() * SPEED
 	move_and_slide()
+
+	_update_animation(velocity, delta)
+
+func _update_animation(vel: Vector2, delta: float) -> void:
+	if vel.length() > 1.0:
+		if absf(vel.x) > absf(vel.y):
+			_facing = "side"
+			sprite.flip_h = vel.x < 0.0
+		else:
+			_facing = "down" if vel.y > 0.0 else "up"
+			sprite.flip_h = false
+		_frame_timer += delta
+		if _frame_timer >= FRAME_TIME:
+			_frame_timer = 0.0
+			_anim_frame = 1 - _anim_frame
+	else:
+		_anim_frame = 0
+		_frame_timer = 0.0
+	sprite.texture = FRAMES[_facing][_anim_frame]
 
 func _has_line_of_sight(player: Node) -> bool:
 	var space_state := get_world_2d().direct_space_state

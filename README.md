@@ -137,11 +137,33 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   `world/WorldRoot.gd`) instead of beelining at the player, and only
   re-aims while it actually has line of sight — losing sight means it
   commits to the last-seen spot and gives up after 4s if the player
-  doesn't reappear. All four rooms (Apartment, City, Dive Bar, Shop) now
-  have a nav region, so any future threat isn't limited to the Shop —
-  though police itself still only ever spawns there today (the shop's
-  `_on_spotted_theft()` is the only trigger that exists). Fixed two bugs
-  found while wiring this up: `_bake_navigation()` was casting each
+  doesn't reappear. All four rooms (Apartment, City, Dive Bar, Shop)
+  have a nav region, and the theft trigger is still Shop-only (the
+  shopkeeper's `_on_spotted_theft()`), but the chase itself is no longer
+  confined to the room where it started. Previously, ducking through a
+  door mid-chase destroyed the pursuing officer along with the rest of
+  the old scene (each room is a fully separate `.tscn`, swapped via
+  `change_scene_to_file`) without ever resolving `GameState.wanted` —
+  nothing else clears it, so escaping that way silently soft-locked the
+  player out of sleeping (`Bed.gd` refuses while wanted) and left the
+  siren looping for the rest of the run. `WorldRoot._ready()` now calls
+  `_maybe_continue_chase()` right after placing the player at their
+  entry marker: if still wanted and no `"police"`-group node already
+  exists, it spawns a fresh officer beside wherever the player just
+  walked in, in whichever room that is. The chase now genuinely follows
+  you door to door until you break line of sight for 4s or get caught —
+  verified live by forcing `GameState.wanted = true` at boot (temporary
+  test edit, reverted after): a police officer spawned in the Apartment
+  with no theft having occurred, gave chase, caught the player (cash
+  fine matched `get_busted()`'s 50% cut exactly), cleared `wanted`, and
+  correctly did *not* spawn a phantom officer in the City afterward.
+  Also fixed a real bug this surfaced: `Shop.gd` already declared its
+  own `const PoliceScene`, which collided with the new one on
+  `WorldRoot.gd` once `Shop.gd` started inheriting it — GDScript treats
+  redeclaring an inherited constant as a parse error, so the Shop broke
+  outright until `Shop.gd`'s copy was removed in favor of the inherited
+  one. A past session also fixed two bugs found while wiring the nav
+  regions up in the first place: `_bake_navigation()` was casting each
   room's `Floor` node `as ColorRect`, which silently failed (returned
   null) after Floor became a `TextureRect` in the art pass, so every
   room's nav outline was quietly using a hardcoded fallback size instead

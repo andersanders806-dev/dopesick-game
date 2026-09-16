@@ -1,10 +1,12 @@
 extends Node2D
 
 const NAV_OBSTACLE_GROUP := "nav_obstacles"
+const PoliceScene := preload("res://npc/Police.tscn")
 
 func _ready() -> void:
 	_bake_navigation()
-	_place_player_at_spawn()
+	var spawn_marker := _place_player_at_spawn()
+	_maybe_continue_chase(spawn_marker)
 
 func _bake_navigation() -> void:
 	var nav_region := get_node_or_null("NavRegion") as NavigationRegion2D
@@ -41,11 +43,33 @@ func _bake_navigation() -> void:
 	nav_region.navigation_polygon = nav_poly
 	nav_region.bake_navigation_polygon(false)
 
-func _place_player_at_spawn() -> void:
+func _place_player_at_spawn() -> Marker2D:
 	if GameState.pending_spawn == "":
-		return
-	var marker := find_child(GameState.pending_spawn, true, false)
+		return null
+	var marker := find_child(GameState.pending_spawn, true, false) as Marker2D
 	var player := get_tree().get_first_node_in_group("player")
 	if marker and player:
 		player.global_position = marker.global_position
 	GameState.pending_spawn = ""
+	return marker
+
+## A police chase doesn't end just because you ducked through a door: the
+## room the officer was in gets torn down along with the rest of the scene,
+## so without this, escaping mid-chase (before the 4s line-of-sight give-up)
+## would strand `GameState.wanted` true forever with nobody left to clear it
+## -- silently locking the player out of sleeping in the Apartment for the
+## rest of the run. Spawning a fresh pursuer next to wherever the player
+## just walked in keeps the chase alive room to room until they actually
+## lose it or get caught.
+func _maybe_continue_chase(spawn_marker: Marker2D) -> void:
+	if not GameState.wanted:
+		return
+	if get_tree().get_first_node_in_group("police") != null:
+		return
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	var police := PoliceScene.instantiate()
+	add_child(police)
+	var base_pos: Vector2 = spawn_marker.global_position if spawn_marker else player.global_position
+	police.global_position = base_pos + Vector2(40, -40)

@@ -1,6 +1,5 @@
 extends "res://world/WorldRoot.gd"
 
-const PoliceScene := preload("res://npc/Police.tscn")
 const ITEM_IDS := ["whiskey", "cigs", "charger", "batteries", "watch"]
 
 # Each layout is 5 shelf center positions, index-matched to `shelves` /

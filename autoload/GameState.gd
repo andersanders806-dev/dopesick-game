@@ -17,7 +17,9 @@ const REQUEST_POOL := [
 ]
 
 const CRAVING_DECAY_PER_SEC := 0.55
-const FIX_COST := 20
+const DECAY_INCREASE_PER_DAY := 0.04
+const FIX_COST_BASE := 20
+const FIX_COST_INCREASE_PER_DAY := 4
 const FENCE_PRICE := 5
 
 var cash: int = 6
@@ -32,8 +34,18 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	if craving > 0.0:
-		craving = max(0.0, craving - CRAVING_DECAY_PER_SEC * delta)
+		craving = max(0.0, craving - current_craving_decay() * delta)
 		craving_changed.emit(craving)
+
+## Tolerance builds day over day: withdrawal creeps in faster the longer
+## you've been using, same as a real dependency.
+func current_craving_decay() -> float:
+	return CRAVING_DECAY_PER_SEC + (day - 1) * DECAY_INCREASE_PER_DAY
+
+## The pusher charges more each day too -- it takes more to get the same
+## relief, so standing still gets more expensive.
+func current_fix_cost() -> int:
+	return FIX_COST_BASE + (day - 1) * FIX_COST_INCREASE_PER_DAY
 
 func _setup_input_actions() -> void:
 	_bind("interact", [KEY_E])
@@ -93,7 +105,7 @@ func spend_cash(amount: int) -> bool:
 	return true
 
 func buy_fix() -> bool:
-	if not spend_cash(FIX_COST):
+	if not spend_cash(current_fix_cost()):
 		return false
 	craving = 100.0
 	craving_changed.emit(craving)

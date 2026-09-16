@@ -9,8 +9,9 @@ func interact(player: Node) -> void:
 		return
 	player.dialogue_active = true
 	SFX.play("phone")
+	var cost := GameState.current_fix_cost()
 	if GameState.buy_fix():
 		SFX.play("fix")
-		hud.show_dialogue("Pusher", "\"There you go. Don't spend it all in one place.\" You feel it hit.")
+		hud.show_dialogue("Pusher", "\"There you go, $%d. Don't spend it all in one place.\" You feel it hit." % cost)
 	else:
-		hud.show_dialogue("Pusher", "\"Cash first, then we talk.\" (need $%d)" % GameState.FIX_COST)
+		hud.show_dialogue("Pusher", "\"Cash first, then we talk.\" (need $%d)" % cost)

@@ -2,11 +2,20 @@ extends CanvasLayer
 
 const CRAVING_BAR_WIDTH := 120.0
 
+const ITEM_ICONS := {
+	"whiskey": preload("res://assets/sprites/item_whiskey_icon.png"),
+	"cigs": preload("res://assets/sprites/item_cigs_icon.png"),
+	"charger": preload("res://assets/sprites/item_charger_icon.png"),
+	"batteries": preload("res://assets/sprites/item_batteries_icon.png"),
+	"watch": preload("res://assets/sprites/item_watch_icon.png"),
+}
+
 @onready var cash_label: Label = $TopBar/CashLabel
 @onready var day_label: Label = $TopBar/DayLabel
 @onready var craving_fill: ColorRect = $TopBar/CravingBarFill
 @onready var wanted_label: Label = $TopBar/WantedLabel
 @onready var inventory_label: Label = $TopBar/InventoryLabel
+@onready var inventory_icons: HBoxContainer = $TopBar/InventoryIcons
 @onready var withdrawal_tint: ColorRect = $WithdrawalTint
 @onready var dialogue_panel: Control = $DialoguePanel
 @onready var speaker_label: Label = $DialoguePanel/SpeakerLabel
@@ -45,13 +54,21 @@ func _update_craving(craving: float) -> void:
 	withdrawal_tint.color.a = clamp(1.0 - frac, 0.0, 1.0) * 0.35
 
 func _update_inventory() -> void:
+	for child in inventory_icons.get_children():
+		child.queue_free()
 	if GameState.inventory.is_empty():
 		inventory_label.text = "Carrying: nothing"
 		return
-	var names: Array = []
+	inventory_label.text = "Carrying:"
 	for id in GameState.inventory:
-		names.append(GameState.item_name_for(id))
-	inventory_label.text = "Carrying: " + ", ".join(names)
+		if not ITEM_ICONS.has(id):
+			continue
+		var icon := TextureRect.new()
+		icon.texture = ITEM_ICONS[id]
+		icon.custom_minimum_size = Vector2(22, 22)
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		inventory_icons.add_child(icon)
 
 func _update_wanted(is_wanted: bool) -> void:
 	wanted_label.visible = is_wanted

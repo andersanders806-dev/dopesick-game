@@ -41,9 +41,16 @@ get well. Repeat.
    cone; get spotted mid-steal and the cops show up. Break line of sight
    (shelves block vision) for a few seconds and they give up. Get caught
    and you lose everything you're carrying, plus a cash fine, and wake up
-   back home (skipping the city).
-5. **Craving meter** drains constantly. Low on the meter slows you down
-   badly (withdrawal). A green sickness tint creeps in as it drops.
+   back home (skipping the city). The shopkeeper is also now a talkable
+   character (previously just a silent vision cone with no name) — a
+   wary, watchful presence with their own portrait and lines, there to
+   make clear they're onto you, not to help you.
+5. **Craving meter** drains constantly and gets harder to manage the
+   longer you last: tolerance builds day over day, so the pusher's fix
+   costs more and withdrawal creeps in faster the further into the run
+   you are (`GameState.current_fix_cost()` / `current_craving_decay()`).
+   Low on the meter slows you down badly (withdrawal). A green sickness
+   tint creeps in as it drops.
 6. **Lighting.** Every room is dim/nighttime now, lit only by real
    `PointLight2D` fixtures (ceiling lights, the neon sign, the jukebox,
    streetlights, window glow, a TV's blue flicker) that cast proper hard
@@ -167,3 +174,33 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   referenced asset file exists on disk, every `ExtResource`/`SubResource`
   id used is declared, `load_steps` counts match), but not visually.
   Reopen the project and take a look before assuming it's flawless.
+- Dialogue portraits were regenerated with descriptions grounded in a
+  round of research into the real visible signs of long-term substance
+  use, rather than the generic "tired/gaunt" guesses from the first
+  pass: opioid/heroin use shows clinically as gauntness, hollow cheeks,
+  and sunken dark-circled eyes with a sallow/grayish skin tone;
+  benzodiazepine use shows as droopy, "glazed" or unfocused eyes and a
+  dull complexion rather than gauntness; long-term heavy drinking (the
+  dive bar's barflies) shows as facial flushing and broken capillaries
+  across the nose and cheeks. Each of the seven named characters was
+  re-pointed at whichever of those a real person with their specific
+  habit would actually show, kept humanizing rather than caricatured
+  (see `dev-tools/gen_portraits.py`). The shopkeeper is a new eighth
+  portrait, deliberately the "straight" character in a cast otherwise
+  built around addiction and drink — alert and guarded rather than worn
+  down.
+- The HUD (`ui/HUD.tscn`) was the one area the last session flagged as
+  "still flat colored rectangles" — replaced with `StyleBoxFlat` panels
+  (a real bordered top bar, a framed craving meter with its own label, a
+  bordered "WANTED" badge, a bordered dialogue portrait, text shadows
+  for legibility against busy backgrounds) and a row of real item icons
+  next to "Carrying:" instead of a plain comma-separated name list,
+  reusing the same icon textures the Shop's shelves already use. No
+  script logic changed — `HUD.gd`'s node paths were kept stable so the
+  restyle couldn't silently break the signal wiring.
+- Wrote a small structural validator (checks every `.tscn` for dangling
+  `ExtResource`/`SubResource` references, missing asset files on disk,
+  and correct `load_steps` counts) and ran it across the whole project,
+  not just this session's edits, since there was no live editor to
+  catch mistakes visually. Found no existing bugs beyond what the prior
+  session had already fixed — the codebase was clean going in.

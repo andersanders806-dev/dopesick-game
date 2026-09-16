@@ -26,14 +26,24 @@ from PIL import Image
 OUT = "/home/anders/dopesick-game/assets/portraits"
 os.makedirs(OUT, exist_ok=True)
 
+# Descriptions are grounded in real clinical/visible signs of long-term
+# substance use (researched via addiction-medicine sources, not guessed):
+# heroin/opioid use shows as gauntness, hollow cheeks, sunken dark-circled
+# eyes, and a sallow/grayish skin tone; benzodiazepine use shows as
+# droopy, "glazed" or unfocused eyes and a dull complexion rather than
+# gauntness; long-term heavy drinking (the dive bar's barflies) shows as
+# facial flushing and broken capillaries across the nose and cheeks.
+# Kept humanizing, not a caricature -- these are headshots of tired
+# people, not gore.
 CHARACTERS = {
-    "bartender": "a weathered middle-aged bartender with a short greying beard, rolled-up sleeves, tired but kind eyes",
-    "wiry_guy": "a thin wiry young man with a gaunt face, sunken cheeks, stubble, nervous eyes",
-    "tired_woman": "an exhausted middle-aged woman with dark circles under her eyes, messy hair, tired expression",
-    "big_eddie": "a big heavyset man with a broad face, short cropped hair, tired heavy-lidded eyes",
-    "quiet_kid": "a young quiet teenager with a hoodie, downcast eyes, pale face",
-    "old_sailor": "an old grizzled sailor with a white beard, weathered wrinkled skin, a knit cap",
-    "nervous_dave": "a nervous balding man in his 40s, sweaty forehead, wide anxious eyes",
+    "bartender": "a weathered middle-aged bartender with a short greying beard, rolled-up sleeves, tired but kind eyes, faint broken capillaries across his nose from years spent around drink",
+    "wiry_guy": "a gaunt wiry man in his late 20s, hollow sunken cheeks, deep dark circles under bloodshot eyes, sallow grayish skin, stubble, restless nervous expression",
+    "tired_woman": "an exhausted woman in her 40s, droopy heavy-lidded eyes with a glazed unfocused look, dark circles, dull sallow complexion, messy flat hair, slack tired expression",
+    "big_eddie": "a big heavyset barfly in his 50s, broad flushed face with broken capillaries across his nose and cheeks, short cropped grey hair, puffy tired eyes",
+    "quiet_kid": "a young quiet teenager in a worn hoodie, pale thin face just starting to hollow out, faint dark circles, downcast anxious eyes",
+    "old_sailor": "an old grizzled sailor in his 60s, deeply weathered wrinkled skin, a red bulbous nose with broken veins, a white beard, watery bloodshot eyes, a knit cap",
+    "nervous_dave": "a nervous balding man in his 40s, sweaty forehead, glazed heavy-lidded eyes struggling to focus, sallow complexion, wide anxious expression",
+    "shopkeeper": "a tired middle-aged convenience shop owner in a plain apron over a flannel shirt, alert watchful eyes, deep worry lines, arms crossed, wary guarded expression",
 }
 
 PROMPT_TEMPLATE = (

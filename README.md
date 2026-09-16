@@ -61,6 +61,22 @@ The original 2D scenes are still in place, untouched, alongside them.
   speed. The player walks, and in withdrawal the stride slows along with the
   movement so it reads as a shuffle rather than sliding feet. Police sprint,
   and the shopkeeper, bartender, and patrons idle.
+- **Sound:** on top of the shared one-shot/siren/heartbeat sounds, every 3D
+  room has positional ambience synthesised by `dev-tools/gen_sfx_3d.py`
+  (stdlib only, like `gen_sfx.py`): the Apartment's bare bulb buzzes and
+  crackles each time it browns out, and the TV hisses static; the Shop's
+  fluorescent lights hum and the drinks cooler drones; a muffled blues
+  shuffle plays from the Dive Bar jukebox over crowd murmur; the City has
+  distant traffic and wind, and each streetlight buzzes. The player has
+  footsteps timed to the walk cycle (and slowed in withdrawal); police have
+  positional sprinting footsteps, so you can hear them coming round a
+  shelf. An `AudioListener3D` on the player (not the high camera) makes
+  sounds pan and swell as you walk past their source. The loops are built to
+  be seamless (whole cycles, or a tail-to-head crossfade), and their
+  `.import` files set `edit/loop_mode=2`. Levels were balanced by recording
+  each room with Godot's `--write-movie` and measuring with ffmpeg's
+  `volumedetect`: standing still, each room sits around -28 to -34 dB mean,
+  and walking right up to the jukebox, the loudest source, peaks around -6 dB.
 - **HUD:** the old full-width top bar hid the top of the 3D view, so it's
   now two small floating panels: cash, day, and craving top-left, and a
   right-aligned "Carrying" panel top-right that `HUD.gd` resizes to fit

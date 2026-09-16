@@ -14,12 +14,17 @@ const BULB_ENERGY := 1.8
 
 @onready var clutter: Array = [$ChairOverturned, $BoxStack, $TrashA, $TrashB, $TrashC, $ClothesPile]
 @onready var bulb_light: OmniLight3D = $BareBulb/Light
+@onready var bulb_buzz: AudioStreamPlayer3D = $BareBulb/Buzz
+@onready var bulb_crackle: AudioStreamPlayer3D = $BareBulb/Crackle
+
+var _buzz_db: float
 
 var _flicker_timer: float = 0.0
 
 func _ready() -> void:
 	_randomize_clutter()
 	super._ready()
+	_buzz_db = bulb_buzz.volume_db
 
 func _randomize_clutter() -> void:
 	var layout: Array = CLUTTER_LAYOUTS.pick_random()
@@ -36,7 +41,11 @@ func _process(delta: float) -> void:
 		return
 	if randf() < 0.15:
 		bulb_light.light_energy = BULB_ENERGY * randf_range(0.2, 0.55)
+		bulb_buzz.volume_db = _buzz_db - 12.0
+		bulb_crackle.pitch_scale = randf_range(0.8, 1.2)
+		bulb_crackle.play()
 		_flicker_timer = randf_range(0.04, 0.12)
 	else:
 		bulb_light.light_energy = BULB_ENERGY
+		bulb_buzz.volume_db = _buzz_db
 		_flicker_timer = randf_range(0.3, 2.0)

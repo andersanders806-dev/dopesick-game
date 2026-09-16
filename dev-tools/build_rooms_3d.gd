@@ -198,6 +198,32 @@ func _door(name: String, pos: Vector3, facing: Vector3, target_scene: String, ta
 	_collision(door, _box_shape(Vector3(1.0, 2.0, 1.4) if along_x else Vector3(1.4, 2.0, 1.0)), Vector3(0, 1.0, 0))
 	return door
 
+const SFX_DIR := "res://assets/sfx/"
+
+## A positional sound source. Looping files loop on their own (their
+## .import sets loop_mode forward); one-shots leave `autoplay` off.
+## `unit_size` is roughly how close you must be to hear it at full volume.
+func _sound(parent: Node, name: String, file: String, pos: Vector3, volume_db: float, unit_size: float, max_distance := 20.0, autoplay := true) -> AudioStreamPlayer3D:
+	var p := AudioStreamPlayer3D.new()
+	p.name = name
+	p.stream = load(SFX_DIR + file)
+	p.volume_db = volume_db
+	p.unit_size = unit_size
+	p.max_distance = max_distance
+	p.autoplay = autoplay
+	_add(parent, p)
+	p.position = pos
+	return p
+
+## Non-positional room tone, heard the same everywhere in the room.
+func _room_tone(file: String, volume_db: float) -> void:
+	var p := AudioStreamPlayer.new()
+	p.name = "RoomTone"
+	p.stream = load(SFX_DIR + file)
+	p.volume_db = volume_db
+	p.autoplay = true
+	_add(_root, p)
+
 func _marker(name: String, pos: Vector3) -> void:
 	var m := Marker3D.new()
 	m.name = name
@@ -358,6 +384,8 @@ func _build_apartment() -> Node3D:
 	_add(bulb, glass_mi)
 	glass_mi.position = Vector3(0, 1.86, 0)
 	_light(bulb, "Light", Vector3(0, 1.8, 0), Color(1.0, 0.8, 0.5), 1.8, 7.5)
+	_sound(bulb, "Buzz", "bulb_buzz_loop.wav", Vector3(0, 1.8, 0), -20.0, 2.0, 12.0)
+	_sound(bulb, "Crackle", "bulb_crackle.wav", Vector3(0, 1.8, 0), -10.0, 3.0, 15.0, false)
 
 	# Mattress on the floor, no frame: the Bed interactable.
 	var bed := Area3D.new()
@@ -418,6 +446,7 @@ func _build_apartment() -> Node3D:
 	_model(tv, "Set", "furniture/televisionVintage.glb", Vector3(0.27, 0.7, -0.4), 2.0, -90.0)
 	_collision(tv, _box_shape(Vector3(0.6, 1.3, 0.85)), Vector3(0, 0.65, 0))
 	_light(tv, "Glow", Vector3(-0.6, 0.95, 0), Color(0.35, 0.55, 1.0), 1.4, 3.5)
+	_sound(tv, "Static", "tv_static_loop.wav", Vector3(-0.3, 0.95, 0), -22.0, 1.5, 10.0)
 
 	# Movable clutter -- Apartment3D.gd picks where each of these ends up.
 	var chair := StaticBody3D.new()
@@ -505,6 +534,8 @@ func _build_shop() -> Node3D:
 	_collision(counter, _box_shape(Vector3(counter_len, 1.05, 0.53)), Vector3(start_x + counter_len / 2, 0.52, -0.26))
 	_model(counter, "Register", "furniture/radio.glb", Vector3(2.0, 1.05, -0.45), 1.6)
 	_model(_root, "Cooler", "furniture/kitchenFridge.glb", Vector3(4.9, 0, -3.3), 2.5)
+	_sound(_root, "CoolerHum", "cooler_hum_loop.wav", Vector3(5.4, 1.0, -3.6), -9.0, 2.5, 14.0)
+	_sound(_root, "FluorescentHum", "fluorescent_hum_loop.wav", Vector3(0, 2.3, 0.2), -21.0, 6.0, 20.0)
 	_light(_root, "LightCooler", Vector3(5.4, 1.2, -2.6), Color(0.6, 0.85, 1.0), 0.8, 2.5, false)
 
 	var guard := _instance(_root, "Shopkeeper", GuardScene, Vector3(0.5, 0, -3.4))
@@ -590,6 +621,8 @@ func _build_dive_bar() -> Node3D:
 	# Jukebox, neon sign, dartboard.
 	_model(_root, "Jukebox", "furniture/speaker.glb", Vector3(5.8, 0, -3.3), 3.0)
 	_light(_root, "LightJukebox", Vector3(5.6, 1.0, -2.8), Color(1.0, 0.45, 0.15), 1.4, 3.0, false)
+	_sound(_root, "JukeboxMusic", "jukebox_loop.wav", Vector3(6.0, 1.0, -3.4), -15.0, 3.0, 25.0)
+	_room_tone("bar_murmur_loop.wav", -12.0)
 	_box_mesh(_root, "NeonSign", Vector3(1.8, 0.35, 0.05), Vector3(4.2, 1.9, -3.97), _color_mat(Color(1.0, 0.2, 0.6), 0.4, 4.0))
 	var neon_label := Label3D.new()
 	neon_label.name = "NeonText"
@@ -708,6 +741,8 @@ func _build_city() -> Node3D:
 		cyl.height = 3.4
 		_collision(sl, cyl, Vector3(0, 1.7, 0))
 		_light(sl, "Light", Vector3(0, 3.2, 0.2), Color(1.0, 0.65, 0.3), 2.5, 7.0)
+		var buzz := _sound(sl, "Buzz", "bulb_buzz_loop.wav", Vector3(0, 3.2, 0), -28.0, 1.5, 8.0)
+		buzz.pitch_scale = 0.9 + 0.05 * i  # detuned so neighbouring lamps don't phase
 
 	# Parked car built from boxes -- City3D.gd picks its paint colour.
 	var car := StaticBody3D.new()
@@ -741,6 +776,7 @@ func _build_city() -> Node3D:
 
 	_solid(_root, "Dumpster", Vector3(1.8, 1.2, 1.0), Vector3(3.0, 0.6, street_z + 0.6), _color_mat(Color(0.12, 0.28, 0.16), 0.7))
 
+	_room_tone("city_ambience_loop.wav", -14.0)
 	_marker("SpawnDefault", Vector3(0, 0, street_z + 1.5))
 	_player_and_hud(Vector3(0, 0, street_z + 1.5))
 	return _root

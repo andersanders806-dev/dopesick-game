@@ -7,6 +7,9 @@ const TURN_SPEED := 10.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 
+# The Kenney sprint clip is 0.5 s per cycle, two footfalls.
+const STEP_INTERVAL := 0.25
+
 const BEACON_FLIP_TIME := 0.3
 const BEACON_RED := Color(1, 0.15, 0.1, 1)
 const BEACON_BLUE := Color(0.15, 0.35, 1, 1)
@@ -15,6 +18,7 @@ const BEACON_BLUE := Color(0.15, 0.35, 1, 1)
 @onready var nav_agent: NavigationAgent3D = $NavAgent
 @onready var model: Node3D = $Model
 @onready var beacon: OmniLight3D = $Beacon
+@onready var footsteps: AudioStreamPlayer3D = $Footsteps
 
 var _lose_timer: float = 0.0
 var _retarget_timer: float = 0.0
@@ -22,6 +26,8 @@ var _facing_angle: float = 0.0
 var _beacon_timer: float = 0.0
 var _beacon_red: bool = true
 var anim: CharacterAnimator
+var _step_timer: float = 0.0
+var _left_foot: bool = true
 
 func _ready() -> void:
 	add_to_group("police")
@@ -57,7 +63,9 @@ func _physics_process(delta: float) -> void:
 		to_next.y = 0.0
 		velocity = to_next.normalized() * SPEED
 	move_and_slide()
-	anim.update(Vector2(velocity.x, velocity.z).length())
+	var speed := Vector2(velocity.x, velocity.z).length()
+	anim.update(speed)
+	_update_footsteps(delta, speed > 0.1)
 
 	if Vector2(velocity.x, velocity.z).length() > 0.1:
 		var target_angle := atan2(velocity.x, velocity.z)
@@ -65,6 +73,21 @@ func _physics_process(delta: float) -> void:
 		model.rotation.y = _facing_angle
 
 	_update_beacon(delta)
+
+## Positional, so you can hear an officer coming round a shelf before you
+## see them.
+func _update_footsteps(delta: float, moving: bool) -> void:
+	if not moving:
+		_step_timer = 0.0
+		return
+	_step_timer -= delta
+	if _step_timer > 0.0:
+		return
+	_step_timer += STEP_INTERVAL
+	_left_foot = not _left_foot
+	footsteps.stream = SFX.SOUNDS["footstep_a" if _left_foot else "footstep_b"]
+	footsteps.pitch_scale = randf_range(0.85, 0.95)
+	footsteps.play()
 
 func _update_beacon(delta: float) -> void:
 	_beacon_timer += delta

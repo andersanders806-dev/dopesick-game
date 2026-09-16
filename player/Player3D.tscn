@@ -31,6 +31,9 @@ light_energy = 0.9
 omni_range = 4.0
 shadow_enabled = false
 
+[node name="Listener" type="AudioListener3D" parent="."]
+position = Vector3(0, 1.0, 0)
+
 [node name="CameraMount" type="Node3D" parent="."]
 position = Vector3(0, 9, 6.5)
 

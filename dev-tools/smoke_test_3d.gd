@@ -43,6 +43,17 @@ func _run() -> void:
 		var polys := nav.navigation_mesh.get_polygon_count() if nav and nav.navigation_mesh else 0
 		_check(scene != null and _player() != null and get_first_node_in_group("hud") != null and polys > 0,
 			"%s (navmesh polygons: %d)" % [path.get_file(), polys])
+		var ambient: Array[String] = []
+		var all_ok := true
+		for node in scene.find_children("*", "Node", true, false):
+			if not (node is AudioStreamPlayer or node is AudioStreamPlayer3D) or not node.autoplay:
+				continue
+			ambient.append(node.name)
+			var loops: bool = node.stream is AudioStreamWAV and node.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD
+			all_ok = all_ok and node.playing and loops
+		_check(ambient.size() > 0 and all_ok, "  ambient sound playing and looping: %s" % ", ".join(ambient))
+		var listener := _player().get_node("Listener") as AudioListener3D
+		_check(listener.is_current(), "  audio listener is on the player")
 
 	var shop := current_scene
 	var player := _player()
@@ -51,9 +62,15 @@ func _run() -> void:
 	player.global_position = Vector3(-4.8, 0, 2.8)
 	await _frames(5)
 	_check(player.anim.current_clip() == "idle", "player idles when standing still")
+	var sfx := root.get_node("SFX")
+	for p in sfx._pool:
+		p.stop()
 	Input.action_press("move_right")
-	await _frames(10)
+	await _frames(40)
 	_check(player.anim.current_clip() == "walk", "player walks while moving (clip: %s)" % player.anim.current_clip())
+	var step_sounds := [sfx.SOUNDS["footstep_a"], sfx.SOUNDS["footstep_b"]]
+	var stepped: bool = sfx._pool.any(func(p): return step_sounds.has(p.stream))
+	_check(stepped, "player footsteps play while walking")
 	Input.action_release("move_right")
 	await _frames(5)
 	_check(player.anim.current_clip() == "idle", "player returns to idle after stopping")
@@ -74,9 +91,12 @@ func _run() -> void:
 	print("== Shop: shopkeeper spots a theft in plain view")
 	var keeper := shop.get_node("Shopkeeper") as Node3D
 	player.global_position = Vector3(keeper.global_position.x, 0, -1.95)
-	player.is_stealing = true
 	var spotted := false
 	for i in 400:
+		# Re-assert every frame: the earlier steal's 1 s theft window timer
+		# would otherwise switch this back off before the sweeping cone
+		# (whose phase depends on how long the test has run) reaches us.
+		player.is_stealing = true
 		await physics_frame
 		if gs.wanted:
 			spotted = true
@@ -101,6 +121,7 @@ func _run() -> void:
 				break
 		player.dialogue_active = false
 		_check(police.anim.current_clip() == "sprint", "officer plays sprint while chasing")
+		_check(police.get_node("Footsteps").stream != null, "officer's positional footsteps play while chasing")
 		_check(closed_in, "officer closed at least 1 m on the player (started %.1f m away)" % start_dist)
 
 	print("== Door: chase follows the player into the City")

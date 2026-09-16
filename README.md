@@ -1,6 +1,49 @@
 # Dope Sick
 
-A dark, low-budget 2D top-down stealth game about addiction, theft, and getting by.
+A dark, low-budget top-down stealth game about addiction, theft, and getting by.
+
+## 3D version (current main scene)
+
+The game is being ported from 2D to 3D. The 3D version is now the main
+scene (`world/Apartment3D.tscn`) and covers the full loop: Apartment, City,
+Dive Bar, and Shop, each a `*3D.tscn` with a matching `*3D.gd` room script.
+The original 2D scenes are still in place, untouched, alongside them.
+
+- **Art:** Kenney's CC0 Furniture, City, Food, and Mini Characters kits
+  (`assets/kenney/`), reusing the photoreal floor/wall textures from the
+  2D pass as triplanar materials.
+- **Camera:** a fixed-angle follow camera on the player looking north, so
+  every room keeps its south wall low and puts doors on the side walls.
+- **Room generation:** the City, Dive Bar, and Shop scenes are *generated*
+  by `dev-tools/build_rooms_3d.gd`, not hand-edited. Change the layout
+  there and rebuild with
+  `godot --headless --path . res://dev-tools/BuildRooms3D.tscn`. It runs
+  as a scene rather than via `-s` because the room scripts reference the
+  `GameState`/`SFX` autoloads, which don't exist yet when a `-s` script's
+  variables are initialised. The Apartment is hand-built.
+- **Behaviour carried over from 2D:** the Shop picks one of 3 shelf layouts
+  and shuffles which item sits where; the Dive Bar picks one of 3 table
+  layouts and randomises patron names, models, and requests; the City car
+  gets a random paint colour; the Apartment picks one of 3 clutter layouts.
+  Navmeshes are baked at runtime after furniture moves, the same as 2D.
+- **Shopkeeper vision:** the line-of-sight ray starts at eye height (1.5 m),
+  above the 1.05 m counter, so the counter doesn't blind them. The 2.2 m
+  shelves still fully block sight.
+- **Verification:** `godot --headless --path . -s res://dev-tools/smoke_test_3d.gd`
+  drives the real scenes through the whole loop: steal, get spotted, police
+  close in along the navmesh, the chase follows you through a door, sell to
+  a patron, buy a fix, sleep. It exits non-zero on any failure.
+  `dev-tools/capture_scene.gd` renders any scene to a PNG for a visual check
+  without the editor.
+- **Gotcha:** the Kenney `.glb` files were first imported before their
+  shared `Textures/colormap.png` had been, which silently baked them in
+  untextured (plain white/grey characters and buildings). Deleting their
+  `.godot/imported/*.glb-*` files and re-running `--import` fixed it. If
+  models ever look flat grey again, that's the first thing to check.
+- **Known gaps:** Apartment furniture has no collision, so you can walk
+  through the bed and table. Characters don't animate yet (the Kenney
+  models slide around in their bind pose). The HUD still covers the top
+  ~110 px of the 3D view.
 
 ## Premise
 

@@ -114,9 +114,25 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
 - Shop item placement, Dive Bar patron identity/requests, and the City's
   parked-car color all reshuffle on every visit (see `Shop.gd`'s
   `_shuffle_items()`, `DiveBar.gd`'s `_randomize_patrons()`, and
-  `City.gd`). Still only one physical room layout per location though —
-  the furniture/wall arrangement itself never changes, just what's on it
-  and who's there.
+  `City.gd`).
+- Physical room layout now varies too, not just what's on the furniture:
+  the Shop picks one of 3 shelf arrangements, the Dive Bar one of 3 table
+  arrangements, and the Apartment one of 3 clutter arrangements, each
+  time you enter (`Shop.gd`'s `_randomize_layout()`, `DiveBar.gd`'s
+  `_randomize_layout()`, `Apartment.gd`'s `_randomize_clutter()`). Item
+  markers and flanking product boxes move with their shelf, and patrons
+  sit at their table, since those are positioned relative to the slot
+  rather than independently. Furniture repositioning happens before
+  `WorldRoot._bake_navigation()` runs (it's the first thing each room's
+  `_ready()` does, ahead of `super._ready()`), so the baked navmesh and
+  the shopkeeper's/police's pathing always match whichever layout got
+  picked — no separate re-bake step needed. The Apartment previously had
+  no room-specific script (it used the shared `WorldRoot.gd` directly);
+  it now has its own `Apartment.gd` since its clutter is purely
+  decorative (`TextureRect`s, no `StaticBody2D`) and needed a place to
+  live that isn't nav-mesh-relevant. City's three-building layout and
+  each room's walls/counter/bed/phone stay fixed — only the freestanding
+  furniture moves.
 - Police AI paths around obstacles via a baked `NavigationRegion2D` (see
   `world/WorldRoot.gd`) instead of beelining at the player, and only
   re-aims while it actually has line of sight — losing sight means it

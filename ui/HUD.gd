@@ -2,6 +2,13 @@ extends CanvasLayer
 
 const CRAVING_BAR_WIDTH := 120.0
 
+# The carrying panel is right-aligned and sized to its contents, so it only
+# covers as much of the view as it needs to.
+const CARRY_RIGHT_EDGE := 952.0
+const CARRY_PADDING := 10.0
+const ICON_SIZE := 22.0
+const ICON_GAP := 6.0
+
 const ITEM_ICONS := {
 	"whiskey": preload("res://assets/sprites/item_whiskey_icon.png"),
 	"cigs": preload("res://assets/sprites/item_cigs_icon.png"),
@@ -16,6 +23,7 @@ const ITEM_ICONS := {
 @onready var wanted_label: Label = $TopBar/WantedLabel
 @onready var inventory_label: Label = $TopBar/InventoryLabel
 @onready var inventory_icons: HBoxContainer = $TopBar/InventoryIcons
+@onready var carry_bg: Panel = $TopBar/CarryBg
 @onready var withdrawal_tint: ColorRect = $WithdrawalTint
 @onready var dialogue_panel: Control = $DialoguePanel
 @onready var speaker_label: Label = $DialoguePanel/SpeakerLabel
@@ -55,20 +63,37 @@ func _update_craving(craving: float) -> void:
 
 func _update_inventory() -> void:
 	for child in inventory_icons.get_children():
+		inventory_icons.remove_child(child)
 		child.queue_free()
 	if GameState.inventory.is_empty():
 		inventory_label.text = "Carrying: nothing"
+		_layout_carry_panel(0)
 		return
 	inventory_label.text = "Carrying:"
+	var icon_count := 0
 	for id in GameState.inventory:
 		if not ITEM_ICONS.has(id):
 			continue
+		icon_count += 1
 		var icon := TextureRect.new()
 		icon.texture = ITEM_ICONS[id]
 		icon.custom_minimum_size = Vector2(22, 22)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		inventory_icons.add_child(icon)
+	_layout_carry_panel(icon_count)
+
+func _layout_carry_panel(icon_count: int) -> void:
+	var label_w := inventory_label.get_minimum_size().x
+	var icons_w := 0.0
+	if icon_count > 0:
+		icons_w = ICON_GAP + icon_count * ICON_SIZE + (icon_count - 1) * ICON_GAP
+	var left := CARRY_RIGHT_EDGE - (CARRY_PADDING * 2.0 + label_w + icons_w)
+	carry_bg.offset_left = left
+	inventory_label.offset_left = left + CARRY_PADDING
+	inventory_label.offset_right = left + CARRY_PADDING + label_w
+	inventory_icons.offset_left = inventory_label.offset_right + ICON_GAP
+	inventory_icons.offset_right = CARRY_RIGHT_EDGE - CARRY_PADDING
 
 func _update_wanted(is_wanted: bool) -> void:
 	wanted_label.visible = is_wanted

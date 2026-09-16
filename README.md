@@ -61,7 +61,11 @@ The original 2D scenes are still in place, untouched, alongside them.
   speed. The player walks, and in withdrawal the stride slows along with the
   movement so it reads as a shuffle rather than sliding feet. Police sprint,
   and the shopkeeper, bartender, and patrons idle.
-- **Known gaps:** the HUD still covers the top ~110 px of the 3D view.
+- **HUD:** the old full-width top bar hid the top of the 3D view, so it's
+  now two small floating panels: cash, day, and craving top-left, and a
+  right-aligned "Carrying" panel top-right that `HUD.gd` resizes to fit
+  its label and item icons. The WANTED badge floats top-centre. Node paths
+  are unchanged, so the 2D scenes use the same HUD without changes.
 
 ## Premise
 

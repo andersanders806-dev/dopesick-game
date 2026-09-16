@@ -40,10 +40,17 @@ The original 2D scenes are still in place, untouched, alongside them.
   untextured (plain white/grey characters and buildings). Deleting their
   `.godot/imported/*.glb-*` files and re-running `--import` fixed it. If
   models ever look flat grey again, that's the first thing to check.
+- **Character animation:** every Kenney Mini Character `.glb` already ships
+  with ~30 clips (idle, walk, sprint, sit, pick-up, emotes, etc.), so there is
+  no separate animation asset. `npc/CharacterAnimator.gd` finds a model's
+  `AnimationPlayer`, turns on looping for idle/walk/sprint (they import
+  non-looping), and cross-fades between idle and moving based on horizontal
+  speed. The player walks, and in withdrawal the stride slows along with the
+  movement so it reads as a shuffle rather than sliding feet. Police sprint,
+  and the shopkeeper, bartender, and patrons idle.
 - **Known gaps:** Apartment furniture has no collision, so you can walk
-  through the bed and table. Characters don't animate yet (the Kenney
-  models slide around in their bind pose). The HUD still covers the top
-  ~110 px of the 3D view.
+  through the bed and table. The HUD still covers the top ~110 px of the 3D
+  view.
 
 ## Premise
 

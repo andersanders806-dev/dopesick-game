@@ -17,6 +17,10 @@ const PORTRAITS := {
 
 @onready var model_root: Node3D = $ModelRoot
 
+const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+
+var anim: CharacterAnimator
+
 var request_id: String = ""
 var request_price: int = 0
 var fulfilled: bool = false
@@ -31,9 +35,13 @@ func _ready() -> void:
 func set_model(path: String) -> void:
 	model_path = path
 	for child in model_root.get_children():
+		model_root.remove_child(child)
 		child.queue_free()
+	anim = null
 	if path != "":
-		model_root.add_child(load(path).instantiate())
+		var model: Node = load(path).instantiate()
+		model_root.add_child(model)
+		anim = CharacterAnimator.new(model)
 
 func set_request(id: String, price: int) -> void:
 	request_id = id

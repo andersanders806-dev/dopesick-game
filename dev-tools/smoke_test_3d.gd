@@ -44,9 +44,23 @@ func _run() -> void:
 		_check(scene != null and _player() != null and get_first_node_in_group("hud") != null and polys > 0,
 			"%s (navmesh polygons: %d)" % [path.get_file(), polys])
 
-	print("== Shop: stealing an item")
 	var shop := current_scene
 	var player := _player()
+
+	print("== Animation: idle when still, walk when moving")
+	player.global_position = Vector3(-4.8, 0, 2.8)
+	await _frames(5)
+	_check(player.anim.current_clip() == "idle", "player idles when standing still")
+	Input.action_press("move_right")
+	await _frames(10)
+	_check(player.anim.current_clip() == "walk", "player walks while moving (clip: %s)" % player.anim.current_clip())
+	Input.action_release("move_right")
+	await _frames(5)
+	_check(player.anim.current_clip() == "idle", "player returns to idle after stopping")
+	var keeper_anim = shop.get_node("Shopkeeper").anim
+	_check(keeper_anim.current_clip() == "idle", "shopkeeper plays idle")
+
+	print("== Shop: stealing an item")
 	var item := shop.get_node("ItemA") as Area3D
 	var item_id: String = item.item_id
 	player.global_position = Vector3(item.global_position.x, 0, item.global_position.z + 0.35)
@@ -86,6 +100,7 @@ func _run() -> void:
 				closed_in = true
 				break
 		player.dialogue_active = false
+		_check(police.anim.current_clip() == "sprint", "officer plays sprint while chasing")
 		_check(closed_in, "officer closed at least 1 m on the player (started %.1f m away)" % start_dist)
 
 	print("== Door: chase follows the player into the City")
@@ -110,7 +125,8 @@ func _run() -> void:
 	await _frames(10)
 	_check(current_scene.name == "DiveBar3D", "Bar door leads to DiveBar3D")
 	var patron := current_scene.get_node("Patron1")
-	_check(patron.model_root.get_child_count() > 0, "patron has a model (%s)" % patron.npc_name)
+	_check(patron.model_root.get_child_count() == 1, "patron has exactly one model (%s)" % patron.npc_name)
+	_check(patron.anim != null and patron.anim.current_clip() == "idle", "patron plays idle")
 	if not gs.has_item(patron.request_id):
 		gs.steal_item(patron.request_id)
 	var cash_before: int = gs.cash

@@ -5,6 +5,8 @@ const LOSE_SIGHT_TIME := 4.0
 const RETARGET_INTERVAL := 0.25
 const TURN_SPEED := 10.0
 
+const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+
 const BEACON_FLIP_TIME := 0.3
 const BEACON_RED := Color(1, 0.15, 0.1, 1)
 const BEACON_BLUE := Color(0.15, 0.35, 1, 1)
@@ -19,9 +21,11 @@ var _retarget_timer: float = 0.0
 var _facing_angle: float = 0.0
 var _beacon_timer: float = 0.0
 var _beacon_red: bool = true
+var anim: CharacterAnimator
 
 func _ready() -> void:
 	add_to_group("police")
+	anim = CharacterAnimator.new(model, "sprint")
 	GameState.set_wanted(true)
 	catch_zone.body_entered.connect(_on_catch_body_entered)
 	var player := get_tree().get_first_node_in_group("player")
@@ -53,6 +57,7 @@ func _physics_process(delta: float) -> void:
 		to_next.y = 0.0
 		velocity = to_next.normalized() * SPEED
 	move_and_slide()
+	anim.update(Vector2(velocity.x, velocity.z).length())
 
 	if Vector2(velocity.x, velocity.z).length() > 0.1:
 		var target_angle := atan2(velocity.x, velocity.z)

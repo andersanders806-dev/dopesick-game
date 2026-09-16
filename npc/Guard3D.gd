@@ -12,12 +12,18 @@ const VISION_COLOR_CALM := Color(0.5, 0.95, 1.0, 0.35)
 const VISION_COLOR_ALERT := Color(1.0, 0.15, 0.15, 0.55)
 
 @onready var vision_cone: MeshInstance3D = $VisionCone
+@onready var body: Node3D = $Body
+
+const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+
+var anim: CharacterAnimator
 @onready var cone_material := StandardMaterial3D.new()
 
 var _sweep_t: float = 0.0
 var can_see_player: bool = false
 
 func _ready() -> void:
+	anim = CharacterAnimator.new(body)
 	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED

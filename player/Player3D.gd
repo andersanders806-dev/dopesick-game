@@ -5,6 +5,8 @@ const SICK_SPEED_MULT := 0.55
 const SICK_THRESHOLD := 20.0
 const TURN_SPEED := 10.0
 
+const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+
 @onready var interact_zone: Area3D = $InteractZone
 @onready var model: Node3D = $Model
 
@@ -12,9 +14,11 @@ var nearby: Array = []
 var dialogue_active: bool = false
 var is_stealing: bool = false
 var _facing_angle: float = 0.0
+var anim: CharacterAnimator
 
 func _ready() -> void:
 	add_to_group("player")
+	anim = CharacterAnimator.new(model)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
 
@@ -22,6 +26,7 @@ func _physics_process(delta: float) -> void:
 	if dialogue_active:
 		velocity = Vector3.ZERO
 		move_and_slide()
+		anim.update(0.0)
 		return
 
 	var dir := Vector3(
@@ -32,11 +37,15 @@ func _physics_process(delta: float) -> void:
 	dir = dir.normalized()
 
 	var speed := BASE_SPEED
-	if GameState.craving <= SICK_THRESHOLD:
+	var sick := GameState.craving <= SICK_THRESHOLD
+	if sick:
 		speed *= SICK_SPEED_MULT
 
 	velocity = dir * speed
 	move_and_slide()
+	# Withdrawal slows the stride along with the movement, so it reads as a
+	# shuffle rather than the feet sliding.
+	anim.update(Vector2(velocity.x, velocity.z).length(), SICK_SPEED_MULT if sick else 1.0)
 
 	if dir.length() > 0.1:
 		var target_angle := atan2(dir.x, dir.z)

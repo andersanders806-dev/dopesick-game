@@ -1,4 +1,4 @@
-[gd_scene load_steps=23 format=3 uid="uid://dd3fedg1f6fva"]
+[gd_scene load_steps=24 format=3 uid="uid://dd3fedg1f6fva"]
 
 [ext_resource type="Script" uid="uid://i3ufamonaoqm" path="res://world/DiveBar.gd" id="1"]
 [ext_resource type="PackedScene" path="res://npc/NPC.tscn" id="2"]
@@ -15,6 +15,7 @@
 [ext_resource type="Texture2D" path="res://assets/env/dartboard.png" id="13"]
 [ext_resource type="Texture2D" path="res://assets/env/barstool.png" id="14"]
 [ext_resource type="Texture2D" path="res://assets/fx/light_gradient.png" id="15"]
+[ext_resource type="Texture2D" path="res://assets/env/floor_wood_dark.png" id="16"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(520, 16)
@@ -78,7 +79,7 @@ texture_scale = 0.45
 [node name="Floor" type="TextureRect" parent="."]
 offset_right = 520.0
 offset_bottom = 320.0
-texture = ExtResource("6")
+texture = ExtResource("16")
 stretch_mode = 1
 
 [node name="WallTop" type="StaticBody2D" parent="."]

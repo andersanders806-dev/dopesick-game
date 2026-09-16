@@ -63,6 +63,15 @@ get well. Repeat.
    samples or licensing), via `dev-tools/gen_sfx.py` and a small `SFX`
    autoload that pools one-shot players and drives the two ambient loops
    off `GameState`'s existing signals.
+8. **Photoreal surfaces.** Floors and walls across all four rooms are now
+   real photographed materials instead of procedural pixel art: dark
+   mahogany for the Dive Bar, worn light oak for the Apartment, cracked
+   asphalt/concrete for the City street, and weathered red brick shared
+   by every wall. The Shop's floor is a clean black-and-white checkerboard
+   — generated procedurally instead, since AI image models reliably
+   produce warped, fisheye-distorted grids for anything with strict
+   geometric regularity (confirmed with two separate failed attempts on
+   different prompts/seeds). See `dev-tools/gen_photo_textures.py`.
 
 ## Opening the project
 
@@ -140,3 +149,21 @@ launch Godot 4.5.x and "Import" this folder (`~/dopesick-game/project.godot`).
   (`can_see_player` was computed correctly), just never rendered. Fixed
   by giving it `z_index = 5` and brightening its color for contrast
   against both the dark unlit floor and the warm lit pools.
+- The photoreal floor/wall textures (`dev-tools/gen_photo_textures.py`)
+  needed a second attempt to look right: the first pass used an
+  offset-and-blend seam technique alone, which left an obvious repeating
+  light/dark banding pattern from the source photo's own uneven studio
+  lighting. Tried flattening that via a numpy divide-by-blurred-copy
+  trick; it over-corrected and crushed the colors badly. What actually
+  worked was simpler — crop a small patch from the best-lit center of
+  the photo (well clear of any vignette or the corner watermark) and
+  only lightly blend the seam. Also worth knowing: judge a tileable
+  texture at the size it'll actually render at in-game, not a zoomed
+  preview — repetition that's obvious blown up disappears at gameplay
+  scale.
+- This pass wasn't verified live in the Godot editor — it wasn't running
+  this session (the `godot-ai` MCP connection was down, `ps aux` showed
+  no Godot process at all). All edits were verified structurally (every
+  referenced asset file exists on disk, every `ExtResource`/`SubResource`
+  id used is declared, `load_steps` counts match), but not visually.
+  Reopen the project and take a look before assuming it's flawless.

@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=25 format=3]
 
 [ext_resource type="Script" path="res://world/WorldRoot.gd" id="1"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2"]
@@ -19,6 +19,7 @@
 [ext_resource type="Texture2D" path="res://assets/env/ashtray.png" id="17"]
 [ext_resource type="Texture2D" path="res://assets/env/pill_bottle.png" id="18"]
 [ext_resource type="Texture2D" path="res://assets/fx/light_gradient.png" id="19"]
+[ext_resource type="Texture2D" path="res://assets/env/floor_wood_worn.png" id="20"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wallH"]
 size = Vector2(480, 16)
@@ -56,7 +57,7 @@ texture_scale = 0.6
 [node name="Floor" type="TextureRect" parent="."]
 offset_right = 480.0
 offset_bottom = 320.0
-texture = ExtResource("7")
+texture = ExtResource("20")
 stretch_mode = 1
 
 [node name="WallTop" type="StaticBody2D" parent="."]

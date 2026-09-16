@@ -142,6 +142,40 @@ func _run() -> void:
 	current_scene.get_node("DoorToHome").interact(_player())
 	await _frames(10)
 	_check(current_scene.name == "Apartment3D", "Home door leads to Apartment3D")
+	var apt := current_scene
+	var p3 := _player()
+	for name in ["Bed", "Couch", "Phone", "TV", "ChairOverturned", "BoxStack"]:
+		var furniture := apt.get_node(name) as Node3D
+		var solid_center := furniture.global_position
+		# Start 2 m away on the room-centre side and walk straight at it (so
+		# pieces against the east wall aren't approached from inside the
+		# wall). The player should stop short instead of passing through.
+		# The phone crate shares the north wall with the (randomly placed)
+		# box stack, which can block a sideways approach, so come from the
+		# south for that one.
+		var axis := Vector3.BACK if name == "Phone" else Vector3.RIGHT
+		var side := 1.0 if axis == Vector3.BACK or solid_center.x < 0.0 else -1.0
+		var dir := axis * side
+		var action := {Vector3.LEFT: "move_left", Vector3.RIGHT: "move_right", Vector3.BACK: "move_down"}
+		var walk: String = "move_up" if dir == Vector3.BACK else action[-dir]
+		p3.global_position = Vector3(solid_center.x, 0, solid_center.z) + dir * 2.0
+		await _frames(3)
+		Input.action_press(walk)
+		await _frames(60)
+		Input.action_release(walk)
+		await _frames(2)
+		var gap := (p3.global_position - solid_center).dot(dir)
+		_check(gap > 0.25, "%s blocks the player (stopped %.2f m from its centre)" % [name, gap])
+	# The mattress still has to be reachable to sleep on.
+	var bed := apt.get_node("Bed") as Area3D
+	p3.global_position = bed.global_position + Vector3(1.0, 0, 0)
+	await _frames(5)
+	_check(p3.nearby.has(bed), "mattress is still in reach to interact with")
+	var phone := apt.get_node("Phone") as Area3D
+	p3.global_position = phone.global_position + Vector3(-0.7, 0, 0.6)
+	await _frames(5)
+	_check(p3.nearby.has(phone), "phone is still in reach to interact with")
+
 	gs.cash = 100
 	gs.craving = 10.0
 	current_scene.get_node("Phone").interact(_player())

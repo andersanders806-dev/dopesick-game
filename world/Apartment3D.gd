@@ -1,16 +1,21 @@
 extends "res://world/WorldRoot3D.gd"
 
-# Each layout is 5 floor spots (x, z), index-matched to `clutter` (Trashcan,
-# BoxOpen, BoxClosed, BottleA, BottleB). Kept clear of the bed, phone table,
-# TV, and the door out. Purely decorative -- none of these have collision,
-# so moving them never affects the navmesh.
+# Each layout is 6 floor spots (x, z), index-matched to `clutter`. Kept clear
+# of the mattress, couch, phone crate, TV, both spawn points, and the door.
+# The chair and box stack have collision; that's fine to move because this
+# runs before WorldRoot3D bakes the navmesh.
 const CLUTTER_LAYOUTS := [
-	[Vector2(-4.5, 0.6), Vector2(1.6, -3.3), Vector2(2.4, -3.3), Vector2(0.9, 2.6), Vector2(1.4, 2.9)],
-	[Vector2(-4.5, 2.2), Vector2(-1.2, -3.2), Vector2(-4.4, 0.8), Vector2(3.2, 2.7), Vector2(3.6, 2.4)],
-	[Vector2(0.4, -3.2), Vector2(-4.4, 1.2), Vector2(-3.8, 2.8), Vector2(-0.6, 0.9), Vector2(2.2, 2.8)],
+	[Vector2(1.2, 1.0), Vector2(2.6, -3.0), Vector2(-2.8, -2.8), Vector2(0.5, 2.6), Vector2(-2.6, 2.9), Vector2(-3.1, -0.4)],
+	[Vector2(-0.3, 2.2), Vector2(1.0, -3.0), Vector2(2.8, 2.6), Vector2(-2.6, -2.9), Vector2(1.8, 0.4), Vector2(-3.0, 0.0)],
+	[Vector2(2.4, 1.9), Vector2(-2.8, -3.0), Vector2(0.6, -2.7), Vector2(-2.0, 2.6), Vector2(3.4, 2.9), Vector2(0.8, 1.0)],
 ]
 
-@onready var clutter: Array = [$Trashcan, $BoxOpen, $BoxClosed, $BottleA, $BottleB]
+const BULB_ENERGY := 1.8
+
+@onready var clutter: Array = [$ChairOverturned, $BoxStack, $TrashA, $TrashB, $TrashC, $ClothesPile]
+@onready var bulb_light: OmniLight3D = $BareBulb/Light
+
+var _flicker_timer: float = 0.0
 
 func _ready() -> void:
 	_randomize_clutter()
@@ -22,3 +27,16 @@ func _randomize_clutter() -> void:
 		var spot: Vector2 = layout[i]
 		clutter[i].position.x = spot.x
 		clutter[i].position.z = spot.y
+
+## The bare bulb mostly holds steady, then every so often browns out for a
+## split second, like it's on bad wiring.
+func _process(delta: float) -> void:
+	_flicker_timer -= delta
+	if _flicker_timer > 0.0:
+		return
+	if randf() < 0.15:
+		bulb_light.light_energy = BULB_ENERGY * randf_range(0.2, 0.55)
+		_flicker_timer = randf_range(0.04, 0.12)
+	else:
+		bulb_light.light_energy = BULB_ENERGY
+		_flicker_timer = randf_range(0.3, 2.0)

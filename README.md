@@ -14,18 +14,31 @@ The original 2D scenes are still in place, untouched, alongside them.
   2D pass as triplanar materials.
 - **Camera:** a fixed-angle follow camera on the player looking north, so
   every room keeps its south wall low and puts doors on the side walls.
-- **Room generation:** the City, Dive Bar, and Shop scenes are *generated*
+- **Room generation:** all four 3D rooms are *generated*
   by `dev-tools/build_rooms_3d.gd`, not hand-edited. Change the layout
   there and rebuild with
   `godot --headless --path . res://dev-tools/BuildRooms3D.tscn`. It runs
   as a scene rather than via `-s` because the room scripts reference the
   `GameState`/`SFX` autoloads, which don't exist yet when a `-s` script's
-  variables are initialised. The Apartment is hand-built.
+  variables are initialised.
 - **Behaviour carried over from 2D:** the Shop picks one of 3 shelf layouts
   and shuffles which item sits where; the Dive Bar picks one of 3 table
   layouts and randomises patron names, models, and requests; the City car
   gets a random paint colour; the Apartment picks one of 3 clutter layouts.
   Navmeshes are baked at runtime after furniture moves, the same as 2D.
+- **Apartment look:** based on details that recur in documentary and news
+  photos of drug houses: windows boarded over (thin slivers of cold
+  streetlight through the planks, a pale shaft on the floor) or taped over
+  with foil; a single bare bulb on a cord that browns out now and then; a
+  stained mattress on the floor instead of a bed; a sagging couch with a
+  cushion on the floor; an overturned chair and a knocked-over lamp; a
+  punched hole in the drywall with crumbs below; water-damage and grime
+  stains (`Decal`s) on the walls and floor; and piles of cans, bottles,
+  takeaway boxes, paper, and burnt foil scraps. Its textures (stains, mattress,
+  couch fabric, weathered planks, the drywall hole) are procedural, from
+  `dev-tools/gen_apartment_textures.py`. The mattress, couch, phone crate,
+  TV, overturned chair, and box stack all have collision, and the navmesh
+  routes around them.
 - **Shopkeeper vision:** the line-of-sight ray starts at eye height (1.5 m),
   above the 1.05 m counter, so the counter doesn't blind them. The 2.2 m
   shelves still fully block sight.
@@ -48,9 +61,7 @@ The original 2D scenes are still in place, untouched, alongside them.
   speed. The player walks, and in withdrawal the stride slows along with the
   movement so it reads as a shuffle rather than sliding feet. Police sprint,
   and the shopkeeper, bartender, and patrons idle.
-- **Known gaps:** Apartment furniture has no collision, so you can walk
-  through the bed and table. The HUD still covers the top ~110 px of the 3D
-  view.
+- **Known gaps:** the HUD still covers the top ~110 px of the 3D view.
 
 ## Premise
 

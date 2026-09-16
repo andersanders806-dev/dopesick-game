@@ -1,5 +1,5 @@
 extends Node
-## Generates world/City3D.tscn, world/DiveBar3D.tscn and world/Shop3D.tscn.
+## Generates world/Apartment3D.tscn, City3D.tscn, DiveBar3D.tscn and Shop3D.tscn.
 ##
 ## These rooms are mostly repeated boxes, lights, and Kenney model instances,
 ## which is far less error-prone to build in code than to hand-write as .tscn
@@ -8,7 +8,7 @@ extends Node
 ## (Run as a scene, not with -s, so the GameState/SFX autoloads exist and
 ## the room scripts compile.)
 ##
-## Conventions shared with the hand-built Apartment3D.tscn:
+## Conventions shared by every room:
 ## - 1 unit = 1 metre, floor top at y = 0, camera looks north (-z), so the
 ##   south wall is kept low and doors go on the side walls.
 ## - Floors are StaticBody3D on collision layer 5 (value 16) so they feed the
@@ -30,6 +30,7 @@ var DoorScript: Script = load("res://interactables/Door3D.gd")
 var _root: Node3D
 
 func _ready() -> void:
+	_save(_build_apartment(), "res://world/Apartment3D.tscn")
 	_save(_build_shop(), "res://world/Shop3D.tscn")
 	_save(_build_dive_bar(), "res://world/DiveBar3D.tscn")
 	_save(_build_city(), "res://world/City3D.tscn")
@@ -164,9 +165,12 @@ func _environment(ambient: Color, ambient_energy: float, fog := false) -> void:
 ## Floor slab plus four walls around a (w x d) room centred on the origin.
 ## The south wall is only LOW_WALL_H tall so it never hides the player from
 ## the camera, but its collision is full height.
-func _room_shell(w: float, d: float, floor_tex: String, floor_uv: float) -> void:
-	_solid(_root, "Floor", Vector3(w, 0.1, d), Vector3(0, -0.05, 0), _tex_mat(floor_tex, floor_uv, 0.85), 16)
+func _room_shell(w: float, d: float, floor_tex: String, floor_uv: float, tint := Color.WHITE) -> void:
+	var floor_mat := _tex_mat(floor_tex, floor_uv, 0.85)
+	floor_mat.albedo_color = tint
+	_solid(_root, "Floor", Vector3(w, 0.1, d), Vector3(0, -0.05, 0), floor_mat, 16)
 	var wall_mat := _tex_mat("res://assets/env/wall_tile.png", 0.5, 0.95)
+	wall_mat.albedo_color = tint
 	var t := 0.2
 	_solid(_root, "WallNorth", Vector3(w + 2 * t, WALL_H, t), Vector3(0, WALL_H / 2, -d / 2 - t / 2), wall_mat)
 	_solid(_root, "WallSouth", Vector3(w + 2 * t, WALL_H, t), Vector3(0, WALL_H / 2, d / 2 + t / 2), wall_mat, 1,
@@ -205,6 +209,271 @@ func _player_and_hud(spawn: Vector3) -> void:
 	var hud := HUDScene.instantiate()
 	hud.name = "HUD"
 	_add(_root, hud)
+
+# --- Apartment --------------------------------------------------------------
+#
+# Squalor details grounded in documentary and news photos of drug houses:
+# windows boarded or foiled over so only slivers of light get in, a single
+# bare bulb, a stained mattress on the floor instead of a bed, next to no
+# real furniture (what there is is broken or knocked over), water-damaged
+# and punched walls, and trash, bottles, and burnt foil everywhere.
+
+const ENV3D := "res://assets/env3d/"
+
+## Decal projecting `tex` onto whatever is behind it. `wall` is "floor",
+## "north", "west", or "east" and orients the projection into that surface.
+func _decal(name: String, tex: String, pos: Vector3, width: float, height: float, wall := "floor", spin_deg := 0.0, modulate := Color.WHITE) -> void:
+	var d := Decal.new()
+	d.name = name
+	d.texture_albedo = load(tex)
+	d.modulate = modulate
+	d.size = Vector3(width, 0.5, height)
+	_add(_root, d)
+	d.position = pos
+	match wall:
+		"north":
+			d.rotation_degrees = Vector3(90, 0, spin_deg)
+		"west":
+			d.rotation_degrees = Vector3(spin_deg, 0, -90)
+		"east":
+			d.rotation_degrees = Vector3(spin_deg, 0, 90)
+		_:
+			d.rotation_degrees = Vector3(0, spin_deg, 0)
+
+func _cylinder(parent: Node, name: String, radius: float, height: float, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = radius
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.material = mat
+	var mi := MeshInstance3D.new()
+	mi.name = name
+	mi.mesh = mesh
+	_add(parent, mi)
+	mi.position = pos
+	return mi
+
+## A static collider child for a piece of furniture that lives under an
+## interactable Area3D (the Area's own shape is only the interact trigger).
+func _blocker(parent: Node, size: Vector3, center: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.name = "Solid"
+	body.collision_mask = 0
+	_add(parent, body)
+	_collision(body, _box_shape(size), center)
+
+## A decorative pile of trash: cans and bottles lying on their sides, a
+## crumpled bag, a flattened takeaway box, paper wads, and burnt foil scraps.
+## Seeded per pile so each looks different but rebuilds identically.
+func _trash_pile(name: String, seed_value: int, spread := 0.7) -> Node3D:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var pile := Node3D.new()
+	pile.name = name
+	_add(_root, pile)
+	var paper := _color_mat(Color(0.78, 0.76, 0.7), 0.95)
+	var foil := _color_mat(Color(0.55, 0.52, 0.48), 0.35)
+	foil.metallic = 0.9
+	var scorch := _color_mat(Color(0.12, 0.1, 0.08), 0.6)
+	var takeaway := _color_mat(Color(0.55, 0.4, 0.26), 0.9)
+	var spot := func() -> Vector3:
+		return Vector3(rng.randf_range(-spread, spread), 0, rng.randf_range(-spread, spread))
+	for i in 2:
+		var can := _model(pile, "Can%d" % i, "food/can-small.glb", spot.call() + Vector3(0, 0.1, 0), 0.6)
+		can.rotation_degrees = Vector3(90, rng.randf_range(0, 360), 0)
+	var bottle := _model(pile, "Bottle", ["food/wine-red.glb", "food/soda-bottle.glb"][rng.randi() % 2], spot.call() + Vector3(0, 0.07, 0), 0.7)
+	bottle.rotation_degrees = Vector3(0, rng.randf_range(0, 360), 90)
+	_model(pile, "Bag", "food/bag.glb", spot.call(), 0.8, rng.randf_range(0, 360))
+	var box := _box_mesh(pile, "TakeawayBox", Vector3(0.45, 0.04, 0.45), spot.call() + Vector3(0, 0.02, 0), takeaway)
+	box.rotation_degrees.y = rng.randf_range(0, 90)
+	for i in 5:
+		var wad := _box_mesh(pile, "Paper%d" % i, Vector3.ONE * rng.randf_range(0.06, 0.11), spot.call() + Vector3(0, 0.04, 0), paper)
+		wad.rotation_degrees = Vector3(rng.randf_range(0, 90), rng.randf_range(0, 90), rng.randf_range(0, 90))
+	for i in 3:
+		var scrap := _box_mesh(pile, "Foil%d" % i, Vector3(0.14, 0.015, 0.1), spot.call() + Vector3(0, 0.01, 0), foil)
+		scrap.rotation_degrees = Vector3(rng.randf_range(-15, 15), rng.randf_range(0, 180), rng.randf_range(-15, 15))
+		_box_mesh(scrap, "Burn", Vector3(0.06, 0.02, 0.03), Vector3(0.01, 0.002, 0), scorch)
+	return pile
+
+func _build_apartment() -> Node3D:
+	_new_root("Apartment3D", "res://world/Apartment3D.gd")
+	# Very little ambient: the room should read as nearly dark, lit only by
+	# the bare bulb, the TV, and what leaks through the boarded window.
+	_environment(Color(0.4, 0.42, 0.5), 0.14)
+	_room_shell(10.0, 7.0, "res://assets/env/floor_wood_worn.png", 0.5, Color(0.62, 0.56, 0.5))
+
+	var planks := _tex_mat(ENV3D + "plank_weathered.png", 1.0, 0.95)
+	var sliver := _color_mat(Color(0.6, 0.75, 1.0), 0.5, 2.5)
+	var frame := _color_mat(Color(0.2, 0.17, 0.14), 0.9)
+
+	# Boarded-up window on the north wall: dark opening, crooked planks,
+	# pale streetlight showing through the gaps and a cold shaft on the floor.
+	var window := Node3D.new()
+	window.name = "BoardedWindow"
+	_add(_root, window)
+	window.position = Vector3(-1.4, 1.45, -3.44)
+	_box_mesh(window, "Opening", Vector3(1.3, 1.0, 0.04), Vector3.ZERO, _color_mat(Color(0.02, 0.02, 0.03), 1.0))
+	_box_mesh(window, "Sliver1", Vector3(1.2, 0.03, 0.02), Vector3(0, 0.2, 0.03), sliver)
+	_box_mesh(window, "Sliver2", Vector3(1.2, 0.025, 0.02), Vector3(0, -0.16, 0.03), sliver)
+	var plank_ys := [0.36, 0.03, -0.32]
+	var plank_tilts := [4.0, -3.0, 7.0]
+	for i in 3:
+		var pl := _box_mesh(window, "Plank%d" % (i + 1), Vector3(1.55, 0.24, 0.04), Vector3(0, plank_ys[i], 0.06), planks)
+		pl.rotation_degrees.z = plank_tilts[i]
+	_box_mesh(window, "FrameTop", Vector3(1.45, 0.08, 0.06), Vector3(0, 0.54, 0.02), frame)
+	_box_mesh(window, "FrameBottom", Vector3(1.45, 0.08, 0.06), Vector3(0, -0.54, 0.02), frame)
+	var shaft := SpotLight3D.new()
+	shaft.name = "WindowShaft"
+	shaft.light_color = Color(0.55, 0.68, 1.0)
+	shaft.light_energy = 4.0
+	shaft.spot_range = 6.0
+	shaft.spot_angle = 22.0
+	shaft.shadow_enabled = true
+	_add(window, shaft)
+	shaft.position = Vector3(0, 0.3, 0.15)
+	# Spotlights shine down -Z; turn it round to face into the room (+Z),
+	# then tilt it down onto the floor.
+	shaft.rotation_degrees = Vector3(-50, 180, 0)
+
+	# A second window taped over with foil, a common way to black one out.
+	var foil := _color_mat(Color(0.6, 0.58, 0.55), 0.3)
+	foil.metallic = 0.85
+	var foiled := _box_mesh(_root, "FoilWindow", Vector3(1.1, 0.9, 0.03), Vector3(1.6, 1.5, -3.47), foil)
+	_box_mesh(foiled, "TapeTop", Vector3(1.15, 0.06, 0.01), Vector3(0, 0.43, 0.02), _color_mat(Color(0.5, 0.45, 0.3), 0.9))
+	_box_mesh(foiled, "TapeSide", Vector3(0.06, 0.95, 0.01), Vector3(-0.53, 0, 0.02), _color_mat(Color(0.5, 0.45, 0.3), 0.9))
+
+	# One bare bulb on a cord -- Apartment3D.gd makes it flicker.
+	var bulb := Node3D.new()
+	bulb.name = "BareBulb"
+	_add(_root, bulb)
+	bulb.position = Vector3(-0.4, 0, -0.2)
+	_cylinder(bulb, "Cord", 0.01, 0.5, Vector3(0, 2.15, 0), _color_mat(Color(0.05, 0.05, 0.05), 0.8))
+	var glass := SphereMesh.new()
+	glass.radius = 0.07
+	glass.height = 0.16
+	glass.material = _color_mat(Color(1.0, 0.85, 0.55), 0.3, 6.0)
+	var glass_mi := MeshInstance3D.new()
+	glass_mi.name = "Glass"
+	glass_mi.mesh = glass
+	_add(bulb, glass_mi)
+	glass_mi.position = Vector3(0, 1.86, 0)
+	_light(bulb, "Light", Vector3(0, 1.8, 0), Color(1.0, 0.8, 0.5), 1.8, 7.5)
+
+	# Mattress on the floor, no frame: the Bed interactable.
+	var bed := Area3D.new()
+	bed.name = "Bed"
+	bed.collision_layer = 4
+	bed.collision_mask = 0
+	bed.monitoring = false
+	bed.set_script(load("res://interactables/Bed3D.gd"))
+	_add(_root, bed)
+	bed.position = Vector3(-4.3, 0, -2.4)
+	bed.rotation_degrees.y = 6.0
+	_box_mesh(bed, "Mattress", Vector3(1.15, 0.2, 2.0), Vector3(0, 0.1, 0), _tex_mat(ENV3D + "mattress_stained.png", 0.8, 0.95))
+	_model(bed, "Pillow", "furniture/pillow.glb", Vector3(-0.3, 0.2, -0.75), 2.5, -10.0)
+	var blanket := _color_mat(Color(0.16, 0.2, 0.28), 1.0)
+	var b1 := _box_mesh(bed, "BlanketA", Vector3(0.9, 0.07, 0.7), Vector3(0.1, 0.23, 0.35), blanket)
+	b1.rotation_degrees = Vector3(0, 18, 4)
+	var b2 := _box_mesh(bed, "BlanketB", Vector3(0.6, 0.12, 0.45), Vector3(0.35, 0.18, 0.85), blanket)
+	b2.rotation_degrees = Vector3(8, -25, -6)
+	_blocker(bed, Vector3(1.15, 0.5, 2.0), Vector3(0, 0.25, 0))
+	_collision(bed, _box_shape(Vector3(1.9, 1.2, 2.8)), Vector3(0, 0.6, 0))
+
+	# Sagging couch against the west wall, stuffing-side cushion on the floor.
+	var couch := StaticBody3D.new()
+	couch.name = "Couch"
+	_add(_root, couch)
+	couch.position = Vector3(-4.5, 0, 1.4)
+	var upholstery := _tex_mat(ENV3D + "couch_worn.png", 1.2, 1.0)
+	_box_mesh(couch, "Base", Vector3(0.9, 0.35, 2.2), Vector3(0, 0.175, 0), upholstery)
+	_box_mesh(couch, "Back", Vector3(0.25, 0.55, 2.2), Vector3(-0.33, 0.62, 0), upholstery)
+	_box_mesh(couch, "ArmN", Vector3(0.9, 0.28, 0.2), Vector3(0, 0.49, -1.0), upholstery)
+	_box_mesh(couch, "ArmS", Vector3(0.9, 0.28, 0.2), Vector3(0, 0.49, 1.0), upholstery)
+	var cushion := _box_mesh(couch, "SaggingCushion", Vector3(0.62, 0.12, 0.85), Vector3(0.08, 0.38, -0.45), upholstery)
+	cushion.rotation_degrees = Vector3(-6, 0, 5)
+	var fallen := _box_mesh(couch, "FallenCushion", Vector3(0.62, 0.12, 0.85), Vector3(0.95, 0.06, 0.5), upholstery)
+	fallen.rotation_degrees = Vector3(0, 35, 0)
+	_collision(couch, _box_shape(Vector3(0.9, 0.9, 2.2)), Vector3(0, 0.45, 0))
+
+	# The phone (radio model) sits on an upturned crate by the north wall.
+	var phone := Area3D.new()
+	phone.name = "Phone"
+	phone.collision_layer = 4
+	phone.collision_mask = 0
+	phone.monitoring = false
+	phone.set_script(load("res://interactables/Phone3D.gd"))
+	_add(_root, phone)
+	phone.position = Vector3(3.9, 0, -3.0)
+	_model(phone, "Crate", "furniture/cardboardBoxClosed.glb", Vector3(-0.26, 0, 0.26), 2.5)
+	_model(phone, "Radio", "furniture/radio.glb", Vector3(-0.3, 0.7, 0.1), 1.6, 12.0)
+	_blocker(phone, Vector3(0.55, 0.7, 0.55), Vector3(0, 0.35, 0))
+	_collision(phone, _box_shape(Vector3(1.6, 1.2, 1.6)), Vector3(0, 0.6, 0.2))
+
+	# Old TV on a box by the east wall, facing into the room.
+	var tv := StaticBody3D.new()
+	tv.name = "TV"
+	_add(_root, tv)
+	tv.position = Vector3(4.55, 0, 1.5)
+	_model(tv, "Box", "furniture/cardboardBoxClosed.glb", Vector3(0.26, 0, 0.26), 2.5, -90.0)
+	_model(tv, "Set", "furniture/televisionVintage.glb", Vector3(0.27, 0.7, -0.4), 2.0, -90.0)
+	_collision(tv, _box_shape(Vector3(0.6, 1.3, 0.85)), Vector3(0, 0.65, 0))
+	_light(tv, "Glow", Vector3(-0.6, 0.95, 0), Color(0.35, 0.55, 1.0), 1.4, 3.5)
+
+	# Movable clutter -- Apartment3D.gd picks where each of these ends up.
+	var chair := StaticBody3D.new()
+	chair.name = "ChairOverturned"
+	_add(_root, chair)
+	var chair_model := _model(chair, "Model", "furniture/chairDesk.glb", Vector3(0.35, 0.4, 0.4), 2.5)
+	chair_model.rotation_degrees = Vector3(0, 30, 90)
+	_collision(chair, _box_shape(Vector3(0.8, 0.8, 0.8)), Vector3(0, 0.4, 0))
+
+	var boxes := StaticBody3D.new()
+	boxes.name = "BoxStack"
+	_add(_root, boxes)
+	_model(boxes, "Bottom", "furniture/cardboardBoxClosed.glb", Vector3(-0.26, 0, 0.26), 2.5)
+	_model(boxes, "Top", "furniture/cardboardBoxOpen.glb", Vector3(-0.2, 0.7, 0.28), 2.0, 15.0)
+	_model(boxes, "Side", "furniture/cardboardBoxClosed.glb", Vector3(0.3, 0, 0.3), 2.0, -20.0)
+	_collision(boxes, _box_shape(Vector3(1.1, 1.2, 0.6)), Vector3(0.1, 0.6, 0))
+
+	_trash_pile("TrashA", 11)
+	_trash_pile("TrashB", 23)
+	_trash_pile("TrashC", 37, 0.5)
+
+	var clothes := Node3D.new()
+	clothes.name = "ClothesPile"
+	_add(_root, clothes)
+	var cloth_colors := [Color(0.15, 0.2, 0.32), Color(0.3, 0.3, 0.3), Color(0.35, 0.1, 0.08), Color(0.2, 0.18, 0.14)]
+	for i in cloth_colors.size():
+		var c := _box_mesh(clothes, "Cloth%d" % i, Vector3(0.6, 0.08, 0.45), Vector3(0.15 * i - 0.2, 0.04 + i * 0.05, 0.1 * (i % 2)), _color_mat(cloth_colors[i], 1.0))
+		c.rotation_degrees = Vector3(i * 3, i * 47, -i * 2)
+
+	# Fixed decor: overflowing trashcan, a knocked-over floor lamp, a punched
+	# hole in the drywall with crumbs below it, stains everywhere.
+	_model(_root, "Trashcan", "furniture/trashcan.glb", Vector3(2.7, 0, 3.0), 2.0)
+	_model(_root, "TrashcanBag", "food/bag.glb", Vector3(2.2, 0, 3.1), 0.9, 40.0)
+	var lamp := _model(_root, "LampKnockedOver", "furniture/lampRoundFloor.glb", Vector3(-2.4, 0.1, 3.0), 2.2)
+	lamp.rotation_degrees = Vector3(0, -20, 90)
+
+	_decal("HoleInWall", ENV3D + "drywall_hole.png", Vector3(0.4, 1.05, -3.5), 0.45, 0.4, "north")
+	var crumbs := _color_mat(Color(0.82, 0.79, 0.72), 1.0)
+	for i in 4:
+		var crumb := _box_mesh(_root, "Drywall%d" % i, Vector3.ONE * (0.05 + 0.02 * i), Vector3(0.25 + 0.12 * i, 0.03, -3.3 + 0.05 * (i % 2)), crumbs)
+		crumb.rotation_degrees = Vector3(i * 20, i * 33, i * 11)
+
+	_decal("WaterStainNorth", ENV3D + "stain_water.png", Vector3(-3.2, 1.9, -3.5), 2.2, 1.6, "north")
+	_decal("WaterStainEast", ENV3D + "stain_water.png", Vector3(5.0, 1.6, -2.4), 1.6, 1.8, "east", 30.0)
+	_decal("GrimeWest", ENV3D + "stain_grime.png", Vector3(-5.0, 0.7, -2.2), 2.0, 1.2, "west")
+	_decal("GrimeWestCouch", ENV3D + "stain_grime.png", Vector3(-5.0, 0.9, 1.4), 2.6, 1.0, "west")
+	_decal("FloorGrimeMattress", ENV3D + "stain_grime.png", Vector3(-3.4, 0, -2.2), 1.6, 2.4, "floor", 20.0)
+	_decal("FloorGrimeCouch", ENV3D + "stain_grime.png", Vector3(-3.6, 0, 1.4), 1.4, 2.2)
+	_decal("FloorWaterCenter", ENV3D + "stain_water.png", Vector3(1.0, 0, 0.8), 2.4, 1.8, "floor", 70.0)
+	_decal("FloorGrimeDoor", ENV3D + "stain_grime.png", Vector3(3.8, 0, -0.9), 1.2, 1.4, "floor", 10.0, Color(1, 1, 1, 0.7))
+
+	_door("DoorToCity", Vector3(4.55, 0, -0.9), Vector3.LEFT, "res://world/City3D.tscn", "SpawnFromHome")
+	_marker("SpawnDefault", Vector3(-1.5, 0, -0.5))
+	_marker("SpawnFromCity", Vector3(3.6, 0, -0.9))
+	_player_and_hud(Vector3(-1.5, 0, -0.5))
+	return _root
 
 # --- Shop -------------------------------------------------------------------
 

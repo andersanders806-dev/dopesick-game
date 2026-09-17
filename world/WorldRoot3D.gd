@@ -48,7 +48,7 @@ func _place_player_at_spawn() -> Marker3D:
 ## its own. Spawn a fresh one beside wherever the player just walked in, as
 ## long as they're still wanted, so the chase follows them room to room.
 func _maybe_continue_chase(spawn_marker: Marker3D) -> void:
-	if not GameState.wanted:
+	if not GameState.wanted or GameState.in_custody:
 		return
 	if get_tree().get_first_node_in_group("police") != null:
 		return

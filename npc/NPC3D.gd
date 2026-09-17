@@ -8,6 +8,7 @@ const PORTRAITS := {
 	"Quiet Kid": preload("res://assets/portraits/quiet_kid.png"),
 	"Old Sailor": preload("res://assets/portraits/old_sailor.png"),
 	"Nervous Dave": preload("res://assets/portraits/nervous_dave.png"),
+	"Booking Officer": preload("res://assets/portraits/jailer.png"),
 }
 
 const PATRON_SFX := {
@@ -44,6 +45,12 @@ const IDLE_SOUND_MAX_GAP := 14.0
 @export var npc_name: String = "Stranger"
 @export var is_patron: bool = false
 @export_multiline var flavor_lines: String = "..."
+## The bartender will buy any stolen goods you're carrying; other non-patrons
+## (like the pusher's lookout) just talk.
+@export var fences_items: bool = true
+## Multiplies the model's clothing colours, for telling characters that share
+## a base model apart. White leaves it unchanged.
+@export var clothes_tint: Color = Color.WHITE
 @export var model_path: String = "res://assets/kenney/characters/character-male-b.glb"
 
 @onready var model_root: Node3D = $ModelRoot
@@ -51,8 +58,13 @@ const IDLE_SOUND_MAX_GAP := 14.0
 @onready var voice: AudioStreamPlayer3D = $Voice
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+const CharacterLook := preload("res://npc/CharacterLook.gd")
 
 var anim: CharacterAnimator
+
+## "idle" to stand, "sit" to sit. Kept here (not just on the animator) so it
+## survives set_model() swapping in a different body.
+var pose: String = "idle"
 
 var request_id: String = ""
 var request_price: int = 0
@@ -122,7 +134,14 @@ func set_model(path: String) -> void:
 	if path != "":
 		var model: Node = load(path).instantiate()
 		model_root.add_child(model)
+		CharacterLook.tint_clothes(model, clothes_tint)
 		anim = CharacterAnimator.new(model)
+		anim.set_rest_clip(pose)
+
+func set_pose(new_pose: String) -> void:
+	pose = new_pose
+	if anim:
+		anim.set_rest_clip(pose)
 
 func set_request(id: String, price: int) -> void:
 	request_id = id
@@ -160,10 +179,11 @@ func _patron_interact(hud: Node) -> void:
 		hud.show_dialogue(npc_name, "That's exactly it. Here's $%d." % request_price, _portrait())
 	else:
 		var item_name := GameState.item_name_for(request_id)
-		hud.show_dialogue(npc_name, "I need %s. Get it for me and I'll pay $%d." % [item_name, request_price], _portrait())
+		var where := GameState.store_name_for(request_id)
+		hud.show_dialogue(npc_name, "I need %s. Try %s. Get it for me and I'll pay $%d." % [item_name, where, request_price], _portrait())
 
 func _flavor_interact(hud: Node) -> void:
-	if not GameState.inventory.is_empty():
+	if fences_items and not GameState.inventory.is_empty():
 		var earned := GameState.fence_everything()
 		SFX.play("cash")
 		hud.show_dialogue(npc_name, "I'll take that off your hands. Here's $%d, no questions." % earned, _portrait())

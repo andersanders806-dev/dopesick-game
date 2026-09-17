@@ -5,26 +5,33 @@ A dark, low-budget top-down stealth game about addiction, theft, and getting by.
 ## 3D version (current main scene)
 
 The game is being ported from 2D to 3D. The 3D version is now the main
-scene (`world/Apartment3D.tscn`) and covers the full loop: Apartment, City,
-Dive Bar, and Shop, each a `*3D.tscn` with a matching `*3D.gd` room script.
-The original 2D scenes are still in place, untouched, alongside them.
+scene (`world/Apartment3D.tscn`). The original 2D scenes are still in place
+alongside it.
+
+**The 3D loop:** wake up in the Apartment and head out onto the City block
+(56 m, eight buildings: police station, apartments, pharmacy, Dive Bar,
+corner shop, liquor store, supermarket, electronics store). In the Dive Bar a
+patron asks for something and tells you which store has it. Steal it without
+a guard seeing, bring it back, get paid, and buy from the pusher in person at
+the dark end of the block. Get caught and you wake up in a jail cell.
 
 - **Art:** Kenney's CC0 Furniture, City, Food, and Mini Characters kits
   (`assets/kenney/`), reusing the photoreal floor/wall textures from the
   2D pass as triplanar materials.
 - **Camera:** a fixed-angle follow camera on the player looking north, so
   every room keeps its south wall low and puts doors on the side walls.
-- **Room generation:** all four 3D rooms are *generated*
+- **Room generation:** every 3D room (Apartment, City, Dive Bar, the five
+  stores, and the Jail) is *generated*
   by `dev-tools/build_rooms_3d.gd`, not hand-edited. Change the layout
   there and rebuild with
   `godot --headless --path . res://dev-tools/BuildRooms3D.tscn`. It runs
   as a scene rather than via `-s` because the room scripts reference the
   `GameState`/`SFX` autoloads, which don't exist yet when a `-s` script's
   variables are initialised.
-- **Behaviour carried over from 2D:** the Shop picks one of 3 shelf layouts
-  and shuffles which item sits where; the Dive Bar picks one of 3 table
-  layouts and randomises patron names, models, and requests; the City car
-  gets a random paint colour; the Apartment picks one of 3 clutter layouts.
+- **Per-visit variety:** every store picks one of its fixture layouts and
+  shuffles its stock; the Dive Bar seats patrons at 3 of 5 spots and
+  randomises their names, models, and requests; parked cars get random
+  paint; the Apartment picks one of 3 clutter layouts.
   Navmeshes are baked at runtime after furniture moves, the same as 2D.
 - **Apartment look:** based on details that recur in documentary and news
   photos of drug houses: windows boarded over (thin slivers of cold
@@ -36,18 +43,99 @@ The original 2D scenes are still in place, untouched, alongside them.
   stains (`Decal`s) on the walls and floor; and piles of cans, bottles,
   takeaway boxes, paper, and burnt foil scraps. Its textures (stains, mattress,
   couch fabric, weathered planks, the drywall hole) are procedural, from
-  `dev-tools/gen_apartment_textures.py`. The mattress, couch, phone crate,
+  `dev-tools/gen_env3d_textures.py`. The mattress, couch, radio crate,
   TV, overturned chair, and box stack all have collision, and the navmesh
   routes around them.
+- **Stores and what gets stolen:** the item catalogue
+  (`GameState.REQUEST_POOL`, 20 items across five stores) is drawn from lists
+  of what gets shoplifted to fund a habit, and the CRAVED "hot products"
+  research (Concealable, Removable, Available, Valuable, Enjoyable,
+  Disposable). The **pharmacy** has razors (in a locked, glass-fronted
+  case), whitening strips, cold medicine, baby formula, and makeup, watched
+  by a pharmacist from a raised back counter. The **supermarket** has steaks
+  and cheese in an open cooler (packaged meat famously has little security),
+  plus detergent, which is traded almost like cash; its one bored cashier is
+  far from the aisles, so it's the easy store. The **corner shop** has
+  cigarettes, chargers, batteries, energy drinks, and sunglasses. The
+  **liquor store** has whiskey, vodka, and cognac, and a clerk behind
+  plexiglass with a convex security mirror and a clear view. The
+  **electronics store** has headphones, games, watches, and phones in low
+  glass cases that hide nothing, with a TV wall, anti-theft gates, and a
+  security guard at the door as well as a clerk: the most valuable, and the
+  hardest. All five share one script (`world/Store3D.gd`). Each item's 3D
+  model is built from primitives (`items/ItemModels.gd`), and the HUD icons
+  are rendered from those same models (`dev-tools/render_item_icons.gd`).
+  Patrons say which store to try.
+- **The pusher:** buying happens in person on the street, not over the
+  phone (the Apartment's phone is gone). He's modelled on how street-level
+  selling is described in policing guides (Police Magazine, ASU Center for
+  Problem-Oriented Policing). He works a fixed, badly lit spot with no
+  streetlights, at the mouth of an alley. He keeps nothing on him: you pay,
+  he tells you to wait, walks to a stash behind the dumpster at the next
+  alley, crouches to fetch it, and comes back for a quick hand-to-hand. He
+  keeps glancing up and down the street. A **lookout** posted down the
+  block toward the police station whistles the moment you're wanted, and
+  the pusher slips down his alley out of sight until the heat is off. A sale
+  already paid for is still honoured when he comes back. He looks like an
+  ordinary guy in a grey hoodie, not a movie villain (the sources stress
+  that appearance isn't what gives dealing away).
+- **Dive Bar:** rebuilt from write-ups of what makes a "true" dive bar. It
+  has old neon beer signs dimmed with age at different heights, Christmas
+  lights left up all year with a few bulbs dead, wood-panelled walls, and a
+  sticky linoleum floor. There are red vinyl booths patched with duct tape
+  and ripped stools, a worn bar top with a brass foot rail, beer taps and
+  pretzel bowls, and a back bar with a mirror. A small TV glows blue-green in
+  the corner, a pool table with faded felt sits under a stained-glass lamp,
+  and a jukebox has burnt-out bulbs. There are also darts, an ATM at the
+  back, a CASH ONLY card, the restroom door, and the one unboarded window,
+  whose OPEN sign reads backwards from inside. Sign text is generic, never
+  real brands. Patrons in booths sit, using Kenney's `sit` clip.
+- **Jail:** getting busted now books you into a holding cell instead of
+  sending you home. The cell follows first-hand accounts and news photos of
+  police holding cells. It has painted beige concrete-block walls, a
+  concrete bench with a blue plastic-covered mattress, and a seatless steel
+  toilet with the sink set into the wall above it. There's a small barred
+  window of reinforced glass, a caged light, and an intercom reading "PRESS
+  FOR MEDICAL ATTENTION". A CCTV dome, a floor drain, and a steel door with
+  an observation slot complete it. Outside are the booking desk and officer,
+  a mugshot height chart, and bagged property. Knock, press the intercom,
+  or wait it out on the bench (hours pass and the withdrawal gets worse),
+  or just sit tight until the officer comes. Then the door slides open and
+  you walk out onto the street by the police station.
+- **Who wears which model:** Kenney's `male-c` is a police officer, so it's
+  used for the police and the booking officer (the police previously used a
+  civilian model, while a cop-uniformed model was sitting at the bar as a
+  patron). `male-a` is the player, `male-d` the bartender, `male-e` the
+  shopkeeper, `male-f` the pusher, and `male-b` the lookout. The pusher and
+  lookout are recoloured via `npc/CharacterLook.gd`, which tints just the
+  clothing mesh. Patrons draw from the six female models.
 - **Shopkeeper vision:** the line-of-sight ray starts at eye height (1.5 m),
   above the 1.05 m counter, so the counter doesn't blind them. The 2.2 m
   shelves still fully block sight.
 - **Verification:** `godot --headless --path . -s res://dev-tools/smoke_test_3d.gd`
-  drives the real scenes through the whole loop: steal, get spotted, police
-  close in along the navmesh, the chase follows you through a door, sell to
-  a patron, buy a fix, sleep. It exits non-zero on any failure.
-  `dev-tools/capture_scene.gd` renders any scene to a PNG for a visual check
-  without the editor.
+  drives the real scenes. It loads every room, and checks every item in
+  every store layout is reachable from the door and every guard can call
+  the police. Then it steals, gets spotted, and has police arrive and close
+  in along the navmesh. The chase follows you through a door. It buys from
+  the pusher (stash walk, handoff, hiding from the lookout's whistle), walks
+  to every patron seat, and sells to a patron. It gets busted exactly once
+  with the clerk still watching, is held by the locked cell, waits it out,
+  and walks out of jail. Finally it checks Apartment furniture collision and
+  sleeps. It exits non-zero on any failure. `dev-tools/playtest_bot.gd` plays
+  a full loop in a real window with screenshots.
+  `dev-tools/capture_scene.gd` renders any scene to a PNG.
+- **Bugs fixed from playtesting:**
+  - *Wrong interaction target.* Pressing E used whichever object came into
+    range first, not the nearest, so after using the Apartment phone the
+    door right next to you did nothing.
+  - *Chained busts.* One catch could count as two or three busts: after the
+    first, the shopkeeper still saw the theft, re-raised the alarm, and a
+    new officer spawned on top of you at the exit. A custody flag now blocks
+    all of that until you're booked, and officers take 2 s to arrive.
+  - *Stuck after a bust.* The busted scene change was scheduled on the
+    officer that had just been freed, so it never fired.
+  - *HUD.* The day counter didn't update after sleeping, and the dialogue box
+    showed an empty portrait frame for characters without a portrait.
 - **Gotcha:** the Kenney `.glb` files were first imported before their
   shared `Textures/colormap.png` had been, which silently baked them in
   untextured (plain white/grey characters and buildings). Deleting their

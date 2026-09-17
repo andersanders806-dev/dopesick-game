@@ -8,12 +8,13 @@ extends RefCounted
 
 const BLEND_TIME := 0.15
 const MOVING_THRESHOLD := 0.1
-const LOOPING_CLIPS := ["idle", "walk", "sprint"]
+const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit"]
 
 var _player: AnimationPlayer
 var _moving_clip: String
 var _current := ""
 var _one_shot := ""
+var _rest_clip := "idle"
 
 ## `moving_clip` is what plays while moving ("walk", or "sprint" for police).
 func _init(model: Node, moving_clip := "walk") -> void:
@@ -36,7 +37,14 @@ func update(horizontal_speed: float, anim_speed := 1.0) -> void:
 	if horizontal_speed > MOVING_THRESHOLD:
 		play(_moving_clip, anim_speed)
 	else:
-		play("idle")
+		play(_rest_clip)
+
+## What the character does when not moving: "idle" (standing) by default,
+## or e.g. "sit" for a patron in a booth. Takes effect immediately.
+func set_rest_clip(clip: String) -> void:
+	_rest_clip = clip
+	if _one_shot == "":
+		play(clip)
 
 func play(clip: String, anim_speed := 1.0) -> void:
 	if _player == null or not _player.has_animation(clip):

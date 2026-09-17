@@ -399,6 +399,29 @@ def gen_tap():
     save("patron_tap", normalize([lp.lowpass(v) for v in out], 0.5))
 
 
+# --- Street -----------------------------------------------------------------------
+
+def gen_lookout_whistle():
+    """A lookout's warning: two sharp, rising two-finger whistles with a bit
+    of breath noise, loud enough to carry down the block."""
+    rng = random.Random(101)
+    out = []
+    for rep in range(2):
+        ln = n_samples(0.32)
+        phase = 0.0
+        bp = BandPass(2600, 3.0)
+        for j in range(ln):
+            k = j / ln
+            # Swoop up, hold, then drop off at the end.
+            freq = 1900 + 900 * min(1.0, k * 2.5) - (500 * (k - 0.8) / 0.2 if k > 0.8 else 0)
+            phase += TAU * freq / SR
+            env = min(1.0, j / 300) * (1 - max(0.0, k - 0.85) / 0.15)
+            breath = bp(rng.random() * 2 - 1) * 0.35
+            out.append((math.sin(phase) + breath) * env)
+        out.extend([0.0] * n_samples(0.12))
+    save("lookout_whistle", normalize(out, 0.6))
+
+
 # --- City --------------------------------------------------------------------
 
 def gen_city_ambience():
@@ -446,3 +469,4 @@ if __name__ == "__main__":
     gen_glass_down()
     gen_sip()
     gen_tap()
+    gen_lookout_whistle()

@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://npc/Police3D.gd" id="1"]
-[ext_resource type="PackedScene" path="res://assets/kenney/characters/character-male-f.glb" id="2"]
+[ext_resource type="PackedScene" path="res://assets/kenney/characters/character-male-c.glb" id="2"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_police"]
 radius = 0.32

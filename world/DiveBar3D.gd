@@ -1,41 +1,52 @@
 extends "res://world/WorldRoot3D.gd"
 
 const PATRON_NAMES := ["Wiry Guy", "Tired Woman", "Big Eddie", "Quiet Kid", "Old Sailor", "Nervous Dave"]
+# Kenney's male-c is a police officer, male-a is the player, male-d is the
+# bartender, male-e the shopkeeper, male-f the pusher, male-b his lookout --
+# so patrons draw from the rest, and nobody at a table is dressed as a cop.
 const PATRON_MODELS := [
-	"res://assets/kenney/characters/character-male-b.glb",
-	"res://assets/kenney/characters/character-male-c.glb",
-	"res://assets/kenney/characters/character-male-d.glb",
 	"res://assets/kenney/characters/character-female-a.glb",
 	"res://assets/kenney/characters/character-female-b.glb",
+	"res://assets/kenney/characters/character-female-c.glb",
 	"res://assets/kenney/characters/character-female-d.glb",
+	"res://assets/kenney/characters/character-female-e.glb",
+	"res://assets/kenney/characters/character-female-f.glb",
 ]
 
-# Each layout is 3 table spots (x, z), index-matched to `tables` / `patrons`
-# (TableA/B/C), converted from DiveBar.gd's 2D layouts. The patron sits on
-# the west end of their table, facing the room -- not behind it, since the
-# camera looks north and the tabletop would hide them.
-const TABLE_LAYOUTS := [
-	[Vector2(-3.5, 2.2), Vector2(0.0, 2.7), Vector2(3.5, 1.7)],
-	[Vector2(-2.75, 0.4), Vector2(0.0, 0.4), Vector2(2.75, 0.4)],
-	[Vector2(-4.5, 0.8), Vector2(0.0, 1.9), Vector2(4.5, 0.8)],
+# Where a patron can be: the north bench of either booth (sitting, facing the
+# room), at one of the high-tops, or leaning at the end of the pool table
+# (standing). Three of these are picked at random each visit. `yaw` is the
+# direction they face in degrees (0 = toward the camera / +Z).
+const SEATS := [
+	{"pos": Vector3(-6.75, 0.0, -1.62), "yaw": 0.0, "pose": "sit"},    # BoothA
+	{"pos": Vector3(-6.75, 0.0, 1.18), "yaw": 0.0, "pose": "sit"},     # BoothB
+	{"pos": Vector3(-2.7, 0.0, 0.25), "yaw": 0.0, "pose": "idle"},     # HighTopA
+	{"pos": Vector3(-0.6, 0.0, 2.35), "yaw": 0.0, "pose": "idle"},     # HighTopB
+	{"pos": Vector3(4.95, 0.0, 1.1), "yaw": -90.0, "pose": "idle"},    # PoolTable
 ]
-const PATRON_OFFSET := Vector3(-1.05, 0.0, -0.25)
+## The Kenney sit pose puts the hips at the character's feet level, so seated
+## patrons are raised onto the booth bench.
+const SIT_HEIGHT := 0.32
 
 @onready var patrons: Array = [$Patron1, $Patron2, $Patron3]
-@onready var tables: Array = [$TableA, $TableB, $TableC]
 
 func _ready() -> void:
-	_randomize_layout()
+	_seat_patrons()
 	super._ready()
 	_randomize_patrons()
 	_assign_requests()
 
-func _randomize_layout() -> void:
-	var layout: Array = TABLE_LAYOUTS.pick_random()
-	for i in range(tables.size()):
-		var spot: Vector2 = layout[i]
-		tables[i].position = Vector3(spot.x, 0.0, spot.y)
-		patrons[i].position = tables[i].position + PATRON_OFFSET
+func _seat_patrons() -> void:
+	var seats := SEATS.duplicate()
+	seats.shuffle()
+	for i in range(patrons.size()):
+		var seat: Dictionary = seats[i]
+		var pos: Vector3 = seat["pos"]
+		if seat["pose"] == "sit":
+			pos.y = SIT_HEIGHT
+		patrons[i].position = pos
+		patrons[i].model_root.rotation_degrees.y = seat["yaw"]
+		patrons[i].set_pose(seat["pose"])
 
 ## Name and model are shuffled independently, so the same name doesn't
 ## always wear the same body.

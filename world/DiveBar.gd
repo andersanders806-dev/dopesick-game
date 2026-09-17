@@ -41,7 +41,9 @@ func _randomize_patrons() -> void:
 		patrons[i].set_skin(skins[i])
 
 func _assign_requests() -> void:
-	var pool := GameState.REQUEST_POOL.duplicate()
+	# The 2D Shop only stocks the original five items.
+	var stocked := ["whiskey", "cigs", "charger", "batteries", "watch"]
+	var pool := GameState.REQUEST_POOL.filter(func(r): return r["id"] in stocked)
 	pool.shuffle()
 	for i in range(patrons.size()):
 		var r = pool[i]

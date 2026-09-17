@@ -7,14 +7,46 @@ signal craving_changed(new_craving: float)
 signal inventory_changed
 signal wanted_changed(is_wanted: bool)
 signal busted
+signal day_changed(new_day: int)
 
+## Everything that can be stolen, which store stocks it, and what a patron
+## will pay for it. Picked from lists of what gets shoplifted to fund a habit
+## (small, valuable, easy to resell: the CRAVED hot-products research):
+## locked-up razors and whitening strips from pharmacies, packaged steaks and
+## detergent from supermarkets (little security, and detergent trades almost
+## like cash), cigarettes and phone accessories from corner shops, spirits
+## from liquor stores, and headphones and phones from electronics stores --
+## worth the most, and guarded the hardest.
 const REQUEST_POOL := [
-	{"id": "whiskey", "name": "a bottle of good whiskey", "price": 30},
-	{"id": "cigs", "name": "a carton of cigarettes", "price": 15},
-	{"id": "charger", "name": "a phone charger", "price": 10},
-	{"id": "batteries", "name": "a pack of batteries", "price": 8},
-	{"id": "watch", "name": "a decent watch", "price": 40},
+	{"id": "cigs", "name": "a carton of cigarettes", "price": 15, "store": "convenience"},
+	{"id": "charger", "name": "a phone charger", "price": 10, "store": "convenience"},
+	{"id": "batteries", "name": "a pack of batteries", "price": 8, "store": "convenience"},
+	{"id": "energy", "name": "a four-pack of energy drinks", "price": 8, "store": "convenience"},
+	{"id": "sunglasses", "name": "a pair of sunglasses", "price": 12, "store": "convenience"},
+	{"id": "razors", "name": "a pack of razor blades", "price": 18, "store": "pharmacy"},
+	{"id": "whitening", "name": "a box of teeth whitening strips", "price": 22, "store": "pharmacy"},
+	{"id": "coldmeds", "name": "a box of cold and allergy pills", "price": 12, "store": "pharmacy"},
+	{"id": "formula", "name": "a tin of baby formula", "price": 25, "store": "pharmacy"},
+	{"id": "makeup", "name": "a makeup palette", "price": 15, "store": "pharmacy"},
+	{"id": "steak", "name": "a pack of steaks", "price": 20, "store": "supermarket"},
+	{"id": "detergent", "name": "a big jug of laundry detergent", "price": 10, "store": "supermarket"},
+	{"id": "cheese", "name": "a block of good cheese", "price": 9, "store": "supermarket"},
+	{"id": "whiskey", "name": "a bottle of good whiskey", "price": 30, "store": "liquor"},
+	{"id": "vodka", "name": "a bottle of vodka", "price": 20, "store": "liquor"},
+	{"id": "cognac", "name": "a bottle of cognac", "price": 45, "store": "liquor"},
+	{"id": "headphones", "name": "a pair of wireless headphones", "price": 40, "store": "electronics"},
+	{"id": "videogame", "name": "a new video game", "price": 25, "store": "electronics"},
+	{"id": "watch", "name": "a decent watch", "price": 40, "store": "electronics"},
+	{"id": "smartphone", "name": "a smartphone", "price": 60, "store": "electronics"},
 ]
+
+const STORE_NAMES := {
+	"convenience": "the corner shop",
+	"pharmacy": "the pharmacy",
+	"supermarket": "the supermarket",
+	"liquor": "the liquor store",
+	"electronics": "the electronics store",
+}
 
 const CRAVING_DECAY_PER_SEC := 0.55
 const DECAY_INCREASE_PER_DAY := 0.04
@@ -28,6 +60,11 @@ var craving: float = 45.0
 var wanted: bool = false
 var day: int = 1
 var pending_spawn: String = ""
+## True from the moment you're caught until you're booked into a cell. While
+## it's set nothing can spot, chase, or bust you again -- without it, a
+## shopkeeper who still saw your theft window could re-trigger the alarm and
+## you'd be "busted" two or three times in one catch.
+var in_custody: bool = false
 
 func _ready() -> void:
 	_setup_input_actions()
@@ -63,6 +100,15 @@ func _bind(action: String, keys: Array) -> void:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = key
 		InputMap.action_add_event(action, ev)
+
+func item_info(id: String) -> Dictionary:
+	for r in REQUEST_POOL:
+		if r["id"] == id:
+			return r
+	return {}
+
+func store_name_for(id: String) -> String:
+	return STORE_NAMES.get(item_info(id).get("store", ""), "somewhere in town")
 
 func item_name_for(id: String) -> String:
 	for r in REQUEST_POOL:
@@ -107,9 +153,14 @@ func spend_cash(amount: int) -> bool:
 func buy_fix() -> bool:
 	if not spend_cash(current_fix_cost()):
 		return false
+	receive_fix()
+	return true
+
+## The fix itself, separate from paying: the 3D pusher takes your cash first
+## and only hands it over after fetching it from his stash.
+func receive_fix() -> void:
 	craving = 100.0
 	craving_changed.emit(craving)
-	return true
 
 func set_wanted(value: bool) -> void:
 	if wanted == value:
@@ -118,6 +169,9 @@ func set_wanted(value: bool) -> void:
 	wanted_changed.emit(wanted)
 
 func get_busted() -> void:
+	if in_custody:
+		return
+	in_custody = true
 	inventory.clear()
 	var fine := int(cash * 0.5)
 	cash -= fine
@@ -128,5 +182,6 @@ func get_busted() -> void:
 
 func sleep() -> void:
 	day += 1
+	day_changed.emit(day)
 	craving = min(craving, 55.0)
 	craving_changed.emit(craving)

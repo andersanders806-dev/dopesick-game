@@ -9,13 +9,9 @@ const CARRY_PADDING := 10.0
 const ICON_SIZE := 22.0
 const ICON_GAP := 6.0
 
-const ITEM_ICONS := {
-	"whiskey": preload("res://assets/sprites/item_whiskey_icon.png"),
-	"cigs": preload("res://assets/sprites/item_cigs_icon.png"),
-	"charger": preload("res://assets/sprites/item_charger_icon.png"),
-	"batteries": preload("res://assets/sprites/item_batteries_icon.png"),
-	"watch": preload("res://assets/sprites/item_watch_icon.png"),
-}
+## Icons are rendered from the same 3D models the shelves use
+## (dev-tools/render_item_icons.gd), one per item in GameState.REQUEST_POOL.
+const ICON_PATH := "res://assets/icons/item_%s.png"
 
 @onready var cash_label: Label = $TopBar/CashLabel
 @onready var day_label: Label = $TopBar/DayLabel
@@ -30,6 +26,7 @@ const ITEM_ICONS := {
 @onready var text_label: Label = $DialoguePanel/TextLabel
 @onready var hint_label: Label = $DialoguePanel/HintLabel
 @onready var portrait_rect: TextureRect = $DialoguePanel/Portrait
+@onready var portrait_frame: ColorRect = $DialoguePanel/PortraitFrame
 @onready var busted_overlay: Control = $BustedOverlay
 
 const TEXT_LEFT_WITH_PORTRAIT := 150.0
@@ -41,6 +38,7 @@ func _ready() -> void:
 	GameState.craving_changed.connect(_update_craving)
 	GameState.inventory_changed.connect(_update_inventory)
 	GameState.wanted_changed.connect(_update_wanted)
+	GameState.day_changed.connect(func(d): day_label.text = "Day %d" % d)
 	_update_cash(GameState.cash)
 	_update_craving(GameState.craving)
 	_update_inventory()
@@ -72,11 +70,11 @@ func _update_inventory() -> void:
 	inventory_label.text = "Carrying:"
 	var icon_count := 0
 	for id in GameState.inventory:
-		if not ITEM_ICONS.has(id):
+		if not ResourceLoader.exists(ICON_PATH % id):
 			continue
 		icon_count += 1
 		var icon := TextureRect.new()
-		icon.texture = ITEM_ICONS[id]
+		icon.texture = load(ICON_PATH % id)
 		icon.custom_minimum_size = Vector2(22, 22)
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -104,11 +102,16 @@ func show_dialogue(speaker: String, text: String, portrait: Texture2D = null) ->
 	text_label.text = text
 	portrait_rect.texture = portrait
 	portrait_rect.visible = portrait != null
+	portrait_frame.visible = portrait != null
 
 	var text_left: float = TEXT_LEFT_WITH_PORTRAIT if portrait != null else TEXT_LEFT_NO_PORTRAIT
 	speaker_label.offset_left = text_left
 	text_label.offset_left = text_left
+	# Keep the hint's width fixed as it moves, or its background box
+	# stretches across the panel when there's no portrait.
+	var hint_width := hint_label.offset_right - hint_label.offset_left
 	hint_label.offset_left = text_left
+	hint_label.offset_right = text_left + hint_width
 
 	dialogue_panel.visible = true
 

@@ -43,6 +43,15 @@ CHARACTERS = {
     "quiet_kid": "a young quiet teenager in a worn hoodie, pale thin face just starting to hollow out, faint dark circles, downcast anxious eyes",
     "old_sailor": "an old grizzled sailor in his 60s, deeply weathered wrinkled skin, a red bulbous nose with broken veins, a white beard, watery bloodshot eyes, a knit cap",
     "nervous_dave": "a nervous balding man in his 40s, sweaty forehead, glazed heavy-lidded eyes struggling to focus, sallow complexion, wide anxious expression",
+    # The pusher: street-level sellers blend in rather than looking like a
+    # movie villain, and are often users themselves; what gives them away is
+    # behaviour -- constantly checking the street -- not appearance.
+    "pusher": "an ordinary-looking man in his 30s in a plain grey zip-up hoodie with the hood down and a faded t-shirt, tired skin with faint dark circles, stubble, eyes glancing sideways as if checking the street behind the camera, tense guarded expression, standing under harsh streetlight",
+    "pharmacist": "a tired pharmacist in her 40s in a white lab coat with a name badge, glasses pushed up on her head, polite but wary expression, fluorescent-lit",
+    "cashier": "a bored young supermarket cashier in his early 20s in a red store polo shirt with a name tag, slouched, indifferent half-lidded expression",
+    "liquor_clerk": "a stern liquor store clerk in his 50s, heavy-set, grey stubble, flannel shirt, arms folded, suspicious narrowed eyes, standing behind scratched plexiglass",
+    "security_guard": "a bulky retail security guard in his 30s in a black uniform shirt with a SECURITY patch, radio clipped to his shoulder, buzz cut, alert unimpressed stare",
+    "jailer": "a weary middle-aged booking officer at a police station in a dark blue uniform, reading glasses, grey moustache, flat bored expression of someone who has seen it all",
     "shopkeeper": "a tired middle-aged convenience shop owner in a plain apron over a flannel shirt, alert watchful eyes, deep worry lines, arms crossed, wary guarded expression",
 }
 
@@ -106,10 +115,20 @@ def process(name: str, desc: str, seed: int):
     return True
 
 
+# Pass character names to (re)generate just those, e.g.
+#   .venv-portraits/bin/python3 dev-tools/gen_portraits.py pusher
+# With no arguments, every portrait is regenerated. Seeds stay tied to each
+# character's position in CHARACTERS either way.
+import sys
+wanted = set(sys.argv[1:])
 ok = 0
+todo = 0
 for i, (name, desc) in enumerate(CHARACTERS.items()):
+    if wanted and name not in wanted:
+        continue
+    todo += 1
     if process(name, desc, seed=100 + i):
         ok += 1
 
-print(f"\n{ok}/{len(CHARACTERS)} portraits generated")
+print(f"\n{ok}/{todo} portraits generated")
 print("done:", sorted(os.listdir(OUT)))

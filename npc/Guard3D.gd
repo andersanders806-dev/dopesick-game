@@ -7,6 +7,11 @@ signal spotted_theft
 @export var sweep_arc_deg: float = 70.0
 @export var sweep_speed: float = 0.6
 @export var base_facing_deg: float = 0.0
+## Who this is when you talk to them (pushed onto the TalkZone child, so each
+## store's clerk or guard can have their own name and lines).
+@export var talk_name: String = ""
+@export_multiline var talk_lines: String = ""
+@export var talk_portrait_path: String = ""
 
 const VISION_COLOR_CALM := Color(0.5, 0.95, 1.0, 0.35)
 const VISION_COLOR_ALERT := Color(1.0, 0.15, 0.15, 0.55)
@@ -23,7 +28,15 @@ var _sweep_t: float = 0.0
 var can_see_player: bool = false
 
 func _ready() -> void:
+	add_to_group("guards")
 	anim = CharacterAnimator.new(body)
+	var talk := get_node_or_null("TalkZone")
+	if talk:
+		if talk_name != "":
+			talk.npc_name = talk_name
+			talk.portrait_path = talk_portrait_path
+		if talk_lines != "":
+			talk.flavor_lines = talk_lines
 	cone_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cone_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cone_material.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -47,7 +60,7 @@ func _physics_process(delta: float) -> void:
 			if angle_diff <= vision_angle_deg * 0.5:
 				can_see_player = _has_line_of_sight(player)
 
-	if can_see_player and player.is_stealing:
+	if can_see_player and player.is_stealing and not GameState.in_custody:
 		spotted_theft.emit()
 
 	_redraw_cone(facing_deg)

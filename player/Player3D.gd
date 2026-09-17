@@ -114,11 +114,26 @@ func _try_interact() -> void:
 		if hud:
 			hud.advance_or_close_dialogue()
 		return
-	if nearby.is_empty():
-		return
-	var target = nearby[0]
-	if is_instance_valid(target) and target.has_method("interact"):
+	var target := _nearest_interactable()
+	if target:
 		target.interact(self)
+
+## The closest thing in reach, not the first one that came into range:
+## interaction areas can overlap (the Apartment's phone reaches almost to the
+## door), and "first in" would keep picking the phone long after you'd
+## walked over to the door.
+func _nearest_interactable() -> Node3D:
+	nearby = nearby.filter(func(a): return is_instance_valid(a) and a.is_in_group("interactable"))
+	var best: Node3D = null
+	var best_dist := INF
+	for area in nearby:
+		if not area.has_method("interact"):
+			continue
+		var d := Vector2(area.global_position.x - global_position.x, area.global_position.z - global_position.z).length()
+		if d < best_dist:
+			best_dist = d
+			best = area
+	return best
 
 func _on_area_entered(area: Area3D) -> void:
 	if area.is_in_group("interactable"):

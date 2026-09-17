@@ -111,15 +111,19 @@ func _give_up() -> void:
 	queue_free()
 
 func _on_catch_body_entered(body: Node) -> void:
-	if not body.is_in_group("player"):
+	if not body.is_in_group("player") or GameState.in_custody:
 		return
 	GameState.get_busted()
+	body.dialogue_active = true  # hold still while being cuffed
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud:
 		hud.flash_busted()
 	set_physics_process(false)
-	GameState.pending_spawn = "SpawnDefault"
-	get_tree().create_timer(0.9).timeout.connect(
-		func(): get_tree().change_scene_to_file("res://world/Apartment3D.tscn")
+	GameState.pending_spawn = "SpawnCell"
+	# Hold the tree ourselves: this officer is freed below, and a timer
+	# callback that calls *its* get_tree() would never fire.
+	var tree := get_tree()
+	tree.create_timer(0.9).timeout.connect(
+		func(): tree.change_scene_to_file("res://world/Jail3D.tscn")
 	)
 	queue_free()

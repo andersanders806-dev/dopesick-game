@@ -1,16 +1,8 @@
 extends Area3D
 
-## No single free-asset pack has all five of these specific props, so each
-## id is mapped to the closest-shaped model from Kenney's Food Kit (CC0).
-const MODELS := {
-	"whiskey": preload("res://assets/kenney/food/wine-red.glb"),
-	"cigs": preload("res://assets/kenney/food/candy-bar.glb"),
-	"charger": preload("res://assets/kenney/food/bag.glb"),
-	"batteries": preload("res://assets/kenney/food/can-small.glb"),
-	"watch": preload("res://assets/kenney/food/soda-bottle.glb"),
-}
+const ItemModels := preload("res://items/ItemModels.gd")
 
-@export var item_id: String = "whiskey"
+@export var item_id: String = "cigs"
 @export var theft_window: float = 1.0
 
 ## How far through the pick-up animation the item actually leaves the shelf
@@ -26,9 +18,9 @@ func _ready() -> void:
 func set_item_id(id: String) -> void:
 	item_id = id
 	for child in model_root.get_children():
+		model_root.remove_child(child)
 		child.queue_free()
-	if MODELS.has(id):
-		model_root.add_child(MODELS[id].instantiate())
+	model_root.add_child(ItemModels.build(id))
 
 func interact(player: Node) -> void:
 	# Take it out of play immediately so it can't be stolen twice while the

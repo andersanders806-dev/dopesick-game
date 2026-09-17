@@ -60,7 +60,13 @@ The original 2D scenes are still in place, untouched, alongside them.
   non-looping), and cross-fades between idle and moving based on horizontal
   speed. The player walks, and in withdrawal the stride slows along with the
   movement so it reads as a shuffle rather than sliding feet. Police sprint,
-  and the shopkeeper, bartender, and patrons idle.
+  and the shopkeeper, bartender, and patrons idle. Stealing plays the
+  `pick-up` clip as a one-shot (`CharacterAnimator.play_once()`, which holds
+  off locomotion blending until it ends): the player turns to face the item,
+  is rooted in place for the ~0.6 s grab (slowed from Kenney's 0.33 s so it
+  reads as deliberate), and the item leaves the shelf halfway through the
+  reach. The item is pulled out of play the instant the grab starts, so it
+  can't be stolen twice.
 - **Sound:** on top of the shared one-shot/siren/heartbeat sounds, every 3D
   room has positional ambience synthesised by `dev-tools/gen_sfx_3d.py`
   (stdlib only, like `gen_sfx.py`): the Apartment's bare bulb buzzes and

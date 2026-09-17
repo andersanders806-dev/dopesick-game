@@ -87,6 +87,18 @@ func _run() -> void:
 	player._try_interact()
 	await _frames(2)
 	_check(gs.has_item(item_id), "inventory now holds '%s'" % item_id)
+	_check(player.anim.current_clip() == "pick-up" and player.is_busy(), "stealing plays the pick-up animation")
+	var inv_size: int = gs.inventory.size()
+	player._try_interact()
+	var pos_before := player.global_position
+	Input.action_press("move_left")
+	await _frames(6)
+	Input.action_release("move_left")
+	_check(gs.inventory.size() == inv_size, "can't steal the same item twice mid-grab")
+	_check(player.global_position.distance_to(pos_before) < 0.01, "player is held still while grabbing")
+	await _frames(60)
+	_check(not is_instance_valid(item), "item is gone once the grab finishes")
+	_check(not player.is_busy() and player.anim.current_clip() == "idle", "player returns to idle after the grab")
 
 	print("== Shop: shopkeeper spots a theft in plain view")
 	var keeper := shop.get_node("Shopkeeper") as Node3D

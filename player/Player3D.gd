@@ -10,6 +10,10 @@ const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 # The Kenney walk clip is 0.67 s per full cycle, i.e. two footfalls.
 const STEP_INTERVAL := 0.333
 
+# Kenney's pick-up clip is only 0.33 s; slowed down it reads as a
+# deliberate, furtive grab instead of a twitch.
+const PICKUP_ANIM_SPEED := 0.55
+
 @onready var interact_zone: Area3D = $InteractZone
 @onready var model: Node3D = $Model
 
@@ -20,6 +24,7 @@ var _facing_angle: float = 0.0
 var anim: CharacterAnimator
 var _step_timer: float = 0.0
 var _left_foot: bool = true
+var _busy_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -34,6 +39,14 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		move_and_slide()
 		anim.update(0.0)
+		return
+
+	# Rooted in place while an action animation (e.g. grabbing an item) plays.
+	if _busy_timer > 0.0:
+		_busy_timer -= delta
+		velocity = Vector3.ZERO
+		move_and_slide()
+		_update_footsteps(delta, false, 1.0)
 		return
 
 	var dir := Vector3(
@@ -79,7 +92,23 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		_try_interact()
 
+## Turns to face `target_pos` and plays the pick-up animation, holding the
+## player still until it's done. Returns how long that takes.
+func play_pickup(target_pos: Vector3) -> float:
+	var to_target := target_pos - global_position
+	to_target.y = 0.0
+	if to_target.length() > 0.01:
+		_facing_angle = atan2(to_target.x, to_target.z)
+		model.rotation.y = _facing_angle
+	_busy_timer = anim.play_once("pick-up", PICKUP_ANIM_SPEED)
+	return _busy_timer
+
+func is_busy() -> bool:
+	return _busy_timer > 0.0
+
 func _try_interact() -> void:
+	if _busy_timer > 0.0:
+		return
 	if dialogue_active:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Synthesizes the positional room ambience for the 3D rooms, in the same
+"""Synthesizes the positional room ambience and Dive Bar patron sounds for
+the 3D rooms, in the same
 stdlib-only, generated-not-sampled style as gen_sfx.py (kept separate so
 rerunning this never changes the existing one-shot sounds).
 
@@ -243,6 +244,161 @@ def gen_bar_murmur():
     save("bar_murmur_loop", normalize(loop_crossfade(out, n, fade), 0.45))
 
 
+# --- Dive Bar patrons ------------------------------------------------------------
+# Short positional one-shots each patron makes from their seat, plus a
+# wordless mumbled "voice". Each patron's pitch_scale sets how the voice
+# sounds on them (see NPC3D.gd), so the voice is synthesized at a neutral
+# ~120 Hz.
+
+VOWELS = [(730, 1090), (530, 1840), (570, 840), (440, 1020), (300, 870), (660, 1700)]
+
+
+def glottal(freq, t, phase):
+    """Buzzy voiced source: a band-limited-ish pulse (sum of harmonics with
+    falling amplitude), which formant filters then shape into vowels."""
+    return sum(math.sin(phase * k) / k ** 1.2 for k in range(1, 12))
+
+
+def gen_mutter(name, seed, syllables):
+    rng = random.Random(seed)
+    out = []
+    phase = 0.0
+    f0 = 120.0
+    for syl in range(syllables):
+        f1, f2 = VOWELS[rng.randrange(len(VOWELS))]
+        bp1, bp2 = BandPass(f1, 5.0), BandPass(f2, 7.0)
+        consonant = rng.random() < 0.6
+        c_len = n_samples(rng.uniform(0.02, 0.05)) if consonant else 0
+        v_len = n_samples(rng.uniform(0.07, 0.15))
+        gap = n_samples(rng.uniform(0.0, 0.06) if syl < syllables - 1 else 0.05)
+        hp = OnePole(2500)
+        for j in range(c_len):
+            out.append(hp.highpass(rng.random() * 2 - 1) * 0.15 * (1 - j / c_len))
+        # Pitch drifts down across the phrase, like a tired half-sentence.
+        target = f0 * (1.1 - 0.25 * syl / max(1, syllables - 1)) * rng.uniform(0.95, 1.05)
+        for j in range(v_len):
+            t = j / SR
+            freq = target * (1 + 0.01 * math.sin(TAU * 5 * t))
+            phase += TAU * freq / SR
+            src = glottal(freq, t, phase)
+            env = math.sin(math.pi * j / v_len) ** 0.8
+            out.append((bp1(src) + 0.5 * bp2(src)) * env)
+        out.extend([0.0] * gap)
+    lp = OnePole(1800)  # mumbled through a beard / a drink, not crisp speech
+    save(name, normalize([lp.lowpass(v) for v in out], 0.6))
+
+
+def gen_cough(name, seed, wet):
+    """Two or three harsh bursts: band-passed noise with a hard attack and a
+    little vocal body; `wet` adds a low rattly chest resonance."""
+    rng = random.Random(seed)
+    out = []
+    for burst in range(rng.choice([2, 3])):
+        ln = n_samples(rng.uniform(0.12, 0.2))
+        bp, body = BandPass(rng.uniform(900, 1400), 1.2), BandPass(rng.uniform(250, 350), 2.0)
+        for j in range(ln):
+            t = j / SR
+            env = min(1.0, j / 80) * math.exp(-t * 18)
+            x = rng.random() * 2 - 1
+            rattle = body(x) * (0.5 + 0.5 * math.sin(TAU * 32 * t)) * 2.5 * wet
+            out.append((bp(x) * 1.5 + rattle) * env)
+        out.extend([0.0] * n_samples(rng.uniform(0.08, 0.16)))
+    # Coughs are all attack, so they read louder than their peak suggests;
+    # kept at the same peak as the sighs rather than hotter.
+    save(name, normalize(out, 0.5))
+
+
+def gen_sniff():
+    """A sharp nasal inhale: high band noise with a rising swell."""
+    rng = random.Random(51)
+    ln = n_samples(0.22)
+    bp = BandPass(3200, 1.5)
+    out = []
+    for j in range(ln):
+        k = j / ln
+        env = (k ** 1.5) * (1 - k) ** 0.3 * 3
+        out.append(bp(rng.random() * 2 - 1) * env)
+    save("patron_sniff", normalize(out, 0.5))
+
+
+def gen_sigh():
+    """A long, heavy exhale: breathy low noise that swells then fades, with a
+    faint voiced groan underneath."""
+    rng = random.Random(53)
+    ln = n_samples(1.1)
+    lp, bp = OnePole(900), BandPass(500, 3.0)
+    out = []
+    phase = 0.0
+    for j in range(ln):
+        k = j / ln
+        env = math.sin(math.pi * min(1.0, k * 1.6)) ** 1.5 if k < 0.625 else (1 - k) / 0.375 * 0.92
+        freq = 105 - 25 * k
+        phase += TAU * freq / SR
+        breath = lp.lowpass(rng.random() * 2 - 1) * 2.0
+        groan = bp(glottal(freq, 0, phase)) * 0.25
+        out.append((breath + groan) * env)
+    save("patron_sigh", normalize(out, 0.5))
+
+
+def clink(out, start, freq, amp):
+    """Inharmonic glass partials with a fast decay."""
+    for j in range(n_samples(0.35)):
+        idx = start + j
+        if idx >= len(out):
+            break
+        t = j / SR
+        v = math.sin(TAU * freq * t) + 0.6 * math.sin(TAU * freq * 2.32 * t) + 0.3 * math.sin(TAU * freq * 4.25 * t)
+        out[idx] += v * amp * math.exp(-t * 14)
+
+
+def thunk(out, start, amp):
+    """Heavy glass bottom landing on a wooden bar top."""
+    rng = random.Random(start)
+    lp = OnePole(400)
+    for j in range(n_samples(0.08)):
+        t = j / SR
+        out[start + j] += (lp.lowpass(rng.random() * 2 - 1) * 3 + math.sin(TAU * 140 * t)) * amp * math.exp(-t * 60)
+
+
+def gen_glass_down():
+    out = [0.0] * n_samples(0.45)
+    thunk(out, 0, 0.8)
+    clink(out, n_samples(0.005), 2900, 0.12)
+    save("patron_glass_down", normalize(out, 0.55))
+
+
+def gen_sip():
+    """Glass lifted with a clink, then two throaty gulps."""
+    out = [0.0] * n_samples(1.0)
+    clink(out, 0, 3300, 0.25)
+    for g, start_t in enumerate((0.38, 0.66)):
+        s0 = n_samples(start_t)
+        bp = BandPass(260, 4.0)
+        rng = random.Random(61 + g)
+        for j in range(n_samples(0.13)):
+            t = j / SR
+            freq = 180 + 260 * t / 0.13
+            v = math.sin(TAU * freq * t) * 0.8 + bp(rng.random() * 2 - 1) * 2.0
+            out[s0 + j] += v * math.sin(math.pi * j / n_samples(0.13)) * 0.6
+    save("patron_sip", normalize(out, 0.55))
+
+
+def gen_tap():
+    """Restless fingers drumming on the table: a quick four-finger roll,
+    twice."""
+    rng = random.Random(71)
+    out = [0.0] * n_samples(0.9)
+    lp = OnePole(1500)
+    for roll_t in (0.0, 0.45):
+        for f in range(4):
+            s0 = n_samples(roll_t + f * 0.055 + rng.uniform(-0.005, 0.005))
+            amp = rng.uniform(0.6, 1.0)
+            for j in range(n_samples(0.03)):
+                t = j / SR
+                out[s0 + j] += (rng.random() * 2 - 1 + math.sin(TAU * 420 * t)) * amp * math.exp(-t * 180)
+    save("patron_tap", normalize([lp.lowpass(v) for v in out], 0.5))
+
+
 # --- City --------------------------------------------------------------------
 
 def gen_city_ambience():
@@ -280,3 +436,13 @@ if __name__ == "__main__":
     gen_jukebox()
     gen_bar_murmur()
     gen_city_ambience()
+    gen_mutter("patron_mutter_a", 81, 5)
+    gen_mutter("patron_mutter_b", 82, 3)
+    gen_mutter("patron_mutter_c", 83, 7)
+    gen_cough("patron_cough", 91, wet=0.2)
+    gen_cough("patron_cough_wet", 92, wet=1.0)
+    gen_sniff()
+    gen_sigh()
+    gen_glass_down()
+    gen_sip()
+    gen_tap()

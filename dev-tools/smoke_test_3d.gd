@@ -162,12 +162,29 @@ func _run() -> void:
 	_check(patron.anim != null and patron.anim.current_clip() == "idle", "patron plays idle")
 	if not gs.has_item(patron.request_id):
 		gs.steal_item(patron.request_id)
+	var bar := current_scene
+	var missing: Array = bar.PATRON_NAMES.filter(func(n): return not patron.PATRON_PROFILES.has(n))
+	_check(missing.is_empty(), "every possible patron has a sound profile (missing: %s)" % [missing])
+	patron.play_idle_sound()
+	var idle_streams: Array = patron.PATRON_PROFILES[patron.npc_name]["idle"].map(func(k): return patron.PATRON_SFX[k])
+	_check(patron.idle_sound.playing and idle_streams.has(patron.idle_sound.stream),
+		"%s makes one of their own idle sounds" % patron.npc_name)
 	var cash_before: int = gs.cash
 	patron.interact(_player())
 	_check(gs.cash == cash_before + patron.request_price and patron.fulfilled,
 		"patron paid $%d for '%s'" % [patron.request_price, patron.request_id])
+	var expected_pitch: float = patron.PATRON_PROFILES[patron.npc_name]["voice"]
+	_check(patron.voice.playing and absf(patron.voice.pitch_scale - expected_pitch) < 0.05,
+		"patron mumbles in their own voice when spoken to (pitch %.2f)" % patron.voice.pitch_scale)
+	patron.idle_sound.stop()
+	patron._idle_sound_timer = 0.0
+	await _frames(3)
+	_check(not patron.idle_sound.playing, "patron stays quiet while the dialogue is open")
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	_player().dialogue_active = false
+	patron._idle_sound_timer = 0.0
+	await _frames(3)
+	_check(patron.idle_sound.playing, "patron's idle sounds resume after the dialogue closes")
 
 	print("== Apartment: buy a fix and sleep")
 	current_scene.get_node("DoorToCity").interact(_player())

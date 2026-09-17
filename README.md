@@ -73,7 +73,15 @@ The original 2D scenes are still in place, untouched, alongside them.
   crackles each time it browns out, and the TV hisses static; the Shop's
   fluorescent lights hum and the drinks cooler drones; a muffled blues
   shuffle plays from the Dive Bar jukebox over crowd murmur; the City has
-  distant traffic and wind, and each streetlight buzzes. The player has
+  distant traffic and wind, and each streetlight buzzes. Dive Bar patrons
+  make positional sounds from their seats every 5-14 s, picked to match how
+  their portraits read: the gaunt, restless Wiry Guy and Nervous Dave sniff
+  and drum their fingers; the glazed Tired Woman and anxious Quiet Kid sigh;
+  the heavy drinkers Big Eddie and Old Sailor sip, cough (the Sailor's is a
+  wet smoker's cough), and set glasses down. Starting a conversation plays a
+  wordless mumbled voice (synthesised vowel formants) at each patron's own
+  pitch, from deep Big Eddie to higher Tired Woman. Patrons go quiet while
+  you're talking to them. Profiles live in `NPC3D.gd`'s `PATRON_PROFILES`. The player has
   footsteps timed to the walk cycle (and slowed in withdrawal); police have
   positional sprinting footsteps, so you can hear them coming round a
   shelf. An `AudioListener3D` on the player (not the high camera) makes

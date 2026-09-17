@@ -42,6 +42,9 @@ const PATRON_PROFILES := {
 const IDLE_SOUND_MIN_GAP := 5.0
 const IDLE_SOUND_MAX_GAP := 14.0
 
+## Emitted when this patron pays you for their order.
+signal order_fulfilled
+
 @export var npc_name: String = "Stranger"
 @export var is_patron: bool = false
 @export_multiline var flavor_lines: String = "..."
@@ -175,6 +178,7 @@ func _patron_interact(hud: Node) -> void:
 	if GameState.has_item(request_id):
 		GameState.sell_item(request_id, request_price)
 		fulfilled = true
+		order_fulfilled.emit()
 		SFX.play("cash")
 		hud.show_dialogue(npc_name, "That's exactly it. Here's $%d." % request_price, _portrait())
 	else:

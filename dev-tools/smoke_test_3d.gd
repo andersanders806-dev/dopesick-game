@@ -90,6 +90,17 @@ func _check_store(store: Node) -> void:
 	_check(all_reachable, "  every item reachable from the door in all %d layouts %s" % [maxi(1, layouts.size()), worst])
 	var stocked: bool = store.item_slots.all(func(sl): return sl.model_root.get_child_count() > 0 and GameState_has(sl.item_id))
 	_check(stocked, "  every fixture is stocked with a real catalog item (%d items)" % store.item_slots.size())
+	# Orders stick until delivered, so every item a patron could ask this
+	# store for has to be on a shelf on every visit, whatever the shuffle.
+	var required: Array = _gs().REQUEST_POOL.filter(func(r): return r["store"] == store.store_id).map(func(r): return r["id"])
+	var always_stocked := true
+	for trial in 60:
+		store._shuffle_items()
+		var on_shelves: Array = store.item_slots.map(func(sl): return sl.item_id)
+		for id in required:
+			if id not in on_shelves:
+				always_stocked = false
+	_check(required.size() > 0 and always_stocked, "  all %d of its catalogue items are stocked on every one of 60 shuffles" % required.size())
 	var guards: Array = get_nodes_in_group("guards").filter(func(g): return store.is_ancestor_of(g))
 	_check(guards.size() > 0 and guards.all(func(g): return g.spotted_theft.get_connections().size() > 0),
 		"  %d guard(s), all wired to call the police" % guards.size())
@@ -341,6 +352,43 @@ func _run() -> void:
 	patron._idle_sound_timer = 0.0
 	await _frames(3)
 	_check(patron.idle_sound.playing, "patron's idle sounds resume after the dialogue closes")
+
+	print("== Dive Bar: orders stick until delivered")
+	var paid_name: String = patron.npc_name
+	var waiting := {}
+	for p in bar.patrons:
+		if p != patron:
+			waiting[p.npc_name] = [p.request_id, p.position]
+	bar.get_node("DoorToCity").interact(_player())
+	await _frames(10)
+	current_scene.get_node("DoorToBar").interact(_player())
+	await _frames(10)
+	var bar2 := current_scene
+	var still_there := 0
+	var newcomer: Node = null
+	for p in bar2.patrons:
+		if waiting.has(p.npc_name) and waiting[p.npc_name][0] == p.request_id and waiting[p.npc_name][1].distance_to(p.position) < 0.01:
+			still_there += 1
+		elif p.npc_name != paid_name and not waiting.has(p.npc_name):
+			newcomer = p
+	_check(still_there == 2, "the two patrons still waiting are there with the same orders, in the same seats")
+	_check(newcomer != null and not newcomer.fulfilled, "the patron you paid has gone; a newcomer with a fresh order sits down")
+	var items: Array = bar2.patrons.map(func(p): return p.request_id)
+	var names: Array = bar2.patrons.map(func(p): return p.npc_name)
+	_check(items.size() == 3 and items[0] != items[1] and items[1] != items[2] and items[0] != items[2] and names[0] != names[1] and names[1] != names[2] and names[0] != names[2],
+		"no two patrons share a name or an order")
+	var before_sleep: Array = bar2.patrons.map(func(p): return "%s:%s" % [p.npc_name, p.request_id])
+	gs.sleep()
+	bar2.get_node("DoorToCity").interact(_player())
+	await _frames(10)
+	current_scene.get_node("DoorToBar").interact(_player())
+	await _frames(10)
+	var after_sleep: Array = current_scene.patrons.map(func(p): return "%s:%s" % [p.npc_name, p.request_id])
+	_check(before_sleep == after_sleep, "orders still stand after a night's sleep")
+	current_scene.get_node("DoorToCity").interact(_player())
+	await _frames(10)
+	current_scene.get_node("DoorToBar").interact(_player())
+	await _frames(10)
 
 	print("== Busted: exactly one bust, then a jail cell")
 	current_scene.get_node("DoorToCity").interact(_player())

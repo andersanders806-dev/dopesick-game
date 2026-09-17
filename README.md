@@ -29,9 +29,17 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   `GameState`/`SFX` autoloads, which don't exist yet when a `-s` script's
   variables are initialised.
 - **Per-visit variety:** every store picks one of its fixture layouts and
-  shuffles its stock; the Dive Bar seats patrons at 3 of 5 spots and
-  randomises their names, models, and requests; parked cars get random
-  paint; the Apartment picks one of 3 clutter layouts.
+  shuffles its stock, but always keeps at least one of every item it sells on
+  the shelves (`Store3D._ensure_every_item_stocked()`). Parked cars get random
+  paint, and the Apartment picks one of 3 clutter layouts.
+- **Orders stick until delivered:** the Dive Bar's patrons, their seats, and
+  what they asked for live in `GameState.bar_patrons`, so the person who gave
+  you an order is still there, asking for the same thing, after you leave,
+  get busted, or sleep. Once you deliver, that patron goes home, and next
+  visit a newcomer takes the seat with a fresh order. Newcomers never share a
+  name, body, or order with anyone in the bar, or with the patron who just
+  left. Previously everyone was reshuffled on every visit, so an order was
+  often gone by the time you came back with the goods.
   Navmeshes are baked at runtime after furniture moves, the same as 2D.
 - **Apartment look:** based on details that recur in documentary and news
   photos of drug houses: windows boarded over (thin slivers of cold

@@ -547,6 +547,8 @@ func _store_shell(name: String, w: float, d: float, floor_tex: String, floor_uv:
 	_marker("PoliceSpawn", Vector3(-w / 2 + 1.2, 0, door_z + 0.6))
 
 func _store_finish(items: Array[String], layouts: Array, spawn: Vector3) -> void:
+	var store_ids := {"StoreConvenience3D": "convenience", "StorePharmacy3D": "pharmacy", "StoreSupermarket3D": "supermarket", "StoreLiquor3D": "liquor", "StoreElectronics3D": "electronics"}
+	_root.set("store_id", store_ids[_root.name])
 	_root.set("item_ids", items)
 	_root.set("fixture_layouts", layouts)
 	_player_and_hud(spawn)

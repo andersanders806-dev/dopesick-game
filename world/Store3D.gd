@@ -4,6 +4,8 @@ extends "res://world/WorldRoot3D.gd"
 ## fixture layouts; this picks a layout, shuffles the stock onto the
 ## fixtures, and calls the police when a guard spots a theft.
 
+## Which store this is ("pharmacy", ...), matching GameState.REQUEST_POOL.
+@export var store_id: String = ""
 ## One item id per fixture, in any order -- shuffled each visit.
 @export var item_ids: Array[String] = []
 ## Each entry is one layout: a PackedVector2Array of (x, z) floor positions,
@@ -61,6 +63,26 @@ func _shuffle_items() -> void:
 		else:
 			item_slots[i].set_item_id(ids[next % ids.size()])
 			next += 1
+	_ensure_every_item_stocked()
+
+## Patrons' orders stick until delivered, so an order must never point at a
+## store that happens not to have that item on its shelves this visit. Any
+## catalogue item for this store that the shuffle left out replaces a
+## duplicate on a fixture allowed to hold it.
+func _ensure_every_item_stocked() -> void:
+	var required := GameState.REQUEST_POOL.filter(func(r): return r["store"] == store_id).map(func(r): return r["id"])
+	var order := range(item_slots.size())
+	order.shuffle()
+	for id in required:
+		if item_slots.any(func(slot): return slot.item_id == id):
+			continue
+		for i in order:
+			var current: String = item_slots[i].item_id
+			var copies := item_slots.filter(func(slot): return slot.item_id == current).size()
+			var stock: Array = fixtures[i].get_meta("stock", [])
+			if copies > 1 and (stock.is_empty() or id in stock):
+				item_slots[i].set_item_id(id)
+				break
 
 func _on_spotted_theft() -> void:
 	if GameState.wanted or GameState.in_custody:

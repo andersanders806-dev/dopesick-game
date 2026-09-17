@@ -65,6 +65,11 @@ var pending_spawn: String = ""
 ## shopkeeper who still saw your theft window could re-trigger the alarm and
 ## you'd be "busted" two or three times in one catch.
 var in_custody: bool = false
+## Who's drinking in the Dive Bar and what they asked you for. Kept here so
+## orders stick until you deliver them -- through leaving the bar, a night in
+## a cell, or sleeping. Each entry: {name, model, seat, request_id, price,
+## fulfilled}. Managed by DiveBar3D.gd.
+var bar_patrons: Array = []
 
 func _ready() -> void:
 	_setup_input_actions()

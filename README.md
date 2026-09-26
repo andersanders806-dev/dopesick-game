@@ -15,9 +15,60 @@ patron asks for something and tells you which store has it. Steal it without
 a guard seeing, bring it back, get paid, and buy from the pusher in person at
 the dark end of the block. Get caught and you wake up in a jail cell.
 
-- **Art:** Kenney's CC0 Furniture, City, Food, and Mini Characters kits
-  (`assets/kenney/`), reusing the photoreal floor/wall textures from the
-  2D pass as triplanar materials.
+- **Art:** Kenney's CC0 Furniture, City, and Food kits (`assets/kenney/`)
+  for props and buildings, reusing the photoreal floor/wall textures from
+  the 2D pass as triplanar materials. *People* are Quaternius' CC0 human
+  models (`assets/quaternius/characters/`) -- see **Characters** below.
+- **Characters: real human proportions.** The cast used to be Kenney Mini
+  Characters, which are chibi: about four heads tall, one flat colour
+  atlas, no facial geometry. At the ~11 m the camera sits back they read as
+  coloured lumps, and no amount of lighting or shader work fixes a
+  proportion problem. They were replaced with Quaternius' CC0 *Animated
+  Men/Women* (8 clothed bodies: casual, long-sleeve, shirt, suit, and four
+  female outfits), which are eight-heads-tall adults with hair geometry and
+  ordinary modern clothes. They import at `nodes/root_scale=0.2411`, which
+  lands them at 1.75 m (male) and 1.68 m (female) once the scenes' existing
+  1.5x `ModelRoot` scale applies -- so no scene needed its scale changed.
+- **One cast list.** `npc/CharacterCast.gd` maps a *role* ("player",
+  "pusher", "bartender", "clerk_liquor", "security_guard", each Dive Bar
+  regular by name) to a body plus per-surface colours; nothing else in the
+  game hardcodes a model path. Eight bodies cover a cast of about twenty
+  because each model splits into *named surfaces* (Skin, Eyes, Hair, Shirt,
+  Pants, Shoes), which `npc/CharacterLook.gd` recolours independently --
+  richer than the old Kenney tint, which could only multiply one colour
+  over the whole body. Those surfaces ship untextured at roughness 1.0,
+  i.e. perfectly matte, so `CharacterLook` also gives each a sensible
+  roughness/specular; without that, characters were flat silhouettes with
+  no highlight anywhere, which was half of why they read as cardboard.
+  Colours are *set*, not multiplied -- the source surfaces are already dark
+  (a shirt is about 0.40 grey), and multiplying a dark tint over them drove
+  everyone to near-black in these dim rooms.
+- **Patrons keep their faces.** A Dive Bar regular's body now comes from
+  their name, not from a pool shuffled per visit. Big Eddie used to come
+  back as somebody else entirely, and since the pool was all *female*
+  models, four of the six male-named regulars were wearing the wrong body.
+- **Clip names are resolved, not hardcoded.** `npc/CharacterAnimator.gd`
+  takes logical clips ("idle", "walk", "sprint", "sit", "pick-up",
+  "interact") and resolves each against whatever the loaded model actually
+  ships, so the same call sites drive Kenney's `walk` and Quaternius'
+  `HumanArmature|Female_Walk`. It also has `play_once_timed()`, which
+  stretches a one-shot to a requested duration: source clips differ wildly
+  between packs (Kenney's grab is 0.33 s, the Quaternius stand-in 0.917 s),
+  so the old fixed speed multiplier tuned against Kenney turned the grab
+  into a 3.3-second freeze against the new bodies. Timing-critical callers
+  (the player's grab, the pusher's stash crouch and handoff) now ask for
+  seconds and get seconds.
+- **Rendering.** All five rooms share one `_environment()` in
+  `dev-tools/build_rooms_3d.gd`. It uses **AgX** rather than ACES (ACES
+  clips the neon signs and the police beacon to a white blob; AgX
+  desaturates gracefully so a red tube still reads red at its core),
+  **SSIL** on top of SSAO so light bounces colour -- the bar's red neon
+  spills onto the panelling, the TV's flicker lands on the apartment floor
+  -- plus screen-space reflections, volumetric fog for real light shafts,
+  a mild far-field depth of field (blur starts at 16 m, past everything you
+  need to see), and a contrast/saturation grade to put the bite back into
+  AgX's deliberately flat output. `project.godot` backs this with 1280x720,
+  4x MSAA, TAA, 4096 shadow atlas, and high SSAO/SSIL quality.
 - **Camera:** a fixed-angle follow camera on the player looking north, so
   every room keeps its south wall low and puts doors on the side walls.
 - **Room generation:** every 3D room (Apartment, City, Dive Bar, the five
@@ -97,7 +148,7 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   and a jukebox has burnt-out bulbs. There are also darts, an ATM at the
   back, a CASH ONLY card, the restroom door, and the one unboarded window,
   whose OPEN sign reads backwards from inside. Sign text is generic, never
-  real brands. Patrons in booths sit, using Kenney's `sit` clip.
+  real brands. Patrons in booths sit, using the body's sitting clip.
 - **Jail:** getting busted now books you into a holding cell instead of
   sending you home. The cell follows first-hand accounts and news photos of
   police holding cells. It has painted beige concrete-block walls, a
@@ -110,16 +161,85 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   or wait it out on the bench (hours pass and the withdrawal gets worse),
   or just sit tight until the officer comes. Then the door slides open and
   you walk out onto the street by the police station.
-- **Who wears which model:** Kenney's `male-c` is a police officer, so it's
-  used for the police and the booking officer (the police previously used a
-  civilian model, while a cop-uniformed model was sitting at the bar as a
-  patron). `male-a` is the player, `male-d` the bartender, `male-e` the
-  shopkeeper, `male-f` the pusher, and `male-b` the lookout. The pusher and
-  lookout are recoloured via `npc/CharacterLook.gd`, which tints just the
-  clothing mesh. Patrons draw from the six female models.
+- **Who wears which model:** all of it lives in `npc/CharacterCast.gd` --
+  see **One cast list** above. Nothing else in the game names a model file.
+  Historical note, from when the cast was Kenney's: `male-c` was the only
+  cop-uniformed model, and it had been sitting at the bar as a patron while
+  the police wore a civilian body.
 - **Shopkeeper vision:** the line-of-sight ray starts at eye height (1.5 m),
   above the 1.05 m counter, so the counter doesn't blind them. The 2.2 m
   shelves still fully block sight.
+- **Stealth: suspicion, not a coin flip.** Guards used to bust you the
+  instant they saw you inside the 0.6 s grab window, and do nothing at any
+  other moment. That made the whole stealth layer one unreadable dice roll:
+  nothing you did before or after the grab mattered, and there was no way
+  to tell how much trouble you were in. `npc/Guard3D.gd` now carries a
+  0..1 **suspicion** meter. Grabbing something in plain sight fills it in
+  about a third of a second (so a careless steal is caught about as fast as
+  before), while loitering in view holding stolen goods, or sprinting past,
+  fills it slowly -- and standing right next to a guard makes all of it
+  worse. Out of sight it drains, but more slowly once they've clocked you,
+  so repeated exposure adds up. Browsing empty-handed is never suspicious,
+  or shopping would be impossible. The vision cone tracks the meter
+  continuously (calm blue to amber to red), which is the player's only read
+  on where they stand. Guards also now turn their body to follow their own
+  sweep, instead of staring through their shoulder.
+- **Sprint (Shift).** The risk/reward half of the above: faster, and the
+  loudest thing you can do in front of a guard. Withdrawal takes it away,
+  which is exactly when you most want it.
+- **Runs, strikes, and Know-How.** A run now *ends*: three busts (four with
+  the right upgrade) and you're gone, with the strikes shown next to the
+  day counter. This is the standard roguelite structure, and the reason for
+  it is the one every write-up on the genre lands on -- failure has to buy
+  something permanent, or repeated failure just wears people down. Before,
+  a bust cost a fine and nothing else, and a run had no end and no memory:
+  tolerance climbed until the numbers stopped working and there was nothing
+  to do but keep going or quit. Every finished run now pays **Know-How**
+  (`autoload/MetaProgress.gd`, saved to `user://progress.cfg`), scaled by
+  days survived, orders delivered, and cash earned -- but never zero. It
+  buys six tiered upgrades that change *how you can play* rather than just
+  handing over bigger numbers: Steady Hands (shorter grabs), Light Touch
+  (slower suspicion), Deep Pockets (starting cash), Clean Stretch (slower
+  withdrawal), A Known Face (better payouts), Someone To Call (smaller
+  fines, and a fourth strike at max tier). `ui/RunEndScreen.gd` shows the
+  run summary and the shop; it's built in code, so adding an upgrade to
+  `MetaProgress.UPGRADES` makes a row appear with no scene editing.
+- **What you buy, and what it does to you.** The old economy had one
+  abstract "$20 fix". It's now a catalogue (`autoload/Drugs.gd`) the pusher
+  offers a nightly subset of, and every entry differs on price, relief, how
+  long it holds you, how fast it builds tolerance, and how likely it is to
+  kill you -- so "what can I afford" and "what can I survive" stop being the
+  same question. Prices are anchored to published figures rather than
+  invented, the same way the shoplifting list is anchored to CRAVED:
+  StreetRx/RADARS crowdsourced price-per-milligram means for diverted
+  pharmaceuticals (oxycodone ~$0.97/mg, buprenorphine ~$2.13/mg, methadone
+  ~$0.96/mg), per-bag reporting for heroin, and per-tablet ranges for
+  benzodiazepines. They are deliberately *fixed* balance numbers -- real
+  prices swing enormously by region, purity and quantity, and nothing in
+  the catalogue should be read as a current price list.
+- **The counterfeit mechanic.** The most important entry is the one that
+  lies to you. Per DEA laboratory analysis, most street "oxycodone 30 mg"
+  (M30) tablets are pressed fentanyl rather than oxycodone, made with no
+  dosing control, and a large share of those carry a potentially lethal
+  amount. So in this game the expensive, familiar, apparently-predictable
+  pill is the most dangerous thing on the menu, and you don't find out until
+  after it hits (`Drugs.resolve_purchase()` settles it at purchase;
+  `Pusher3D._handoff_line()` only reveals it at the handoff). That is the
+  real shape of the risk, and it does more than any amount of warning text.
+- **Interactions that are actually the dangerous part.** Tolerance is shared
+  within a drug class, because cross-tolerance is real. Opioids and
+  benzodiazepines taken close together multiply the overdose roll, because
+  both suppress breathing and the combination is what mostly kills people.
+  Buprenorphine stops withdrawal for a long time and *lowers* tolerance, but
+  taken too soon after a full agonist it precipitates withdrawal instead of
+  relieving it -- the classic way a first attempt at getting on it goes
+  wrong. Stimulants do nothing for opioid withdrawal, so scoring meth while
+  dopesick is a wasted score.
+- **Going over is the second way to lose.** An overdose ends a run outright,
+  alongside running out of strikes, and the run-end screen says which
+  happened. **Naloxone** is always in the pusher's stock and cancels exactly
+  one overdose, leaving you alive and instantly in withdrawal -- which is
+  what reversal actually does. It is the cheapest insurance in the game.
 - **Verification:** `godot --headless --path . -s res://dev-tools/smoke_test_3d.gd`
   drives the real scenes. It loads every room, and checks every item in
   every store layout is reachable from the door and every guard can call
@@ -128,10 +248,56 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   the pusher (stash walk, handoff, hiding from the lookout's whistle), walks
   to every patron seat, and sells to a patron. It gets busted exactly once
   with the clerk still watching, is held by the locked cell, waits it out,
-  and walks out of jail. Finally it checks Apartment furniture collision and
-  sleeps. It exits non-zero on any failure. `dev-tools/playtest_bot.gd` plays
+  and walks out of jail. Then it checks Apartment furniture collision and
+  sleeps. Finally it covers the stealth and run layers: that browsing
+  empty-handed is not suspicious, that carrying stolen goods in view builds
+  suspicion without an instant bust, that it drains once you break line of
+  sight, that grabbing in plain sight raises the alarm, that strikes end a
+  run, that the summary is right, that a finished run always pays Know-How,
+  and that buying an upgrade actually moves the numbers the game reads --
+  restoring the player's real save afterwards, so running the tests can't
+  inflate it. It exits non-zero on any failure. `dev-tools/playtest_bot.gd` plays
   a full loop in a real window with screenshots.
-  `dev-tools/capture_scene.gd` renders any scene to a PNG.
+  `dev-tools/capture_scene.gd` renders any scene to a PNG, either as an
+  `overview` of the room or as `closeup:NodeName` framed on one character.
+  `dev-tools/inspect_model.gd` prints an imported model's node tree,
+  animation clips, and mesh surface names.
+  `dev-tools/drug_sim.gd` plays whole runs against the real catalogue and
+  dosing code for several strategies at once and reports how they end --
+  **retune the drug economy with this, never by eye.** Overdose risk is per
+  dose and a run is 25-30 doses, so figures that look sane individually
+  compound into nonsense: the first pass produced an 85-99% overdose rate
+  across every strategy. It also caught the opposite failure, where
+  tolerance was subtracted from risk linearly and a heavy fentanyl habit
+  drove the risk to zero, making the most dangerous drug in the game the
+  safest once you'd used enough of it. The target is no dominant strategy:
+  buprenorphine maintenance safest but dearest, cheap opioids survivable but
+  punishing, fentanyl cheap per dose until tolerance eats you, and mixing an
+  opioid with a benzo the deadliest thing on the menu.
+- **Bugs fixed while swapping the cast and adding the run structure:**
+  - *A flaky test that predates this pass.* `smoke_test_3d.gd`'s "the clerk
+    really did see the theft" check failed at random. `Guard3D._ready()`
+    seeds `_sweep_t` with `randf() * TAU` and a full sweep takes ~14 s,
+    while the check ran 90 physics frames (~1.5 s) -- so the clerk was
+    often facing the other way for the whole check. Both bust-related
+    checks now aim the guard deterministically instead of hoping.
+  - *The alarm latched forever.* The new suspicion meter raises the alarm
+    once and then latches, so a single theft can't spawn three officers.
+    But nothing cleared the latch, so a guard who raised one alarm was deaf
+    for the rest of the visit -- including after a chase the player escaped.
+    It now clears whenever `GameState.wanted` goes false.
+  - *A grab that took 3.3 seconds.* See `play_once_timed()` above: two
+    speed multipliers tuned against different art packs multiplied together.
+  - *Seated patrons hovering.* Kenney's sit clip put the hips at floor
+    level, so `DiveBar3D.SIT_HEIGHT` raised patrons 0.32 m onto the bench.
+    The Quaternius sitting clip already sits them on an imaginary chair with
+    feet on the floor, so that offset left them floating above the seat.
+  - *`specular` is not a Godot 4 property.* Setting it on a
+    `StandardMaterial3D` logs "Godot 3.x SpatialMaterial remapped parameter
+    not found" and silently does nothing; it's `metallic_specular`.
+  - *Autoloads don't exist for `-s` scripts at compile time.* Already noted
+    below for the room builder, and it bites debug scripts too -- reach
+    them via `root.get_node("GameState")`, as the smoke test does.
 - **Bugs fixed from playtesting:**
   - *Wrong interaction target.* Pressing E used whichever object came into
     range first, not the nearest, so after using the Apartment phone the
@@ -149,18 +315,24 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   untextured (plain white/grey characters and buildings). Deleting their
   `.godot/imported/*.glb-*` files and re-running `--import` fixed it. If
   models ever look flat grey again, that's the first thing to check.
-- **Character animation:** every Kenney Mini Character `.glb` already ships
-  with ~30 clips (idle, walk, sprint, sit, pick-up, emotes, etc.), so there is
-  no separate animation asset. `npc/CharacterAnimator.gd` finds a model's
-  `AnimationPlayer`, turns on looping for idle/walk/sprint (they import
+- **Character animation:** each Quaternius body ships 11 clips (idle, walk,
+  run, sitting, clapping, punch, jump, death, ...), so there is still no
+  separate animation asset -- the clips the game needs are all in the model.
+  `npc/CharacterAnimator.gd` finds a model's `AnimationPlayer`, resolves the
+  logical clip names against what's actually there (see **Clip names are
+  resolved** above), turns on looping for idle/walk/sprint (they import
   non-looping), and cross-fades between idle and moving based on horizontal
-  speed. The player walks, and in withdrawal the stride slows along with the
+  speed. Two of the game's gestures have no exact clip in this pack: the
+  grab borrows the punch (a single forward arm extension, which at this
+  camera distance reads as reaching for a shelf) and the pusher's
+  hand-to-hand borrows the clap. The player walks, and in withdrawal the stride slows along with the
   movement so it reads as a shuffle rather than sliding feet. Police sprint,
   and the shopkeeper, bartender, and patrons idle. Stealing plays the
   `pick-up` clip as a one-shot (`CharacterAnimator.play_once()`, which holds
   off locomotion blending until it ends): the player turns to face the item,
-  is rooted in place for the ~0.6 s grab (slowed from Kenney's 0.33 s so it
-  reads as deliberate), and the item leaves the shelf halfway through the
+  is rooted in place for a 0.6 s grab (long enough to read as deliberate;
+  `play_once_timed()` stretches whatever clip the body has to fit, and
+  "Steady Hands" shortens it), and the item leaves the shelf halfway through the
   reach. The item is pulled out of play the instant the grab starts, so it
   can't be stolen twice.
 - **Sound:** on top of the shared one-shot/siren/heartbeat sounds, every 3D
@@ -203,6 +375,8 @@ get well. Repeat.
 ## Controls
 
 - **WASD / Arrow keys** — move
+- **Shift** — sprint (fast, and very visible to staff; not available in
+  withdrawal)
 - **E** — interact (talk, steal, open doors, use phone/bed)
 - While a dialogue box is open, press **E** again to close it
 

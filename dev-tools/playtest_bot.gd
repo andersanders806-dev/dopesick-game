@@ -5,7 +5,9 @@ extends SceneTree
 ## steals the item, delivers it, buys from the pusher, and sleeps -- logging
 ## every dialogue line, cash/craving, busts, and any spot it gets stuck, with
 ## screenshots along the way. Needs a display (not --headless):
-##   godot --path . -s res://dev-tools/playtest_bot.gd -- <screenshot_dir>
+##   godot --path . -s res://dev-tools/playtest_bot.gd -- <screenshot_dir> [caught]
+## Pass "caught" to skip the order and deliberately steal in front of the
+## electronics store's clerk, then play through the arrest and the jail.
 
 var out_dir: String
 var shot := 0
@@ -14,7 +16,8 @@ var t_start := 0
 func _initialize() -> void:
 	out_dir = OS.get_cmdline_user_args()[0]
 	t_start = Time.get_ticks_msec()
-	change_scene_to_file("res://world/Apartment3D.tscn")
+	var caught_mode := OS.get_cmdline_user_args().size() > 1 and OS.get_cmdline_user_args()[1] == "caught"
+	change_scene_to_file("res://world/StoreElectronics3D.tscn" if caught_mode else "res://world/Apartment3D.tscn")
 	await _wait(1.0)
 	var gs := root.get_node("GameState")
 	gs.busted.connect(func():
@@ -24,7 +27,10 @@ func _initialize() -> void:
 	gs.wanted_changed.connect(func(w):
 		var pl := player()
 		log_line("wanted -> %s (player@%s, stealing=%s)" % [w, pl.global_position.snapped(Vector3.ONE * 0.1) if pl else "?", pl.is_stealing if pl else "?"]))
-	await _play()
+	if caught_mode:
+		await _play_caught()
+	else:
+		await _play()
 	log_line("DONE")
 	quit()
 
@@ -44,6 +50,13 @@ func _wait(seconds: float) -> void:
 
 func player() -> Node3D:
 	return get_first_node_in_group("player") as Node3D
+
+## The pusher's menu parents itself to the tree root, not the scene.
+func open_menu() -> CanvasLayer:
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open_with"):
+			return c
+	return null
 
 func hud() -> Node:
 	return get_first_node_in_group("hud")
@@ -91,8 +104,13 @@ func walk_to(node: Node3D, stop_dist := 0.6, timeout := 25.0) -> bool:
 			last_progress = Time.get_ticks_msec()
 		elif Time.get_ticks_msec() - last_progress > 3000:
 			release_moves()
+			if not is_instance_valid(node):
+				return false
 			log_line("STUCK walking to %s (%.1f m away)" % [node.name, d])
 			await screenshot("stuck_" + str(node.name))
+			return false
+		if root.get_node("GameState").in_custody:
+			release_moves()
 			return false
 		if Time.get_ticks_msec() - started > timeout * 1000:
 			release_moves()
@@ -128,7 +146,15 @@ func close_dialogue() -> void:
 	await press_interact()
 	await _wait(0.3)
 
+## After an arrest the scene swaps to the jail; wait for that to land before
+## doing anything else.
+func settle() -> void:
+	while root.get_node("GameState").in_custody or current_scene == null:
+		await _wait(0.2)
+	await _wait(0.5)
+
 func use_door(door_name: String) -> bool:
+	await settle()
 	var door := current_scene.get_node_or_null(door_name) as Node3D
 	if door == null:
 		log_line("MISSING door " + door_name)
@@ -176,11 +202,15 @@ func _play() -> void:
 		await press_interact()
 		await _wait(1.2)
 		log_line("after steal attempt")
-	await use_door("DoorToCity")
+	await settle()
+	if current_scene.name != "Jail3D":
+		await use_door("DoorToCity")
 	for i in 20:
+		await settle()
 		if not gs.wanted or current_scene.name != "City3D":
 			break
 		await _wait(0.5)
+	await settle()
 
 	if current_scene.name == "Jail3D":
 		log_line("in jail -- waiting it out")
@@ -211,11 +241,33 @@ func _play() -> void:
 		await use_door("DoorToCity")
 
 	if current_scene.name == "City3D":
-		gs.cash = maxi(gs.cash, gs.current_fix_cost())
+		gs.cash = maxi(gs.cash, gs.cheapest_opioid_cost())
 		var pusher := current_scene.get_node("Pusher") as Node3D
 		log_line("walking down the block to the pusher")
 		await walk_to(pusher)
 		await talk()
+		await screenshot("pusher_menu")
+		# Buying is a choice now. Take the cheapest thing he has that would
+		# actually stop the sickness -- what a player with no money does.
+		await _wait(0.4)
+		var menu := open_menu()
+		if menu:
+			var pick := ""
+			var best := 99999
+			for id in menu._stock:
+				var d: Dictionary = root.get_node("Drugs").info(id)
+				if d["class"] not in ["opioid", "treatment"]:
+					continue
+				var c: int = gs.price_of(id)
+				if c < best and c <= gs.cash:
+					best = c
+					pick = id
+			if pick == "":
+				pick = menu._stock[0]
+			log_line("bought %s for $%d" % [root.get_node("Drugs").name_for(pick), gs.price_of(pick)])
+			menu.chosen.emit(pick)
+			menu._close()
+			await _wait(0.4)
 		await screenshot("pusher_pay")
 		await close_dialogue()
 		for i in 40:
@@ -232,3 +284,49 @@ func _play() -> void:
 		await talk()
 		await screenshot("sleep")
 		await close_dialogue()
+
+func _play_caught() -> void:
+	var gs := root.get_node("GameState")
+	gs.cash = 40
+	log_line("start: stealing in plain view of the clerk")
+	var clerk := current_scene.get_node("Clerk") as Node3D
+	# Pick the item closest to the clerk.
+	var item: Node3D = null
+	for slot in current_scene.item_slots:
+		if item == null or slot.global_position.distance_to(clerk.global_position) < item.global_position.distance_to(clerk.global_position):
+			item = slot
+	await walk_to(item)
+	for attempt in 30:
+		if gs.wanted:
+			break
+		if is_instance_valid(item) and player().nearby.has(item):
+			await press_interact()
+		await _wait(0.3)
+		player().is_stealing = true
+	await screenshot("spotted")
+	log_line("standing still and waiting for the police")
+	while not gs.in_custody and current_scene.name != "Jail3D":
+		await _wait(0.2)
+	await screenshot("busted")
+	await settle()
+	await _wait(0.6)
+	await screenshot("jail_wakeup")
+	await close_dialogue()
+	log_line("in the cell; trying the door")
+	await walk_to(current_scene.get_node("CellDoor/CellDoorKnock"))
+	await talk()
+	await close_dialogue()
+	await walk_to(current_scene.get_node("Intercom"))
+	await talk()
+	await screenshot("intercom")
+	await close_dialogue()
+	await walk_to(current_scene.get_node("Bench"))
+	await talk()
+	await screenshot("released")
+	await close_dialogue()
+	await _wait(1.6)
+	await walk_to(current_scene.get_node("Jailer"))
+	await talk()
+	await close_dialogue()
+	await use_door("DoorToCity")
+	await screenshot("outside_police_station")

@@ -6,6 +6,7 @@ const RETARGET_INTERVAL := 0.25
 const TURN_SPEED := 10.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
 # The Kenney sprint clip is 0.5 s per cycle, two footfalls.
 const STEP_INTERVAL := 0.25
@@ -31,6 +32,7 @@ var _left_foot: bool = true
 
 func _ready() -> void:
 	add_to_group("police")
+	CharacterCast.dress(model, "police")
 	anim = CharacterAnimator.new(model, "sprint")
 	GameState.set_wanted(true)
 	catch_zone.body_entered.connect(_on_catch_body_entered)

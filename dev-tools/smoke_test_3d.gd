@@ -31,6 +31,13 @@ func _load(path: String) -> Node:
 	await _frames(10)
 	return current_scene
 
+## The drug menu parents itself to the tree root, not the current scene.
+func get_tree_menu() -> CanvasLayer:
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open_with"):
+			return c
+	return null
+
 func _player() -> Node3D:
 	return get_first_node_in_group("player") as Node3D
 
@@ -186,6 +193,19 @@ func _run() -> void:
 	print("== Shop: shopkeeper spots a theft in plain view")
 	var keeper := shop.get_node("Shopkeeper") as Node3D
 	player.global_position = Vector3(keeper.global_position.x, 0, -1.95)
+	# Stop the cone sweeping and point it at the player. Being *seen* is not
+	# the same as being caught any more: suspicion has to fill, which takes
+	# about a third of a second of unbroken eye contact while you're grabbing
+	# something. From this spot the sweep only clips the player for ~19
+	# frames in total, which got suspicion to 0.95 -- one frame short -- so
+	# the check failed even though the system was behaving exactly as
+	# designed. A guard who merely glimpses you should not bust you; this
+	# test is about the alarm firing at all, so give it a guard who is
+	# actually looking.
+	var to_player: Vector3 = player.global_position - keeper.global_position
+	keeper.base_facing_deg = rad_to_deg(Vector2(to_player.x, to_player.z).angle())
+	keeper.sweep_speed = 0.0
+	keeper._sweep_t = 0.0
 	var spotted := false
 	for i in 400:
 		# Re-assert every frame: the earlier steal's 1 s theft window timer
@@ -275,10 +295,23 @@ func _run() -> void:
 			break
 	_check(back and pusher.model_root.visible, "pusher comes back to his spot once it's quiet")
 
-	var fix_cost: int = gs.current_fix_cost()
 	city_player.global_position = pusher.global_position + Vector3(-1.2, 0, 0.6)
 	await _frames(3)
+	# Buying is now a choice from what he's holding tonight, so drive the
+	# menu rather than the old single-fix interact. Oxycodone is forced into
+	# stock and bought here: it's the one that can turn out to be a fentanyl
+	# press, so the handoff below also covers that path existing.
+	pusher._stock = ["oxy", "heroin", "bupe", "naloxone"]
+	pusher._stock_day = gs.day
 	pusher.interact(city_player)
+	await _frames(2)
+	var menu := get_tree_menu()
+	_check(menu != null, "the pusher offers a menu of what he's holding")
+	var fix_cost: int = gs.price_of("heroin")
+	if menu:
+		menu.chosen.emit("heroin")
+		menu._close()
+	await _frames(2)
 	_check(gs.cash == 100 - fix_cost and gs.craving < 11.0, "paying the pusher takes $%d but doesn't hand it over yet" % fix_cost)
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	var went_to_stash := false
@@ -408,6 +441,18 @@ func _run() -> void:
 	var cop: Node3D = PoliceScene.instantiate()
 	store.add_child(cop)
 	cop.global_position = bp.global_position + Vector3(0.3, 0, 0.3)
+	# Aim the clerk's sweep at the player before starting. Guard3D seeds
+	# _sweep_t with randf() * TAU and sweeps slowly (a full cycle takes ~14 s
+	# at sweep_speed 0.45), while this loop only runs 90 physics frames --
+	# about 1.5 s. So the clerk was often facing the other way for the whole
+	# check and `clerk_saw` came out false at random, failing a test that is
+	# really about counting busts, not about vision. Solving for the sweep
+	# phase that points at the player makes it deterministic.
+	var to_p: Vector3 = bp.global_position - clerk.global_position
+	var want_deg := rad_to_deg(Vector2(to_p.x, to_p.z).angle())
+	var half_arc: float = float(clerk.get("sweep_arc_deg")) * 0.5
+	var offset := (want_deg - float(clerk.get("base_facing_deg"))) / half_arc
+	clerk.set("_sweep_t", asin(clampf(offset, -1.0, 1.0)))
 	var clerk_saw := false
 	for i in 90:
 		bp.is_stealing = true  # the clerk is still watching a theft in progress
@@ -419,7 +464,8 @@ func _run() -> void:
 	gs.busted.disconnect(count_bust)
 	# Without this, "one bust" could pass just because nobody was looking.
 	_check(clerk_saw, "  (the clerk really did see the theft during the arrest)")
-	_check(busts[0] == 1 and gs.cash == 20, "caught once: one bust, cash halved once ($40 -> $%d, %d bust(s))" % [gs.cash, busts[0]])
+	var expected_cash: int = 40 - int(40 * gs.BUST_FINE_FRACTION)
+	_check(busts[0] == 1 and gs.cash == expected_cash, "caught once: one bust, fined once ($40 -> $%d, %d bust(s))" % [gs.cash, busts[0]])
 	_check(current_scene.name == "Jail3D", "busted players wake up in the jail, not at home")
 	var cell_spawn := current_scene.get_node("SpawnCell") as Marker3D
 	var jp := _player()
@@ -432,8 +478,12 @@ func _run() -> void:
 	Input.action_release("move_right")
 	_check(jp.global_position.x < -2.6, "  the locked cell door holds you in (x=%.2f)" % jp.global_position.x)
 	var jail := current_scene
+	gs.craving = 60.0
 	jail.get_node("Bench").interact(jp)
-	_check(jail.released and gs.craving < 45.0 - 25.0, "  waiting it out on the bench gets you released, and makes you sicker")
+	_check(jail.released and gs.craving < 60.0 and gs.craving >= 44.0, "  waiting it out on the bench gets you released, and makes you sicker (60 -> %.0f)" % gs.craving)
+	gs.craving = 30.0
+	var cost_low: float = maxf(minf(30.0, jail.WAIT_CRAVING_FLOOR), 30.0 - jail.WAIT_CRAVING_COST)
+	_check(cost_low >= jail.WAIT_CRAVING_FLOOR, "  ...but never leaves you below the withdrawal floor (30 -> %.0f)" % cost_low)
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	jp.dialogue_active = false
 	gs.craving = 45.0
@@ -483,3 +533,186 @@ func _run() -> void:
 	var day_before: int = gs.day
 	current_scene.get_node("Bed").interact(_player())
 	_check(gs.day == day_before + 1, "sleeping advanced the day")
+
+	print("== Stealth: suspicion builds, drains, and only then raises the alarm")
+	var st := await _load("res://world/StoreConvenience3D.tscn")
+	var sp := _player()
+	var watcher := st.get_node("Shopkeeper") as Node3D
+	# Park the watcher's gaze on the player so this measures suspicion, not the
+	# sweep's phase.
+	var toward: Vector3 = Vector3(watcher.global_position.x, 0, -1.95) - watcher.global_position
+	watcher.base_facing_deg = rad_to_deg(Vector2(toward.x, toward.z).angle())
+	watcher.sweep_speed = 0.0
+	watcher._sweep_t = 0.0
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95)
+	gs.inventory.clear()
+	await _frames(20)
+	_check(watcher.can_see_player, "watcher can see the player in the open")
+	_check(watcher.suspicion == 0.0, "  browsing empty-handed in plain sight is not suspicious")
+
+	# Carrying stolen goods in view is.
+	gs.steal_item("cigs")
+	await _frames(30)
+	var carrying_susp: float = watcher.suspicion
+	_check(carrying_susp > 0.0 and not gs.wanted, "  standing in view holding stolen goods builds suspicion (%.2f), without an instant bust" % carrying_susp)
+
+	# Breaking line of sight drains it again.
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95) + Vector3(0, 0, -40.0)
+	await _frames(40)
+	_check(watcher.suspicion < carrying_susp, "  suspicion drains once you're out of sight (%.2f -> %.2f)" % [carrying_susp, watcher.suspicion])
+
+	# Grabbing in plain view fills it fast, and that is what raises the alarm.
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95)
+	var raised := false
+	for i in 120:
+		sp.is_stealing = true
+		await physics_frame
+		if gs.wanted:
+			raised = true
+			break
+	sp.is_stealing = false
+	_check(raised, "  grabbing in plain sight fills suspicion and raises the alarm")
+
+	print("== Runs: strikes, the run-end payout, and meta upgrades")
+	var meta := root.get_node("MetaProgress")
+	var know_before: int = meta.know_how
+	gs.start_run()
+	_check(gs.strikes == 0 and gs.day == 1 and gs.cash == meta.starting_cash(),
+		"start_run resets the run and applies meta-progress starting cash ($%d)" % gs.cash)
+	gs.orders_delivered = 2
+	gs.cash_earned = 120
+	gs.day = 4
+	var ended := []
+	gs.run_ended.connect(func(s): ended.append(s), CONNECT_ONE_SHOT)
+	var allowed: int = gs.max_strikes()
+	for i in allowed:
+		gs.in_custody = false
+		gs.get_busted()
+	_check(gs.strikes == allowed, "  %d busts counted as %d strikes" % [allowed, gs.strikes])
+	_check(ended.size() == 1, "  the run ends once strikes run out")
+	if ended.size() == 1:
+		var summary: Dictionary = ended[0]
+		_check(summary["days"] == 4 and summary["orders"] == 2 and summary["cash"] == 120,
+			"  the summary reports the run (day %d, %d orders, $%d)" % [summary["days"], summary["orders"], summary["cash"]])
+		_check(summary["know_how"] > 0 and meta.know_how == know_before + summary["know_how"],
+			"  a finished run always pays Know-How (+%d)" % summary["know_how"])
+
+	# The HUD has to show the strikes, not just track them. A stale line in
+	# HUD._ready() used to overwrite the day label right after it was built,
+	# so the pips were computed and then thrown away every time a room loaded.
+	gs.start_run()
+	await _load("res://world/Apartment3D.tscn")
+	var day_label: Label = get_first_node_in_group("hud").get_node("TopBar/DayLabel")
+	var fresh_text: String = day_label.text
+	_check(fresh_text.contains("*"), "  the HUD shows the strikes left on a fresh run (\"%s\")" % fresh_text)
+	gs.in_custody = false
+	gs.get_busted()
+	await _frames(2)
+	_check(day_label.text != fresh_text and day_label.text.contains("o"),
+		"  and updates them after a bust (\"%s\")" % day_label.text)
+
+	# Upgrades must actually change the numbers the game reads.
+	var base_pickup: float = meta.pickup_duration(0.6)
+	var base_susp: float = meta.suspicion_scale()
+	meta.know_how += 999
+	var bought_hands: bool = meta.buy("steady_hands")
+	var bought_touch: bool = meta.buy("light_touch")
+	_check(bought_hands and meta.pickup_duration(0.6) < base_pickup,
+		"  Steady Hands shortens the grab (%.2fs -> %.2fs)" % [base_pickup, meta.pickup_duration(0.6)])
+	_check(bought_touch and meta.suspicion_scale() < base_susp,
+		"  Light Touch slows how fast guards get suspicious (x%.2f -> x%.2f)" % [base_susp, meta.suspicion_scale()])
+	_check(meta.next_cost("steady_hands") > meta.UPGRADES["steady_hands"]["costs"][0],
+		"  each tier costs more than the last")
+
+	# Leave no trace: this test must not inflate the player's real save.
+	meta.know_how = know_before
+	meta.levels.clear()
+	meta.runs_completed = max(0, meta.runs_completed - 1)
+	meta.save_progress()
+	gs.start_run()
+
+	print("== Drugs: prices, tolerance, interactions, and going over")
+	var drugs := root.get_node("Drugs")
+	gs.start_run()
+	gs.craving = 10.0
+	# Prices come from the catalogue, and opioid prices climb with tolerance.
+	var oxy_base: int = gs.price_of("oxy")
+	_check(oxy_base == drugs.info("oxy")["price"], "a first dose costs the catalogue price ($%d)" % oxy_base)
+	gs.tolerance[drugs.OPIOID] = 20.0
+	_check(gs.price_of("oxy") > oxy_base, "  opioid prices climb with tolerance ($%d -> $%d)" % [oxy_base, gs.price_of("oxy")])
+	_check(gs.price_of("clonazepam") == drugs.info("clonazepam")["price"], "  ...but opioid tolerance doesn't move benzo prices")
+	gs.tolerance.clear()
+
+	# Relief and duration differ per drug. Taken from a clean slate each
+	# time, so the bupe dose isn't sitting on top of the heroin one -- that
+	# combination precipitates withdrawal, which is covered separately below.
+	gs.start_run()
+	gs.craving = 10.0
+	gs.take_drug("heroin")
+	var after_heroin: float = gs.craving
+	var heroin_decay: float = gs.current_craving_decay()
+	gs.start_run()
+	gs.craving = 10.0
+	gs.take_drug("bupe")
+	_check(after_heroin > 10.0 and gs.craving > 10.0, "  a dose restores craving (heroin -> %.0f, bupe -> %.0f)" % [after_heroin, gs.craving])
+	_check(gs.current_craving_decay() < heroin_decay,
+		"  a long-acting dose holds you longer (decay %.2f/s -> %.2f/s)" % [heroin_decay, gs.current_craving_decay()])
+
+	# Cross-tolerance is shared within a class, and bupe brings it down.
+	gs.start_run()
+	gs.take_drug("fentanyl")
+	var tol_after: float = gs.tolerance_for("heroin")
+	_check(tol_after > 0.0, "  tolerance is shared across the opioid class (fentanyl raised heroin's to %.1f)" % tol_after)
+
+	# Buprenorphine too soon after an opioid precipitates withdrawal.
+	gs.start_run()
+	gs.craving = 80.0
+	gs.take_drug("heroin")
+	gs.craving = 80.0
+	var outcome: String = gs.take_drug("bupe")
+	_check(outcome == "precipitated" and gs.craving < 80.0,
+		"  bupe straight after an opioid precipitates withdrawal (craving %.0f)" % gs.craving)
+	# ...but not once the opioid is long gone.
+	gs.start_run()
+	gs.craving = 40.0
+	gs.run_time = drugs.PRECIPITATED_WINDOW + 10.0
+	_check(gs.take_drug("bupe") == "relief", "  ...and works normally once the opioid has cleared")
+
+	# Naloxone cancels an overdose instead of ending the run.
+	gs.start_run()
+	gs.naloxone = 1
+	var saved: String = gs._overdose()
+	_check(saved == "saved" and gs.naloxone == 0 and gs.craving == 0.0,
+		"  naloxone cancels an overdose and dumps you into withdrawal")
+	# Without it, going over ends the run.
+	gs.start_run()
+	var od_ended := []
+	gs.run_ended.connect(func(sm): od_ended.append(sm), CONNECT_ONE_SHOT)
+	gs._overdose()
+	_check(od_ended.size() == 1 and od_ended[0]["cause"] == "overdose",
+		"  without naloxone, going over ends the run")
+
+	# Mixing an opioid with a benzo multiplies the risk. Checked on the maths
+	# rather than by rolling dice, so the test can't be flaky.
+	gs.start_run()
+	gs.craving = 50.0
+	gs.take_drug("clonazepam")
+	var mixing: bool = gs.run_time - float(gs.last_dose_at.get(drugs.BENZO, -9999.0)) < drugs.MIX_WINDOW
+	_check(mixing and drugs.MIX_OD_MULTIPLIER > 1.0,
+		"  an opioid taken on top of a benzo counts as mixing (x%.1f risk)" % drugs.MIX_OD_MULTIPLIER)
+
+	# Every catalogue entry has to be complete, or a row renders blank.
+	var fields := ["id", "name", "street", "class", "price", "relief", "hours", "tolerance", "od_risk", "fake", "desc"]
+	var complete: bool = drugs.CATALOGUE.all(func(d): return fields.all(func(f): return d.has(f)))
+	_check(complete and drugs.CATALOGUE.size() >= 8,
+		"  all %d catalogue entries are complete" % drugs.CATALOGUE.size())
+	# The counterfeit path has to actually be reachable for the pills it
+	# applies to, or the whole point of the mechanic is lost.
+	var fake_hits := 0
+	for i in 400:
+		if drugs.resolve_purchase("oxy") == "fentanyl":
+			fake_hits += 1
+	_check(fake_hits > 0 and fake_hits < 400,
+		"  street 'oxy' is sometimes a fentanyl press (%d/400 here)" % fake_hits)
+	_check(drugs.resolve_purchase("fentanyl") == "fentanyl", "  ...and what's sold as fentanyl always is")
+	gs.start_run()

@@ -16,6 +16,7 @@ enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, H
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 const PORTRAIT := preload("res://assets/portraits/pusher.png")
 const VOICES := [
 	preload("res://assets/sfx/patron_mutter_a.wav"),
@@ -37,16 +38,23 @@ const WAIT_LINES := [
 	"\"$%d. ...Wait here.\" He pockets your cash and walks off down the street.",
 	"He takes your $%d without counting it. \"Stay put. Don't follow me.\"",
 ]
+const DrugMenuScene := preload("res://ui/DrugMenu.gd")
+## He never has everything. A nightly subset means what you can get is part
+## of the problem, instead of the menu being the same every time.
+const STOCK_MIN := 4
+const STOCK_MAX := 6
 const HANDOFF_LINES := [
 	"He brushes past you and presses it into your palm. You feel it hit.",
 	"A quick handshake, and it's yours. You feel it hit.",
 ]
 
 @export var street_facing_deg: float = 0.0
-@export var model_path: String = "res://assets/kenney/characters/character-male-f.glb"
+## Cast role (npc/CharacterCast.gd); decides the body and its colours.
+@export var role: String = "pusher"
+@export var model_path: String = ""
 ## Dark grey, like a zip-up hoodie -- and so he doesn't read as the player,
 ## who wears the same base model's green shirt.
-@export var clothes_tint: Color = Color(0.32, 0.33, 0.36)
+@export var clothes_tint: Color = Color.WHITE
 ## Where he keeps the stash and where he ducks out of sight -- set by the
 ## room to Marker3D positions (world space).
 @export var stash_position: Vector3
@@ -64,12 +72,19 @@ var _glance_t: float = 0.0
 var _timer: float = 0.0
 ## Paid for but not yet handed over (survives him having to hide).
 var _owes_fix: bool = false
+## What he asked for and what was actually pressed into his hand -- decided
+## at purchase, revealed only when it hits.
+var _owed_drug: String = ""
+## Tonight's stock, rerolled each day.
+var _stock: Array = []
+var _stock_day: int = -1
 
 func _ready() -> void:
 	add_to_group("interactable")
 	add_to_group("pusher")
-	var model: Node = load(model_path).instantiate()
+	var model: Node = load(model_path if model_path != "" else CharacterCast.model_for(role)).instantiate()
 	model_root.add_child(model)
+	CharacterCast.dress(model, role)
 	CharacterLook.tint_clothes(model, clothes_tint)
 	anim = CharacterAnimator.new(model)
 	_post_position = global_position
@@ -92,7 +107,7 @@ func _process(delta: float) -> void:
 		State.TO_STASH:
 			if _walk_to(stash_position, delta):
 				state = State.AT_STASH
-				_timer = anim.play_once("pick-up", 0.5) + 0.3
+				_timer = anim.play_once_timed("pick-up", 0.9) + 0.3
 		State.AT_STASH:
 			_timer -= delta
 			if _timer <= 0.0:
@@ -134,28 +149,78 @@ func interact(player: Node) -> void:
 	if state != State.POST:
 		hud.show_dialogue("Pusher", "\"I said wait.\"", PORTRAIT)
 		return
-	var cost := GameState.current_fix_cost()
-	if GameState.cash < cost:
-		hud.show_dialogue("Pusher", "%s \"$%d. Come back when you've got it.\"" % [GREETINGS.pick_random(), cost], PORTRAIT)
+	var cheapest := GameState.cheapest_opioid_cost()
+	if GameState.cash < min(cheapest, GameState.price_of("clonazepam")):
+		hud.show_dialogue("Pusher", "%s \"Cheapest thing I've got is $%d. Come back when you've got it.\"" % [GREETINGS.pick_random(), cheapest], PORTRAIT)
 		return
-	GameState.spend_cash(cost)
+	_open_menu(player)
+
+## Shows what he's holding tonight and waits for a pick.
+func _open_menu(player: Node) -> void:
+	player.dialogue_active = true
+	var menu: CanvasLayer = DrugMenuScene.new()
+	get_tree().root.add_child(menu)
+	menu.chosen.connect(func(id: String): _buy(player, id))
+	menu.cancelled.connect(func(): player.dialogue_active = false)
+	menu.open_with(_todays_stock())
+
+## Rerolled once a day. Naloxone is always available -- he'd rather his
+## buyers didn't die, and dealers carrying it is increasingly normal.
+func _todays_stock() -> Array:
+	if _stock_day == GameState.day and not _stock.is_empty():
+		return _stock
+	var pool: Array = Drugs.CATALOGUE.filter(func(d): return d["class"] != Drugs.RESCUE).map(func(d): return d["id"])
+	pool.shuffle()
+	_stock = pool.slice(0, randi_range(STOCK_MIN, STOCK_MAX))
+	_stock.append("naloxone")
+	_stock_day = GameState.day
+	return _stock
+
+func _buy(player: Node, drug_id: String) -> void:
+	var hud := get_tree().get_first_node_in_group("hud")
+	var cost := GameState.price_of(drug_id)
+	if not GameState.spend_cash(cost):
+		player.dialogue_active = false
+		return
+	# What he actually hands over is settled now, not when it hits you.
+	_owed_drug = Drugs.resolve_purchase(drug_id)
 	_owes_fix = true
 	SFX.play("cash", -6.0, 0.8)
-	hud.show_dialogue("Pusher", WAIT_LINES.pick_random() % cost, PORTRAIT)
+	if hud:
+		player.dialogue_active = true
+		hud.show_dialogue("Pusher", WAIT_LINES.pick_random() % cost, PORTRAIT)
 	state = State.TO_STASH
 
 func _handoff(player: Node) -> void:
 	state = State.HANDOFF
-	_timer = anim.play_once("interact-right", 0.8)
+	_timer = anim.play_once_timed("interact", 0.8)
 	_speak()
 	_owes_fix = false
-	GameState.receive_fix()
 	SFX.play("fix")
+	var drug := _owed_drug if _owed_drug != "" else "heroin"
+	_owed_drug = ""
+	var outcome := GameState.take_drug(drug)
 	var hud := get_tree().get_first_node_in_group("hud")
-	if hud and not player.dialogue_active:
+	if hud:
 		player.dialogue_active = true
-		hud.show_dialogue("Pusher", HANDOFF_LINES.pick_random(), PORTRAIT)
+		hud.show_dialogue("Pusher", _handoff_line(drug, outcome), PORTRAIT)
 	sale_completed.emit()
+
+## Naloxone is bought, not taken, so it never "hits". Everything else gets
+## narrated by what it did to you -- which is the only way you find out the
+## blue you paid $30 for was a fentanyl press.
+func _handoff_line(drug: String, outcome: String) -> String:
+	if Drugs.info(drug).get("class", "") == Drugs.RESCUE:
+		return "A quick handshake. \"Keep it on you. Seriously.\""
+	match outcome:
+		"precipitated":
+			return "A quick handshake, and it's yours. It goes wrong within minutes -- the sickness comes back twice as hard, sweating and cramping. Too soon after the last one."
+		"overdose":
+			return "A quick handshake, and it's yours. It hits harder than anything ever has, and the street tilts away from you."
+		"saved":
+			return "It hits far too hard. Somebody gets the naloxone into you and the world comes back grey, wrung out, and instantly sick again."
+		_:
+			return HANDOFF_LINES.pick_random()
 
 ## The lookout's whistle: clear out, or come back once it's quiet. A sale
 ## that's already paid for is still owed -- he picks up where he left off.

@@ -38,12 +38,14 @@ func _ready() -> void:
 	GameState.craving_changed.connect(_update_craving)
 	GameState.inventory_changed.connect(_update_inventory)
 	GameState.wanted_changed.connect(_update_wanted)
-	GameState.day_changed.connect(func(d): day_label.text = "Day %d" % d)
+	GameState.day_changed.connect(func(_d): _update_day())
+	GameState.strikes_changed.connect(func(_s): _update_day())
+	GameState.run_ended.connect(_show_run_end)
+	_update_day()
 	_update_cash(GameState.cash)
 	_update_craving(GameState.craving)
 	_update_inventory()
 	_update_wanted(GameState.wanted)
-	day_label.text = "Day %d" % GameState.day
 	dialogue_panel.visible = false
 	busted_overlay.visible = false
 
@@ -95,6 +97,22 @@ func _layout_carry_panel(icon_count: int) -> void:
 
 func _update_wanted(is_wanted: bool) -> void:
 	wanted_label.visible = is_wanted
+
+## Day plus how many chances are left this run, e.g. "Day 4  * * o". Shown
+## together because they're the two numbers that say how a run is going, and
+## it keeps the strike count out of a panel of its own.
+func _update_day() -> void:
+	var left: int = GameState.max_strikes() - GameState.strikes
+	var pips := "*".repeat(max(0, left)) + "o".repeat(max(0, GameState.strikes))
+	day_label.text = "Day %d  %s" % [GameState.day, pips]
+
+## Parented to the tree root, not this HUD: the bust that ends a run also
+## changes scene, which would take a child of the current scene down with it
+## before the player had read anything.
+func _show_run_end(summary: Dictionary) -> void:
+	var screen := preload("res://ui/RunEndScreen.gd").new()
+	get_tree().root.add_child(screen)
+	screen.show_summary(summary)
 
 func show_dialogue(speaker: String, text: String, portrait: Texture2D = null) -> void:
 	speaker_label.text = speaker

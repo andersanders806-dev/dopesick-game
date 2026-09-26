@@ -54,7 +54,11 @@ signal order_fulfilled
 ## Multiplies the model's clothing colours, for telling characters that share
 ## a base model apart. White leaves it unchanged.
 @export var clothes_tint: Color = Color.WHITE
-@export var model_path: String = "res://assets/kenney/characters/character-male-b.glb"
+## Which member of the cast this is (see npc/CharacterCast.gd). When set it
+## decides both the body and its colours, and `model_path` is ignored --
+## that's how a named regular keeps the same face visit after visit.
+@export var role: String = ""
+@export var model_path: String = "res://assets/quaternius/characters/Smooth_Male_LongSleeve.fbx"
 
 @onready var model_root: Node3D = $ModelRoot
 @onready var idle_sound: AudioStreamPlayer3D = $IdleSound
@@ -62,6 +66,7 @@ signal order_fulfilled
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
 var anim: CharacterAnimator
 
@@ -134,9 +139,14 @@ func set_model(path: String) -> void:
 		model_root.remove_child(child)
 		child.queue_free()
 	anim = null
+	if role != "":
+		path = CharacterCast.model_for(role)
+		model_path = path
 	if path != "":
 		var model: Node = load(path).instantiate()
 		model_root.add_child(model)
+		if role != "":
+			CharacterCast.dress(model, role)
 		CharacterLook.tint_clothes(model, clothes_tint)
 		anim = CharacterAnimator.new(model)
 		anim.set_rest_clip(pose)

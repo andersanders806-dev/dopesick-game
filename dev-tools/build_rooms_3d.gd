@@ -146,6 +146,25 @@ func _light(parent: Node, name: String, pos: Vector3, color: Color, energy: floa
 	l.position = pos
 	return l
 
+## The look of every room. All five funnel through here, so the grade stays
+## consistent room to room and there's one place to tune it.
+##
+## Choices worth knowing:
+## - **AgX, not ACES.** ACES pushes saturated lights (the neon signs, the
+##   police beacon, the jukebox) straight to a clipped, glowing white blob.
+##   AgX desaturates gracefully on the way to white, so a red neon tube still
+##   reads as red at its core. It's flatter by default, which is what
+##   `adjustment_contrast` below is for.
+## - **SSIL on top of SSAO.** SSAO only darkens creases. SSIL bounces colour:
+##   the dive bar's red neon spills onto the wood panelling next to it, and
+##   the TV's blue flicker lands on the apartment floor. This is most of what
+##   separates "3D objects lit by lamps" from "a room".
+## - **Volumetric fog** puts real shafts in the air, so the bare bulb and the
+##   streetlights have visible cones instead of just a pool on the floor.
+## - **Mild far-field DOF only.** The camera sits ~11 m from the player; the
+##   blur starts at 16 m so distant geometry softens but every shelf and item
+##   you actually need to see stays sharp. Near blur is off deliberately --
+##   it would blur the floor between you and the camera.
 func _environment(ambient: Color, ambient_energy: float, fog := false) -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -153,17 +172,80 @@ func _environment(ambient: Color, ambient_energy: float, fog := false) -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = ambient
 	env.ambient_light_energy = ambient_energy
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.1
+	env.tonemap_white = 6.0
+
 	env.ssao_enabled = true
+	env.ssao_radius = 0.6
+	env.ssao_intensity = 2.4
+	env.ssao_power = 1.8
+	env.ssao_detail = 0.6
+	# Ambient light alone shouldn't wash the occlusion back out.
+	env.ssao_light_affect = 0.25
+	env.ssao_ao_channel_affect = 0.0
+
+	env.ssil_enabled = true
+	env.ssil_radius = 3.0
+	env.ssil_intensity = 1.1
+	env.ssil_sharpness = 0.98
+	env.ssil_normal_rejection = 1.0
+
+	# Wet asphalt, the bar top, and the tiled store floors all read better
+	# with something reflected in them. Cheap because it's screen-space.
+	env.ssr_enabled = true
+	env.ssr_max_steps = 32
+	env.ssr_fade_in = 0.2
+	env.ssr_fade_out = 2.5
+	env.ssr_depth_tolerance = 0.3
+
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = 0.85
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.12
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SOFTLIGHT
+	# Only genuinely bright things bloom -- neon, the TV, the beacon -- not
+	# every pale wall.
+	env.glow_hdr_threshold = 1.0
+	env.glow_hdr_scale = 2.0
+
+	# AgX is deliberately flat; put the contrast back and pull a little
+	# saturation out for the washed-out, sodium-lit look the game wants.
+	env.adjustment_enabled = true
+	env.adjustment_brightness = 1.0
+	env.adjustment_contrast = 1.18
+	env.adjustment_saturation = 0.88
+
+	env.volumetric_fog_enabled = true
+	env.volumetric_fog_density = 0.018 if fog else 0.010
+	env.volumetric_fog_albedo = Color(0.7, 0.72, 0.8)
+	env.volumetric_fog_emission = Color(0.0, 0.0, 0.0)
+	env.volumetric_fog_emission_energy = 0.0
+	# Forward-scattering, so light sources bloom into the haze around them.
+	env.volumetric_fog_anisotropy = 0.35
+	env.volumetric_fog_length = 48.0
+	env.volumetric_fog_gi_inject = 1.0
+	env.volumetric_fog_ambient_inject = 0.4
+
 	if fog:
 		env.fog_enabled = true
 		env.fog_light_color = Color(0.08, 0.09, 0.14)
 		env.fog_density = 0.02
+
 	var we := WorldEnvironment.new()
 	we.name = "WorldEnvironment"
 	we.environment = env
+
+	# Assigned on the WorldEnvironment rather than the camera so it applies
+	# in every room without touching Player3D.tscn's camera rig.
+	var cam_attr := CameraAttributesPractical.new()
+	cam_attr.dof_blur_far_enabled = true
+	cam_attr.dof_blur_far_distance = 16.0
+	cam_attr.dof_blur_far_transition = 8.0
+	cam_attr.dof_blur_amount = 0.06
+	we.camera_attributes = cam_attr
+
 	_add(_root, we)
 	var nav := NavigationRegion3D.new()
 	nav.name = "NavRegion"
@@ -522,6 +604,18 @@ func _build_apartment() -> Node3D:
 # (StaticBody3D, with "item_offset" and optional "stock" metadata),
 # Item1..N, one or more Guard3D instances, PoliceSpawn, SpawnFromCity.
 
+## Stealth tuning, measured with dev-tools/balance_sim.gd (see README): how
+## long a theft stays noticeable in each store, and how far the liquor
+## store's mirror reaches.
+const TUNE := {
+	"supermarket_window": 1.0,
+	"convenience_window": 1.6,
+	"pharmacy_window": 1.9,
+	"liquor_window": 1.7,
+	"electronics_window": 1.6,
+	"mirror_range": 5.0,
+}
+
 ## Room, painted walls, fluorescent strip lights with their hum, the door out
 ## on the west wall, and the spawn markers every store needs.
 func _store_shell(name: String, w: float, d: float, floor_tex: String, floor_uv: float, city_spawn: String, wall_color: Color, ambient_energy := 0.32, light_color := Color(0.85, 0.95, 1.0), strip_energy := 1.6, floor_tint := Color.WHITE) -> void:
@@ -546,7 +640,8 @@ func _store_shell(name: String, w: float, d: float, floor_tex: String, floor_uv:
 	_marker("SpawnDefault", Vector3(-w / 2 + 1.2, 0, door_z))
 	_marker("PoliceSpawn", Vector3(-w / 2 + 1.2, 0, door_z + 0.6))
 
-func _store_finish(items: Array[String], layouts: Array, spawn: Vector3) -> void:
+func _store_finish(items: Array[String], layouts: Array, spawn: Vector3, theft_window := 1.0) -> void:
+	_root.set("theft_window", theft_window)
 	var store_ids := {"StoreConvenience3D": "convenience", "StorePharmacy3D": "pharmacy", "StoreSupermarket3D": "supermarket", "StoreLiquor3D": "liquor", "StoreElectronics3D": "electronics"}
 	_root.set("store_id", store_ids[_root.name])
 	_root.set("item_ids", items)
@@ -565,8 +660,22 @@ func _counter(parent: Node, name: String, pos: Vector3, pieces: int) -> StaticBo
 	_collision(counter, _box_shape(Vector3(pieces * piece_w, 1.05, 0.53)), Vector3(pieces * piece_w / 2, 0.52, -0.26))
 	return counter
 
-func _guard(name: String, pos: Vector3, facing_deg: float, vision_range: float, angle: float, sweep_arc: float, sweep_speed: float, talk_name := "", lines := "", portrait := "") -> Node3D:
+## A checkout counter at the front of a store, near the door, with its
+## customer side facing north into the store -- where real corner shops and
+## liquor stores put the till, and where a clerk can actually see the shelf
+## fronts (a clerk at the back only sees the backs of 2.2 m shelves).
+## Spans x from `x_start` eastward; the clerk stands south of it.
+func _front_counter(name: String, x_start: float, z_front: float, pieces: int) -> StaticBody3D:
+	var piece_w := 0.43 * 2.5
+	# Rotated 180 degrees, so pieces run back toward -x from the east end and
+	# the counter's front edge faces north.
+	var counter := _counter(_root, name, Vector3(x_start + pieces * piece_w, 0, z_front), pieces)
+	counter.rotation_degrees.y = 180.0
+	return counter
+
+func _guard(name: String, pos: Vector3, facing_deg: float, vision_range: float, angle: float, sweep_arc: float, sweep_speed: float, talk_name := "", lines := "", portrait := "", role := "clerk_convenience") -> Node3D:
 	var guard := _instance(_root, name, GuardScene, pos)
+	guard.set("role", role)
 	guard.set("vision_range", vision_range)
 	guard.set("vision_angle_deg", angle)
 	guard.set("sweep_arc_deg", sweep_arc)
@@ -669,24 +778,25 @@ func _build_store_convenience() -> Node3D:
 	var colors := [Color(0.8, 0.2, 0.15), Color(0.95, 0.8, 0.2), Color(0.2, 0.45, 0.8), Color(0.3, 0.7, 0.3)]
 	for i in 5:
 		_fixture_shelf(i + 1, colors)
-	var counter := _counter(_root, "Counter", Vector3(-3.2, 0, -2.5), 9)
-	_model(counter, "Register", "furniture/radio.glb", Vector3(5.2, 1.05, -0.45), 1.6)
-	# The cigarette wall behind the counter, and a lottery sign.
-	for row in 4:
-		for k in 16:
-			_box_mesh(_root, "CigWall%d_%d" % [row, k], Vector3(0.16, 0.1, 0.06), Vector3(-2.4 + k * 0.2, 1.1 + row * 0.16, -3.95), _color_mat([Color(0.9, 0.9, 0.9), Color(0.8, 0.15, 0.1), Color(0.2, 0.3, 0.7), Color(0.85, 0.75, 0.2)][(k + row) % 4], 0.6))
+	# The till is at the front by the door, with an overhead cigarette rack.
+	var counter := _front_counter("Counter", 2.6, 2.7, 3)
+	_model(counter, "Register", "furniture/radio.glb", Vector3(0.8, 1.05, -0.4), 1.6)
+	var rack := _box_mesh(counter, "CigRack", Vector3(2.2, 0.5, 0.25), Vector3(1.8, 1.9, -0.45), _color_mat(Color(0.15, 0.15, 0.15), 0.6))
+	for row in 2:
+		for k in 10:
+			_box_mesh(rack, "Pack%d_%d" % [row, k], Vector3(0.16, 0.18, 0.04), Vector3(-0.95 + k * 0.21, -0.1 + row * 0.22, 0.13), _color_mat([Color(0.9, 0.9, 0.9), Color(0.8, 0.15, 0.1), Color(0.2, 0.3, 0.7), Color(0.85, 0.75, 0.2)][(k + row) % 4], 0.6))
 	_label(_root, "LottoSign", "LOTTO", Vector3(3.2, 1.9, -3.97), 0.0, Color(1.0, 0.8, 0.1), 64, true)
 	_model(_root, "Cooler", "furniture/kitchenFridge.glb", Vector3(4.9, 0, -3.3), 2.5)
 	_sound(_root, "CoolerHum", "cooler_hum_loop.wav", Vector3(5.4, 1.0, -3.6), -9.0, 2.5, 14.0)
 	_light(_root, "LightCooler", Vector3(5.4, 1.2, -2.6), Color(0.6, 0.85, 1.0), 0.8, 2.5, false)
-	_guard("Shopkeeper", Vector3(0.5, 0, -3.4), 90.0, 7.0, 55.0, 110.0, 0.5)
+	_guard("Shopkeeper", Vector3(4.3, 0, 3.6), -135.0, 9.0, 45.0, 120.0, 0.45, "", "", "", "clerk_convenience")
 	var layouts := [
 		PackedVector2Array([Vector2(-3.25, -0.2), Vector2(0.0, -0.2), Vector2(3.25, -0.2), Vector2(-1.75, 1.8), Vector2(1.75, 1.8)]),
 		PackedVector2Array([Vector2(-4.25, -0.95), Vector2(-0.6, -0.95), Vector2(2.9, -0.95), Vector2(-2.5, 1.55), Vector2(1.25, 1.55)]),
 		PackedVector2Array([Vector2(-3.5, -0.7), Vector2(1.5, -0.7), Vector2(-1.0, 0.8), Vector2(-3.5, 2.1), Vector2(1.5, 2.1)]),
 	]
 	var items: Array[String] = ["cigs", "charger", "batteries", "energy", "sunglasses"]
-	_store_finish(items, layouts, Vector3(-4.8, 0, 2.8))
+	_store_finish(items, layouts, Vector3(-4.8, 0, 2.8), TUNE["convenience_window"])
 	return _root
 
 # Pharmacy ---------------------------------------------------------------------
@@ -717,15 +827,21 @@ func _build_store_pharmacy() -> Node3D:
 	_box_mesh(bp, "Chair", Vector3(0.7, 0.9, 0.7), Vector3(0, 0.45, 0), _color_mat(Color(0.15, 0.3, 0.55), 0.5))
 	_box_mesh(bp, "Screen", Vector3(0.5, 0.35, 0.05), Vector3(0.1, 1.15, -0.3), _color_mat(Color(0.3, 0.7, 0.9), 0.3, 1.5))
 	_collision(bp, _box_shape(Vector3(0.7, 1.3, 0.7)), Vector3(0, 0.65, 0))
+	# A front checkout by the door as well, where most people actually pay.
+	var checkout := _front_counter("Checkout", 3.6, 3.1, 3)
+	_model(checkout, "Register", "furniture/radio.glb", Vector3(1.0, 1.05, -0.4), 1.6)
+	_guard("Cashier", Vector3(5.2, 0, 3.95), -140.0, 9.0, 55.0, 120.0, 0.5, "Cashier",
+		"Did you find everything okay?\nThe pharmacy counter's in the back.\nSorry, I have to check your bag. Store policy.",
+		"res://assets/portraits/cashier.png", "clerk_pharmacy_cashier")
 	var g := _guard("Pharmacist", Vector3(4.2, 0.25, -3.7), 115.0, 8.5, 55.0, 130.0, 0.45, "Pharmacist",
 		"Can I help you find something?\nRazors are locked up. I'll have to get those for you.\nWe've had a lot of theft lately. The cameras are on.\nPrescriptions are at the counter, not in the aisles.",
-		"res://assets/portraits/pharmacist.png")
+		"res://assets/portraits/pharmacist.png", "clerk_pharmacy")
 	var layouts := [
 		PackedVector2Array([Vector2(-4.5, -1.6), Vector2(-4.5, 1.2), Vector2(-0.8, -0.4), Vector2(-0.8, 2.3), Vector2(3.6, 1.0)]),
 		PackedVector2Array([Vector2(-4.8, -0.2), Vector2(-1.6, -0.2), Vector2(-4.8, 2.5), Vector2(-1.6, 2.5), Vector2(3.8, 0.6)]),
 	]
 	var items: Array[String] = ["coldmeds", "formula", "makeup", "whitening", "razors"]
-	_store_finish(items, layouts, Vector3(-5.8, 0, 3.3))
+	_store_finish(items, layouts, Vector3(-5.8, 0, 3.3), TUNE["pharmacy_window"])
 	return _root
 
 # Supermarket ------------------------------------------------------------------
@@ -758,16 +874,16 @@ func _build_store_supermarket() -> Node3D:
 		var cart := _box_mesh(_root, "Cart%d" % c, Vector3(0.55, 0.5, 0.85), Vector3(-7.6 + c * 0.25, 0.55, -3.0 + c * 0.55), _color_mat(Color(0.7, 0.72, 0.75, 0.6), 0.3))
 		cart.rotation_degrees.y = 12.0 * c
 	# One bored cashier, looking up the aisles from the front of the store.
-	_guard("Cashier", Vector3(-4.0, 0, 3.0), -90.0, 8.0, 45.0, 80.0, 0.35, "Cashier",
+	_guard("Cashier", Vector3(-4.0, 0, 3.0), -90.0, 6.0, 35.0, 60.0, 0.3, "Cashier",
 		"...Hey.\nI don't get paid enough to chase anyone.\nLane two's closed. Lane one's also kind of closed.\nMy manager says watch the meat aisle. I watch my phone.",
-		"res://assets/portraits/cashier.png")
+		"res://assets/portraits/cashier.png", "clerk_supermarket")
 	var layouts := [
 		PackedVector2Array([Vector2(-5.0, -1.6), Vector2(-3.0, -1.6), Vector2(1.0, -1.6), Vector2(3.0, -1.6), Vector2(1.0, 1.4), Vector2(3.0, 1.4), Vector2(-2.0, -4.3), Vector2(3.5, -4.3)]),
 		PackedVector2Array([Vector2(-4.0, -2.0), Vector2(-2.0, -2.0), Vector2(2.0, -2.0), Vector2(4.0, -2.0), Vector2(6.0, 0.9), Vector2(4.0, 0.9), Vector2(-3.5, -4.3), Vector2(2.0, -4.3)]),
 	]
 	# Steaks and cheese only ever go in the coolers (their "stock" meta).
 	var items: Array[String] = ["detergent", "detergent", "cheese", "energy", "formula", "coldmeds"]
-	_store_finish(items, layouts, Vector3(-7.8, 0, 4.3))
+	_store_finish(items, layouts, Vector3(-7.8, 0, 4.3), TUNE["supermarket_window"])
 	return _root
 
 # Liquor store -------------------------------------------------------------------
@@ -776,16 +892,15 @@ func _build_store_liquor() -> Node3D:
 	_store_shell("StoreLiquor3D", 11.0, 8.0, ENV3D + "linoleum_worn.png", 0.8, "SpawnFromLiquor", Color(0.55, 0.42, 0.3), 0.3, Color(1.0, 0.9, 0.75), 1.5)
 	for i in 4:
 		_fixture_bottles(i + 1)
-	# Counter behind a scratched plexiglass screen, pints and cigarettes
-	# behind the clerk, a convex security mirror in the corner.
-	var counter := _counter(_root, "Counter", Vector3(-2.2, 0, -2.6), 6)
+	# The till by the door behind a scratched plexiglass screen, with pints
+	# stacked on the counter, and a convex security mirror in the far corner.
+	var counter := _front_counter("Counter", 2.0, 2.5, 3)
 	var plexi := _color_mat(Color(0.85, 0.9, 0.95, 0.2), 0.15)
 	plexi.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_box_mesh(counter, "Plexiglass", Vector3(6.45, 1.2, 0.03), Vector3(3.2, 1.65, 0.0), plexi)
-	_box_mesh(counter, "PassThrough", Vector3(0.5, 0.15, 0.04), Vector3(3.2, 1.12, 0.0), _color_mat(Color(0.3, 0.3, 0.3), 0.5))
-	for row in 3:
-		for k in 14:
-			_model(_root, "Pint%d_%d" % [row, k], "food/soda-bottle.glb" if k % 2 else "food/wine-red.glb", Vector3(-2.1 + k * 0.4, 0.65 + row * 0.5, -3.85), 0.35)
+	_box_mesh(counter, "Plexiglass", Vector3(3.3, 1.2, 0.03), Vector3(1.6, 1.65, 0.0), plexi)
+	_box_mesh(counter, "PassThrough", Vector3(0.5, 0.15, 0.04), Vector3(1.6, 1.12, 0.0), _color_mat(Color(0.3, 0.3, 0.3), 0.5))
+	for k in 6:
+		_model(counter, "Pint%d" % k, "food/soda-bottle.glb" if k % 2 else "food/wine-red.glb", Vector3(0.3 + k * 0.4, 1.05, -0.35), 0.35)
 	var mirror_mesh := SphereMesh.new()
 	mirror_mesh.radius = 0.35
 	mirror_mesh.height = 0.35
@@ -802,15 +917,18 @@ func _build_store_liquor() -> Node3D:
 	_label(_root, "CameraSign", "SMILE, YOU'RE ON CAMERA", Vector3(-1.0, 2.25, -3.97), 0.0, Color(0.9, 0.9, 0.85), 32)
 	_label(_root, "LiquorNeon", "COLD BEER & WINE", Vector3(2.8, 2.25, -3.97), 0.0, Color(1.0, 0.2, 0.15), 44, true)
 	_label(_root, "LottoNeon", "LOTTO", Vector3(5.47, 1.8, 1.0), -90.0, Color(1.0, 0.8, 0.1), 60, true)
-	_guard("Clerk", Vector3(1.0, 0, -3.4), 90.0, 7.5, 60.0, 120.0, 0.55, "Clerk",
+	_guard("Clerk", Vector3(3.6, 0, 3.45), -130.0, 9.5, 70.0, 130.0, 0.6, "Clerk",
 		"You buying or browsing?\nI see you in the mirror. I see everybody in the mirror.\nNo, I don't do credit.\nTouch the top shelf and I'm calling it in.",
-		"res://assets/portraits/liquor_clerk.png")
+		"res://assets/portraits/liquor_clerk.png", "clerk_liquor")
 	var layouts := [
-		PackedVector2Array([Vector2(-3.2, -0.4), Vector2(0.3, -0.4), Vector2(-3.2, 2.1), Vector2(2.9, 1.6)]),
-		PackedVector2Array([Vector2(-3.0, 0.4), Vector2(0.6, 0.4), Vector2(3.4, -0.2), Vector2(1.9, 2.6)]),
+		PackedVector2Array([Vector2(-3.2, -0.9), Vector2(0.3, -0.9), Vector2(-3.2, 1.6), Vector2(3.0, 0.8)]),
+		PackedVector2Array([Vector2(-3.0, 0.2), Vector2(0.6, 0.2), Vector2(3.4, -1.2), Vector2(-0.6, 2.0)]),
 	]
 	var items: Array[String] = ["whiskey", "vodka", "cognac", "vodka"]
-	_store_finish(items, layouts, Vector3(-4.3, 0, 2.8))
+	# The clerk watches the far corner in the convex mirror, too.
+	var mirror_eyes := _guard("MirrorWatch", Vector3(-5.0, 0, -3.5), 40.0, TUNE["mirror_range"], 70.0, 50.0, 0.3)
+	mirror_eyes.set("watcher_only", true)
+	_store_finish(items, layouts, Vector3(-4.3, 0, 2.8), TUNE["liquor_window"])
 	return _root
 
 # Electronics store ---------------------------------------------------------------
@@ -842,17 +960,17 @@ func _build_store_electronics() -> Node3D:
 		_box_mesh(gate, "Strip", Vector3(0.13, 1.2, 0.04), Vector3(0, 0.75, 0), _color_mat(Color(0.3, 0.8, 1.0), 0.3, 2.0))
 		_collision(gate, _box_shape(Vector3(0.12, 1.5, 0.45)), Vector3(0, 0.75, 0))
 	_label(_root, "SaleSign", "BIG SALE", Vector3(4.5, 2.2, -4.47), 0.0, Color(1.0, 0.85, 0.1), 64, true)
-	_guard("Clerk", Vector3(4.0, 0, -3.4), 110.0, 8.5, 50.0, 110.0, 0.5, "Clerk",
-		"Those are display models, they don't even turn on.\nLet me know if you want me to open a case.\nWe tag everything. The gates will scream.")
-	_guard("SecurityGuard", Vector3(-4.6, 0, 1.8), -20.0, 6.5, 60.0, 140.0, 0.4, "Security",
+	_guard("Clerk", Vector3(4.0, 0, -3.4), 130.0, 9.0, 55.0, 120.0, 0.45, "Clerk",
+		"Those are display models, they don't even turn on.\nLet me know if you want me to open a case.\nWe tag everything. The gates will scream.", "", "clerk_electronics")
+	_guard("SecurityGuard", Vector3(-4.6, 0, 1.8), -20.0, 6.5, 50.0, 150.0, 0.5, "Security",
 		"Keep moving.\nBags stay where I can see them.\nI've got your face on six cameras, pal.\nNot today.",
-		"res://assets/portraits/security_guard.png")
+		"res://assets/portraits/security_guard.png", "security_guard")
 	var layouts := [
 		PackedVector2Array([Vector2(-2.6, -1.2), Vector2(1.0, -1.2), Vector2(-2.6, 1.3), Vector2(1.0, 1.3), Vector2(4.8, 0.8)]),
 		PackedVector2Array([Vector2(-1.8, -1.6), Vector2(1.8, -1.6), Vector2(-0.8, 0.8), Vector2(2.6, 1.6), Vector2(5.0, -0.4)]),
 	]
 	var items: Array[String] = ["headphones", "smartphone", "watch", "videogame", "headphones"]
-	_store_finish(items, layouts, Vector3(-5.8, 0, 3.3))
+	_store_finish(items, layouts, Vector3(-5.8, 0, 3.3), TUNE["electronics_window"])
 	return _root
 
 # --- Jail -------------------------------------------------------------------
@@ -990,7 +1108,7 @@ func _build_jail() -> Node3D:
 	var jailer := _instance(_root, "Jailer", NPCScene, Vector3(3.6, 0, -3.3))
 	jailer.set("npc_name", "Booking Officer")
 	jailer.set("fences_items", false)
-	jailer.set("model_path", KENNEY + "characters/character-male-c.glb")
+	jailer.set("role", "booking_officer")
 	jailer.set("flavor_lines", "Door's that way. Don't make me see you again this week.\nYour property? Evidence now.\nNext time it's a judge, not me.")
 	# Mugshot height chart on the wall by the desk.
 	var chart := _box_mesh(_root, "HeightChart", Vector3(1.0, 2.0, 0.02), Vector3(-1.2, 1.0, -hd + 0.02), _color_mat(Color(0.85, 0.85, 0.82), 0.8))
@@ -1185,7 +1303,7 @@ func _build_dive_bar() -> Node3D:
 
 	var bartender := _instance(_root, "Bartender", NPCScene, Vector3(-2.0, 0, -3.45))
 	bartender.set("npc_name", "Bartender")
-	bartender.set("model_path", KENNEY + "characters/character-male-d.glb")
+	bartender.set("role", "bartender")
 	bartender.set("flavor_lines", "Rough night?\nYou look like hell, you know that.\nDrink first, talk later.\nStill breathing. That's something.\nCash only. Machine's in the back if you're short.")
 
 	# Christmas lights, up all year: along the top of the back wall and the
@@ -1527,7 +1645,7 @@ func _build_city() -> Node3D:
 	var lookout := _instance(_root, "Lookout", NPCScene, Vector3(-7.0, 0, street_z + 1.2))
 	lookout.set_script(load("res://npc/Lookout3D.gd"))
 	lookout.set("npc_name", "Lookout")
-	lookout.set("model_path", KENNEY + "characters/character-male-b.glb")
+	lookout.set("role", "lookout")
 	lookout.set("clothes_tint", Color(0.55, 0.62, 0.9))
 	lookout.set("flavor_lines", "Keep walking.\nI ain't seen nothing, and neither have you.\nYou want him, he's down past the liquor store.\nDon't stand here. You're drawing eyes.")
 	(lookout.get_node("ModelRoot") as Node3D).rotation_degrees.y = -90.0

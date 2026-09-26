@@ -5,7 +5,11 @@ extends "res://world/WorldRoot3D.gd"
 ## and you walk out past the booking desk.
 
 const RELEASE_AFTER := 25.0
-const WAIT_CRAVING_COST := 30.0
+## Waiting it out makes the withdrawal worse -- but it's a way out, not a
+## trap, so it never leaves you below the point where the sickness slows you
+## down (Player3D.SICK_THRESHOLD is 20).
+const WAIT_CRAVING_COST := 15.0
+const WAIT_CRAVING_FLOOR := 25.0
 
 @onready var cell_door: StaticBody3D = $CellDoor
 @onready var knock_zone: Area3D = $CellDoor/CellDoorKnock
@@ -28,7 +32,7 @@ func _intro() -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if hud and player:
 		player.dialogue_active = true
-		hud.show_dialogue("", "Booked. Printed. Photographed against the height chart. Everything you were carrying is evidence now, and so is half your cash. The door slams. Now you wait.")
+		hud.show_dialogue("", "Booked. Printed. Photographed against the height chart. Everything you were carrying is evidence now, and a fine comes out of your cash. The door slams. Now you wait.")
 
 func _process(delta: float) -> void:
 	if released:
@@ -50,7 +54,7 @@ func interact_zone(zone: Area3D, player: Node) -> void:
 				hud.show_dialogue("", "You're not staying here a minute longer than you have to.")
 				return
 			SFX.play("sleep")
-			GameState.craving = maxf(0.0, GameState.craving - WAIT_CRAVING_COST)
+			GameState.craving = maxf(minf(GameState.craving, WAIT_CRAVING_FLOOR), GameState.craving - WAIT_CRAVING_COST)
 			GameState.craving_changed.emit(GameState.craving)
 			release("You lie down on the plastic mattress and stare at the light. Hours crawl by. The sickness creeps in, cramps and cold sweat. Eventually the door grinds open. \"You're free to go.\"")
 		"CellDoorKnock":

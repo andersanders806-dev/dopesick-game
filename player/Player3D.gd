@@ -1,18 +1,25 @@
 extends CharacterBody3D
 
 const BASE_SPEED := 4.2
+## Sprinting is the risk/reward half of the stealth layer: it gets you out of
+## a room fast, and it is the single loudest thing you can do in front of a
+## guard (see Guard3D.SUSPICION_SPRINTING). Withdrawal takes it away -- when
+## you are sick you cannot run, which is when you most need to.
+const SPRINT_MULT := 1.55
 const SICK_SPEED_MULT := 0.55
 const SICK_THRESHOLD := 20.0
 const TURN_SPEED := 10.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
-# The Kenney walk clip is 0.67 s per full cycle, i.e. two footfalls.
+# One full walk cycle is two footfalls.
 const STEP_INTERVAL := 0.333
 
-# Kenney's pick-up clip is only 0.33 s; slowed down it reads as a
-# deliberate, furtive grab instead of a twitch.
-const PICKUP_ANIM_SPEED := 0.55
+## How long the player is rooted in place for a grab. Long enough to read
+## as deliberate rather than a twitch; the animation is stretched to fit,
+## whatever its authored length.
+const PICKUP_DURATION := 0.6
 
 @onready var interact_zone: Area3D = $InteractZone
 @onready var model: Node3D = $Model
@@ -24,10 +31,13 @@ var _facing_angle: float = 0.0
 var anim: CharacterAnimator
 var _step_timer: float = 0.0
 var _left_foot: bool = true
+var _sprinting: bool = false
 var _busy_timer: float = 0.0
+var _theft_serial: int = 0
 
 func _ready() -> void:
 	add_to_group("player")
+	CharacterCast.dress(model, "player")
 	anim = CharacterAnimator.new(model)
 	# Hear the world from the character, not the camera hanging 9 m above.
 	$Listener.make_current()
@@ -58,16 +68,23 @@ func _physics_process(delta: float) -> void:
 
 	var speed := BASE_SPEED
 	var sick := GameState.craving <= SICK_THRESHOLD
+	_sprinting = (not sick) and dir.length() > 0.1 and Input.is_action_pressed("sprint")
 	if sick:
 		speed *= SICK_SPEED_MULT
+	elif _sprinting:
+		speed *= SPRINT_MULT
 
 	velocity = dir * speed
 	move_and_slide()
 	# Withdrawal slows the stride along with the movement, so it reads as a
 	# shuffle rather than the feet sliding.
 	var anim_speed := SICK_SPEED_MULT if sick else 1.0
-	anim.update(Vector2(velocity.x, velocity.z).length(), anim_speed)
-	_update_footsteps(delta, dir.length() > 0.1, anim_speed)
+	var moved := Vector2(velocity.x, velocity.z).length()
+	if _sprinting:
+		anim.play("sprint", anim_speed)
+	else:
+		anim.update(moved, anim_speed)
+	_update_footsteps(delta, dir.length() > 0.1, anim_speed * (SPRINT_MULT if _sprinting else 1.0))
 
 	if dir.length() > 0.1:
 		var target_angle := atan2(dir.x, dir.z)
@@ -100,8 +117,12 @@ func play_pickup(target_pos: Vector3) -> float:
 	if to_target.length() > 0.01:
 		_facing_angle = atan2(to_target.x, to_target.z)
 		model.rotation.y = _facing_angle
-	_busy_timer = anim.play_once("pick-up", PICKUP_ANIM_SPEED)
+	_busy_timer = anim.play_once_timed("pick-up", MetaProgress.pickup_duration(PICKUP_DURATION))
 	return _busy_timer
+
+## True while actually running, for the guards' suspicion check.
+func is_sprinting() -> bool:
+	return _sprinting
 
 func is_busy() -> bool:
 	return _busy_timer > 0.0
@@ -144,4 +165,10 @@ func _on_area_exited(area: Area3D) -> void:
 
 func begin_theft_window(duration: float) -> void:
 	is_stealing = true
-	get_tree().create_timer(duration).timeout.connect(func(): is_stealing = false)
+	# Only the latest theft's timer may end the window, so a quick second grab
+	# isn't cut short by the first one's timer.
+	_theft_serial += 1
+	var serial := _theft_serial
+	get_tree().create_timer(duration).timeout.connect(func():
+		if serial == _theft_serial:
+			is_stealing = false)

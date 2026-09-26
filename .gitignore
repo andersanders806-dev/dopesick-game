@@ -1,2 +1,5 @@
 # Godot 4+ specific ignores
 .godot/
+
+# Dev screenshots from dev-tools/capture_scene.gd
+.captures/

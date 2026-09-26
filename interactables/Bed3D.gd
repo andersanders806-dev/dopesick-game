@@ -3,6 +3,9 @@ extends Area3D
 func _ready() -> void:
 	add_to_group("interactable")
 
+func prompt_text() -> String:
+	return "Sleep it off"
+
 func interact(player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	if hud == null:

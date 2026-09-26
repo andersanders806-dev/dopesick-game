@@ -15,7 +15,7 @@ extends RefCounted
 
 const BLEND_TIME := 0.15
 const MOVING_THRESHOLD := 0.1
-const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact"]
+const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "death"]
 const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit"]
 
 ## Candidate real clip names per logical clip, best match first. Matched
@@ -36,6 +36,8 @@ const CLIP_ALIASES := {
 	# clap brings both hands together in front of the chest, which passes for
 	# handing something over at this distance.
 	"interact": ["interact-right", "interact", "_interact", "_clapping"],
+	# Shot down. Non-looping, so the body stays where it fell.
+	"death": ["die", "death", "_death"],
 }
 
 var _player: AnimationPlayer

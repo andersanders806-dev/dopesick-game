@@ -21,6 +21,8 @@ func open_with(stock: Array) -> void:
 
 func _build() -> void:
 	layer = 90
+	# Frees the mouse from the first-person camera while this is up.
+	add_to_group("modal_ui")
 	_hud = get_tree().get_first_node_in_group("hud") as CanvasLayer
 	if _hud:
 		_hud.visible = false

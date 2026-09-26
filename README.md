@@ -2,11 +2,55 @@
 
 A dark, low-budget top-down stealth game about addiction, theft, and getting by.
 
-## 3D version (current main scene)
+## First person, with a rifle
 
-The game is being ported from 2D to 3D. The 3D version is now the main
-scene (`world/Apartment3D.tscn`). The original 2D scenes are still in place
-alongside it.
+The game now boots to a **main menu** (`ui/MainMenu.tscn`, the project's
+main scene) over the real street, with a slow camera drifting past the
+storefronts: *Continue*, *New run*, *Settings*, *Controls*, *Quit*.
+Esc (or P) opens the **pause menu** in any room, which freezes everything
+(craving included). Settings -- mouse sensitivity, FOV, volume, invert Y,
+head bob, fullscreen, FPS counter -- live in `autoload/Settings.gd` and are
+saved to `user://settings.cfg`.
+
+**The player is first person** (`player/Player3D.gd`): mouse look,
+WASD, sprint, crouch (C/Ctrl), jump, a flashlight (F), and look-to-interact
+with an "[E] ..." prompt under the crosshair. Your body is still there and
+still animated; it renders as a shadow only. Rooms get their knee-high
+south walls back to full height and a ceiling at load
+(`WorldRoot3D._adapt_for_first_person`), and face you into the room when
+you walk through a door.
+
+**The rifle** (`player/Weapon.gd`) is a worn, wood-furnished AK built
+from primitives: 650 RPM full auto (B toggles semi), 30-round mag, hitscan
+with a spread cone that blooms under sustained fire and tightens right up
+when aiming down the sights (right mouse), recoil you pull down against,
+reload (R), shell casings, tracers, muzzle flash, sparks and bullet holes,
+blood, and a crosshair that opens with the real spread. Headshots do 2.5x.
+Sounds are synthesized by `dev-tools/gen_weapon_sfx.py`.
+
+**Gunfire changes the chase.** Stealing still gets you chased and
+cuffed. The first shot (`GameState.report_gunfire`) makes it an *armed
+response*: police arrive, stop at range and shoot back, and don't try to
+cuff you. Kill one and backup comes (up to four on scene); downed officers
+drop ammo and cash you pick up by walking over it. Clerks, patrons and even
+the pusher can be shot -- all of it is gunfire. The heat clears when the
+police lose you, or 25 s after the last officer is down. You have 100
+health that regenerates after 5 s out of the line of fire; die and it's
+**WASTED**, and you come round in a cell -- a strike, like any arrest.
+Sleeping tops your reserve back up to 120 rounds.
+
+- **Verification:** `dev-tools/combat_test.gd` drives the menu, the room
+  fixes, killing a guard, the armed response, taking fire, killing an
+  officer and looting him, backup, reload, dying into jail, pause, and the
+  sleep refill. `dev-tools/check_scripts.gd` compiles every script.
+  `dev-tools/capture_fps.gd` takes first-person screenshots (`idle`,
+  `fire`, `ads`, `menu`) without grabbing the mouse.
+
+## 3D version
+
+The game is being ported from 2D to 3D. A run starts in the 3D Apartment
+(`world/Apartment3D.tscn`), reached from the main menu. The original 2D
+scenes are still in place alongside it.
 
 **The 3D loop:** wake up in the Apartment and head out onto the City block
 (56 m, eight buildings: police station, apartments, pharmacy, Dive Bar,

@@ -17,6 +17,7 @@ enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, H
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
+const Hitbox3D := preload("res://npc/Hitbox3D.gd")
 const PORTRAIT := preload("res://assets/portraits/pusher.png")
 const VOICES := [
 	preload("res://assets/sfx/patron_mutter_a.wav"),
@@ -78,6 +79,8 @@ var _owed_drug: String = ""
 ## Tonight's stock, rerolled each day.
 var _stock: Array = []
 var _stock_day: int = -1
+var dead: bool = false
+var _hitbox: StaticBody3D
 
 func _ready() -> void:
 	add_to_group("interactable")
@@ -87,6 +90,7 @@ func _ready() -> void:
 	CharacterCast.dress(model, role)
 	CharacterLook.tint_clothes(model, clothes_tint)
 	anim = CharacterAnimator.new(model)
+	_hitbox = Hitbox3D.attach(self, self)
 	_post_position = global_position
 	_glance_t = randf() * TAU
 	GameState.wanted_changed.connect(_on_wanted_changed)
@@ -232,8 +236,28 @@ func _on_wanted_changed(is_wanted: bool) -> void:
 		_set_hidden(false)
 		state = State.RETURNING
 
+## Shoot your own dealer and you've got nowhere to score tonight -- he's
+## back on his corner next time you come out, but that's all.
+func take_damage(_amount: float, _hit_pos: Vector3, _from: Vector3) -> bool:
+	if dead:
+		return false
+	dead = true
+	GameState.report_gunfire()
+	remove_from_group("interactable")
+	talk_shape.set_deferred("disabled", true)
+	body_shape.set_deferred("disabled", true)
+	_hitbox.disable()
+	anim.play_once("death")
+	set_process(false)
+	GameState.register_kill(false)
+	return true
+
 func _set_hidden(hidden: bool) -> void:
+	if dead:
+		return
 	model_root.visible = not hidden
+	if _hitbox:
+		_hitbox.collision_layer = 0 if hidden else Hitbox3D.LAYER
 	talk_shape.set_deferred("disabled", hidden)
 	body_shape.set_deferred("disabled", hidden)
 

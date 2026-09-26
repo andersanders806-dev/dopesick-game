@@ -59,6 +59,12 @@ const SUSPICION_NOTICED := 0.35
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
+const Hitbox3D := preload("res://npc/Hitbox3D.gd")
+
+const MAX_HEALTH := 60.0
+var health: float = MAX_HEALTH
+var dead: bool = false
+var _hitbox: StaticBody3D
 
 ## How quickly the body swings round to follow the sweep. Slow enough to
 ## read as a person scanning the room rather than a turret.
@@ -87,6 +93,8 @@ func _ready() -> void:
 			zone.queue_free()
 	_build_body()
 	anim = CharacterAnimator.new(body)
+	if not watcher_only:
+		_hitbox = Hitbox3D.attach(self, self)
 	var talk := get_node_or_null("TalkZone")
 	if talk:
 		if talk_name != "":
@@ -178,6 +186,32 @@ func _update_suspicion(player: Node, delta: float) -> void:
 	if suspicion >= 1.0:
 		_alarm_raised = true
 		spotted_theft.emit()
+
+## Shot. Anything short of a kill hits the alarm on the spot.
+func take_damage(amount: float, _hit_pos: Vector3, _from: Vector3) -> bool:
+	if dead:
+		return false
+	health -= amount
+	GameState.report_gunfire()
+	if health > 0.0:
+		suspicion = 1.0
+		if not _alarm_raised:
+			_alarm_raised = true
+			spotted_theft.emit()
+		return false
+	dead = true
+	remove_from_group("guards")
+	_hitbox.disable()
+	vision_cone.visible = false
+	can_see_player = false
+	var talk := get_node_or_null("TalkZone")
+	if talk:
+		talk.remove_from_group("interactable")
+		talk.set_deferred("monitorable", false)
+	anim.play_once("death")
+	set_physics_process(false)
+	GameState.register_kill(false)
+	return true
 
 ## Clears the alarm latch so this guard can catch you again -- called when a
 ## chase ends without an arrest. Without it a guard who once raised the alarm

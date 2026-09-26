@@ -21,6 +21,8 @@ func show_summary(summary: Dictionary) -> void:
 
 func _build() -> void:
 	layer = 100
+	# Frees the mouse from the first-person camera while this is up.
+	add_to_group("modal_ui")
 	# The gameplay HUD would otherwise show through the overlay.
 	_hud = get_tree().get_first_node_in_group("hud") as CanvasLayer
 	if _hud:
@@ -66,6 +68,7 @@ func _build() -> void:
 	stats.add_child(_stat("Orders delivered", str(_summary.get("orders", 0))))
 	stats.add_child(_stat("Cash earned", "$%d" % _summary.get("cash", 0)))
 	stats.add_child(_stat("Doses taken", str(_summary.get("doses", 0))))
+	stats.add_child(_stat("Kills", str(_summary.get("kills", 0))))
 	stats.add_child(_stat("Know-How earned", "+%d" % _summary.get("know_how", 0), Color(0.85, 0.78, 0.35)))
 	root.add_child(stats)
 	root.add_child(_spacer(6))

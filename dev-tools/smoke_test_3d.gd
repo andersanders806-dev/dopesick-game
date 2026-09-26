@@ -29,6 +29,11 @@ func _frames(n: int) -> void:
 func _load(path: String) -> Node:
 	change_scene_to_file(path)
 	await _frames(10)
+	# Rooms face you into the room on arrival; these tests steer along world
+	# axes, which is what the first-person controls do at yaw 0.
+	var p := _player()
+	if p and p.has_method("set_look"):
+		p.set_look(0.0)
 	return current_scene
 
 ## The drug menu parents itself to the tree root, not the current scene.
@@ -45,6 +50,9 @@ func _player() -> Node3D:
 ## is the interactable E would use. Returns false on timeout.
 func _walk_until_nearest(target: Node3D, timeout_frames := 600) -> bool:
 	var p := _player()
+	# Steering below is in world axes; see _load().
+	if p.has_method("set_look"):
+		p.set_look(0.0)
 	var map: RID = p.get_world_3d().navigation_map
 	for i in timeout_frames:
 		if p._nearest_interactable() == target:

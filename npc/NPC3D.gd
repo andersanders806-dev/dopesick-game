@@ -67,6 +67,10 @@ signal order_fulfilled
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
+const Hitbox3D := preload("res://npc/Hitbox3D.gd")
+
+var dead: bool = false
+var _hitbox: StaticBody3D
 
 var anim: CharacterAnimator
 
@@ -85,6 +89,7 @@ var _voice_base_db: float
 func _ready() -> void:
 	add_to_group("interactable")
 	set_model(model_path)
+	_hitbox = Hitbox3D.attach(self, self, 1.6)
 	_idle_base_db = idle_sound.volume_db
 	_voice_base_db = voice.volume_db
 	# Random first delay so a freshly entered bar doesn't have every patron
@@ -108,6 +113,22 @@ func _process(delta: float) -> void:
 	if _idle_sound_timer <= 0.0:
 		_idle_sound_timer = randf_range(IDLE_SOUND_MIN_GAP, IDLE_SOUND_MAX_GAP)
 		play_idle_sound()
+
+## Nobody in here is armed. One burst is enough.
+func take_damage(_amount: float, _hit_pos: Vector3, _from: Vector3) -> bool:
+	if dead:
+		return false
+	dead = true
+	GameState.report_gunfire()
+	remove_from_group("interactable")
+	set_deferred("monitorable", false)
+	_hitbox.disable()
+	idle_sound.stop()
+	if anim:
+		anim.play_once("death")
+	set_process(false)
+	GameState.register_kill(false)
+	return true
 
 ## One of this patron's idle sounds, from where they sit.
 func play_idle_sound() -> void:

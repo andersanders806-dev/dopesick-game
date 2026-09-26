@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://player/Player3D.gd" id="1"]
 [ext_resource type="PackedScene" path="res://assets/quaternius/characters/Smooth_Male_Casual.fbx" id="2"]
+[ext_resource type="Script" path="res://player/Weapon.gd" id="3"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.32
@@ -25,22 +26,36 @@ shape = SubResource("CapsuleShape3D_player")
 scale = Vector3(1.5, 1.5, 1.5)
 
 [node name="Glow" type="OmniLight3D" parent="."]
-position = Vector3(0, 2.4, 0.8)
+position = Vector3(0, 2.2, 0.3)
 light_color = Color(1, 0.85, 0.65, 1)
-light_energy = 0.9
+light_energy = 0.6
 omni_range = 4.0
 shadow_enabled = false
 
 [node name="Listener" type="AudioListener3D" parent="."]
-position = Vector3(0, 1.0, 0)
+position = Vector3(0, 1.6, 0)
 
-[node name="CameraMount" type="Node3D" parent="."]
-position = Vector3(0, 9, 6.5)
+[node name="Head" type="Node3D" parent="."]
+position = Vector3(0, 1.62, 0)
 
-[node name="Camera3D" type="Camera3D" parent="CameraMount"]
-rotation_degrees = Vector3(-55, 0, 0)
+[node name="Camera3D" type="Camera3D" parent="Head"]
 current = true
-fov = 50.0
+fov = 80.0
+near = 0.02
+far = 300.0
+
+[node name="Flashlight" type="SpotLight3D" parent="Head/Camera3D"]
+position = Vector3(0.12, -0.08, 0)
+visible = false
+light_color = Color(1, 0.94, 0.82, 1)
+light_energy = 3.0
+shadow_enabled = true
+spot_range = 22.0
+spot_angle = 26.0
+spot_angle_attenuation = 0.6
+
+[node name="Weapon" type="Node3D" parent="Head/Camera3D"]
+script = ExtResource("3")
 
 [node name="InteractZone" type="Area3D" parent="."]
 collision_layer = 0

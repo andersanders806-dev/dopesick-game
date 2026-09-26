@@ -5,7 +5,7 @@ extends Node
 ## (wanted siren, low-craving heartbeat) driven by GameState signals.
 
 const LOW_CRAVING_THRESHOLD := 20.0
-const POOL_SIZE := 8
+const POOL_SIZE := 16
 
 const SOUNDS := {
 	"footstep_a": preload("res://assets/sfx/footstep_a.wav"),
@@ -18,6 +18,18 @@ const SOUNDS := {
 	"fix": preload("res://assets/sfx/fix.wav"),
 	"sleep": preload("res://assets/sfx/sleep.wav"),
 	"phone": preload("res://assets/sfx/phone.wav"),
+	"rifle_shot": preload("res://assets/sfx/rifle_shot.wav"),
+	"rifle_shot_b": preload("res://assets/sfx/rifle_shot_b.wav"),
+	"pistol_shot": preload("res://assets/sfx/pistol_shot.wav"),
+	"dry_fire": preload("res://assets/sfx/dry_fire.wav"),
+	"reload": preload("res://assets/sfx/reload.wav"),
+	"impact_wall": preload("res://assets/sfx/impact_wall.wav"),
+	"impact_flesh": preload("res://assets/sfx/impact_flesh.wav"),
+	"hitmarker": preload("res://assets/sfx/hitmarker.wav"),
+	"kill_confirm": preload("res://assets/sfx/kill_confirm.wav"),
+	"player_hurt": preload("res://assets/sfx/player_hurt.wav"),
+	"shell": preload("res://assets/sfx/shell.wav"),
+	"pickup_ammo": preload("res://assets/sfx/pickup_ammo.wav"),
 }
 
 const SIREN_STREAM := preload("res://assets/sfx/siren_loop.wav")

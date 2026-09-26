@@ -16,6 +16,16 @@ signal strikes_changed(strikes: int)
 ## "saved" -- the HUD narrates it.
 signal dose_taken(drug_id: String, outcome: String)
 signal overdosed(fatal: bool)
+signal health_changed(health: float)
+signal ammo_changed(mag: int, reserve: int)
+## You took a hit. `from` is where the shot came from, for the HUD's damage
+## direction and the camera kick.
+signal player_damaged(amount: float, from: Vector3)
+signal player_died
+## Shots fired: from here on the police come armed and shoot on sight, not
+## just to cuff you. Cleared along with `wanted` once you lose them.
+signal lethal_changed(is_lethal: bool)
+signal police_killed
 
 ## Everything that can be stolen, which store stocks it, and what a patron
 ## will pay for it. Picked from lists of what gets shoplifted to fund a habit
@@ -111,6 +121,31 @@ var active_duration: float = 1.0
 var orders_delivered: int = 0
 var cash_earned: int = 0
 
+## --- First-person combat -----------------------------------------------------
+const MAX_HEALTH := 100.0
+## Health comes back on its own once you've been out of the line of fire this
+## long -- the standard FPS contract, so a firefight is about positioning
+## rather than hunting for medkits.
+const HEALTH_REGEN_DELAY := 5.0
+const HEALTH_REGEN_PER_SEC := 9.0
+const MAG_SIZE := 30
+const START_RESERVE := 90
+## What the box under the mattress tops you back up to after a night's sleep.
+const HOME_RESERVE := 120
+const MAX_RESERVE := 240
+
+var health: float = MAX_HEALTH
+var ammo_mag: int = MAG_SIZE
+var ammo_reserve: int = START_RESERVE
+var kills: int = 0
+var lethal: bool = false
+var _since_damage: float = 999.0
+## False on the main menu, so the craving meter doesn't drain while you're
+## looking at the title screen.
+var run_active: bool = true
+## True once a run has actually been played, for the menu's Continue button.
+var run_started: bool = false
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -135,18 +170,33 @@ func start_run() -> void:
 	in_custody = false
 	bar_patrons.clear()
 	pending_spawn = ""
+	health = MAX_HEALTH
+	ammo_mag = MAG_SIZE
+	ammo_reserve = START_RESERVE
+	kills = 0
+	lethal = false
+	_since_damage = 999.0
 	cash_changed.emit(cash)
 	craving_changed.emit(craving)
 	inventory_changed.emit()
 	day_changed.emit(day)
 	strikes_changed.emit(strikes)
 	wanted_changed.emit(wanted)
+	health_changed.emit(health)
+	ammo_changed.emit(ammo_mag, ammo_reserve)
+	lethal_changed.emit(lethal)
 
 func max_strikes() -> int:
 	return STRIKES_PER_RUN + MetaProgress.extra_strikes()
 
 func _process(delta: float) -> void:
+	if not run_active:
+		return
 	run_time += delta
+	_since_damage += delta
+	if health > 0.0 and health < MAX_HEALTH and _since_damage >= HEALTH_REGEN_DELAY:
+		health = minf(MAX_HEALTH, health + HEALTH_REGEN_PER_SEC * delta)
+		health_changed.emit(health)
 	if craving > 0.0:
 		craving = max(0.0, craving - current_craving_decay() * delta)
 		craving_changed.emit(craving)
@@ -180,6 +230,22 @@ func _setup_input_actions() -> void:
 	_bind("move_right", [KEY_D, KEY_RIGHT])
 	_bind("move_up", [KEY_W, KEY_UP])
 	_bind("move_down", [KEY_S, KEY_DOWN])
+	_bind("jump", [KEY_SPACE])
+	_bind("crouch", [KEY_C, KEY_CTRL])
+	_bind("reload", [KEY_R])
+	_bind("flashlight", [KEY_F])
+	_bind("fire_mode", [KEY_B])
+	_bind("pause", [KEY_ESCAPE, KEY_P])
+	_bind_mouse("fire", MOUSE_BUTTON_LEFT)
+	_bind_mouse("aim", MOUSE_BUTTON_RIGHT)
+
+func _bind_mouse(action: String, button: MouseButton) -> void:
+	if InputMap.has_action(action):
+		return
+	InputMap.add_action(action)
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button
+	InputMap.action_add_event(action, ev)
 
 func _bind(action: String, keys: Array) -> void:
 	if InputMap.has_action(action):
@@ -341,6 +407,8 @@ func receive_fix() -> void:
 	craving_changed.emit(craving)
 
 func set_wanted(value: bool) -> void:
+	if not value:
+		_set_lethal(false)
 	if wanted == value:
 		return
 	wanted = value
@@ -350,6 +418,10 @@ func get_busted() -> void:
 	if in_custody:
 		return
 	in_custody = true
+	# Patched up in the back of the car, whatever state you were in.
+	health = MAX_HEALTH
+	_since_damage = 999.0
+	health_changed.emit(health)
 	inventory.clear()
 	# A fine, not ruin: you still walk out with most of your cash.
 	var fine := int(cash * BUST_FINE_FRACTION * MetaProgress.bust_fine_scale())
@@ -376,9 +448,64 @@ func end_run(cause := "busted") -> void:
 		"strikes": strikes,
 		"doses": doses_taken,
 		"cause": cause,
+		"kills": kills,
 	})
 
+## Gunfire. The first shot turns whatever the police are doing into an
+## armed response.
+func report_gunfire() -> void:
+	set_wanted(true)
+	_set_lethal(true)
+
+func _set_lethal(value: bool) -> void:
+	if lethal == value:
+		return
+	lethal = value
+	lethal_changed.emit(lethal)
+
+func damage_player(amount: float, from: Vector3) -> void:
+	if health <= 0.0 or in_custody:
+		return
+	health = maxf(0.0, health - amount)
+	_since_damage = 0.0
+	health_changed.emit(health)
+	player_damaged.emit(amount, from)
+	if health <= 0.0:
+		player_died.emit()
+
+func register_kill(was_police: bool) -> void:
+	kills += 1
+	if was_police:
+		police_killed.emit()
+
+func use_ammo() -> bool:
+	if ammo_mag <= 0:
+		return false
+	ammo_mag -= 1
+	ammo_changed.emit(ammo_mag, ammo_reserve)
+	return true
+
+## Moves rounds from the reserve into the magazine. Returns how many.
+func reload_mag() -> int:
+	var need := MAG_SIZE - ammo_mag
+	var take := mini(need, ammo_reserve)
+	ammo_mag += take
+	ammo_reserve -= take
+	ammo_changed.emit(ammo_mag, ammo_reserve)
+	return take
+
+func add_ammo(rounds: int) -> void:
+	ammo_reserve = mini(MAX_RESERVE, ammo_reserve + rounds)
+	ammo_changed.emit(ammo_mag, ammo_reserve)
+
+func add_cash(amount: int) -> void:
+	cash += amount
+	cash_earned += amount
+	cash_changed.emit(cash)
+
 func sleep() -> void:
+	ammo_reserve = maxi(ammo_reserve, HOME_RESERVE)
+	ammo_changed.emit(ammo_mag, ammo_reserve)
 	day += 1
 	day_changed.emit(day)
 	craving = min(craving, 55.0)

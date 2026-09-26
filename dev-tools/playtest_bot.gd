@@ -91,6 +91,10 @@ func walk_to(node: Node3D, stop_dist := 0.6, timeout := 25.0) -> bool:
 		if p == null or not is_instance_valid(node):
 			release_moves()
 			return false
+		# Steering below is in world axes, which first-person input matches
+		# at yaw 0.
+		if p.has_method("set_look") and p.yaw != 0.0:
+			p.set_look(0.0)
 		# Like a player would: keep walking until the thing you want is the
 		# one E will actually use.
 		if node is Area3D and p._nearest_interactable() == node:

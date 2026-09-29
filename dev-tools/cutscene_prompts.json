@@ -17,7 +17,10 @@
     "first_score_walk": "{me} walking fast away down a wet night sidewalk with his hands deep in his pockets and his head down, neon shop signs blurred behind him",
     "released_door": "a steel holding cell door sliding open onto a harsh fluorescent police station corridor, {me} sitting on a bench inside squinting at the light",
     "released_steps": "{me} walking down the concrete steps of a police station at dawn, squinting against the pale sky, alone, a cold empty street ahead",
-    "new_day": "dawn light through a bedsheet nailed over a window of a squalid apartment, a crumpled mattress, an overflowing ashtray and a walkman with headphones on the floor, quiet and grey"
+    "new_day": "dawn light through a bedsheet nailed over a window of a squalid apartment, a crumpled mattress, an overflowing ashtray and a walkman with headphones on the floor, quiet and grey",
+    "recovered_clinic": "{me} at a small clinic window in the early morning, a nurse handing him a tiny paper cup through the hatch, a line of tired people behind him, pale morning light",
+    "recovered_window": "{me} pulling a bedsheet down from a window in a tidied one-room apartment, warm morning sunlight flooding in across a made mattress, dust in the light",
+    "recovered_street": "{me} walking down a sunlit city sidewalk in the morning with a paper cup of coffee and walkman headphones around his neck, a faint tired smile, people going to work around him"
   },
   "style_prefix": "cinematic film still, 35mm photograph, low-key moody lighting, ",
   "protagonist": "a gaunt pale man around thirty with short messy brown hair, patchy brown stubble and sunken tired eyes, wearing a faded grey-green t-shirt and worn blue-grey jeans"

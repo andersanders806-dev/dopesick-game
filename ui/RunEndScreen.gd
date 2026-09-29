@@ -24,7 +24,12 @@ func show_summary(summary: Dictionary) -> void:
 	_build()
 
 func _cutscene_id() -> String:
-	return "overdose" if _summary.get("cause", "busted") == "overdose" else "sent_away"
+	match _summary.get("cause", "busted"):
+		"overdose":
+			return "overdose"
+		"recovered":
+			return "recovered"
+	return "sent_away"
 
 func _build() -> void:
 	layer = 100
@@ -66,7 +71,11 @@ func _build() -> void:
 	margin.add_child(root)
 
 	# There are two ways to lose, and they should not read the same.
-	if _summary.get("cause", "busted") == "overdose":
+	if _summary.get("cause", "busted") == "recovered":
+		root.add_child(_heading("YOU GOT OUT", 30, Color(0.55, 0.85, 0.6)))
+		root.add_child(_heading("Five days in the program, clean. Not cured -- out. This is what the other endings were keeping from you.",
+			14, Color(0.62, 0.60, 0.56)))
+	elif _summary.get("cause", "busted") == "overdose":
 		root.add_child(_heading("YOU WENT OVER", 30, Color(0.80, 0.30, 0.55)))
 		root.add_child(_heading("Nobody had naloxone. This is how most runs really end.",
 			14, Color(0.62, 0.60, 0.56)))

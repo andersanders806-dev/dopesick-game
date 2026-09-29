@@ -48,6 +48,8 @@ const CAST := {
 	"Carl": {"id": 84, "rate": 1.1, "pitch": 0.97},
 	"Dee": {"id": 588, "rate": 1.05, "pitch": 1.0},
 	"Marcus": {"id": 96, "rate": 1.05, "pitch": 1.0},
+	# Reads the cutscene captions: low, unhurried, worn.
+	"Narrator": {"id": 110, "rate": 1.12, "pitch": 0.95},
 	# Unnamed staff lines (closing time, the jail door): a flat, bored voice.
 	"": {"id": 684, "rate": 1.05, "pitch": 0.98},
 }
@@ -93,7 +95,23 @@ func say(speaker: String, text: String) -> void:
 		return
 	var cast := cast_for(speaker)
 	var key := line_key(speaker, line)
-	if FileAccess.file_exists(_path(key)):
+	if _have(key):
+		_play(key, cast["pitch"])
+		return
+	_pending_key = key
+	_pending_pitch = cast["pitch"]
+	_queue(key, line, cast, true)
+
+## A cutscene caption, read in full by the narrator (say() would only
+## voice the quoted parts).
+func narrate(text: String) -> void:
+	stop()
+	var line := text.strip_edges()
+	if line == "":
+		return
+	var cast := cast_for("Narrator")
+	var key := line_key("Narrator", line)
+	if _have(key):
 		_play(key, cast["pitch"])
 		return
 	_pending_key = key
@@ -110,7 +128,7 @@ func prewarm(speaker: String, lines: Array) -> void:
 		if line == "":
 			continue
 		var key := line_key(speaker, line)
-		if not FileAccess.file_exists(_path(key)):
+		if not _have(key):
 			_queue(key, line, cast_for(speaker), false)
 
 func stop() -> void:
@@ -144,8 +162,19 @@ static func line_key(speaker: String, line: String) -> String:
 func _path(key: String) -> String:
 	return VOICE_DIR + key + ".wav"
 
+## A line is available either as a loose .wav on disk (generated this
+## session, or in the editor) or as an imported resource (an exported build,
+## where res:// is packed and there's no file to read).
+func _have(key: String) -> bool:
+	return FileAccess.file_exists(_path(key)) or ResourceLoader.exists(_path(key))
+
 func _play(key: String, pitch: float) -> void:
-	var stream := AudioStreamWAV.load_from_file(ProjectSettings.globalize_path(_path(key)))
+	var stream: AudioStream = null
+	var disk := ProjectSettings.globalize_path(_path(key))
+	if FileAccess.file_exists(disk) and not OS.has_feature("template"):
+		stream = AudioStreamWAV.load_from_file(disk)
+	elif ResourceLoader.exists(_path(key)):
+		stream = load(_path(key))
 	if stream == null:
 		return
 	_player.stream = stream

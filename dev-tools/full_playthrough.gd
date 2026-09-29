@@ -171,17 +171,10 @@ func _run() -> void:
 		await press_interact()
 		await _wait(1.4)
 		await screenshot("stolen")
-	await settle()
-	if current_scene.name == "Jail3D":
-		await jail_time()
-	else:
-		await use_door("DoorToCity")
-		for i in 30:
-			if not gs.wanted:
-				break
-			await _wait(0.5)
+	await to_street()
 
 	chapter("6. Getting paid")
+	await to_street()
 	if current_scene.name == "City3D" and not gs.inventory.is_empty():
 		await use_door("DoorToBar")
 		var buyer: Node3D = null
@@ -197,6 +190,7 @@ func _run() -> void:
 		await use_door("DoorToCity")
 
 	chapter("7. The pusher at the dark end of the block")
+	await to_street()
 	await wait_for("pusher")
 	gs.cash = maxi(gs.cash, gs.cheapest_opioid_cost())
 	await walk_to(current_scene.get_node("Pusher"))
@@ -225,6 +219,7 @@ func _run() -> void:
 	await close_dialogue()
 
 	chapter("8. Tape Deck: lifting a cassette")
+	await to_street()
 	if gs.is_open("music") and await use_door("DoorToMusic"):
 		var tape: Node3D = null
 		for slot in current_scene.item_slots:
@@ -237,18 +232,9 @@ func _run() -> void:
 			await _wait(1.4)
 		log_line("shoebox %d -> %d tapes" % [before, gs.tapes.size()])
 		await screenshot("tape_deck")
-		await settle()
-		if current_scene.name == "MusicStore3D":
-			await use_door("DoorToCity")
-		for i in 30:
-			if not gs.wanted:
-				break
-			await _wait(0.5)
-		await settle()
-		if current_scene.name == "Jail3D":
-			await jail_time()
 
 	chapter("9. Home to sleep it off")
+	await to_street()
 	if current_scene.name == "City3D":
 		await use_door("DoorToHome")
 	if current_scene.name == "Apartment3D":
@@ -261,6 +247,7 @@ func _run() -> void:
 		await use_door("DoorToCity")
 
 	chapter("10. Caught: stealing in front of the electronics clerk")
+	await to_street()
 	await wait_for("electronics")
 	await use_door("DoorToElectronics")
 	var clerk := current_scene.get_node("Clerk") as Node3D
@@ -284,6 +271,7 @@ func _run() -> void:
 	await jail_time()
 
 	chapter("11. The end of the run")
+	await to_street()
 	# Fentanyl on top of a benzo: the thing the game warns you about most.
 	gs.naloxone = 0
 	var ended := [false]
@@ -320,7 +308,7 @@ func play_pool() -> void:
 	await key(KEY_SPACE)  # past the how-to
 	await screenshot("pool_break")
 	var shots := 0
-	while not game._over and shots < 60:
+	while not game._over and shots < 30:
 		await process_frame
 		if game._moving or game._shooter != 0:
 			continue
@@ -390,6 +378,28 @@ func play_darts() -> void:
 	await _wait(3.0)
 	game._close()
 	await _wait(0.5)
+
+## Back out on the block from wherever the last chapter left us: if a
+## steal went bad, stand still and let it play out -- the chase, the arrest
+## cutscene, the cell -- then walk out of whatever room we're in.
+func to_street() -> void:
+	var gs := root.get_node("GameState")
+	for i in 120:
+		if gs.in_custody or (current_scene and current_scene.name == "Jail3D"):
+			break
+		if not gs.wanted:
+			break
+		release_moves()
+		await _wait(0.25)
+	if gs.in_custody or (current_scene and current_scene.name == "Jail3D"):
+		log_line("caught -- off to the cells")
+		await watch_cutscene(3.5)
+		await settle()
+		await jail_time()
+	await settle()
+	if current_scene.name != "City3D" and current_scene.get_node_or_null("DoorToCity"):
+		await use_door("DoorToCity")
+		await settle()
 
 func jail_time() -> void:
 	chapter("   ...a night in the cell")

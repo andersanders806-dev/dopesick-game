@@ -142,7 +142,12 @@ func talk() -> String:
 		log_line("DIALOGUE " + text)
 	return text
 
+## Only when something's actually open: a spare E next to someone starts a
+## new conversation, which then freezes every walk after it.
 func close_dialogue() -> void:
+	var p := player()
+	if p == null or not p.dialogue_active:
+		return
 	await press_interact()
 	await _wait(0.3)
 

@@ -203,6 +203,21 @@ const PRECIPITATED_WINDOW := 240.0
 ## the chance of going over: both suppress breathing.
 const MIX_WINDOW := 300.0
 const MIX_OD_MULTIPLIER := 3.5
+## Respiratory load: every opioid or benzo still working in you, in units of
+## "one bag of heroin" (a drug's od_risk over heroin's). It fades with a
+## half-life in real seconds, and the chance of going over climbs with what
+## is already on board -- so back-to-back redosing is what kills, not any
+## single dose. Tolerance softens the high far more than it protects the
+## breathing: it only takes the load down to 70% at most.
+const LOAD_HALF_LIFE := 25.0  # real seconds: about 100 game minutes
+const LOAD_STACK := 1.2
+const LOAD_TOLERANCE_FLOOR := 0.7
+## Tolerance fades without use: half gone in about three in-game days. Out
+## of jail or a few days into treatment, your old dose is a bigger dose.
+## Steady use keeps it topped up, and then it protects (see TOLERANCE_GUARD).
+const TOLERANCE_GUARD := 0.06
+const TOLERANCE_GUARD_FLOOR := 0.3
+const TOLERANCE_HALF_LIFE_MINUTES := 1.5 * 24.0 * 60.0
 
 func all_ids() -> Array:
 	return CATALOGUE.map(func(d): return d["id"])

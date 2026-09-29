@@ -740,6 +740,8 @@ func _run() -> void:
 	await _pool_checks(gs)
 	await _darts_checks(gs)
 	await _menu_and_save_checks(gs)
+	await _recovery_checks(gs)
+	await _regulars_checks(gs)
 	await _street_life_checks(gs)
 	gs.start_run()
 
@@ -1304,6 +1306,82 @@ func _menu_and_save_checks(gs: Node) -> void:
 	change_scene_to_file("res://ui/TitleScreen.tscn")
 	await _frames(20)
 	_check(current_scene.name == "TitleScreen", "  the title screen loads")
+	gs.start_run()
+
+func _recovery_checks(gs: Node) -> void:
+	print("== Getting out: the program, slips, and stacking doses")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	var ended := []
+	var on_end := func(s): ended.append(s["cause"])
+	gs.run_ended.connect(on_end)
+	gs.clinic_dose()
+	gs.sleep()
+	_check(gs.in_treatment and gs.treatment_streak == 1, "  a clinic dose enrolls you, and a clean day counts")
+	gs.clinic_dose()
+	gs.take_drug("heroin")
+	gs.sleep()
+	_check(gs.treatment_streak == 0 and gs.in_treatment, "  a street dose that day resets the count, not the program")
+	gs.sleep()
+	_check(gs.treatment_streak == 0, "  a day without the clinic dose doesn't count")
+	for i in gs.RECOVERY_DAYS:
+		gs.clinic_dose()
+		gs.sleep()
+	_check(gs.recovered(), "  %d clean days in a row and you've got out" % gs.RECOVERY_DAYS)
+	gs.end_run("recovered")
+	await _frames(3)
+	_check(ended.has("recovered"), "  ...which ends the run as the good ending")
+	gs.run_ended.disconnect(on_end)
+	for n in root.get_children():
+		if n.has_method("show_summary"):
+			n.queue_free()
+	# Stacking: the same drug that's survivable spaced out is deadly piled up.
+	var deaths := 0
+	for trial in 200:
+		gs.start_run()
+		# Naloxone turns each would-be death into "saved", so this counts
+		# them without ending 200 runs (and paying Know-How for each).
+		gs.naloxone = 99
+		for dose in 6:
+			if gs.take_drug("fentanyl") == "saved":
+				deaths += 1
+				break
+	_check(deaths > 150, "  six fentanyl doses back to back kill most of the time (%d/200)" % deaths)
+	for n in root.get_children():
+		if n.has_method("show_summary"):
+			n.queue_free()
+	gs.start_run()
+
+func _regulars_checks(gs: Node) -> void:
+	print("== The block's regulars")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 22 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var scenes := city.get_node_or_null("StreetScenes")
+	_check(scenes != null, "  the regulars are on the block")
+	if scenes == null:
+		return
+	var pusher := city.get_node("Pusher") as Node3D
+	var doors := city.find_children("Door*", "Area3D", true, false)
+	var crowding := []
+	for p in scenes._people:
+		var n: Node3D = p["node"]
+		if Vector2(n.global_position.x - pusher.global_position.x, n.global_position.z - pusher.global_position.z).length() < 2.5:
+			crowding.append("%s by the pusher" % n.name)
+		for d in doors:
+			if Vector2(n.global_position.x - d.global_position.x, n.global_position.z - d.global_position.z).length() < 1.2:
+				crowding.append("%s by %s" % [n.name, d.name])
+	_check(crowding.is_empty(), "  none of them crowds the pusher or a door %s" % str(crowding))
+	var here: Array = scenes._people.filter(func(p): return p["node"].visible).map(func(p): return String(p["node"].name))
+	_check(here.has("Dee") and here.has("Marcus") and not here.has("Carl"), "  at 22:00 Dee and Marcus are out, Carl isn't asleep yet (%s)" % str(here))
+	gs.clock = 4 * 60
+	gs._emit_clock()
+	await _frames(2)
+	here = scenes._people.filter(func(p): return p["node"].visible).map(func(p): return String(p["node"].name))
+	_check(here == ["Carl"], "  at 04:00 only Carl, asleep on the steps (%s)" % str(here))
 	gs.start_run()
 
 func _street_life_checks(gs: Node) -> void:

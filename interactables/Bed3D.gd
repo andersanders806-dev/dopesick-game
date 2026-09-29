@@ -12,7 +12,18 @@ func interact(player: Node) -> void:
 		SFX.play("blip")
 		hud.show_dialogue("", "Too wired to sleep. Cops are still looking for you.")
 		return
+	var streak_before := GameState.treatment_streak
 	GameState.sleep()
+	if GameState.recovered():
+		# Five clean days: the good ending, from the run-end screen.
+		GameState.end_run("recovered")
+		return
 	await Cutscene.play("new_day", [GameState.day])
 	SaveGame.save()
-	hud.show_dialogue("", "You black out... and wake up again. Day %d, %s." % [GameState.day, GameState.clock_text()])
+	var line := "You black out... and wake up again. Day %d, %s." % [GameState.day, GameState.clock_text()]
+	if GameState.in_treatment:
+		if GameState.treatment_streak > streak_before:
+			line += "\n%d of %d clean days. It doesn't feel like much. It is." % [GameState.treatment_streak, GameState.RECOVERY_DAYS]
+		else:
+			line += "\nYesterday didn't count. The count starts over -- but you're still in the program."
+	hud.show_dialogue("", line)

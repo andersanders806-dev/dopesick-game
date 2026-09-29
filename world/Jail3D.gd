@@ -79,6 +79,10 @@ func release(message: String) -> void:
 	await Cutscene.play("released")
 	var hud := get_tree().get_first_node_in_group("hud")
 	var player := get_tree().get_first_node_in_group("player")
+	# Hours inside have taken the edge off your tolerance, and the first
+	# dose after release is when people die. The game says so, once.
+	if GameState.tolerance_for("heroin") > 0.5:
+		message += "\n\nHours without anything. Whatever you used to take will hit a lot harder now."
 	if hud and player:
 		player.dialogue_active = true
 		hud.show_dialogue("", message)

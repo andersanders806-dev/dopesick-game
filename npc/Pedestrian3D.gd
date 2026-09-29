@@ -23,6 +23,11 @@ const BRUSH_OFFS := [
 	"A shake of the head. Headphones stay in.",
 ]
 
+## In the rain, some duck under the nearest shop awning and wait it out.
+const AWNING_X := [-24.5, -17.5, -10.5, -3.5, 3.5, 10.5, 17.5, 24.5]
+const SHELTER_Z := -4.0
+const SHELTER_CHANCE := 0.5
+
 signal left_street
 
 var speed: float = 1.3
@@ -36,6 +41,11 @@ var anim: CharacterAnimator
 var _model_root: Node3D
 var _asked: bool = false
 var _dodge: float = 0.0
+## "" walking; "in" heading under an awning; "waiting" under it; "out" back to the lane.
+var _shelter: String = ""
+var _shelter_x: float = 0.0
+var _shelter_wait: float = 0.0
+var _passed_awning: float = INF
 
 func _ready() -> void:
 	add_to_group("interactable")
@@ -61,6 +71,8 @@ func _ready() -> void:
 	_model_root.rotation.y = atan2(direction, 0.0)
 
 func _physics_process(delta: float) -> void:
+	if _update_shelter(delta):
+		return
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	# Step around you rather than through you: drift off the lane while
 	# you're in the way, then back onto it.
@@ -76,6 +88,47 @@ func _physics_process(delta: float) -> void:
 	if (direction > 0.0 and global_position.x > end_x) or (direction < 0.0 and global_position.x < -end_x):
 		left_street.emit()
 		queue_free()
+
+## Returns true while the rain has them off their lane.
+func _update_shelter(delta: float) -> bool:
+	match _shelter:
+		"":
+			if not GameState.raining:
+				return false
+			for ax: float in AWNING_X:
+				# Once per awning, as they come level with it.
+				if absf(global_position.x - (ax + 1.6)) < 0.15 and _passed_awning != ax:
+					_passed_awning = ax
+					if randf() < SHELTER_CHANCE:
+						_shelter = "in"
+						_shelter_x = ax + 1.6 + randf_range(-0.3, 0.3)
+						_shelter_wait = randf_range(15.0, 35.0)
+			return false
+		"in":
+			if _step_to(Vector3(_shelter_x, 0, SHELTER_Z), delta):
+				_shelter = "waiting"
+				_model_root.rotation.y = 0.0
+		"waiting":
+			anim.update(0.0)
+			_shelter_wait -= delta
+			if not GameState.raining or _shelter_wait <= 0.0:
+				_shelter = "out"
+		"out":
+			if _step_to(Vector3(global_position.x + direction * 0.8, 0, lane_z), delta):
+				_shelter = ""
+				_model_root.rotation.y = atan2(direction, 0.0)
+	return true
+
+func _step_to(target: Vector3, delta: float) -> bool:
+	var to := target - global_position
+	to.y = 0.0
+	if to.length() < 0.08:
+		return true
+	var step := to.normalized() * speed * delta
+	global_position += step if step.length() < to.length() else to
+	_model_root.rotation.y = atan2(to.x, to.z)
+	anim.update(speed)
+	return false
 
 func interact(player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")

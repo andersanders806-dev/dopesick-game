@@ -1,5 +1,5 @@
 extends SceneTree
-## Pre-generates every NPC's small talk as speech (autoload/Voice.gd) by
+## Pre-generates every cutscene caption (read by the narrator) and every NPC's small talk as speech (autoload/Voice.gd) by
 ## loading each room -- NPCs and guards queue their own lines as they load
 ## -- and waiting for Piper to work through the queue. Lines that depend on
 ## the moment (prices, item names) are still generated the first time
@@ -20,6 +20,17 @@ func _initialize() -> void:
 			change_scene_to_file("res://world/%s.tscn" % room)
 			for i in 20:
 				await process_frame
+	# Every cutscene caption, read by the narrator; the day card for the
+	# first two weeks.
+	var cs := root.get_node("Cutscene")
+	for id in cs.SCENES:
+		for panel in cs.SCENES[id]:
+			var text: String = panel["text"]
+			if "%d" in text:
+				for d in range(2, 15):
+					voice._queue(voice.line_key("Narrator", text % d), text % d, voice.cast_for("Narrator"), false)
+			else:
+				voice._queue(voice.line_key("Narrator", text), text, voice.cast_for("Narrator"), false)
 	while true:
 		voice._mutex.lock()
 		var left: int = voice._jobs.size()

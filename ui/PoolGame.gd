@@ -644,11 +644,11 @@ func _end_shot() -> void:
 			_respot_eight()
 			_message = "The 8 drops on the break -- spotted back up."
 		elif _cleared_at_start and not foul:
-			_end_game(_shooter == 0, "%s calls the 8 and drops it clean." % who)
+			_end_game(_shooter == 0, "%s the 8 and %s it clean." % [who + (" call" if _shooter == 0 else " calls"), "drop" if _shooter == 0 else "drops"])
 			return
 		else:
 			var why := "scratching on the 8" if _scratched else "sinking the 8 early"
-			_end_game(_shooter == 1, "%s loses it %s." % [who, why])
+			_end_game(_shooter == 1, "%s it %s." % [who + (" lose" if _shooter == 0 else " loses"), why])
 			return
 
 	var mine := _pocketed.filter(func(n): return n != 8 and (_groups[_shooter] == -1 or _group_of(n) == _groups[_shooter]))

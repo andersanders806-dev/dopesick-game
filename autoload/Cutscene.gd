@@ -70,6 +70,15 @@ const SCENES := {
 		{"image": "new_day", "drift": "in", "sound": "sleep",
 			"text": "Day %d. The light comes back through the sheet whether you want it or not."},
 	],
+	# The good ending: five clean days in the program.
+	"recovered": [
+		{"image": "recovered_clinic", "drift": "in",
+			"text": "Every morning, the same window, the same little cup. Nobody claps. You come back anyway."},
+		{"image": "recovered_window", "drift": "right",
+			"text": "On the fifth morning you take the sheet down off the window. You didn't know the room got this much light."},
+		{"image": "recovered_street", "drift": "left",
+			"text": "It isn't over. It won't ever quite be over. But today you're walking to something instead of away from it."},
+	],
 	"overdose": [
 		{"image": "overdose_fade", "drift": "out",
 			"text": "It hits warmer than it should. Then heavier. The room tips slowly on its side."},
@@ -167,9 +176,12 @@ func _show_panel(panel: Dictionary, args: Array = []) -> void:
 	t.tween_property(_art, "modulate:a", 1.0, FADE)
 	_start_drift(panel.get("drift", "in"))
 
+	Voice.narrate(_caption.text)
 	var chars := _caption.text.length()
 	var elapsed := 0.0
 	var typed_done_at := -1.0
+	var heard := false
+	var spoke_until := 0.0
 	while not _skip_all:
 		var dt := get_process_delta_time()
 		elapsed += dt
@@ -183,12 +195,25 @@ func _show_panel(panel: Dictionary, args: Array = []) -> void:
 			if typed_done_at < 0.0:
 				typed_done_at = elapsed
 				create_tween().tween_property(_hint, "modulate:a", 0.7, 0.4)
-			var auto := elapsed >= maxf(PANEL_MIN, typed_done_at + AUTO_ADVANCE)
+			# With the narrator reading, hold until they're done and give it a
+			# beat; without one (no Piper, no cached line), the old timing --
+			# but wait a few seconds on a line still being generated.
+			var auto: bool
+			if Voice.is_speaking():
+				heard = true
+				spoke_until = elapsed
+				auto = false
+			elif heard:
+				auto = elapsed >= maxf(PANEL_MIN, spoke_until + 1.2)
+			else:
+				var generating: bool = Voice._pending_key != "" and elapsed < 8.0
+				auto = not generating and elapsed >= maxf(PANEL_MIN, typed_done_at + AUTO_ADVANCE)
 			if (_advance and elapsed >= 0.35) or auto:
 				break
 			_advance = false
 		await get_tree().process_frame
 
+	Voice.stop()
 	var out := create_tween()
 	out.tween_property(_art, "modulate:a", 0.0, FADE * 0.6)
 	await out.finished

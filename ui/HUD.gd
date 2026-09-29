@@ -72,6 +72,7 @@ func _ready() -> void:
 	# method connection is dropped automatically when its HUD is freed.
 	GameState.day_changed.connect(_on_day_or_strikes_changed)
 	GameState.strikes_changed.connect(_on_day_or_strikes_changed)
+	GameState.treatment_changed.connect(_on_day_or_strikes_changed)
 	GameState.run_ended.connect(_show_run_end)
 	_build_clock()
 	_build_debt()
@@ -125,7 +126,7 @@ func _build_clock() -> void:
 	$TopBar.add_child(clock_label)
 	_update_clock()
 
-func _on_day_or_strikes_changed(_value: int) -> void:
+func _on_day_or_strikes_changed(_value: int = 0) -> void:
 	_update_day()
 
 func _on_clock_changed(_minute: int) -> void:
@@ -220,6 +221,8 @@ func _update_day() -> void:
 	var left: int = GameState.max_strikes() - GameState.strikes
 	var pips := "*".repeat(max(0, left)) + "o".repeat(max(0, GameState.strikes))
 	day_label.text = "Day %d  %s" % [GameState.day, pips]
+	if GameState.in_treatment:
+		day_label.text += "   clean %d/%d" % [GameState.treatment_streak, GameState.RECOVERY_DAYS]
 
 ## Parented to the tree root, not this HUD: the bust that ends a run also
 ## changes scene, which would take a child of the current scene down with it

@@ -171,6 +171,17 @@ var strikes: int = 0
 ## by it. Shared within a class, because cross-tolerance is real: a week on
 ## fentanyl leaves you needing more heroin too.
 var tolerance: Dictionary = {}
+## What's on board and still suppressing breathing (see Drugs.LOAD_HALF_LIFE).
+var resp_load: float = 0.0
+## The treatment program (Outreach3D): a clinic dose every day and nothing
+## off the street; RECOVERY_DAYS of that in a row and you've got out -- the
+## run's third ending, and the only good one.
+const RECOVERY_DAYS := 5
+var in_treatment: bool = false
+var treatment_streak: int = 0
+var clinic_today: bool = false
+var used_today: bool = false
+signal treatment_changed
 ## When each class was last taken, in seconds of run time. Drives
 ## buprenorphine's precipitated withdrawal and the opioid/benzo mixing risk.
 var last_dose_at: Dictionary = {}
@@ -222,6 +233,11 @@ func start_run() -> void:
 	orders_delivered = 0
 	cash_earned = 0
 	tolerance.clear()
+	resp_load = 0.0
+	in_treatment = false
+	treatment_streak = 0
+	clinic_today = false
+	used_today = false
 	last_dose_at.clear()
 	run_time = 0.0
 	naloxone = 0
@@ -259,6 +275,7 @@ func _process(delta: float) -> void:
 	run_time += delta
 	if clock_running:
 		advance_clock(MINUTES_PER_SEC * delta)
+	resp_load *= pow(0.5, delta / Drugs.LOAD_HALF_LIFE)
 	if craving > 0.0:
 		craving = max(0.0, craving - current_craving_decay() * delta)
 		craving_changed.emit(craving)
@@ -295,6 +312,11 @@ func cheapest_opioid_cost() -> int:
 ## Moves the clock forward, rolling into the next day at midnight.
 func advance_clock(minutes: float) -> void:
 	clock += minutes
+	# Tolerance fades with time off; a skipped night or a stretch in a cell
+	# is time off.
+	var keep := pow(0.5, minutes / Drugs.TOLERANCE_HALF_LIFE_MINUTES)
+	for k in tolerance:
+		tolerance[k] = tolerance[k] * keep
 	while clock >= MINUTES_PER_DAY:
 		clock -= MINUTES_PER_DAY
 		day += 1
@@ -548,6 +570,8 @@ func take_drug(drug_id: String) -> String:
 		return "relief"
 
 	doses_taken += 1
+	if drug_class != Drugs.TREATMENT and drug_class != Drugs.CANNABIS:
+		used_today = true
 	var since_opioid: float = run_time - float(last_dose_at.get(Drugs.OPIOID, -9999.0))
 
 	# Buprenorphine binds harder than heroin or fentanyl and displaces them.
@@ -576,7 +600,12 @@ func take_drug(drug_id: String) -> String:
 	# spamming it became the optimal strategy. It is also the wrong model:
 	# what kills people on fentanyl is that no two doses are the same, and
 	# your tolerance does nothing about an unusually strong one.
-	risk *= clampf(1.0 - tolerance_for(drug_id) * 0.012, 0.4, 1.0)
+	var tol_factor := clampf(1.0 - tolerance_for(drug_id) * Drugs.TOLERANCE_GUARD, Drugs.TOLERANCE_GUARD_FLOOR, 1.0)
+	risk *= tol_factor
+	# Stacking: the dose lands on top of whatever's still working.
+	if drug_class == Drugs.OPIOID or drug_class == Drugs.BENZO:
+		risk *= 1.0 + Drugs.LOAD_STACK * resp_load * resp_load
+		resp_load += (float(d["od_risk"]) / 0.006) * maxf(tol_factor, Drugs.LOAD_TOLERANCE_FLOOR)
 
 	last_dose_at[drug_class] = run_time
 	tolerance[drug_class] = max(0.0, tolerance_for(drug_id) + float(d["tolerance"]))
@@ -639,7 +668,8 @@ func get_busted() -> void:
 ## run-end screen, which starts the next run once the player closes it.
 func end_run(cause := "busted") -> void:
 	var days_survived := day
-	var earned := MetaProgress.award_for_run(days_survived, orders_delivered, cash_earned)
+	# Getting out is worth more than anything else a run can do.
+	var earned := MetaProgress.award_for_run(days_survived + (15 if cause == "recovered" else 0), orders_delivered, cash_earned)
 	run_ended.emit({
 		"days": days_survived,
 		"orders": orders_delivered,
@@ -650,9 +680,36 @@ func end_run(cause := "busted") -> void:
 		"cause": cause,
 	})
 
+## Called at bedtime: did today count?
+func _tally_treatment_day() -> void:
+	if in_treatment:
+		if clinic_today and not used_today:
+			treatment_streak += 1
+		else:
+			treatment_streak = 0
+		treatment_changed.emit()
+	clinic_today = false
+	used_today = false
+
+## The clinic dose from the outreach worker: enrolls you on the first one.
+func clinic_dose() -> void:
+	in_treatment = true
+	clinic_today = true
+	treatment_changed.emit()
+
+func recovered() -> bool:
+	return in_treatment and treatment_streak >= RECOVERY_DAYS
+
 ## You sleep until morning. Slept before midnight, that's the next day;
 ## after midnight the day has already turned over.
 func sleep() -> void:
+	# The hours asleep count as time off, for tolerance and what's on board.
+	var slept := fposmod(WAKE_MINUTE - clock, float(MINUTES_PER_DAY))
+	var keep := pow(0.5, slept / Drugs.TOLERANCE_HALF_LIFE_MINUTES)
+	for k in tolerance:
+		tolerance[k] = tolerance[k] * keep
+	resp_load = 0.0
+	_tally_treatment_day()
 	if clock >= WAKE_MINUTE:
 		day += 1
 		day_changed.emit(day)

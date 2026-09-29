@@ -129,6 +129,38 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   rats running the wall line, manhole covers, utility boxes, a tyre, cash
   registers, the dartboard, the apartment TV, the backyard's fire barrel,
   roller shutter and junk, the shelter's desk and chair.
+- **Getting out: the recovery ending.** The outreach worker at the
+  shelter enrolls you in the program with your first clinic dose. Every
+  night you sleep, the day counts if you took that day's clinic dose and
+  nothing off the street (cannabis aside); a slip resets the count, not the
+  program. `GameState.RECOVERY_DAYS` (5) in a row ends the run as "YOU GOT
+  OUT", with its own cutscene and 15 days' worth of extra Know-How. The HUD
+  shows "clean n/5" next to the day while you're in it.
+- **Overdose that works like the real thing.** Tolerance used to protect
+  every dose on its own, so forty doses back to back were forty separate
+  small risks. Now each opioid or benzo adds to a respiratory load that
+  fades over about 100 game minutes, and the chance of going over climbs
+  with what's already on board -- redosing is what kills. Tolerance
+  softens that load only down to 70%, and fades by half in a day and a half
+  without use, so the first dose after a night in jail or a few days in
+  treatment is the dangerous one (the jail tells you so on the way out).
+  `dev-tools/drug_sim.gd` now passes real time between doses and has
+  binge and relapse strategies: over two weeks, clinic bupe ~3% go over,
+  steady heroin ~19%, fentanyl ~27%, opioid + benzo ~31%, a four-dose
+  fentanyl binge 100%.
+- **A narrator.** Cutscene captions are read aloud by their own Piper
+  voice (LibriTTS-R, a low, unhurried reader), and each panel holds until
+  the reading's done. `dev-tools/bake_voices.gd` now bakes every caption
+  too, so it's all there without Piper installed. Cached lines also load as
+  imported resources, which is what an exported build will need -- the old
+  code only read loose .wav files from disk.
+- **The block's regulars.** `world/StreetScenes.gd`: a smoker in the
+  liquor store's doorway (10-23, ember and smoke), Dee and Marcus arguing
+  outside the bar after dark (walk close and pieces of it float over
+  them), and Carl asleep on the apartment steps until morning. The three
+  are the shelter's dinner regulars, same bodies and clothes, at the other
+  end of their day. In the rain, passersby duck under the awnings and wait
+  it out.
 - **Title screen, pause, settings, saves.** The game opens on
   `ui/TitleScreen.tscn`: a cutscene still drifting behind the name, a punk
   tape playing, Continue / New run / Settings / Quit. Esc in play opens

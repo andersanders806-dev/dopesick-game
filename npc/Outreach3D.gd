@@ -23,7 +23,8 @@ func interact(player: Node) -> void:
 		return
 	player.dialogue_active = true
 	SFX.play("blip")
-	var options := ["Take a naloxone kit", "Ask about treatment (buprenorphine)", "Just talk"]
+	var program := "Your clinic dose  (program: %d/%d clean days)" % [GameState.treatment_streak, GameState.RECOVERY_DAYS] if GameState.in_treatment else "Ask about treatment (start the program)"
+	var options := ["Take a naloxone kit", program, "Just talk"]
 	var disabled := []
 	if not GameState.daily_available("shelter_naloxone"):
 		disabled.append(0)
@@ -49,9 +50,14 @@ func _on_choice(i: int, player: Node, hud: Node) -> void:
 				hud.show_dialogue(npc_name, "She looks at your eyes. \"You've used recently. If I give you this now it'll knock the rest off the receptors and make you sicker than you've ever been. Come back when you're in withdrawal.\"")
 				return
 			GameState.daily_available("shelter_bupe", true)
+			var first := not GameState.in_treatment
 			var outcome := GameState.take_drug("bupe")
-			if outcome == "relief":
-				hud.show_dialogue(npc_name, "A strip under the tongue, and you wait while it dissolves. The sickness backs off, slowly, and doesn't come roaring back. \"Same time tomorrow. That's all it takes. One day.\"")
+			GameState.clinic_dose()
+			if outcome == "relief" and first:
+				hud.show_dialogue(npc_name, "She signs you in on a clipboard. A strip under the tongue, and you wait while it dissolves. The sickness backs off, slowly. \"Here's the deal. Come every day, take it here, and stay off everything else. %d days straight and you're out of the woods -- not cured, out. If you slip, you start the count again. Nobody's keeping score but you.\"" % GameState.RECOVERY_DAYS)
+			elif outcome == "relief":
+				var left := GameState.RECOVERY_DAYS - GameState.treatment_streak
+				hud.show_dialogue(npc_name, "A strip under the tongue. \"%s\"" % ("Day %d. %d more after today. Keep your head down tonight." % [GameState.treatment_streak + 1, left - 1] if left > 1 else "Last one. Get some sleep. I mean it."))
 			else:
 				hud.show_dialogue(npc_name, "It doesn't sit right. \"...Okay. Sit down. Breathe. I've got you.\"")
 		2:

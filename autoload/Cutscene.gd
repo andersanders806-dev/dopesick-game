@@ -51,6 +51,25 @@ const SCENES := {
 		{"image": "sent_away_bus", "drift": "left", "sound": "door",
 			"text": "The bus pulls away from the courthouse. You watch the block slide past the window and don't know when you'll see it again."},
 	],
+	# The first time you score in a run.
+	"first_score": [
+		{"image": "first_score_corner", "drift": "in",
+			"text": "He doesn't look at you while he talks. He looks up the street, then down it, then at your hands."},
+		{"image": "first_score_walk", "drift": "right",
+			"text": "You walk away fast with your fist closed around it. Twenty minutes ago you'd have given anything. You nearly did."},
+	],
+	# Walking out of the cell.
+	"released": [
+		{"image": "released_door", "drift": "in", "sound": "door",
+			"text": "The door grinds open. Nobody says sorry and nobody says goodbye."},
+		{"image": "released_steps", "drift": "down",
+			"text": "Outside it's colder than you remember. Your stuff is gone. The sickness isn't."},
+	],
+	# Sleeping through to the next morning. %d is the new day.
+	"new_day": [
+		{"image": "new_day", "drift": "in", "sound": "sleep",
+			"text": "Day %d. The light comes back through the sheet whether you want it or not."},
+	],
 	"overdose": [
 		{"image": "overdose_fade", "drift": "out",
 			"text": "It hits warmer than it should. Then heavier. The room tips slowly on its side."},
@@ -91,7 +110,8 @@ func art_for(image: String) -> Texture2D:
 		return load(path)
 	return null
 
-func play(scene_id: String) -> void:
+## `args` fill in a caption's % placeholders (the day number on "new_day").
+func play(scene_id: String, args: Array = []) -> void:
 	if not SCENES.has(scene_id):
 		push_warning("Cutscene: unknown scene '%s'" % scene_id)
 		return
@@ -117,7 +137,7 @@ func play(scene_id: String) -> void:
 	for panel in SCENES[scene_id]:
 		if _skip_all:
 			break
-		await _show_panel(panel)
+		await _show_panel(panel, args)
 
 	var fade_out := create_tween()
 	fade_out.tween_property(_root, "modulate:a", 0.0, FADE)
@@ -127,12 +147,12 @@ func play(scene_id: String) -> void:
 	_playing = false
 	finished.emit()
 
-func _show_panel(panel: Dictionary) -> void:
+func _show_panel(panel: Dictionary, args: Array = []) -> void:
 	var tex := art_for(panel["image"])
 	_art.texture = tex
 	_art.visible = tex != null
 	_fallback.visible = tex == null
-	_caption.text = panel["text"]
+	_caption.text = panel["text"] % args if not args.is_empty() else panel["text"]
 	_caption.visible_characters = 0
 	_hint.modulate.a = 0.0
 	_advance = false

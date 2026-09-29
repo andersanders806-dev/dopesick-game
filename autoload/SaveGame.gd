@@ -1,0 +1,104 @@
+extends Node
+## One save slot for the run in progress: user://save.json.
+##
+## It's written every time you walk into a room (WorldRoot3D) and when you
+## sleep, so "Continue" on the title screen puts you back in the last room
+## you entered, where you stood, with everything you had. A run that ends --
+## busted for good, or gone over -- deletes it: runs are meant to end, and
+## the only thing that carries over is MetaProgress's Know-How.
+##
+## Never written while you're wanted or in custody: quitting mid-chase and
+## continuing somewhere quiet would be a free escape.
+
+const PATH := "user://save.json"
+const VERSION := 1
+## GameState fields that make up a run. Everything else is derived, or
+## per-visit, or reset on load.
+const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "strikes",
+	"tolerance", "last_dose_at", "run_time", "naloxone", "doses_taken", "active_duration",
+	"debt", "debt_due", "hurt_until", "homeless_trust", "has_walkman", "tapes",
+	"daily_used", "last_meal_slot", "orders_delivered", "cash_earned", "bar_patrons",
+	"scored_this_run"]
+
+## Where to put the player once the saved room has loaded.
+var pending_position = null
+
+func _ready() -> void:
+	GameState.run_ended.connect(func(_s): delete())
+
+func has_save() -> bool:
+	return FileAccess.file_exists(PATH)
+
+func save() -> bool:
+	if GameState.wanted or GameState.in_custody:
+		return false
+	var scene := get_tree().current_scene
+	if scene == null or scene.scene_file_path == "":
+		return false
+	var data := {"version": VERSION, "scene": scene.scene_file_path, "tape": Walkman.current,
+		"saved_at": Time.get_datetime_string_from_system()}
+	for f in FIELDS:
+		data[f] = GameState.get(f)
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player:
+		var p := player.global_position
+		data["position"] = [p.x, p.y, p.z]
+	var file := FileAccess.open(PATH, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(data, "\t"))
+	return true
+
+## A one-line description for the title screen's Continue button.
+func summary() -> String:
+	var data := _read()
+	if data.is_empty():
+		return ""
+	var room: String = String(data.get("scene", "")).get_file().get_basename().trim_suffix("3D")
+	return "Day %d  -  $%d  -  %s" % [int(data.get("day", 1)), int(data.get("cash", 0)), room]
+
+## Puts the saved run into GameState and loads its room.
+func continue_run() -> bool:
+	var data := _read()
+	if data.is_empty():
+		return false
+	GameState.start_run()
+	for f in FIELDS:
+		if not data.has(f):
+			continue
+		var v = data[f]
+		var current = GameState.get(f)
+		if current is Array:
+			(current as Array).assign(v)
+		elif current is int:
+			GameState.set(f, int(v))
+		else:
+			GameState.set(f, v)
+	GameState.intro_pending = false
+	GameState.pending_spawn = ""
+	var pos = data.get("position")
+	pending_position = Vector3(pos[0], pos[1], pos[2]) if pos is Array and pos.size() == 3 else null
+	GameState.cash_changed.emit(GameState.cash)
+	GameState.craving_changed.emit(GameState.craving)
+	GameState.inventory_changed.emit()
+	GameState.day_changed.emit(GameState.day)
+	GameState.strikes_changed.emit(GameState.strikes)
+	GameState.debt_changed.emit(GameState.debt)
+	GameState._emit_clock()
+	get_tree().change_scene_to_file(data["scene"])
+	var tape: String = data.get("tape", "")
+	if tape != "" and GameState.has_walkman:
+		Walkman.play.call_deferred(tape)
+	return true
+
+func delete() -> void:
+	if has_save():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
+
+func _read() -> Dictionary:
+	if not has_save():
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(PATH))
+	if not (parsed is Dictionary) or int(parsed.get("version", 0)) != VERSION:
+		return {}
+	return parsed

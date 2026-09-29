@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
-"""Generates realistic dialogue-portrait art via Pollinations.ai (free, no
-key) + rembg background removal, for use in HUD dialogue boxes only (NOT
-top-down gameplay sprites -- AI photo models default to front-facing
-portraits, not bird's-eye view, so a "realistic" character standing in the
-top-down world looks like a floating cardboard cutout; confirmed via a
-mockup before committing to this approach).
+"""Paints the dialogue portraits (assets/portraits/) through AI Horde
+(dev-tools/horde.py), in the same 35mm film-still look as the cutscenes:
+head and shoulders, each person in their own place -- the bar, the street
+corner, behind a pharmacy counter -- under that place's light, not cut out
+onto a studio grey the way the old Pollinations + rembg pass did
+(Pollinations now answers 402 Payment Required).
 
-Needs a venv (system Python is externally-managed) with rembg + onnxruntime:
-    python3 -m venv .venv-portraits
-    .venv-portraits/bin/pip install rembg onnxruntime
-    .venv-portraits/bin/python3 dev-tools/gen_portraits.py
+    python3 dev-tools/gen_portraits.py            # every portrait
+    python3 dev-tools/gen_portraits.py pusher     # just some
 
-First run downloads a ~1GB background-removal model to ~/.rembg/ -- slow
-once, fast after. Pollinations.ai is a shared free community service; a
-generation attempt can hit a 429/500 from rate limiting, so fetch() retries
-with backoff.
+Needs Pillow (.venv-portraits has it).
 """
 import os
-import time
-import urllib.parse
-import urllib.request
-from rembg import remove
-from PIL import Image
+import sys
 
-OUT = "/home/anders/dopesick-game/assets/portraits"
-os.makedirs(OUT, exist_ok=True)
+from horde import paint_all
+
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "portraits")
+SIZE = 200
 
 # Descriptions are grounded in real clinical/visible signs of long-term
 # substance use (researched via addiction-medicine sources, not guessed):
@@ -55,80 +48,44 @@ CHARACTERS = {
     "shopkeeper": "a tired middle-aged convenience shop owner in a plain apron over a flannel shirt, alert watchful eyes, deep worry lines, arms crossed, wary guarded expression",
 }
 
-PROMPT_TEMPLATE = (
-    "realistic photo portrait of {desc}, head and shoulders, plain neutral "
-    "grey background, soft studio lighting, looking at camera, photorealistic, 4k"
-)
+## Where each of them is when you talk to them.
+PLACES = {
+    "bartender": "behind a dive bar counter, bottles and red neon behind him",
+    "pusher": "on a dark street corner under a sodium streetlight",
+    "pharmacist": "behind a pharmacy counter under fluorescent light",
+    "cashier": "at a supermarket checkout under fluorescent light",
+    "liquor_clerk": "behind scratched plexiglass in a liquor store",
+    "security_guard": "inside a store entrance under fluorescent light",
+    "jailer": "at a police booking desk under fluorescent light",
+    "shopkeeper": "behind a cluttered corner shop counter",
+}
+BAR = "in a dim dive bar, red neon and a jukebox glow behind"
+
+STYLE = ("cinematic film still, 35mm photograph, head and shoulders portrait of {desc}, {place}, "
+         "low-key moody lighting, muted desaturated colours with teal shadows, film grain, "
+         "gritty 1990s American inner city, looking at the camera, no text")
+NEGATIVE = "text, watermark, logo, cartoon, anime, illustration, 3d render, gore, blood, nudity, bright, overexposed"
 
 
-def fetch(prompt: str, seed: int, path: str) -> bool:
-    url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt)
-    url += f"?width=512&height=512&nologo=true&model=flux&seed={seed}"
-    req = urllib.request.Request(url, headers={"User-Agent": "curl/8.5.0"})
-    for attempt in range(4):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as resp, open(path, "wb") as f:
-                f.write(resp.read())
-            if os.path.getsize(path) > 5000:
-                return True
-        except Exception as e:
-            print("  attempt", attempt, "failed:", e)
-        time.sleep(4)
-    return False
+def main() -> None:
+    wanted = set(sys.argv[1:])
+    jobs = []
+    for i, (name, desc) in enumerate(CHARACTERS.items()):
+        if wanted and name not in wanted:
+            continue
+        jobs.append((name, STYLE.format(desc=desc, place=PLACES.get(name, BAR)), 100 + i))
+
+    def save(name, img):
+        # Square, a little above centre so the face sits in the frame.
+        w, h = img.size
+        side = min(w, h)
+        top = max(0, int((h - side) * 0.3))
+        img.crop(((w - side) // 2, top, (w - side) // 2 + side, top + side)).resize((SIZE, SIZE)).save(
+            os.path.join(OUT, name + ".png"), optimize=True)
+
+    ok = paint_all(jobs, NEGATIVE, 768, 768, save)
+    print(f"\n{ok}/{len(jobs)} portraits painted into {OUT}")
 
 
-def clean_watermark(img: Image.Image) -> Image.Image:
-    img = img.convert("RGBA")
-    px = img.load()
-    w, h = img.size
-    for y in range(h - 55, h):
-        for x in range(w - 190, w):
-            if 0 <= x < w and 0 <= y < h:
-                px[x, y] = (0, 0, 0, 0)
-    return img
-
-
-def process(name: str, desc: str, seed: int):
-    raw_path = os.path.join(OUT, f"_raw_{name}.png")
-    prompt = PROMPT_TEMPLATE.format(desc=desc)
-    print("generating", name, "...")
-    if not fetch(prompt, seed, raw_path):
-        print("  FAILED to generate", name)
-        return False
-
-    raw = Image.open(raw_path)
-    cut = remove(raw)
-    cut = clean_watermark(cut)
-
-    bbox = cut.getbbox()
-    if bbox:
-        cut = cut.crop(bbox)
-
-    # pad to square, center, then resize to final portrait size
-    size = max(cut.size)
-    square = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    square.paste(cut, ((size - cut.width) // 2, (size - cut.height) // 2), cut)
-    final = square.resize((200, 200), Image.LANCZOS)
-    final.save(os.path.join(OUT, f"{name}.png"))
-    os.remove(raw_path)
-    print("  done:", name)
-    return True
-
-
-# Pass character names to (re)generate just those, e.g.
-#   .venv-portraits/bin/python3 dev-tools/gen_portraits.py pusher
-# With no arguments, every portrait is regenerated. Seeds stay tied to each
-# character's position in CHARACTERS either way.
-import sys
-wanted = set(sys.argv[1:])
-ok = 0
-todo = 0
-for i, (name, desc) in enumerate(CHARACTERS.items()):
-    if wanted and name not in wanted:
-        continue
-    todo += 1
-    if process(name, desc, seed=100 + i):
-        ok += 1
-
-print(f"\n{ok}/{todo} portraits generated")
-print("done:", sorted(os.listdir(OUT)))
+if __name__ == "__main__":
+    main()

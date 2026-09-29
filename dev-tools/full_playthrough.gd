@@ -19,7 +19,13 @@ func _initialize() -> void:
 	out_dir = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() else "user://"
 	t_start = Time.get_ticks_msec()
 	_build_title()
-	change_scene_to_file("res://world/Apartment3D.tscn")
+	root.get_node("SaveGame").delete()
+	change_scene_to_file("res://ui/TitleScreen.tscn")
+	await _wait(0.8)
+	_title.text = "0. The title screen"
+	await _wait(5.0)
+	await screenshot("title")
+	current_scene._on_new_run()
 	await _wait(0.8)
 	await _run()
 	log_line("DONE")
@@ -149,6 +155,9 @@ func _run() -> void:
 	await _wait(1.0)
 	await play_pool()
 
+	chapter("4b. Darts for $5 against the Tired Woman")
+	await play_darts()
+
 	chapter("5. Lifting the order: %s from the %s" % [gs.item_name_for(want_id), store])
 	await use_door("DoorToCity")
 	await key(KEY_N)  # next tape on the walk over
@@ -204,6 +213,8 @@ func _run() -> void:
 		log_line("bought %s" % root.get_node("Drugs").name_for(pick))
 		dm.chosen.emit(pick)
 		dm._close()
+		# The first score of a run has its own cutscene.
+		await watch_cutscene(3.5)
 	await _wait(0.8)
 	await close_dialogue()
 	for i in 40:
@@ -243,6 +254,7 @@ func _run() -> void:
 	if current_scene.name == "Apartment3D":
 		await walk_to(current_scene.get_node("Bed"))
 		await talk()
+		await watch_cutscene(3.5)
 		await screenshot("sleep")
 		await _wait(2.0)
 		await close_dialogue()
@@ -282,6 +294,12 @@ func _run() -> void:
 		var outcome: String = gs.take_drug("alprazolam" if i % 2 == 0 else "fentanyl")
 		log_line("dose %d: %s" % [i, outcome])
 		await _wait(0.3)
+	if not ended[0]:
+		# Going over is a roll, and tolerance keeps lowering the odds; so the
+		# recording always reaches the end, finish on the game's own
+		# no-naloxone overdose.
+		log_line("no overdose in 40 doses -- forcing the last one")
+		gs._overdose()
 	await watch_cutscene(4.0)
 	await _wait(2.0)
 	await screenshot("run_end")
@@ -297,6 +315,9 @@ func play_pool() -> void:
 	if game == null:
 		log_line("pool game didn't open")
 		return
+	await screenshot("pool_howto")
+	await _wait(3.0)
+	await key(KEY_SPACE)  # past the how-to
 	await screenshot("pool_break")
 	var shots := 0
 	while not game._over and shots < 60:
@@ -328,6 +349,48 @@ func play_pool() -> void:
 	game._close()
 	await _wait(0.5)
 
+## Aims at the treble 20 like a player would -- the sway and the scatter
+## are the game's, not the bot's -- holding its breath for each throw.
+func play_darts() -> void:
+	var zone := current_scene.find_child("DartsZone", true, false) as Node3D
+	if zone == null or not await walk_to(zone):
+		log_line("couldn't reach the dartboard")
+		return
+	await press_interact()
+	await _wait(1.0)
+	var menu := choice_menu()
+	if menu:
+		menu._on_pick(0)
+	await _wait(1.0)
+	var game: Node = null
+	for c in root.get_children():
+		if c.has_method("score_at"):
+			game = c
+	if game == null:
+		log_line("darts didn't open")
+		return
+	await screenshot("darts_howto")
+	await _wait(3.0)
+	game._click()  # past the how-to
+	var throws := 0
+	while not game._over and throws < 30:
+		await _wait(0.3)
+		if game._player_turn and game._flying.is_empty() and game._darts_left > 0:
+			game._mouse = game.CENTRE + Vector2(0, -103.0 * game.MM)
+			Input.action_press("sprint")  # Shift: hold the breath
+			await _wait(0.7)
+			game._click()
+			Input.action_release("sprint")
+			throws += 1
+			if throws == 2:
+				await _wait(0.4)
+				await screenshot("darts_throw")
+	log_line("darts over: %s" % game._message)
+	await screenshot("darts_result")
+	await _wait(3.0)
+	game._close()
+	await _wait(0.5)
+
 func jail_time() -> void:
 	chapter("   ...a night in the cell")
 	await screenshot("cell")
@@ -335,6 +398,7 @@ func jail_time() -> void:
 	await close_dialogue()
 	await walk_to(current_scene.get_node("Bench"))
 	await talk()
+	await watch_cutscene(3.5)
 	await _wait(2.0)
 	await close_dialogue()
 	await _wait(1.6)

@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Dope Sick"
 config/description="A dark, low-budget survival game about addiction, theft, and getting by one score at a time."
-run/main_scene="res://world/Apartment3D.tscn"
+run/main_scene="res://ui/TitleScreen.tscn"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -30,6 +30,7 @@ Graphics="*res://autoload/Graphics.gd"
 Voice="*res://autoload/Voice.gd"
 Walkman="*res://autoload/Walkman.gd"
 Cutscene="*res://autoload/Cutscene.gd"
+SaveGame="*res://autoload/SaveGame.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]

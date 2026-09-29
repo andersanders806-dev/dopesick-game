@@ -33,6 +33,7 @@ func _ready() -> void:
 	_seat_patrons()
 	super._ready()
 	_connect_pool()
+	_add_darts()
 	_apply_patrons()
 
 ## Orders stick until delivered: whoever is in GameState.bar_patrons is still
@@ -97,6 +98,61 @@ const POOL_TABLES := [
 	{"bet": 20, "name": "Wiry Guy", "skill": 0.62, "line": "Wiry Guy's already racking. \"Twenty. Let's go let's go.\""},
 	{"bet": 50, "name": "The Shark", "skill": 0.85, "line": "A guy in a pressed jacket nobody's seen before unscrews his own cue. \"Fifty.\""},
 ]
+
+# --- Darts for money ------------------------------------------------------
+
+const DartsGame := preload("res://ui/DartsGame.gd")
+const InteractableScript := preload("res://interactables/Interactable3D.gd")
+const DART_TABLES := [
+	{"bet": 5, "name": "Tired Woman", "skill": 0.2, "line": "The Tired Woman pulls three darts out of the board. \"Five. Don't expect much.\""},
+	{"bet": 10, "name": "Quiet Kid", "skill": 0.45, "line": "The Quiet Kid nods at the board and doesn't say anything."},
+	{"bet": 20, "name": "Old Sailor", "skill": 0.75, "line": "The Old Sailor rolls his shoulder. \"Twenty. Thirty years of this, son.\""},
+]
+
+## The board on the back wall had nothing to use; a trigger in front of it
+## now opens the stakes.
+func _add_darts() -> void:
+	var board := get_node_or_null("DartboardModel") as Node3D
+	if board == null:
+		return
+	var zone := Area3D.new()
+	zone.name = "DartsZone"
+	zone.collision_layer = 4
+	zone.collision_mask = 0
+	zone.monitoring = false
+	zone.set_script(InteractableScript)
+	add_child(zone)
+	zone.global_position = Vector3(board.global_position.x, 0.0, board.global_position.z + 0.9)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(1.2, 1.4, 1.0)
+	shape.shape = box
+	shape.position = Vector3(0, 0.7, 0)
+	zone.add_child(shape)
+	zone.interacted.connect(_on_darts)
+
+func _on_darts(_zone: Area3D, player: Node) -> void:
+	player.dialogue_active = true
+	var options: Array = DART_TABLES.map(func(t): return "$%d against %s" % [t["bet"], t["name"]])
+	var disabled := []
+	for i in DART_TABLES.size():
+		if GameState.cash < DART_TABLES[i]["bet"]:
+			disabled.append(i)
+	var menu: CanvasLayer = ChoiceMenu.new()
+	get_tree().root.add_child(menu)
+	menu.chosen.connect(func(i: int): _start_darts(DART_TABLES[i], player))
+	menu.cancelled.connect(func(): player.dialogue_active = false)
+	menu.open("Dartboard", "A cork board gone grey at the treble 20, three bent darts in it, a chalkboard beside it with last week's scores still up. Three rounds, three darts, high total wins.", options, disabled)
+
+func _start_darts(table: Dictionary, player: Node) -> void:
+	player.dialogue_active = true
+	Voice.say("", table["line"])
+	var game: CanvasLayer = DartsGame.new()
+	get_tree().root.add_child(game)
+	game.start(table["name"], table["skill"], table["bet"])
+	game.tree_exited.connect(func():
+		if is_instance_valid(player):
+			player.dialogue_active = false)
 
 func _connect_pool() -> void:
 	var zone := find_child("PoolZone", true, false)

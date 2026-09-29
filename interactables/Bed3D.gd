@@ -12,6 +12,7 @@ func interact(player: Node) -> void:
 		SFX.play("blip")
 		hud.show_dialogue("", "Too wired to sleep. Cops are still looking for you.")
 		return
-	SFX.play("sleep")
 	GameState.sleep()
+	await Cutscene.play("new_day", [GameState.day])
+	SaveGame.save()
 	hud.show_dialogue("", "You black out... and wake up again. Day %d, %s." % [GameState.day, GameState.clock_text()])

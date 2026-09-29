@@ -253,6 +253,9 @@ func _pay_back(player: Node, amount: int) -> void:
 
 func _handoff(player: Node) -> void:
 	state = State.HANDOFF
+	if not GameState.scored_this_run:
+		GameState.scored_this_run = true
+		await Cutscene.play("first_score")
 	_timer = anim.play_once_timed("interact", 0.8)
 	_speak()
 	_owes_fix = false

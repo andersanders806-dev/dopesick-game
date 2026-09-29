@@ -15,7 +15,10 @@ var _closing: bool = false
 func _ready() -> void:
 	_bake_navigation()
 	var spawn_marker := _place_player_at_spawn()
+	_restore_saved_position()
 	_maybe_continue_chase(spawn_marker)
+	# Autosave on arrival, once the room has settled.
+	SaveGame.save.call_deferred()
 
 func _process(_delta: float) -> void:
 	_check_closing_time()
@@ -84,6 +87,16 @@ func _place_player_at_spawn() -> Marker3D:
 		player.reset_physics_interpolation()
 	GameState.pending_spawn = ""
 	return marker
+
+## Continue from the title screen: stand where the save left you.
+func _restore_saved_position() -> void:
+	if SaveGame.pending_position == null:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player:
+		player.global_position = SaveGame.pending_position
+		player.reset_physics_interpolation()
+	SaveGame.pending_position = null
 
 ## Mirrors WorldRoot.gd's 2D chase-persistence fix: a room is a fully
 ## separate scene, so a pursuing officer doesn't survive a door crossing on

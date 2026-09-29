@@ -1,18 +1,24 @@
 {
-  "_about": "Prompts for the cutscene stills in assets/cutscenes/, painted by dev-tools/gen_cutscenes.py through AI Horde. First tried on Perchance's generator (Cinematic style), which can't be saved from a script; its style preset is approximated by style_prefix. Kept to what happened, not gore: these are about loneliness and consequence, not shock.",
+  "_about": "Prompts for the cutscene stills in assets/cutscenes/, painted by dev-tools/gen_cutscenes.py through AI Horde. {me} stands for 'protagonist', the same man as the 3D player. First tried on Perchance's generator (Cinematic style), which can't be saved from a script; its style preset is approximated by style_prefix. Kept to what happened, not gore: these are about loneliness and consequence, not shock.",
   "shared_suffix": ", gritty 1990s American inner city, dim sodium and fluorescent light, muted desaturated colours with teal shadows, film grain, no text",
-  "negative": "text, watermark, logo, caption, cartoon, anime, illustration, 3d render, gore, blood, nudity, shirtless, bright, overexposed",
+  "negative": "text, watermark, logo, caption, cartoon, anime, illustration, 3d render, gore, blood, nudity, shirtless, bright, overexposed, text on clothing, lettering, twins, duplicate person",
   "images": {
-    "intro_mattress": "a thin young man lying awake on a bare stained mattress on the floor of a squalid one-room apartment at dawn, grey light through a bedsheet nailed over the window, empty bottles and clothes on the floor, a bare light bulb",
-    "intro_sick": "close-up of a pale sweating young man sitting on the edge of a mattress hugging himself, shivering, hollow eyes, dark circles, cold grey morning light, cramped dirty room",
-    "intro_street": "a lone figure in a grey hoodie stepping out of a rundown apartment building onto a wet empty city street at morning, boarded windows, liquor store and pharmacy signs down the block, overcast sky",
-    "busted_cuffs": "a police officer kneeling on a young man's back, handcuffing him face down on a wet sidewalk at night, red and blue police lights reflecting in puddles, shopping bags spilled on the ground",
-    "busted_car": "view from inside the back seat of a police cruiser at night, a handcuffed young man slumped against the scratched plexiglass partition, city lights smeared on the rain-streaked window",
-    "sent_away_court": "a young man in an orange jumpsuit standing before a judge's bench in a shabby fluorescent-lit courtroom, seen from behind, a public defender beside him, tired bored faces",
-    "sent_away_bus": "a young man in an orange jumpsuit sitting alone in a prison transport bus, looking out of a barred window at a grey city passing by, overcast daylight",
+    "intro_mattress": "{me} lying awake on a bare stained mattress on the floor of a squalid one-room apartment at dawn, grey light through a bedsheet nailed over the window, empty bottles and clothes on the floor, a bare light bulb",
+    "intro_sick": "close-up of {me}, sweating and pale, sitting on the edge of a mattress hugging himself and shivering, cold grey morning light, cramped dirty room",
+    "intro_street": "{me} seen from behind in a grey hoodie stepping out of a rundown apartment building onto a wet empty city street at morning, boarded windows, liquor store and pharmacy signs down the block, overcast sky",
+    "busted_cuffs": "close-up of steel handcuffs closing on a man's wrists behind his back, a gloved police officer's hands, the sleeve of a grey-green t-shirt, wet sidewalk at night, red and blue police lights reflecting in puddles, shallow depth of field",
+    "busted_car": "view from inside the back seat of a police cruiser at night, {me} handcuffed and slumped against the scratched plexiglass partition, plain unmarked t-shirt, city lights smeared on the rain-streaked window",
+    "sent_away_court": "{me} in an orange jumpsuit standing before a judge's bench in a shabby fluorescent-lit courtroom, seen from behind, a public defender beside him",
+    "sent_away_bus": "{me} in an orange jumpsuit sitting alone in a prison transport bus, looking out of a barred window at a grey city passing by, overcast daylight",
     "overdose_fade": "blurred dreamlike view of a squalid apartment ceiling and a bare light bulb, warm hazy glow, tilted dutch angle, soft focus, drifting out of consciousness",
-    "overdose_floor": "an empty dark apartment at night, a figure lying still on the floor beside a mattress, seen from the doorway, a single bare light bulb, long shadows, silent and lonely",
-    "overdose_lights": "blue and red emergency lights flickering across the ceiling and wall of a dark apartment stairwell at night, a paramedic stretcher at the top of the stairs, no faces visible"
+    "overdose_floor": "an empty dark apartment at night seen from the doorway, a figure lying still on the floor beside a mattress, a single bare light bulb, long shadows, silent and lonely",
+    "overdose_lights": "blue and red emergency lights flickering across the ceiling and wall of a dark apartment stairwell at night, a paramedic stretcher at the top of the stairs, no faces visible",
+    "first_score_corner": "{me} facing a heavyset bearded dark-haired dealer in a black hooded jacket with the hood up, under a flickering streetlight at the dark end of a city block at night, the dealer glancing up the street, their hands low between them",
+    "first_score_walk": "{me} walking fast away down a wet night sidewalk with his hands deep in his pockets and his head down, neon shop signs blurred behind him",
+    "released_door": "a steel holding cell door sliding open onto a harsh fluorescent police station corridor, {me} sitting on a bench inside squinting at the light",
+    "released_steps": "{me} walking down the concrete steps of a police station at dawn, squinting against the pale sky, alone, a cold empty street ahead",
+    "new_day": "dawn light through a bedsheet nailed over a window of a squalid apartment, a crumpled mattress, an overflowing ashtray and a walkman with headphones on the floor, quiet and grey"
   },
-  "style_prefix": "cinematic film still, 35mm photograph, low-key moody lighting, "
+  "style_prefix": "cinematic film still, 35mm photograph, low-key moody lighting, ",
+  "protagonist": "a gaunt pale man around thirty with short messy brown hair, patchy brown stubble and sunken tired eyes, wearing a faded grey-green t-shirt and worn blue-grey jeans"
 }

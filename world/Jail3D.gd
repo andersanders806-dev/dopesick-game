@@ -76,6 +76,7 @@ func release(message: String) -> void:
 	if released:
 		return
 	released = true
+	await Cutscene.play("released")
 	var hud := get_tree().get_first_node_in_group("hud")
 	var player := get_tree().get_first_node_in_group("player")
 	if hud and player:

@@ -1,5 +1,6 @@
 extends CharacterBody3D
 
+const PauseMenuScript := preload("res://ui/PauseMenu.gd")
 const BASE_SPEED := 4.2
 ## Sprinting is the risk/reward half of the stealth layer: it gets you out of
 ## a room fast, and it is the single loudest thing you can do in front of a
@@ -69,8 +70,6 @@ func _ready() -> void:
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
 
-func _process(delta: float) -> void:
-	_update_camera_shake(delta)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
@@ -94,6 +93,8 @@ func _update_cramps(delta: float) -> void:
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
+	# On the physics tick, so interpolation smooths the shake with the rest.
+	_update_camera_shake(delta)
 	if dialogue_active:
 		velocity = Vector3.ZERO
 		move_and_slide()
@@ -172,6 +173,20 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		_try_interact()
+	elif event.is_action_pressed("cancel_ui"):
+		# Menus parented to the root (the shoebox, the pusher, pool) get Esc
+		# before this does; anything reaching here means the world has it.
+		get_viewport().set_input_as_handled()
+		if dialogue_active:
+			var hud := get_tree().get_first_node_in_group("hud")
+			if hud and hud.dialogue_panel.visible:
+				hud.advance_or_close_dialogue()
+			return
+		if get_tree().paused or _busy_timer > 0.0:
+			return
+		var menu := PauseMenuScript.new()
+		get_tree().root.add_child(menu)
+		menu.open()
 
 ## Turns to face `target_pos` and plays the pick-up animation, holding the
 ## player still until it's done. Returns how long that takes.

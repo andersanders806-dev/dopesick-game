@@ -158,6 +158,8 @@ var in_custody: bool = false
 ## Set by start_run(); the Apartment plays the opening cutscene once and
 ## clears it, so it runs at the top of each run but not on every wake-up.
 var intro_pending: bool = false
+## The first score of a run gets its own cutscene (Pusher3D._handoff).
+var scored_this_run: bool = false
 ## Who's drinking in the Dive Bar and what they asked you for. Kept here so
 ## orders stick until you deliver them -- through leaving the bar, a night in
 ## a cell, or sleeping. Each entry: {name, model, seat, request_id, price,
@@ -240,6 +242,7 @@ func start_run() -> void:
 	hurt_until = -1.0
 	pending_spawn = ""
 	intro_pending = true
+	scored_this_run = false
 	cash_changed.emit(cash)
 	craving_changed.emit(craving)
 	inventory_changed.emit()

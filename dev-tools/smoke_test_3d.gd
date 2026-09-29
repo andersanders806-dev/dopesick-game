@@ -738,6 +738,8 @@ func _run() -> void:
 	await _places_checks(gs)
 	await _walkman_checks(gs)
 	await _pool_checks(gs)
+	await _darts_checks(gs)
+	await _menu_and_save_checks(gs)
 	await _street_life_checks(gs)
 	gs.start_run()
 
@@ -1179,15 +1181,17 @@ func _pool_checks(gs: Node) -> void:
 	gs.clock = 20 * 60
 	var bar := await _load("res://world/DiveBar3D.tscn")
 	_check(bar.find_child("PoolZone", true, false) != null, "  the pool table can be played")
-	gs.cash = 40
+	gs.cash = 60
 	var p := _player()
-	bar._start_pool(bar.POOL_TABLES[1], p)
+	bar._start_pool(bar.POOL_TABLES[3], p)
 	await _frames(2)
 	var game: Node = null
 	for c in root.get_children():
 		if c.has_method("_ai_plan"):
 			game = c
-	_check(game != null, "  a game starts ($%d against %s)" % [bar.POOL_TABLES[1]["bet"], bar.POOL_TABLES[1]["name"]])
+	_check(game != null, "  a game starts ($%d against %s)" % [bar.POOL_TABLES[3]["bet"], bar.POOL_TABLES[3]["name"]])
+	_check(game._howto, "  the first game opens on the how-to")
+	game._howto = false
 	var result := []
 	game.finished.connect(func(won): result.append(won))
 	# Let our side play with the same AI so a whole game runs through.
@@ -1203,11 +1207,103 @@ func _pool_checks(gs: Node) -> void:
 	var left := func(who: int) -> int: return game._remaining(game._groups[who]) if game._groups[who] != -1 else 7
 	_check(result.size() == 1, "  the game plays out to a winner (%s, %d-%d left, %.0fs)" % ["won" if result and result[0] else "lost", left.call(0), left.call(1), frames / 60.0])
 	_check(game._groups[0] != -1 and game._groups[0] != game._groups[1], "  the table got split into solids and stripes")
-	var expected := 50 if result and result[0] else 30
-	_check(gs.cash == expected, "  the pot changes hands ($40 -> $%d)" % gs.cash)
+	var expected := 110 if result and result[0] else 10
+	_check(gs.cash == expected, "  the pot changes hands ($60 -> $%d)" % gs.cash)
 	game._close()
 	await _frames(3)
 	_check(not p.dialogue_active, "  and you can walk away from the table")
+	gs.start_run()
+
+func _darts_checks(gs: Node) -> void:
+	print("== Darts: three rounds for money at the Dive Bar")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 20 * 60
+	var Darts = load("res://ui/DartsGame.gd")
+	var c: Vector2 = Darts.CENTRE
+	var mm: float = Darts.MM
+	_check(Darts.score_at(c)["points"] == 50, "  dead centre is the bull")
+	_check(Darts.score_at(c + Vector2(0, -103 * mm))["label"] == "T20", "  straight up at 103 mm is the treble 20")
+	_check(Darts.score_at(c + Vector2(0, 166 * mm))["label"] == "D3", "  straight down at 166 mm is the double 3")
+	_check(Darts.score_at(c + Vector2(130 * mm, 0))["label"] == "6", "  to the right is the 6")
+	_check(Darts.score_at(c + Vector2(0, 200 * mm))["points"] == 0, "  off the board scores nothing")
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	_check(bar.find_child("DartsZone", true, false) != null, "  the dartboard can be played")
+	gs.cash = 40
+	bar._start_darts(bar.DART_TABLES[0], _player())
+	await _frames(2)
+	var game: Node = null
+	for n in root.get_children():
+		if n.has_method("score_at"):
+			game = n
+	_check(game != null, "  a game starts ($%d against %s)" % [bar.DART_TABLES[0]["bet"], bar.DART_TABLES[0]["name"]])
+	if game == null:
+		return
+	game._howto = false
+	var result := []
+	game.finished.connect(func(won): result.append(won))
+	var frames := 0
+	while not game._over and frames < 60 * 120:
+		if game._player_turn and game._flying.is_empty() and game._darts_left > 0:
+			game._mouse = c + Vector2(0, -103 * mm)
+			game._click()
+		await process_frame
+		frames += 1
+	var tied: bool = game._totals[0] == game._totals[1]
+	_check(game._over and (result.size() == 1 or tied), "  nine darts each and a result (%d-%d, %.0fs)" % [game._totals[0], game._totals[1], frames / 60.0])
+	var expected := 40 if tied else (45 if result[0] else 35)
+	_check(gs.cash == expected, "  the pot changes hands ($40 -> $%d)" % gs.cash)
+	game._close()
+	await _frames(3)
+	_check(not _player().dialogue_active, "  and you can walk away from the board")
+	gs.start_run()
+
+func _menu_and_save_checks(gs: Node) -> void:
+	print("== Title, pause and save/continue")
+	_close_menus()
+	var save := root.get_node("SaveGame")
+	save.delete()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(3)
+	_check(save.has_save(), "  walking into a room autosaves")
+	gs.cash = 77
+	gs.day = 4
+	gs.tapes.append("reggae")
+	var p := _player()
+	p.global_position = Vector3(3.0, 0, 1.0)
+	_check(save.save(), "  saving mid-room works")
+	gs.start_run()
+	_check(gs.cash != 77, "  (a fresh run has other numbers)")
+	save.continue_run()
+	await _frames(8)
+	_check(gs.cash == 77 and gs.day == 4 and gs.tapes.has("reggae"), "  continue restores cash, day and tapes")
+	_check(current_scene.name == "City3D", "  ...in the same room")
+	_check(_player().global_position.distance_to(Vector3(3.0, 0, 1.0)) < 0.3, "  ...standing where you were")
+	gs.set_wanted(true)
+	_check(not save.save(), "  no saving while the cops are after you")
+	gs.set_wanted(false)
+	gs.end_run("busted")
+	await _frames(3)
+	_check(not save.has_save(), "  a run that ends deletes its save")
+	_close_menus()
+	for n in root.get_children():
+		if n.has_method("show_summary"):
+			n.queue_free()
+	var pause = load("res://ui/PauseMenu.gd").new()
+	root.add_child(pause)
+	pause.open()
+	await _frames(2)
+	_check(paused, "  the pause menu stops the game")
+	pause._close()
+	await _frames(2)
+	_check(not paused, "  ...and resume starts it again")
+	change_scene_to_file("res://ui/TitleScreen.tscn")
+	await _frames(20)
+	_check(current_scene.name == "TitleScreen", "  the title screen loads")
 	gs.start_run()
 
 func _street_life_checks(gs: Node) -> void:

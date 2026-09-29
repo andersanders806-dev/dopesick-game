@@ -39,8 +39,16 @@ const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.5, 0.77]]
 const SCALE_START := [0.77, 0.85, 0.59]
 const TARGET_FPS := 58.0
 
+## Volume sliders in the settings menu, 0..1 per bus. They scale each bus
+## from the level SFX set it up at, so the mix (voices up, ambience down,
+## the walkman ducking) survives any slider position.
+const VOLUME_BUSES := ["Master", "Music", "SFX", "Voice", "Walkman"]
+
 var preset: int = Preset.MEDIUM
 var show_fps: bool = false
+var fullscreen: bool = false
+var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
+var _bus_base_db := {}
 var render_scale: float = 0.77
 var _frame_acc: float = 0.0
 var _frame_count: int = 0
@@ -54,6 +62,11 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_lut = _build_lut()
 	_load_settings()
+	for bus in VOLUME_BUSES:
+		var i := AudioServer.get_bus_index(bus)
+		_bus_base_db[bus] = AudioServer.get_bus_volume_db(i) if i >= 0 else 0.0
+		_apply_volume(bus)
+	_apply_fullscreen()
 	_build_overlay()
 	get_tree().node_added.connect(_on_node_added)
 	_apply_viewport()
@@ -75,6 +88,35 @@ func _process(delta: float) -> void:
 	if _toast_timer > 0.0:
 		_toast_timer -= delta
 		_toast.modulate.a = clampf(_toast_timer, 0.0, 1.0)
+
+func set_volume(bus: String, value: float) -> void:
+	volumes[bus] = clampf(value, 0.0, 1.0)
+	_apply_volume(bus)
+	_save_settings()
+
+func _apply_volume(bus: String) -> void:
+	var i := AudioServer.get_bus_index(bus)
+	if i < 0:
+		return
+	var v: float = volumes.get(bus, 1.0)
+	AudioServer.set_bus_mute(i, v <= 0.01)
+	AudioServer.set_bus_volume_db(i, _bus_base_db.get(bus, 0.0) + linear_to_db(maxf(v, 0.01)))
+
+func set_fullscreen(on: bool) -> void:
+	fullscreen = on
+	_apply_fullscreen()
+	_save_settings()
+
+func set_show_fps(on: bool) -> void:
+	show_fps = on
+	if _fps_label:
+		_fps_label.visible = on
+	_save_settings()
+
+func _apply_fullscreen() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED)
 
 func set_preset(p: int) -> void:
 	preset = p
@@ -150,6 +192,9 @@ func _apply_env(we: WorldEnvironment) -> void:
 			"vol": env.volumetric_fog_enabled, "fog": env.fog_enabled, "fog_density": env.fog_density,
 			"fog_color": env.fog_light_color, "glow_levels": [env.get_glow_level(3), env.get_glow_level(4), env.get_glow_level(5), env.get_glow_level(6)],
 		})
+	# Per node, not per Environment: a room loaded twice shares its cached
+	# Environment but gets a fresh WorldEnvironment.
+	if not we.has_meta("built_camera_attributes"):
 		we.set_meta("built_camera_attributes", we.camera_attributes)
 	var built: Dictionary = env.get_meta("built")
 	var high := preset == Preset.HIGH
@@ -253,10 +298,16 @@ func _load_settings() -> void:
 		if int(cfg.get_value("graphics", "version", 1)) >= 2 or not integrated:
 			preset = saved
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))
+		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
+		for bus in VOLUME_BUSES:
+			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
 func _save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "preset", preset)
 	cfg.set_value("graphics", "version", 2)
+	cfg.set_value("graphics", "fullscreen", fullscreen)
+	for bus in VOLUME_BUSES:
+		cfg.set_value("audio", bus, volumes[bus])
 	cfg.set_value("graphics", "show_fps", show_fps)
 	cfg.save(SETTINGS_PATH)

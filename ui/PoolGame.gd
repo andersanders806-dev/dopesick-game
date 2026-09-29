@@ -35,6 +35,9 @@ extends CanvasLayer
 
 signal finished(won: bool)
 
+static var _shown_howto := false
+var _howto := false
+
 ## The cloth inside the cushion noses. A 9-foot table's 2:1 at about 3.5 px
 ## per centimetre, with the balls drawn a touch big so the numbers read.
 const PLAY := Rect2(200, 170, 880, 440)
@@ -131,6 +134,8 @@ func start(opponent: String, opponent_skill: float, stake: int) -> void:
 	_load_sounds()
 	_rack()
 	_message = "%s racks them tight. $%d on the rail. Your break." % [opponent_name, bet]
+	_howto = not _shown_howto
+	_shown_howto = true
 
 # --- Setup ----------------------------------------------------------------
 
@@ -327,7 +332,7 @@ func _process(delta: float) -> void:
 			for b in _balls:
 				b["vel"] = Vector2.ZERO
 			_end_shot()
-	elif not _over:
+	elif not _over and not _howto:
 		if _shooter == 0 and not _ball_in_hand:
 			_player_controls(delta)
 		elif _shooter == 1:
@@ -363,6 +368,10 @@ func _player_controls(delta: float) -> void:
 		_follow = -v.y
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _howto and (event is InputEventKey or event is InputEventMouseButton) and event.pressed and not event.is_action_pressed("cancel_ui"):
+		get_viewport().set_input_as_handled()
+		_howto = false
+		return
 	if event.is_action_pressed("cancel_ui"):
 		get_viewport().set_input_as_handled()
 		if _over:
@@ -388,6 +397,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_shoot(_aim, _charge, _follow, _side)
 
 func _on_gui_input(event: InputEvent) -> void:
+	if _howto:
+		if event is InputEventMouseButton and event.pressed:
+			_howto = false
+		return
 	if _over:
 		if event is InputEventMouseButton and event.pressed:
 			_close()
@@ -755,7 +768,12 @@ func _ai_legal_targets() -> Array:
 
 ## Cheapest makeable shot from `cue`: {cost, angle, power} or {} if none.
 func _ai_best_shot(cue: Vector2) -> Dictionary:
-	var best := {}
+	var shots := _ai_shots(cue)
+	return shots[0] if not shots.is_empty() else {}
+
+## Every makeable shot from `cue`, easiest first.
+func _ai_shots(cue: Vector2) -> Array:
+	var found := []
 	for b in _ai_legal_targets():
 		var bp: Vector2 = b["pos"]
 		for i in _pockets.size():
@@ -774,14 +792,14 @@ func _ai_best_shot(cue: Vector2) -> Dictionary:
 			if not _path_clear(cue, ghost, [0, b["n"]]) or not _path_clear(bp, pocket, [0, b["n"]]):
 				continue
 			var cost: float = shot.length() * (1.0 + cut * 2.4) + bp.distance_to(pocket) * 0.8
-			if best.is_empty() or cost < best["cost"]:
-				# Enough pace that the object ball still has some when it
-				# reaches the pocket, carried back through the cut and the
-				# cue ball's own roll to the contact point.
-				var at_contact := _speed_to_arrive(bp.distance_to(pocket), 90.0) / maxf(cos(cut), 0.3) / (0.5 * (1.0 + BALL_RESTITUTION))
-				var speed := _speed_to_arrive(shot.length(), at_contact)
-				best = {"cost": cost, "angle": shot.angle(), "power": clampf(speed / MAX_POWER, 0.08, 1.0)}
-	return best
+			# Enough pace that the object ball still has some when it
+			# reaches the pocket, carried back through the cut and the
+			# cue ball's own roll to the contact point.
+			var at_contact := _speed_to_arrive(bp.distance_to(pocket), 90.0) / maxf(cos(cut), 0.3) / (0.5 * (1.0 + BALL_RESTITUTION))
+			var speed := _speed_to_arrive(shot.length(), at_contact)
+			found.append({"cost": cost, "angle": shot.angle(), "power": clampf(speed / MAX_POWER, 0.08, 1.0)})
+	found.sort_custom(func(a, b): return a["cost"] < b["cost"])
+	return found
 
 ## Initial speed a ball needs to cover `dist` and still be doing `end_speed`,
 ## under the same friction and drag the table uses.
@@ -804,7 +822,13 @@ func _ai_plan() -> void:
 		_ai_power = randf_range(0.9, 1.0)
 		_ai_follow = 0.2
 		return
-	var shot := _ai_best_shot(cue)
+	# A weak player doesn't always see the easy shot: they take one of the
+	# first few they notice.
+	var shots := _ai_shots(cue)
+	var shot: Dictionary = {}
+	if not shots.is_empty():
+		var reach := clampi(int(round((1.0 - skill) * 3.0)), 0, shots.size() - 1)
+		shot = shots[randi_range(0, reach)]
 	if shot.is_empty():
 		# Nothing on: roll up to the nearest legal ball and leave it there.
 		var targets := _ai_legal_targets()
@@ -812,9 +836,14 @@ func _ai_plan() -> void:
 		var t: Vector2 = targets[0]["pos"] if not targets.is_empty() else PLAY.get_center()
 		shot = {"angle": (t - cue).angle(), "power": _speed_to_arrive(maxf(0.0, cue.distance_to(t) - BALL_R * 2.0), 120.0) / MAX_POWER}
 		_message = "%s plays it safe." % opponent_name
-	var error := deg_to_rad(lerpf(3.2, 0.3, skill)) * randfn(0.0, 1.0)
+	# Aim and pace both wobble by skill, and now and then a weaker player
+	# just fluffs it.
+	var error := deg_to_rad(lerpf(4.0, 0.35, skill)) * randfn(0.0, 1.0)
+	if randf() < (1.0 - skill) * 0.25:
+		error *= 3.0
 	_ai_target_aim = shot["angle"] + error
-	_ai_power = clampf(shot["power"] * randf_range(0.92, 1.08), 0.15, 1.0)
+	var pace := lerpf(0.3, 0.06, skill)
+	_ai_power = clampf(shot["power"] * randf_range(1.0 - pace, 1.0 + pace), 0.15, 1.0)
 	_ai_follow = randf_range(-0.3, 0.3) * skill
 
 func _ai_place_cue() -> void:
@@ -969,6 +998,26 @@ func _draw_over() -> void:
 	elif _shooter == 1 and not _moving:
 		hint = "%s is lining up..." % opponent_name
 	_text(c, font, Vector2(PLAY.position.x - 56, 703), hint, 14, Color(0.78, 0.74, 0.62))
+	if _howto:
+		c.draw_rect(Rect2(0, 0, 1280, 720), Color(0, 0, 0, 0.75))
+		var lines := [
+			"EIGHT-BALL  -  first game? Here's the bar rules.",
+			"",
+			"You break. The first ball either of you pockets after that decides the",
+			"groups: solids (1-7) or stripes (9-15). Pot one of yours to keep shooting.",
+			"Clear your group, then sink the 8 to take the pot.",
+			"Sink the 8 early, or scratch on it, and you lose.",
+			"Fouls -- scratching, hitting nothing, hitting their ball first -- give the",
+			"other side ball in hand.",
+			"",
+			"Mouse aims (arrows fine-tune, Shift slower). Hold click or Space and let go",
+			"at the top of the swinging meter. W/S follow or draw, A/D side spin, R resets.",
+			"The white line shows where the object ball goes.",
+			"",
+			"Click or press any key to rack up.",
+		]
+		for i in lines.size():
+			_text(c, font, Vector2(250, 170 + i * 28), lines[i], 18, Color(0.95, 0.9, 0.78))
 
 ## The white number discs, drawn where each ball's rotation has them.
 func _draw_numbers(c: Control, font: Font) -> void:

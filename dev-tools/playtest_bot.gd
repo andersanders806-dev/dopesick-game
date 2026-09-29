@@ -14,6 +14,8 @@ var shot := 0
 var t_start := 0
 
 func _initialize() -> void:
+	# Don't touch the player's progress, settings or saved run.
+	Engine.set_meta("sandbox", true)
 	out_dir = OS.get_cmdline_user_args()[0]
 	t_start = Time.get_ticks_msec()
 	var caught_mode := OS.get_cmdline_user_args().size() > 1 and OS.get_cmdline_user_args()[1] == "caught"

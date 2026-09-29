@@ -9,6 +9,8 @@ extends SceneTree
 const STORES := ["StoreSupermarket3D", "StoreConvenience3D", "StorePharmacy3D", "StoreLiquor3D", "StoreElectronics3D"]
 
 func _initialize() -> void:
+	# Don't touch the player's progress, settings or saved run.
+	Engine.set_meta("sandbox", true)
 	await process_frame
 	var args := OS.get_cmdline_user_args()
 	var trials := int(args[0]) if args.size() > 0 else 20

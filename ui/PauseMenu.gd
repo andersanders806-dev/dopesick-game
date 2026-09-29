@@ -46,6 +46,7 @@ func open() -> void:
 	info.add_theme_color_override("font_color", Color(0.6, 0.58, 0.54))
 	col.add_child(info)
 	var resume := _button(col, "Resume", _close)
+	_button(col, "Notebook  (J)", _open_notebook)
 	_button(col, "Settings", _open_settings)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"
 	_button(col, quit_label, _quit_to_title)
@@ -63,6 +64,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("cancel_ui") and _panel.visible:
 		get_viewport().set_input_as_handled()
 		_close()
+
+func _open_notebook() -> void:
+	_panel.visible = false
+	var book = load("res://ui/Notebook.gd").new()
+	get_tree().root.add_child(book)
+	book.open()
+	# The notebook unpauses to whatever it found -- paused, under us.
+	book.tree_exited.connect(func(): if is_instance_valid(_panel): _panel.visible = true)
 
 func _open_settings() -> void:
 	_panel.visible = false

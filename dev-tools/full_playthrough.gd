@@ -16,6 +16,8 @@ extends "res://dev-tools/playtest_bot.gd"
 var _title: Label
 
 func _initialize() -> void:
+	# Don't touch the player's progress, settings or saved run.
+	Engine.set_meta("sandbox", true)
 	out_dir = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() else "user://"
 	t_start = Time.get_ticks_msec()
 	_build_title()
@@ -133,6 +135,14 @@ func _run() -> void:
 	chapter("3. The Dive Bar: an order")
 	await use_door("DoorToCity")
 	await _wait(1.0)
+	# A bottle out of the gutter on the way.
+	var bottles := current_scene.find_children("Bottle*", "Area3D", true, false)
+	if not bottles.is_empty():
+		bottles.sort_custom(func(a, b): return a.global_position.distance_to(player().global_position) < b.global_position.distance_to(player().global_position))
+		if await walk_to(bottles[0]):
+			await press_interact()
+			await _wait(1.2)
+			await close_dialogue()
 	await wait_for("bar")
 	await use_door("DoorToBar")
 	var patron: Node3D = current_scene.get_node("Patron1")
@@ -143,6 +153,13 @@ func _run() -> void:
 	await close_dialogue()
 	var store: String = gs.item_info(want_id)["store"]
 	log_line("order: %s wants '%s' from %s" % [patron.npc_name, want_id, store])
+
+	# A look in the notebook: the order's written down now.
+	await key(KEY_J)
+	await _wait(1.5)
+	await screenshot("notebook")
+	await key(KEY_J)
+	await _wait(0.5)
 
 	chapter("4. Eight-ball for $5 against the Old Sailor")
 	gs.cash = maxi(gs.cash, 20)

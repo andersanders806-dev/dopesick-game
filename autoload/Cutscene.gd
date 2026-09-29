@@ -70,6 +70,19 @@ const SCENES := {
 		{"image": "new_day", "drift": "in", "sound": "sleep",
 			"text": "Day %d. The light comes back through the sheet whether you want it or not."},
 	],
+	# In the program: the block pulling at you (Temptation.gd).
+	"temptation": [
+		{"image": "temptation_corner", "drift": "in",
+			"text": "Down the block, under the light, he lifts a hand. He doesn't wave. He doesn't have to."},
+	],
+	"relapse": [
+		{"image": "relapse", "drift": "in",
+			"text": "It works. Of course it works. That's the worst part."},
+	],
+	"resisted": [
+		{"image": "resisted", "drift": "right",
+			"text": "You keep walking. It doesn't feel like winning. It feels like your legs are made of wet sand. You keep walking anyway."},
+	],
 	# The good ending: five clean days in the program.
 	"recovered": [
 		{"image": "recovered_clinic", "drift": "in",

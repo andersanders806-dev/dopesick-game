@@ -705,6 +705,7 @@ func _end_game(won: bool, line: String) -> void:
 
 func _finish(won: bool) -> void:
 	_over = true
+	GameState.log_event(("Won $%d at eight-ball off %s." if won else "Lost $%d at eight-ball to %s.") % [bet, opponent_name])
 	_moving = false
 	_charging = false
 	if won:

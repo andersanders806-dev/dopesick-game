@@ -10,7 +10,12 @@ extends Node
 ## Never written while you're wanted or in custody: quitting mid-chase and
 ## continuing somewhere quiet would be a free escape.
 
-const PATH := "user://save.json"
+const REAL_PATH := "user://save.json"
+## Tests and bots (Engine meta "sandbox") save and delete a file of their
+## own, so they never touch the player's run.
+const SANDBOX_PATH := "user://save_sandbox.json"
+var PATH: String:
+	get: return SANDBOX_PATH if Engine.get_meta("sandbox", false) else REAL_PATH
 const VERSION := 1
 ## GameState fields that make up a run. Everything else is derived, or
 ## per-visit, or reset on load.
@@ -18,7 +23,7 @@ const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "str
 	"tolerance", "last_dose_at", "run_time", "naloxone", "doses_taken", "active_duration",
 	"debt", "debt_due", "hurt_until", "homeless_trust", "has_walkman", "tapes",
 	"daily_used", "last_meal_slot", "orders_delivered", "cash_earned", "bar_patrons",
-	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today"]
+	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary"]
 
 ## Where to put the player once the saved room has loaded.
 var pending_position = null
@@ -39,6 +44,7 @@ func save() -> bool:
 		"saved_at": Time.get_datetime_string_from_system()}
 	for f in FIELDS:
 		data[f] = GameState.get(f)
+	data["jobs"] = {"job": Jobs.job, "bottles": Jobs.bottles, "bottle_day": Jobs.bottle_day, "bottle_spots": Jobs.bottle_spots}
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player:
 		var p := player.global_position
@@ -76,6 +82,11 @@ func continue_run() -> bool:
 			GameState.set(f, v)
 	GameState.intro_pending = false
 	GameState.pending_spawn = ""
+	var j: Dictionary = data.get("jobs", {})
+	Jobs.job = j.get("job", {})
+	Jobs.bottles = int(j.get("bottles", 0))
+	Jobs.bottle_day = int(j.get("bottle_day", -1))
+	Jobs.bottle_spots = j.get("bottle_spots", [])
 	var pos = data.get("position")
 	pending_position = Vector3(pos[0], pos[1], pos[2]) if pos is Array and pos.size() == 3 else null
 	GameState.cash_changed.emit(GameState.cash)

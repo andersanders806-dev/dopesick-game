@@ -85,10 +85,23 @@ func _build() -> void:
 			14, Color(0.62, 0.60, 0.56)))
 	root.add_child(_spacer(6))
 
+	# Two columns: the run told back on the left (GameState.diary), the
+	# numbers and the upgrades on the right.
+	var cols := HBoxContainer.new()
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cols.add_theme_constant_override("separation", 24)
+	root.add_child(cols)
+	cols.add_child(_diary_panel())
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 6)
+	cols.add_child(right)
+	root = right
+
 	var stats := VBoxContainer.new()
 	stats.add_theme_constant_override("separation", 2)
 	stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	stats.custom_minimum_size = Vector2(PANEL_W, 0)
+	stats.custom_minimum_size = Vector2(PANEL_W * 0.8, 0)
 	stats.add_child(_stat("Days survived", str(_summary.get("days", 0))))
 	stats.add_child(_stat("Orders delivered", str(_summary.get("orders", 0))))
 	stats.add_child(_stat("Cash earned", "$%d" % _summary.get("cash", 0)))
@@ -126,6 +139,53 @@ func _build() -> void:
 	root.add_child(start)
 
 	_refresh()
+
+## "How it went": every moment the run logged, newest first, each with the
+## cutscene still it matches when there is one.
+func _diary_panel() -> Control:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(470, 0)
+	col.add_theme_constant_override("separation", 6)
+	col.add_child(_heading("How it went", 17, Color(0.85, 0.8, 0.65)))
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
+	var entries: Array = GameState.diary.duplicate()
+	entries.reverse()
+	for e in entries:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		var tex: Texture2D = Cutscene.art_for(e.get("image", "")) if e.get("image", "") != "" else null
+		var thumb := TextureRect.new()
+		thumb.custom_minimum_size = Vector2(96, 54)
+		thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		thumb.texture = tex
+		thumb.modulate = Color(1, 1, 1, 1.0 if tex else 0.0)
+		row.add_child(thumb)
+		var text := VBoxContainer.new()
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var when := Label.new()
+		when.text = "Day %d, %s" % [e["day"], e["clock"]]
+		when.add_theme_font_size_override("font_size", 11)
+		when.add_theme_color_override("font_color", Color(0.5, 0.48, 0.45))
+		var what := Label.new()
+		what.text = e["text"]
+		what.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		what.add_theme_font_size_override("font_size", 14)
+		what.add_theme_color_override("font_color", Color(0.85, 0.83, 0.78))
+		text.add_child(when)
+		text.add_child(what)
+		row.add_child(text)
+		list.add_child(row)
+	if entries.is_empty():
+		list.add_child(_heading("Not much to tell.", 13, Color(0.5, 0.48, 0.45)))
+	return col
 
 ## Anchors a control to the whole viewport. set_anchors_preset alone leaves
 ## the offsets wherever they were, which on a bare CanvasLayer child means a

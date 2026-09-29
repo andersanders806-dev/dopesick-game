@@ -20,7 +20,11 @@
     "new_day": "dawn light through a bedsheet nailed over a window of a squalid apartment, a crumpled mattress, an overflowing ashtray and a walkman with headphones on the floor, quiet and grey",
     "recovered_clinic": "{me} at a small clinic window in the early morning, a nurse handing him a tiny paper cup through the hatch, a line of tired people behind him, pale morning light",
     "recovered_window": "{me} pulling a bedsheet down from a window in a tidied one-room apartment, warm morning sunlight flooding in across a made mattress, dust in the light",
-    "recovered_street": "{me} walking down a sunlit city sidewalk in the morning with a paper cup of coffee and walkman headphones around his neck, a faint tired smile, people going to work around him"
+    "recovered_street": "{me} walking down a sunlit city sidewalk in the morning with a paper cup of coffee and walkman headphones around his neck, a faint tired smile, people going to work around him",
+    "temptation_corner": "the dealer in a black hooded jacket at the end of a dark wet city block at night, half in a streetlight, raising one hand to wave someone over, seen from a distance down the sidewalk",
+    "relapse": "close-up of {me} sitting on the floor of a dark apartment with his head in his hands beside a mattress, a single bare light bulb, heavy shadows",
+    "resisted": "{me} walking away from the camera down a city sidewalk at dusk with his hands in his pockets, his back to a dark street corner, the sky still a little light",
+    "job_dock": "{me} unloading cardboard boxes from the back of a delivery truck at a supermarket loading dock at dawn, breath visible in the cold, a tired dock worker with a clipboard beside him"
   },
   "style_prefix": "cinematic film still, 35mm photograph, low-key moody lighting, ",
   "protagonist": "a gaunt pale man around thirty with short messy brown hair, patchy brown stubble and sunken tired eyes, wearing a faded grey-green t-shirt and worn blue-grey jeans"

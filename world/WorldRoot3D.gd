@@ -17,6 +17,7 @@ func _ready() -> void:
 	var spawn_marker := _place_player_at_spawn()
 	_restore_saved_position()
 	_maybe_continue_chase(spawn_marker)
+	Jobs.decorate(self)
 	# Autosave on arrival, once the room has settled.
 	SaveGame.save.call_deferred()
 
@@ -75,6 +76,18 @@ func _bake_navigation() -> void:
 
 	nav_region.navigation_mesh = nav_mesh
 	nav_region.bake_navigation_mesh(false)
+	_frame_camera(nav_mesh)
+
+## Tell the player's camera how big the walkable room is.
+func _frame_camera(nav_mesh: NavigationMesh) -> void:
+	var verts := nav_mesh.get_vertices()
+	var player := get_tree().get_first_node_in_group("player")
+	if verts.is_empty() or player == null or not player.has_method("set_room_bounds"):
+		return
+	var box := AABB(verts[0], Vector3.ZERO)
+	for v in verts:
+		box = box.expand(v)
+	player.set_room_bounds(box.grow(0.6))
 
 func _place_player_at_spawn() -> Marker3D:
 	if GameState.pending_spawn == "":

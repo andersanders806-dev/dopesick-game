@@ -11,6 +11,8 @@ var _failures := 0
 var PoliceScene: PackedScene
 
 func _initialize() -> void:
+	# Don't touch the player's progress, settings or saved run.
+	Engine.set_meta("sandbox", true)
 	await process_frame
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
@@ -742,6 +744,7 @@ func _run() -> void:
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
+	await _round4_checks(gs)
 	await _street_life_checks(gs)
 	gs.start_run()
 
@@ -1253,6 +1256,7 @@ func _darts_checks(gs: Node) -> void:
 		await process_frame
 		frames += 1
 	var tied: bool = game._totals[0] == game._totals[1]
+	_check(game._round_scores[1].size() == 9, "  they throw exactly nine darts (%d)" % game._round_scores[1].size())
 	_check(game._over and (result.size() == 1 or tied), "  nine darts each and a result (%d-%d, %.0fs)" % [game._totals[0], game._totals[1], frames / 60.0])
 	var expected := 40 if tied else (45 if result[0] else 35)
 	_check(gs.cash == expected, "  the pot changes hands ($40 -> $%d)" % gs.cash)
@@ -1382,6 +1386,67 @@ func _regulars_checks(gs: Node) -> void:
 	await _frames(2)
 	here = scenes._people.filter(func(p): return p["node"].visible).map(func(p): return String(p["node"].name))
 	_check(here == ["Carl"], "  at 04:00 only Carl, asleep on the steps (%s)" % str(here))
+	gs.start_run()
+
+func _round4_checks(gs: Node) -> void:
+	print("== Honest work, the notebook, temptation, the diary, the camera")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	var jobs := root.get_node("Jobs")
+	# The dock, 6-10.
+	gs.clock = 7 * 60
+	var yard := await _load("res://world/Backyard3D.tscn")
+	await _frames(4)
+	_check(yard.get_node_or_null("DockAsk") != null and yard.get_node_or_null("DockPallet") != null, "  mornings, the driver has work")
+	var cash_before: int = gs.cash
+	jobs._on_dock_ask(null, _player())
+	for i in jobs.DOCK_BOXES:
+		jobs._on_dock_truck(null, _player())
+		jobs._on_dock_pallet(null, _player())
+	_check(jobs.job.is_empty() and gs.cash == cash_before + jobs.DOCK_PAY, "  five boxes truck to pallet pays $%d" % jobs.DOCK_PAY)
+	jobs._on_dock_ask(null, _player())
+	_check(jobs.job.is_empty(), "  ...once a day")
+	_player().dialogue_active = false
+	# Flyers from the shelter board, posted on the block.
+	jobs.job = {"kind": "flyers", "left": [-21.0, -1.7]}
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(4)
+	var spots := city.find_children("FlyerSpot*", "Area3D", true, false)
+	_check(spots.size() == 2, "  flyer spots are marked on the block (%d)" % spots.size())
+	cash_before = gs.cash
+	for s in spots:
+		jobs._on_flyer_spot(s, _player())
+	_check(jobs.job.is_empty() and gs.cash == cash_before + jobs.FLYER_PAY, "  putting the last one up pays $%d" % jobs.FLYER_PAY)
+	# Bottles.
+	var bottles := city.find_children("Bottle*", "Area3D", true, false)
+	_check(bottles.size() == jobs.BOTTLES_PER_DAY, "  bottles in the gutter (%d)" % bottles.size())
+	for b in bottles:
+		jobs._on_bottle(b, _player())
+	cash_before = gs.cash
+	jobs._on_machine(null, _player())
+	_check(gs.cash == cash_before + jobs.BOTTLES_PER_DAY / jobs.BOTTLES_PER_DOLLAR and jobs.bottles == jobs.BOTTLES_PER_DAY % jobs.BOTTLES_PER_DOLLAR, "  the machine pays a dollar a %d, keeps the change" % jobs.BOTTLES_PER_DOLLAR)
+	_player().dialogue_active = false
+	# The camera learned this room's size.
+	_check(_player()._room.size.x > 40.0, "  the camera knows how big the block is (%.0f m)" % _player()._room.size.x)
+	# The notebook.
+	var book = load("res://ui/Notebook.gd").new()
+	root.add_child(book)
+	book.open(3)
+	await _frames(2)
+	_check(paused, "  the notebook stops the clock while it's out")
+	book._close()
+	await _frames(2)
+	_check(not paused, "  ...and putting it away starts it again")
+	# Temptation, in the program.
+	gs.clinic_dose()
+	var t: Node = city.get_node("Temptation")
+	var streak_used: bool = gs.used_today
+	await t._decide(false, _player(), "Held on.")
+	_check(not gs.used_today and gs.craving >= 0.0, "  holding on doesn't count as using")
+	await t._decide(true, _player(), "Gave in.")
+	_check(gs.used_today, "  giving in does -- the day won't count")
+	_check(gs.diary.any(func(e): return "Gave in" in e["text"]) and gs.diary.any(func(e): return "Unloaded a truck" in e["text"]), "  it's all in the diary (%d entries)" % gs.diary.size())
 	gs.start_run()
 
 func _street_life_checks(gs: Node) -> void:

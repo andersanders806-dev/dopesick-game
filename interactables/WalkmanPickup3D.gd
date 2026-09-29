@@ -11,6 +11,7 @@ func _ready() -> void:
 func interact(player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
 	GameState.has_walkman = true
+	GameState.log_event("Found the walkman and the shoebox of tapes.")
 	SFX.play("steal", -4.0, 1.2)
 	if hud:
 		player.dialogue_active = true

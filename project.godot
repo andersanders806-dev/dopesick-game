@@ -31,6 +31,7 @@ Voice="*res://autoload/Voice.gd"
 Walkman="*res://autoload/Walkman.gd"
 Cutscene="*res://autoload/Cutscene.gd"
 SaveGame="*res://autoload/SaveGame.gd"
+Jobs="*res://autoload/Jobs.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]

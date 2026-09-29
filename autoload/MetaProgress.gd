@@ -98,6 +98,10 @@ func load_progress() -> void:
 			levels[id] = clampi(int(saved[id]), 0, UPGRADES[id]["max_tier"])
 
 func save_progress() -> void:
+	# Tests, sims and bots set Engine meta "sandbox": thousands of simulated
+	# runs used to land in the player's real Know-How.
+	if Engine.get_meta("sandbox", false):
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "know_how", know_how)
 	cfg.set_value("meta", "runs_completed", runs_completed)

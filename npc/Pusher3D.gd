@@ -255,7 +255,10 @@ func _handoff(player: Node) -> void:
 	state = State.HANDOFF
 	if not GameState.scored_this_run:
 		GameState.scored_this_run = true
+		GameState.log_event("Scored for the first time this run.", "first_score_corner")
 		await Cutscene.play("first_score")
+	else:
+		GameState.log_event("Scored again.")
 	_timer = anim.play_once_timed("interact", 0.8)
 	_speak()
 	_owes_fix = false

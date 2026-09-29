@@ -182,6 +182,15 @@ var treatment_streak: int = 0
 var clinic_today: bool = false
 var used_today: bool = false
 signal treatment_changed
+## The run's story so far: what the notebook's notes page shows and what the
+## run-end screen tells back. Each entry: day, clock, text, and a cutscene
+## still to illustrate it (or "").
+var diary: Array = []
+signal diary_changed
+
+func log_event(text: String, image := "") -> void:
+	diary.append({"day": day, "clock": clock_text(), "text": text, "image": image})
+	diary_changed.emit()
 ## When each class was last taken, in seconds of run time. Drives
 ## buprenorphine's precipitated withdrawal and the opioid/benzo mixing risk.
 var last_dose_at: Dictionary = {}
@@ -238,6 +247,10 @@ func start_run() -> void:
 	treatment_streak = 0
 	clinic_today = false
 	used_today = false
+	diary.clear()
+	var jobs := get_node_or_null("/root/Jobs")
+	if jobs:
+		jobs.reset()
 	last_dose_at.clear()
 	run_time = 0.0
 	naloxone = 0
@@ -629,6 +642,7 @@ func _overdose() -> String:
 		craving_changed.emit(craving)
 		inventory_changed.emit()
 		overdosed.emit(false)
+		log_event("Went over. The naloxone brought you back.", "overdose_lights")
 		dose_taken.emit("", "saved")
 		return "saved"
 	overdosed.emit(true)
@@ -656,6 +670,7 @@ func get_busted() -> void:
 	var fine := int(cash * BUST_FINE_FRACTION * MetaProgress.bust_fine_scale())
 	cash -= fine
 	strikes += 1
+	log_event("Picked up by the police. Strike %d." % strikes, "busted_cuffs")
 	inventory_changed.emit()
 	cash_changed.emit(cash)
 	strikes_changed.emit(strikes)
@@ -667,6 +682,10 @@ func get_busted() -> void:
 ## Out of chances. Bank what the run was worth and hand the summary to the
 ## run-end screen, which starts the next run once the player closes it.
 func end_run(cause := "busted") -> void:
+	match cause:
+		"overdose": log_event("Went over, alone. Nobody had naloxone.", "overdose_floor")
+		"recovered": log_event("Five clean days. Got out.", "recovered_street")
+		_: log_event("Sent away.", "sent_away_bus")
 	var days_survived := day
 	# Getting out is worth more than anything else a run can do.
 	var earned := MetaProgress.award_for_run(days_survived + (15 if cause == "recovered" else 0), orders_delivered, cash_earned)
@@ -685,14 +704,18 @@ func _tally_treatment_day() -> void:
 	if in_treatment:
 		if clinic_today and not used_today:
 			treatment_streak += 1
+			log_event("A clean day. %d of %d." % [treatment_streak, RECOVERY_DAYS])
 		else:
 			treatment_streak = 0
+			log_event("The day didn't count. Back to zero -- still in the program.")
 		treatment_changed.emit()
 	clinic_today = false
 	used_today = false
 
 ## The clinic dose from the outreach worker: enrolls you on the first one.
 func clinic_dose() -> void:
+	if not in_treatment:
+		log_event("Signed up for the program at the shelter.", "recovered_clinic")
 	in_treatment = true
 	clinic_today = true
 	treatment_changed.emit()
@@ -715,5 +738,6 @@ func sleep() -> void:
 		day_changed.emit(day)
 	clock = WAKE_MINUTE
 	_emit_clock()
+	log_event("Woke up. Day %d." % day, "new_day")
 	craving = min(craving, 55.0)
 	craving_changed.emit(craving)

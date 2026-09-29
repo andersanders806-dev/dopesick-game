@@ -95,6 +95,9 @@ func _ready() -> void:
 	var scenes: Node3D = preload("res://world/StreetScenes.gd").new()
 	scenes.name = "StreetScenes"
 	add_child(scenes)
+	var temptation: Node3D = preload("res://world/Temptation.gd").new()
+	temptation.name = "Temptation"
+	add_child(temptation)
 	# Start with the street already populated rather than empty.
 	for i in _pedestrian_target():
 		_spawn_pedestrian(randf_range(-STREET_END_X + 3.0, STREET_END_X - 3.0))

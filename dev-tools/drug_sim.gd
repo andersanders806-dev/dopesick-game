@@ -13,6 +13,8 @@ const DAYS_PER_RUN := 14
 const SCORES_PER_DAY := 2
 
 func _initialize() -> void:
+	# Don't touch the player's progress, settings or saved run.
+	Engine.set_meta("sandbox", true)
 	await process_frame
 	var runs := int(OS.get_cmdline_user_args()[0]) if OS.get_cmdline_user_args().size() > 0 else 400
 	var gs := root.get_node("GameState")

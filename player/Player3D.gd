@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const PauseMenuScript := preload("res://ui/PauseMenu.gd")
+const NotebookScript := preload("res://ui/Notebook.gd")
 const BASE_SPEED := 4.2
 ## Sprinting is the risk/reward half of the stealth layer: it gets you out of
 ## a room fast, and it is the single loudest thing you can do in front of a
@@ -56,6 +57,31 @@ var _sprinting: bool = false
 var _busy_timer: float = 0.0
 var _theft_serial: int = 0
 var _camera_base: Transform3D
+
+# --- Camera framing ---------------------------------------------------------
+## The rig floats free of the player (top_level) and follows a focus point
+## that leads a little in the direction you're walking, stays inside the
+## room (so small rooms don't show black past their walls), and zooms to
+## fit: in a room narrower than the view it moves in until the room fills
+## the screen. The scroll wheel nudges the zoom on top of that.
+const CAM_FOLLOW := 6.0
+const CAM_LOOK_AHEAD := 0.35
+## Ground visible around the focus at zoom 1, from the rig's 9 m height,
+## 55 degree pitch and 50 degree FOV: 9.2 m either side, but lopsided front
+## to back -- the tilted view reaches 9.3 m beyond the focus (screen top)
+## and only 4.7 m toward the camera (screen bottom).
+const CAM_HALF_WIDTH := 9.2
+const CAM_VIEW_FAR := 9.3
+const CAM_VIEW_NEAR := 4.7
+const CAM_ZOOM_RANGE := Vector2(0.5, 1.0)
+const CAM_USER_ZOOM := Vector2(0.8, 1.25)
+var _cam_offset: Vector3
+var _cam_focus: Vector3
+var _cam_ahead: Vector3
+var _room: AABB = AABB()
+var _room_zoom: float = 1.0
+var _user_zoom: float = 1.0
+var _cam_ready: bool = false
 var _shake_t: float = 0.0
 var _cramp_timer: float = 0.0
 
@@ -66,10 +92,45 @@ func _ready() -> void:
 	# Hear the world from the character, not the camera hanging 9 m above.
 	$Listener.make_current()
 	_camera_base = camera.transform
+	_cam_offset = $CameraMount.position
+	$CameraMount.top_level = true
 	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
 
+
+## The room's walkable area, from the navmesh the room just baked
+## (WorldRoot3D). Picks the zoom that fits the room to the screen.
+func set_room_bounds(bounds: AABB) -> void:
+	_room = bounds
+	var fit_x := bounds.size.x / (2.0 * CAM_HALF_WIDTH)
+	var fit_z := bounds.size.z / (CAM_VIEW_FAR + CAM_VIEW_NEAR)
+	_room_zoom = clampf(minf(fit_x, fit_z), CAM_ZOOM_RANGE.x, CAM_ZOOM_RANGE.y)
+	_cam_ready = false
+
+func _update_camera_rig(delta: float) -> void:
+	var zoom := _room_zoom * _user_zoom
+	var flat_vel := Vector3(velocity.x, 0.0, velocity.z)
+	_cam_ahead = _cam_ahead.lerp(flat_vel * CAM_LOOK_AHEAD, 1.0 - exp(-3.0 * delta))
+	var target := global_position + _cam_ahead
+	target.y = global_position.y
+	if _room.size != Vector3.ZERO:
+		target.x = _clamp_axis(target.x, _room.position.x, _room.end.x, CAM_HALF_WIDTH * zoom, CAM_HALF_WIDTH * zoom)
+		target.z = _clamp_axis(target.z, _room.position.z, _room.end.z, CAM_VIEW_FAR * zoom, CAM_VIEW_NEAR * zoom)
+	# Snap after a spawn or a door; ease otherwise.
+	if not _cam_ready or _cam_focus.distance_to(target) > 8.0:
+		_cam_focus = target
+		_cam_ready = true
+	else:
+		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
+	$CameraMount.global_position = _cam_focus + _cam_offset * zoom
+
+## Keep the view -- `before` short of the focus on this axis, `after` past
+## it -- inside [lo, hi]; if the room's smaller than the view, centre it.
+static func _clamp_axis(v: float, lo: float, hi: float, before: float, after: float) -> float:
+	if hi - lo <= before + after:
+		return (lo + hi) * 0.5 + (before - after) * 0.5
+	return clampf(v, lo + before, hi - after)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
@@ -95,6 +156,7 @@ func _update_cramps(delta: float) -> void:
 func _physics_process(delta: float) -> void:
 	# On the physics tick, so interpolation smooths the shake with the rest.
 	_update_camera_shake(delta)
+	_update_camera_rig(delta)
 	if dialogue_active:
 		velocity = Vector3.ZERO
 		move_and_slide()
@@ -137,6 +199,8 @@ func _physics_process(delta: float) -> void:
 		speed *= SPRINT_MULT
 	if hurt:
 		speed *= HURT_SPEED_MULT
+	if Jobs.carrying_box():
+		speed *= Jobs.CARRY_SPEED
 
 	var target := dir * speed
 	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
@@ -173,6 +237,15 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		_try_interact()
+	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_J:
+		if not dialogue_active and not get_tree().paused:
+			get_viewport().set_input_as_handled()
+			var book := NotebookScript.new()
+			get_tree().root.add_child(book)
+			book.open()
+	elif event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		var step := -0.06 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.06
+		_user_zoom = clampf(_user_zoom + step, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
 	elif event.is_action_pressed("cancel_ui"):
 		# Menus parented to the root (the shoebox, the pusher, pool) get Esc
 		# before this does; anything reaching here means the world has it.

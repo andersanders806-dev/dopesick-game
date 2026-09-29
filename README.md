@@ -129,6 +129,37 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   rats running the wall line, manhole covers, utility boxes, a tyre, cash
   registers, the dartboard, the apartment TV, the backyard's fire barrel,
   roller shutter and junk, the shelter's desk and chair.
+- **Honest work.** `autoload/Jobs.gd`, for less than stealing pays and
+  with nobody chasing you: unload the supermarket's delivery truck in the
+  lot out back (6-10, five boxes truck to pallet -- you carry them, a
+  little slower -- $12, once a day); take the flyer job off the shelter's
+  noticeboard and pin five up at the glowing spots on the block ($8); and
+  pick bottles out of the gutter (five a day) for the machine inside the
+  supermarket's door, $1 a three. Job zones are placed on the nearest
+  walkable spot once a room's navmesh is baked, and kept off the pusher's
+  corner and the doors.
+- **Temptation.** `world/Temptation.gd`, only while you're in the
+  program, once a day each: the pusher calls you over when you pass on his
+  shift ("First one's on me"), and when the withdrawal's biting a flash of
+  his corner plays and your feet start turning that way. Holding on hurts
+  (craving down); giving in is using, so that day won't count. Both have
+  their own narrated panel, and both go in the diary.
+- **The notebook (J).** `ui/Notebook.gd`, biro on lined paper, and the
+  game waits while it's out: who wants what and from where, every opening
+  hour with "open now", a map of the block with you and the pusher on it,
+  and notes on the run so far. Also on the pause menu.
+- **The camera frames the room.** The rig floats free of the player and
+  follows a point that leads where you're walking, stays inside the room
+  (from the baked navmesh's bounds, so no more black past the walls) and
+  zooms in on rooms smaller than the view. The clamp knows the tilted view
+  is lopsided: 9.3 m beyond the focus, 4.7 m toward the camera. The scroll
+  wheel nudges the zoom.
+- **The run, told back.** `GameState.log_event()` records the run's
+  moments -- waking up, the walkman, orders delivered, scores, busts,
+  games won and lost, jobs, the program's days, temptation -- each with the
+  cutscene still that matches. The notebook's notes page shows them, and
+  the run-end screen opens on "How it went": the whole run, newest first,
+  with thumbnails, beside the numbers and the upgrades.
 - **Getting out: the recovery ending.** The outreach worker at the
   shelter enrolls you in the program with your first clinic dose. Every
   night you sleep, the day counts if you took that day's clinic dose and

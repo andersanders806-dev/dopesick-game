@@ -303,6 +303,8 @@ func _load_settings() -> void:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
 func _save_settings() -> void:
+	if Engine.get_meta("sandbox", false):
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "preset", preset)
 	cfg.set_value("graphics", "version", 2)

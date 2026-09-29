@@ -32,6 +32,7 @@ func _ready() -> void:
 ## The first morning of a run: the opening cutscene, then a nudge toward
 ## the one thing in here that makes the day bearable.
 func _wake_up() -> void:
+	GameState.log_event("Woke up sick on the mattress.", "intro_sick")
 	await Cutscene.play("intro")
 	if GameState.has_walkman or not is_inside_tree():
 		return

@@ -84,7 +84,8 @@ func _apply_patrons() -> void:
 		patrons[i].set_request(entry["request_id"], entry["price"])
 		patrons[i].order_fulfilled.connect(func():
 			entry["fulfilled"] = true
-			GameState.orders_delivered += 1)
+			GameState.orders_delivered += 1
+			GameState.log_event("Brought %s what they asked for: %s." % [entry["name"], GameState.item_name_for(entry["request_id"])]))
 
 # --- Pool for money -----------------------------------------------------
 

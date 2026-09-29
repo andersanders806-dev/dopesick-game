@@ -119,7 +119,9 @@ func _process(delta: float) -> void:
 		_flying["t"] += delta / 0.28
 		if _flying["t"] >= 1.0:
 			_land()
-	elif not _over and not _howto and not _player_turn:
+	elif not _over and not _howto and not _player_turn and _darts_left > 0:
+		# _darts_left hits 0 during the pause at the end of their turn; a
+		# throw then would score a fourth dart and end the game twice.
 		_ai_timer -= delta
 		if _ai_timer <= 0.0:
 			_ai_throw()
@@ -220,6 +222,8 @@ func _ai_throw() -> void:
 	_ai_timer = 0.9
 
 func _end_game() -> void:
+	if _over:
+		return
 	if _totals[0] == _totals[1]:
 		_message = "%d apiece. %s shrugs and slides your money back." % [_totals[0], opponent_name]
 		_over = true
@@ -233,6 +237,7 @@ func _end_game() -> void:
 
 func _finish(won: bool) -> void:
 	_over = true
+	GameState.log_event(("Won $%d at darts off %s." if won else "Lost $%d at darts to %s.") % [bet, opponent_name])
 	if won:
 		GameState.cash += bet
 		GameState.cash_earned += bet

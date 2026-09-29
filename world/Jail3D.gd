@@ -77,6 +77,7 @@ func release(message: String) -> void:
 		return
 	released = true
 	await Cutscene.play("released")
+	GameState.log_event("Let out of the cell.", "released_steps")
 	var hud := get_tree().get_first_node_in_group("hud")
 	var player := get_tree().get_first_node_in_group("player")
 	# Hours inside have taken the edge off your tolerance, and the first

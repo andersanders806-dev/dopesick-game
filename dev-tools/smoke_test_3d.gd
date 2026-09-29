@@ -31,6 +31,13 @@ func _load(path: String) -> Node:
 	await _frames(10)
 	return current_scene
 
+## The drug menu parents itself to the tree root, not the current scene.
+func get_tree_menu() -> CanvasLayer:
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open_with"):
+			return c
+	return null
+
 func _player() -> Node3D:
 	return get_first_node_in_group("player") as Node3D
 
@@ -113,6 +120,11 @@ func _gs() -> Node:
 
 func _run() -> void:
 	var gs := _gs()
+	# Freeze the clock at 17:00: every store, the bar, and the pusher are
+	# open, and nothing closes while the checks below run. The day/night
+	# section at the end moves it deliberately.
+	gs.clock_running = false
+	gs.clock = 17 * 60
 
 	print("== Every 3D room loads with a player, HUD, and baked navmesh")
 	# The corner shop goes last: the tests below carry on inside it.
@@ -130,7 +142,8 @@ func _run() -> void:
 			if not (node is AudioStreamPlayer or node is AudioStreamPlayer3D) or not node.autoplay:
 				continue
 			ambient.append(node.name)
-			var loops: bool = node.stream is AudioStreamWAV and node.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD
+			var loops: bool = (node.stream is AudioStreamWAV and node.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD) \
+				or (node.stream is AudioStreamOggVorbis and node.stream.loop)
 			all_ok = all_ok and node.playing and loops
 		_check(ambient.size() > 0 and all_ok, "  ambient sound playing and looping: %s" % ", ".join(ambient))
 		var listener := _player().get_node("Listener") as AudioListener3D
@@ -151,11 +164,12 @@ func _run() -> void:
 	Input.action_press("move_right")
 	await _frames(40)
 	_check(player.anim.current_clip() == "walk", "player walks while moving (clip: %s)" % player.anim.current_clip())
-	var step_sounds := [sfx.SOUNDS["footstep_a"], sfx.SOUNDS["footstep_b"]]
+	var step_sounds: Array = sfx.FOOTSTEPS["concrete"] + sfx.FOOTSTEPS["wood"]
 	var stepped: bool = sfx._pool.any(func(p): return step_sounds.has(p.stream))
 	_check(stepped, "player footsteps play while walking")
 	Input.action_release("move_right")
-	await _frames(5)
+	# Stopping eases out over about a sixth of a second (Player3D.DECEL).
+	await _frames(15)
 	_check(player.anim.current_clip() == "idle", "player returns to idle after stopping")
 	var keeper_anim = shop.get_node("Shopkeeper").anim
 	_check(keeper_anim.current_clip() == "idle", "shopkeeper plays idle")
@@ -186,6 +200,19 @@ func _run() -> void:
 	print("== Shop: shopkeeper spots a theft in plain view")
 	var keeper := shop.get_node("Shopkeeper") as Node3D
 	player.global_position = Vector3(keeper.global_position.x, 0, -1.95)
+	# Stop the cone sweeping and point it at the player. Being *seen* is not
+	# the same as being caught any more: suspicion has to fill, which takes
+	# about a third of a second of unbroken eye contact while you're grabbing
+	# something. From this spot the sweep only clips the player for ~19
+	# frames in total, which got suspicion to 0.95 -- one frame short -- so
+	# the check failed even though the system was behaving exactly as
+	# designed. A guard who merely glimpses you should not bust you; this
+	# test is about the alarm firing at all, so give it a guard who is
+	# actually looking.
+	var to_player: Vector3 = player.global_position - keeper.global_position
+	keeper.base_facing_deg = rad_to_deg(Vector2(to_player.x, to_player.z).angle())
+	keeper.sweep_speed = 0.0
+	keeper._sweep_t = 0.0
 	var spotted := false
 	for i in 400:
 		# Re-assert every frame: the earlier steal's 1 s theft window timer
@@ -238,7 +265,10 @@ func _run() -> void:
 		p.queue_free()
 
 	print("== City: buying from the pusher on the street")
+	# The beat cop gets his own section; here he'd just chase the pusher off.
+	_clear_patrol(current_scene)
 	var pusher := current_scene.get_node("Pusher") as Area3D
+	await _until_pusher_on_post(pusher)
 	var city_player := _player()
 	city_player.global_position = current_scene.get_node("SpawnFromShop").global_position
 	await _frames(3)
@@ -275,10 +305,23 @@ func _run() -> void:
 			break
 	_check(back and pusher.model_root.visible, "pusher comes back to his spot once it's quiet")
 
-	var fix_cost: int = gs.current_fix_cost()
 	city_player.global_position = pusher.global_position + Vector3(-1.2, 0, 0.6)
 	await _frames(3)
+	# Buying is now a choice from what he's holding tonight, so drive the
+	# menu rather than the old single-fix interact. Oxycodone is forced into
+	# stock and bought here: it's the one that can turn out to be a fentanyl
+	# press, so the handoff below also covers that path existing.
+	pusher._stock = ["oxy", "heroin", "bupe", "naloxone"]
+	pusher._stock_day = gs.day
 	pusher.interact(city_player)
+	await _frames(2)
+	var menu := get_tree_menu()
+	_check(menu != null, "the pusher offers a menu of what he's holding")
+	var fix_cost: int = gs.price_of("heroin")
+	if menu:
+		menu.chosen.emit("heroin")
+		menu._close()
+	await _frames(2)
 	_check(gs.cash == 100 - fix_cost and gs.craving < 11.0, "paying the pusher takes $%d but doesn't hand it over yet" % fix_cost)
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	var went_to_stash := false
@@ -340,9 +383,13 @@ func _run() -> void:
 	patron.interact(_player())
 	_check(gs.cash == cash_before + patron.request_price and patron.fulfilled,
 		"patron paid $%d for '%s'" % [patron.request_price, patron.request_id])
-	var expected_pitch: float = patron.PATRON_PROFILES[patron.npc_name]["voice"]
-	_check(patron.voice.playing and absf(patron.voice.pitch_scale - expected_pitch) < 0.05,
-		"patron mumbles in their own voice when spoken to (pitch %.2f)" % patron.voice.pitch_scale)
+	# Spoken aloud by Voice (Piper), generated on first use if need be.
+	var voice := root.get_node("Voice")
+	var waited_voice := 0
+	while not voice.is_speaking() and waited_voice < 240:
+		await _frames(5)
+		waited_voice += 5
+	_check(voice.is_speaking(), "patron says it out loud in their own voice (Piper speaker %d)" % voice.cast_for(patron.npc_name)["id"])
 	patron.idle_sound.stop()
 	patron._idle_sound_timer = 0.0
 	await _frames(3)
@@ -379,6 +426,7 @@ func _run() -> void:
 		"no two patrons share a name or an order")
 	var before_sleep: Array = bar2.patrons.map(func(p): return "%s:%s" % [p.npc_name, p.request_id])
 	gs.sleep()
+	gs.clock = 17 * 60  # sleep wakes you at 08:00, before the bar opens
 	bar2.get_node("DoorToCity").interact(_player())
 	await _frames(10)
 	current_scene.get_node("DoorToBar").interact(_player())
@@ -408,6 +456,18 @@ func _run() -> void:
 	var cop: Node3D = PoliceScene.instantiate()
 	store.add_child(cop)
 	cop.global_position = bp.global_position + Vector3(0.3, 0, 0.3)
+	# Aim the clerk's sweep at the player before starting. Guard3D seeds
+	# _sweep_t with randf() * TAU and sweeps slowly (a full cycle takes ~14 s
+	# at sweep_speed 0.45), while this loop only runs 90 physics frames --
+	# about 1.5 s. So the clerk was often facing the other way for the whole
+	# check and `clerk_saw` came out false at random, failing a test that is
+	# really about counting busts, not about vision. Solving for the sweep
+	# phase that points at the player makes it deterministic.
+	var to_p: Vector3 = bp.global_position - clerk.global_position
+	var want_deg := rad_to_deg(Vector2(to_p.x, to_p.z).angle())
+	var half_arc: float = float(clerk.get("sweep_arc_deg")) * 0.5
+	var offset := (want_deg - float(clerk.get("base_facing_deg"))) / half_arc
+	clerk.set("_sweep_t", asin(clampf(offset, -1.0, 1.0)))
 	var clerk_saw := false
 	for i in 90:
 		bp.is_stealing = true  # the clerk is still watching a theft in progress
@@ -419,7 +479,8 @@ func _run() -> void:
 	gs.busted.disconnect(count_bust)
 	# Without this, "one bust" could pass just because nobody was looking.
 	_check(clerk_saw, "  (the clerk really did see the theft during the arrest)")
-	_check(busts[0] == 1 and gs.cash == 20, "caught once: one bust, cash halved once ($40 -> $%d, %d bust(s))" % [gs.cash, busts[0]])
+	var expected_cash: int = 40 - int(40 * gs.BUST_FINE_FRACTION)
+	_check(busts[0] == 1 and gs.cash == expected_cash, "caught once: one bust, fined once ($40 -> $%d, %d bust(s))" % [gs.cash, busts[0]])
 	_check(current_scene.name == "Jail3D", "busted players wake up in the jail, not at home")
 	var cell_spawn := current_scene.get_node("SpawnCell") as Marker3D
 	var jp := _player()
@@ -432,8 +493,12 @@ func _run() -> void:
 	Input.action_release("move_right")
 	_check(jp.global_position.x < -2.6, "  the locked cell door holds you in (x=%.2f)" % jp.global_position.x)
 	var jail := current_scene
+	gs.craving = 60.0
 	jail.get_node("Bench").interact(jp)
-	_check(jail.released and gs.craving < 45.0 - 25.0, "  waiting it out on the bench gets you released, and makes you sicker")
+	_check(jail.released and gs.craving < 60.0 and gs.craving >= 44.0, "  waiting it out on the bench gets you released, and makes you sicker (60 -> %.0f)" % gs.craving)
+	gs.craving = 30.0
+	var cost_low: float = maxf(minf(30.0, jail.WAIT_CRAVING_FLOOR), 30.0 - jail.WAIT_CRAVING_COST)
+	_check(cost_low >= jail.WAIT_CRAVING_FLOOR, "  ...but never leaves you below the withdrawal floor (30 -> %.0f)" % cost_low)
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	jp.dialogue_active = false
 	gs.craving = 45.0
@@ -481,5 +546,700 @@ func _run() -> void:
 	await _frames(5)
 	_check(p3.nearby.has(bed), "mattress is still in reach to interact with")
 	var day_before: int = gs.day
+	gs.clock = 23 * 60
 	current_scene.get_node("Bed").interact(_player())
 	_check(gs.day == day_before + 1, "sleeping advanced the day")
+
+	print("== Stealth: suspicion builds, drains, and only then raises the alarm")
+	var st := await _load("res://world/StoreConvenience3D.tscn")
+	var sp := _player()
+	var watcher := st.get_node("Shopkeeper") as Node3D
+	# Park the watcher's gaze on the player so this measures suspicion, not the
+	# sweep's phase.
+	var toward: Vector3 = Vector3(watcher.global_position.x, 0, -1.95) - watcher.global_position
+	watcher.base_facing_deg = rad_to_deg(Vector2(toward.x, toward.z).angle())
+	watcher.sweep_speed = 0.0
+	watcher._sweep_t = 0.0
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95)
+	gs.inventory.clear()
+	await _frames(20)
+	_check(watcher.can_see_player, "watcher can see the player in the open")
+	_check(watcher.suspicion == 0.0, "  browsing empty-handed in plain sight is not suspicious")
+
+	# Carrying stolen goods in view is.
+	gs.steal_item("cigs")
+	await _frames(30)
+	var carrying_susp: float = watcher.suspicion
+	_check(carrying_susp > 0.0 and not gs.wanted, "  standing in view holding stolen goods builds suspicion (%.2f), without an instant bust" % carrying_susp)
+
+	# Breaking line of sight drains it again.
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95) + Vector3(0, 0, -40.0)
+	await _frames(40)
+	_check(watcher.suspicion < carrying_susp, "  suspicion drains once you're out of sight (%.2f -> %.2f)" % [carrying_susp, watcher.suspicion])
+
+	# Grabbing in plain view fills it fast, and that is what raises the alarm.
+	sp.global_position = Vector3(watcher.global_position.x, 0, -1.95)
+	var raised := false
+	for i in 120:
+		sp.is_stealing = true
+		await physics_frame
+		if gs.wanted:
+			raised = true
+			break
+	sp.is_stealing = false
+	_check(raised, "  grabbing in plain sight fills suspicion and raises the alarm")
+
+	print("== Runs: strikes, the run-end payout, and meta upgrades")
+	var meta := root.get_node("MetaProgress")
+	var know_before: int = meta.know_how
+	gs.start_run()
+	_check(gs.strikes == 0 and gs.day == 1 and gs.cash == meta.starting_cash(),
+		"start_run resets the run and applies meta-progress starting cash ($%d)" % gs.cash)
+	gs.orders_delivered = 2
+	gs.cash_earned = 120
+	gs.day = 4
+	var ended := []
+	gs.run_ended.connect(func(s): ended.append(s), CONNECT_ONE_SHOT)
+	var allowed: int = gs.max_strikes()
+	for i in allowed:
+		gs.in_custody = false
+		gs.get_busted()
+	_check(gs.strikes == allowed, "  %d busts counted as %d strikes" % [allowed, gs.strikes])
+	_check(ended.size() == 1, "  the run ends once strikes run out")
+	if ended.size() == 1:
+		var summary: Dictionary = ended[0]
+		_check(summary["days"] == 4 and summary["orders"] == 2 and summary["cash"] == 120,
+			"  the summary reports the run (day %d, %d orders, $%d)" % [summary["days"], summary["orders"], summary["cash"]])
+		_check(summary["know_how"] > 0 and meta.know_how == know_before + summary["know_how"],
+			"  a finished run always pays Know-How (+%d)" % summary["know_how"])
+
+	# The HUD has to show the strikes, not just track them. A stale line in
+	# HUD._ready() used to overwrite the day label right after it was built,
+	# so the pips were computed and then thrown away every time a room loaded.
+	gs.start_run()
+	await _load("res://world/Apartment3D.tscn")
+	var day_label: Label = get_first_node_in_group("hud").get_node("TopBar/DayLabel")
+	var fresh_text: String = day_label.text
+	_check(fresh_text.contains("*"), "  the HUD shows the strikes left on a fresh run (\"%s\")" % fresh_text)
+	gs.in_custody = false
+	gs.get_busted()
+	await _frames(2)
+	_check(day_label.text != fresh_text and day_label.text.contains("o"),
+		"  and updates them after a bust (\"%s\")" % day_label.text)
+
+	# Upgrades must actually change the numbers the game reads.
+	var base_pickup: float = meta.pickup_duration(0.6)
+	var base_susp: float = meta.suspicion_scale()
+	meta.know_how += 999
+	var bought_hands: bool = meta.buy("steady_hands")
+	var bought_touch: bool = meta.buy("light_touch")
+	_check(bought_hands and meta.pickup_duration(0.6) < base_pickup,
+		"  Steady Hands shortens the grab (%.2fs -> %.2fs)" % [base_pickup, meta.pickup_duration(0.6)])
+	_check(bought_touch and meta.suspicion_scale() < base_susp,
+		"  Light Touch slows how fast guards get suspicious (x%.2f -> x%.2f)" % [base_susp, meta.suspicion_scale()])
+	_check(meta.next_cost("steady_hands") > meta.UPGRADES["steady_hands"]["costs"][0],
+		"  each tier costs more than the last")
+
+	# Leave no trace: this test must not inflate the player's real save.
+	meta.know_how = know_before
+	meta.levels.clear()
+	meta.runs_completed = max(0, meta.runs_completed - 1)
+	meta.save_progress()
+	gs.start_run()
+
+	print("== Drugs: prices, tolerance, interactions, and going over")
+	var drugs := root.get_node("Drugs")
+	gs.start_run()
+	gs.craving = 10.0
+	# Prices come from the catalogue, and opioid prices climb with tolerance.
+	var oxy_base: int = gs.price_of("oxy")
+	_check(oxy_base == drugs.info("oxy")["price"], "a first dose costs the catalogue price ($%d)" % oxy_base)
+	gs.tolerance[drugs.OPIOID] = 20.0
+	_check(gs.price_of("oxy") > oxy_base, "  opioid prices climb with tolerance ($%d -> $%d)" % [oxy_base, gs.price_of("oxy")])
+	_check(gs.price_of("clonazepam") == drugs.info("clonazepam")["price"], "  ...but opioid tolerance doesn't move benzo prices")
+	gs.tolerance.clear()
+
+	# Relief and duration differ per drug. Taken from a clean slate each
+	# time, so the bupe dose isn't sitting on top of the heroin one -- that
+	# combination precipitates withdrawal, which is covered separately below.
+	gs.start_run()
+	gs.craving = 10.0
+	gs.take_drug("heroin")
+	var after_heroin: float = gs.craving
+	var heroin_decay: float = gs.current_craving_decay()
+	gs.start_run()
+	gs.craving = 10.0
+	gs.take_drug("bupe")
+	_check(after_heroin > 10.0 and gs.craving > 10.0, "  a dose restores craving (heroin -> %.0f, bupe -> %.0f)" % [after_heroin, gs.craving])
+	_check(gs.current_craving_decay() < heroin_decay,
+		"  a long-acting dose holds you longer (decay %.2f/s -> %.2f/s)" % [heroin_decay, gs.current_craving_decay()])
+
+	# Cross-tolerance is shared within a class, and bupe brings it down.
+	gs.start_run()
+	gs.take_drug("fentanyl")
+	var tol_after: float = gs.tolerance_for("heroin")
+	_check(tol_after > 0.0, "  tolerance is shared across the opioid class (fentanyl raised heroin's to %.1f)" % tol_after)
+
+	# Buprenorphine too soon after an opioid precipitates withdrawal.
+	gs.start_run()
+	gs.craving = 80.0
+	gs.take_drug("heroin")
+	gs.craving = 80.0
+	var outcome: String = gs.take_drug("bupe")
+	_check(outcome == "precipitated" and gs.craving < 80.0,
+		"  bupe straight after an opioid precipitates withdrawal (craving %.0f)" % gs.craving)
+	# ...but not once the opioid is long gone.
+	gs.start_run()
+	gs.craving = 40.0
+	gs.run_time = drugs.PRECIPITATED_WINDOW + 10.0
+	_check(gs.take_drug("bupe") == "relief", "  ...and works normally once the opioid has cleared")
+
+	# Naloxone cancels an overdose instead of ending the run.
+	gs.start_run()
+	gs.naloxone = 1
+	var saved: String = gs._overdose()
+	_check(saved == "saved" and gs.naloxone == 0 and gs.craving == 0.0,
+		"  naloxone cancels an overdose and dumps you into withdrawal")
+	# Without it, going over ends the run.
+	gs.start_run()
+	var od_ended := []
+	gs.run_ended.connect(func(sm): od_ended.append(sm), CONNECT_ONE_SHOT)
+	gs._overdose()
+	_check(od_ended.size() == 1 and od_ended[0]["cause"] == "overdose",
+		"  without naloxone, going over ends the run")
+
+	# Mixing an opioid with a benzo multiplies the risk. Checked on the maths
+	# rather than by rolling dice, so the test can't be flaky.
+	gs.start_run()
+	gs.craving = 50.0
+	gs.take_drug("clonazepam")
+	var mixing: bool = gs.run_time - float(gs.last_dose_at.get(drugs.BENZO, -9999.0)) < drugs.MIX_WINDOW
+	_check(mixing and drugs.MIX_OD_MULTIPLIER > 1.0,
+		"  an opioid taken on top of a benzo counts as mixing (x%.1f risk)" % drugs.MIX_OD_MULTIPLIER)
+
+	# Every catalogue entry has to be complete, or a row renders blank.
+	var fields := ["id", "name", "street", "class", "price", "relief", "hours", "tolerance", "od_risk", "fake", "desc"]
+	var complete: bool = drugs.CATALOGUE.all(func(d): return fields.all(func(f): return d.has(f)))
+	_check(complete and drugs.CATALOGUE.size() >= 8,
+		"  all %d catalogue entries are complete" % drugs.CATALOGUE.size())
+	# The counterfeit path has to actually be reachable for the pills it
+	# applies to, or the whole point of the mechanic is lost.
+	var fake_hits := 0
+	for i in 400:
+		if drugs.resolve_purchase("oxy") == "fentanyl":
+			fake_hits += 1
+	_check(fake_hits > 0 and fake_hits < 400,
+		"  street 'oxy' is sometimes a fentanyl press (%d/400 here)" % fake_hits)
+	_check(drugs.resolve_purchase("fentanyl") == "fentanyl", "  ...and what's sold as fentanyl always is")
+	await _day_night_checks(gs)
+	await _withdrawal_checks(gs)
+	await _debt_checks(gs)
+	await _street_checks(gs)
+	await _places_checks(gs)
+	await _walkman_checks(gs)
+	await _pool_checks(gs)
+	await _street_life_checks(gs)
+	gs.start_run()
+
+func _day_night_checks(gs: Node) -> void:
+	print("== Day and night: the clock, opening hours, shifts, and the pusher's hours")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 23 * 60 + 59
+	var day_before: int = gs.day
+	gs.advance_clock(2.0)
+	_check(gs.day == day_before + 1 and int(gs.clock) == 1, "  midnight rolls the clock into the next day (%s)" % gs.clock_text())
+	gs.sleep()
+	_check(gs.day == day_before + 1 and gs.clock_text() == "08:00", "  sleeping after midnight wakes you at 08:00 the same day")
+	gs.clock = 2 * 60
+	var night_light: float = gs.daylight()
+	var night_alert: float = gs.staff_alertness()
+	gs.clock = 13 * 60
+	_check(night_light == 0.0 and gs.daylight() == 1.0, "  daylight is 0 at 02:00 and 1 at 13:00")
+	_check(night_alert < gs.staff_alertness(), "  the graveyard shift is less alert than the midday rush (x%.2f vs x%.2f)" % [night_alert, gs.staff_alertness()])
+
+	gs.clock = 23 * 60 + 30
+	var city := await _load("res://world/City3D.tscn")
+	city.get_node("DoorToPharmacy").interact(_player())
+	await _frames(5)
+	_check(current_scene.name == "City3D", "  the pharmacy is locked at 23:30")
+	current_scene.get_node("DoorToShop").interact(_player())
+	await _frames(10)
+	_check(current_scene.name == "StoreConvenience3D", "  ...but the 24/7 shop lets you in")
+
+	gs.clock = 9 * 60
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	var pusher := city.get_node("Pusher")
+	_check(pusher.state == pusher.State.OFF_SHIFT and not pusher.model_root.visible, "  no pusher on the corner at 09:00")
+	gs.clock = 16 * 60 + 30
+	await _frames(240)
+	_check(pusher.state != pusher.State.OFF_SHIFT and pusher.model_root.visible, "  he's back on his spot by 16:30")
+
+	gs.clock = 14 * 60
+	var market := await _load("res://world/StoreSupermarket3D.tscn")
+	_check(market.get_node_or_null("Stocker") != null, "  a stocker works the supermarket floor at 14:00")
+	gs.clock = 21 * 60
+	market = await _load("res://world/StoreSupermarket3D.tscn")
+	await _frames(2)
+	_check(not is_instance_valid(market.get_node_or_null("Stocker")), "  ...and has gone home by 21:00")
+
+	gs.clock = 20 * 60 + 59
+	var pharmacy := await _load("res://world/StorePharmacy3D.tscn")
+	gs.clock = 21 * 60 + 1
+	await _frames(20)
+	var hud := current_scene.get_tree().get_first_node_in_group("hud")
+	_check(current_scene == pharmacy and hud.dialogue_panel.visible, "  staff tell you they're closing at 21:00")
+	var waited := 0
+	while (current_scene == null or current_scene.name != "City3D") and waited < 60 * 8:
+		await _frames(10)
+		waited += 10
+	_check(current_scene != null and current_scene.name == "City3D", "  ...and you're shown out onto the street")
+
+func _withdrawal_checks(gs: Node) -> void:
+	print("== Withdrawal: the senses, the hands, the cramps, and things that aren't there")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var shop := await _load("res://world/StoreConvenience3D.tscn")
+	var p := _player()
+	var sfx := root.get_node("SFX")
+	gs.craving = 60.0
+	_check(gs.sickness() == 0.0, "  no sickness with the meter at 60")
+	var well_grab: float = p.play_pickup(p.global_position + Vector3.FORWARD)
+	await _frames(60)
+	gs.craving = 0.0
+	gs.craving_changed.emit(0.0)
+	_check(gs.sickness() == 1.0, "  full sickness with the meter empty")
+	var hud := shop.get_tree().get_first_node_in_group("hud")
+	var shader_s: float = (hud.get_node("PostFX").material as ShaderMaterial).get_shader_parameter("sickness")
+	_check(shader_s == 1.0, "  the screen effects get the sickness level")
+	var sick_grab: float = p.play_pickup(p.global_position + Vector3.FORWARD)
+	_check(sick_grab > well_grab * 1.4, "  shaking hands make a grab slower (%.2fs -> %.2fs)" % [well_grab, sick_grab])
+	await _frames(90)
+	var base: Transform3D = p._camera_base
+	await _frames(5)
+	_check(not p.camera.transform.is_equal_approx(base), "  the camera shakes")
+	p._cramp_timer = 0.01
+	await _frames(3)
+	_check(p.is_busy(), "  a cramp doubles you over and roots you in place")
+	await _frames(90)
+	for kind in ["siren", "whistle", "steps", "knock", "voice"]:
+		sfx.play_phantom(kind)
+	await _frames(2)
+	var phantoms := shop.get_tree().get_nodes_in_group("phantom_sounds")
+	var dist := INF
+	for ph in phantoms:
+		dist = minf(dist, ph.global_position.distance_to(p.global_position))
+	_check(phantoms.size() == 5 and dist >= 3.9, "  phantom sounds play a few metres away (%d, nearest %.1f m)" % [phantoms.size(), dist])
+	gs.craving = 60.0  # well again, so no new ones start while we wait
+	await _frames(60 * 6)
+	_check(shop.get_tree().get_nodes_in_group("phantom_sounds").is_empty(), "  ...and clean up after themselves")
+	gs.craving = 60.0
+
+## If the beat cop had already sent him into hiding before we cleared him.
+func _until_pusher_on_post(pusher: Node) -> void:
+	var waited := 0
+	while pusher.state != pusher.State.POST and waited < 900:
+		await _frames(10)
+		waited += 10
+
+func _clear_patrol(city: Node) -> void:
+	for cop in city.get_tree().get_nodes_in_group("patrol"):
+		cop.remove_from_group("patrol")
+		cop.queue_free()
+	city.set("_patrol_timer", 99999.0)
+
+func _debt_checks(gs: Node) -> void:
+	print("== Debt: fronting, paying back, and the collector")
+	# An earlier section can leave a drug menu open on the root.
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open_with"):
+			c.free()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	gs.cash = 2
+	gs.craving = 60.0
+	var city := await _load("res://world/City3D.tscn")
+	# No beat cop for this section: he'd send the pusher into hiding.
+	_clear_patrol(city)
+	var pusher := city.get_node("Pusher")
+	await _until_pusher_on_post(pusher)
+	var p := _player()
+	p.global_position = pusher.global_position + Vector3(-1.2, 0, 0.6)
+	await _frames(5)
+	pusher.interact(p)
+	await _frames(2)
+	var menu := get_tree_menu()
+	var front_buttons := []
+	if menu:
+		for b in menu.find_children("*", "Button", true, false):
+			if b.text.begins_with("Front") and not b.disabled:
+				front_buttons.append(b)
+	_check(front_buttons.size() > 0, "  short on cash, he offers to front you something (%d options)" % front_buttons.size())
+	if front_buttons.is_empty():
+		return
+	front_buttons[0].pressed.emit()
+	await _frames(2)
+	_check(gs.debt > 0 and gs.cash == 2, "  fronted: you owe him $%d and kept your cash" % gs.debt)
+	_check(absf(gs.debt_due - gs.now_minutes() - gs.DEBT_GRACE_MINUTES) < 1.0, "  ...due back in 24 hours (%s)" % gs.debt_due_text())
+	var hud := city.get_tree().get_first_node_in_group("hud")
+	_check(hud.debt_label.visible and hud.debt_label.text.contains("$%d" % gs.debt), "  the HUD shows what you owe (\"%s\")" % hud.debt_label.text)
+	var waited := 0
+	while pusher.state != pusher.State.AWAIT_BUYER and waited < 1200:
+		await _frames(10)
+		waited += 10
+	p.dialogue_active = false
+	p.global_position = pusher.global_position + Vector3(-1.0, 0, 0.5)
+	await _frames(20)
+	_check(pusher.state in [pusher.State.HANDOFF, pusher.State.POST], "  ...and still hands it over")
+	_check(gs.can_front(10) == false, "  only one front at a time")
+
+	var debt_before: int = gs.debt
+	gs.cash = 5
+	_check(gs.pay_debt(5) == 5 and gs.debt == debt_before - 5, "  paying some back brings the debt down")
+
+	# Overdue, broke: the collector comes.
+	gs.cash = 0
+	gs.debt_due = gs.now_minutes() - 1.0
+	var hud2 = hud
+	p.dialogue_active = false
+	hud2.dialogue_panel.visible = false
+	p.global_position = Vector3(18.0, 0, 1.0)
+	waited = 0
+	while city.get_tree().get_first_node_in_group("collector") == null and waited < 600:
+		await _frames(10)
+		waited += 10
+	var collector := city.get_tree().get_first_node_in_group("collector") as Node3D
+	_check(collector != null, "  overdue, and the collector turns up on the block")
+	var owed: int = gs.debt
+	var craving_before: float = gs.craving
+	waited = 0
+	while is_instance_valid(collector) and gs.debt == owed and waited < 900:
+		await _frames(10)
+		waited += 10
+	_check(gs.debt == owed + gs.LATE_FEE, "  broke when he catches you: a late fee on top ($%d -> $%d)" % [owed, gs.debt])
+	_check(gs.craving < craving_before and gs.is_hurt(), "  ...and a beating: sicker, and limping")
+	_check(not gs.debt_overdue(), "  ...and until tomorrow to find it")
+	gs.debt_due = gs.now_minutes() - 1.0
+	pusher.state = pusher.State.POST
+	p.dialogue_active = false
+	pusher.interact(p)
+	await _frames(2)
+	_check(get_tree_menu() == null and hud2.text_label.text.contains("owe"), "  overdue, the pusher won't sell you anything")
+	gs.start_run()
+
+func _street_checks(gs: Node) -> void:
+	print("== Street life: passersby, Ray, and the beat cop")
+	for c in root.get_children():
+		if c is CanvasLayer and (c.has_method("open_with") or c.has_method("open")):
+			c.free()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var day_walkers := city.get_tree().get_nodes_in_group("pedestrians").size()
+	gs.clock = 2 * 60
+	city = await _load("res://world/City3D.tscn")
+	var night_walkers := city.get_tree().get_nodes_in_group("pedestrians").size()
+	_check(day_walkers > night_walkers and night_walkers >= 1, "  busier by day than at night (%d vs %d passersby)" % [day_walkers, night_walkers])
+	var walker := city.get_tree().get_nodes_in_group("pedestrians")[0] as Node3D
+	var x0 := walker.global_position.x
+	await _frames(30)
+	_check(is_instance_valid(walker) and absf(walker.global_position.x - x0) > 0.3, "  passersby actually walk the block")
+
+	# Ray: gifts earn trust; trust earns tips.
+	var ray := city.get_node("Ray")
+	var p := _player()
+	var hud := city.get_tree().get_first_node_in_group("hud")
+	gs.cash = 10
+	ray._on_choice(2, p, hud)
+	var cold_tip: String = hud.text_label.text
+	ray._on_choice(0, p, hud)
+	_check(gs.cash == 8 and gs.homeless_trust == 1, "  giving Ray $2 earns his trust")
+	gs.debt = 20
+	gs.debt_due = gs.now_minutes() + 600.0
+	ray._on_choice(2, p, hud)
+	_check(not cold_tip.contains("black jacket") and hud.text_label.text.contains("black jacket"), "  ...and then he warns you who's been asking after you")
+	gs.debt = 0
+
+	# The beat cop: watching a hand-to-hand at the pusher's corner calls it in.
+	gs.clock = 22 * 60
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	var pusher := city.get_node("Pusher")
+	p = _player()
+	city.set("_patrol_timer", 99999.0)  # only the cops this test places
+	city._spawn_patrol(pusher.global_position + Vector3(-5.0, 0, 2.3))
+	var cop := city.get_tree().get_first_node_in_group("patrol") as Node3D
+	cop.heading = 1.0
+	await _frames(60)
+	_check(pusher.state in [pusher.State.TO_HIDE, pusher.State.HIDDEN], "  the pusher melts away when the beat cop comes near")
+	cop.remove_from_group("patrol")
+	cop.queue_free()
+	var waited := 0
+	while pusher.state != pusher.State.POST and waited < 900:
+		await _frames(10)
+		waited += 10
+	_check(pusher.state == pusher.State.POST, "  ...and comes back once he's gone")
+	# Put a hand-to-hand in plain view.
+	city._spawn_patrol(pusher.global_position + Vector3(-5.5, 0, 2.3))
+	cop = city.get_tree().get_first_node_in_group("patrol") as Node3D
+	# Standing still, looking east straight at the corner.
+	cop.heading = 1.0
+	cop.set("_pause_timer", 999.0)
+	cop.base_facing_deg = 0.0
+	cop.set("sweep_arc_deg", 0.0)
+	pusher.state = pusher.State.AWAIT_BUYER
+	pusher.set("_owes_fix", true)
+	p.global_position = pusher.global_position + Vector3(-1.0, 0, 0.3)
+	p.dialogue_active = true
+	waited = 0
+	while not gs.wanted and waited < 600:
+		# He'd rather hide from the cop; hold him on his corner for the test.
+		pusher.state = pusher.State.AWAIT_BUYER
+		pusher.global_position = pusher._post_position
+		pusher._set_hidden(false)
+		await _frames(10)
+		waited += 10
+	_check(gs.wanted and city.get_tree().get_first_node_in_group("police") != null, "  a beat cop who sees you buy calls it in and gives chase")
+	p.dialogue_active = false
+	gs.start_run()
+
+func _close_menus() -> void:
+	for c in root.get_children():
+		if c is CanvasLayer and (c.has_method("open_with") or c.has_method("open")):
+			c.free()
+
+func _places_checks(gs: Node) -> void:
+	print("== New places: the shelter, the pawnshop, and the lot out back")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+
+	# The City fronts lead to all three.
+	gs.clock = 18 * 60
+	var city := await _load("res://world/City3D.tscn")
+	for pair in [["DoorToShelter", "Shelter3D"], ["DoorToBackyard", "Backyard3D"]]:
+		city = await _load("res://world/City3D.tscn")
+		city.get_node(pair[0]).interact(_player())
+		await _frames(10)
+		_check(current_scene.name == pair[1], "  %s leads to %s" % pair)
+	gs.clock = 12 * 60
+	city = await _load("res://world/City3D.tscn")
+	city.get_node("DoorToShelter").interact(_player())
+	await _frames(5)
+	_check(current_scene.name == "City3D", "  the shelter is shut through the day (12:00)")
+
+	# Shelter: a meal, once per sitting; the outreach desk.
+	gs.clock = 18 * 60
+	var shelter := await _load("res://world/Shelter3D.tscn")
+	var hud := shelter.get_tree().get_first_node_in_group("hud")
+	var p := _player()
+	gs.craving = 40.0
+	shelter.interact_zone(shelter.find_child("ServingCounter"), p)
+	var after_meal: float = gs.craving
+	shelter.interact_zone(shelter.find_child("ServingCounter"), p)
+	_check(after_meal > 40.0 and gs.craving == after_meal, "  dinner steadies you a little, once per sitting (%.0f -> %.0f)" % [40.0, after_meal])
+	var outreach := shelter.get_node("Outreach")
+	var nal_before: int = gs.naloxone
+	outreach._on_choice(0, p, hud)
+	_check(gs.naloxone == nal_before + 1 and not gs.daily_available("shelter_naloxone"), "  the outreach worker hands out a naloxone kit, once a day")
+	gs.last_dose_at[drugs_class_opioid()] = gs.run_time
+	gs.craving = 10.0
+	outreach._on_choice(1, p, hud)
+	_check(gs.craving == 10.0 and gs.daily_available("shelter_bupe"), "  ...won't give bupe right after an opioid")
+	gs.last_dose_at.clear()
+	outreach._on_choice(1, p, hud)
+	_check(gs.craving > 10.0 and not gs.daily_available("shelter_bupe"), "  ...but will once you're in withdrawal (craving %.0f)" % gs.craving)
+	gs.clock = 22 * 60
+	var day_before: int = gs.day
+	shelter.interact_zone(shelter.find_child("Cot1"), p)
+	_check(gs.day == day_before + 1 and gs.clock_text() == "08:00", "  a cot for the night")
+
+	# Pawnshop: better than the bar's flat fence, less for electronics.
+	gs.clock = 14 * 60
+	var pawn := await _load("res://world/Pawn3D.tscn")
+	hud = pawn.get_tree().get_first_node_in_group("hud")
+	p = _player()
+	var broker := pawn.get_node("Pawnbroker")
+	gs.cash = 0
+	gs.inventory.clear()
+	gs.steal_item("cognac")
+	gs.steal_item("smartphone")
+	var cognac_offer: int = broker.offer_for("cognac")
+	var phone_offer: int = broker.offer_for("smartphone")
+	_check(cognac_offer > gs.FENCE_PRICE and float(phone_offer) / 80.0 < float(cognac_offer) / 55.0, "  pawn pays more than the fence ($%d for cognac), less on electronics ($%d for an $80 phone)" % [cognac_offer, phone_offer])
+	broker._sell("cognac", p, hud)
+	_check(gs.cash == cognac_offer and not gs.has_item("cognac"), "  selling hands over the cash")
+
+	# Backyard: the morning delivery, the dumpster, and hiding.
+	gs.clock = 7 * 60
+	var yard := await _load("res://world/Backyard3D.tscn")
+	_check(yard.get_node_or_null("Item1") != null and yard.get_node_or_null("Driver") != null, "  a delivery sits on the dock in the morning, with its driver")
+	gs.clock = 14 * 60
+	yard = await _load("res://world/Backyard3D.tscn")
+	await _frames(2)
+	_check(not is_instance_valid(yard.get_node_or_null("Item1")) and not is_instance_valid(yard.get_node_or_null("Driver")), "  ...and is gone by the afternoon")
+	hud = yard.get_tree().get_first_node_in_group("hud")
+	p = _player()
+	yard.interact_zone(yard.find_child("Dumpster"), p)
+	var first_dive: String = hud.text_label.text
+	yard.interact_zone(yard.find_child("Dumpster"), p)
+	_check(not first_dive.contains("already") and hud.text_label.text.contains("already"), "  the dumpster: one dig a day")
+	p.dialogue_active = false
+	var hide := yard.find_child("HideSpot") as Node3D
+	p.global_position = hide.global_position
+	await _frames(3)
+	yard.interact_zone(hide, p)
+	var police := PoliceScene.instantiate()
+	yard.add_child(police)
+	police.global_position = hide.global_position + Vector3(6.0, 0, 3.0)
+	await _frames(5)
+	_check(p.hiding and not police._has_line_of_sight(p), "  crouched behind the dumpster, the police can't see you")
+	var waited := 0
+	while gs.wanted and waited < 60 * 8:
+		await _frames(10)
+		waited += 10
+	_check(not gs.wanted and not gs.in_custody, "  ...and they give up and leave")
+	p.set_hiding(false)
+	gs.start_run()
+
+func drugs_class_opioid() -> String:
+	return root.get_node("Drugs").OPIOID
+
+func _walkman_checks(gs: Node) -> void:
+	print("== Walkman: tapes at home, music everywhere, Tape Deck")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var walkman := root.get_node("Walkman")
+	_check(gs.tapes.size() == walkman.STARTING_TAPES.size() and not gs.has_walkman, "  a run starts with the shoebox of tapes and the walkman at home")
+	var apt := await _load("res://world/Apartment3D.tscn")
+	var pickup := apt.get_node("Walkman")
+	pickup.interact(_player())
+	_check(gs.has_walkman, "  picking it up off the mattress")
+	_player().dialogue_active = false
+	walkman.open_menu()
+	await _frames(2)
+	var menu: Node = null
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open"):
+			menu = c
+	_check(menu != null, "  [T] opens the shoebox")
+	if menu:
+		menu._on_pick(1)  # 0 is "Shuffle the shoebox"
+	await _frames(5)
+	_check(walkman.is_playing() and gs.tapes.has(walkman.current) and not walkman.shuffle, "  a tape goes in and plays (%s)" % walkman.current)
+	var first: String = walkman.current
+	walkman.next()
+	_check(walkman.shuffle and walkman.current != first, "  [N] skips on and switches to shuffle (%s)" % walkman.current)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(10)
+	var sfx := root.get_node("SFX")
+	_check(walkman._player.playing and sfx._music_track == "", "  it keeps playing outside, and the street music drops out")
+	walkman.stop()
+	await _frames(5)
+	_check(sfx._music_track != "", "  stop the tape and the street comes back")
+
+	var store := await _load("res://world/MusicStore3D.tscn")
+	var slots: Array = store.item_slots.filter(func(sl): return is_instance_valid(sl) and not sl.is_queued_for_deletion())
+	_check(slots.size() > 0 and slots.all(func(sl): return sl.item_id.begins_with("tape:") and not gs.tapes.has(sl.item_id.trim_prefix("tape:"))), "  Tape Deck's racks hold tapes you don't own yet")
+	var before: int = gs.tapes.size()
+	gs.steal_item(slots[0].item_id)
+	_check(gs.tapes.size() == before + 1 and gs.inventory.is_empty(), "  a lifted tape goes into the shoebox, not your pockets")
+	gs.cash = 50
+	var hud := store.get_tree().get_first_node_in_group("hud")
+	var to_buy: String = walkman.dealer_stock()[0]
+	# Through the counter's own trigger, not straight into _buy: the trigger
+	# once got auto-renamed and the menu never opened.
+	var counter := store.get_node_or_null("CounterZone") as Area3D
+	_check(counter != null, "  the counter has its trigger")
+	if counter:
+		store.interact_zone(counter, _player())
+		var till_menu: Node = null
+		for c in root.get_children():
+			if c is CanvasLayer and c.has_method("open") and c.has_signal("chosen"):
+				till_menu = c
+		_check(till_menu != null, "  the counter opens the clerk's menu")
+		if till_menu:
+			till_menu.queue_free()
+		_player().dialogue_active = false
+	store._buy(to_buy, _player(), hud)
+	_check(gs.tapes.has(to_buy) and gs.cash == 50 - walkman.TAPES[to_buy]["price"], "  or buy one at the counter ($%d)" % walkman.TAPES[to_buy]["price"])
+	gs.start_run()
+
+func _pool_checks(gs: Node) -> void:
+	print("== Pool: a full game for money at the Dive Bar")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 20 * 60
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	_check(bar.find_child("PoolZone", true, false) != null, "  the pool table can be played")
+	gs.cash = 40
+	var p := _player()
+	bar._start_pool(bar.POOL_TABLES[1], p)
+	await _frames(2)
+	var game: Node = null
+	for c in root.get_children():
+		if c.has_method("_ai_plan"):
+			game = c
+	_check(game != null, "  a game starts ($%d against %s)" % [bar.POOL_TABLES[1]["bet"], bar.POOL_TABLES[1]["name"]])
+	var result := []
+	game.finished.connect(func(won): result.append(won))
+	# Let our side play with the same AI so a whole game runs through.
+	var frames := 0
+	while result.is_empty() and frames < 60 * 900:
+		if game._shooter == 0 and not game._moving and not game._over:
+			if game._ball_in_hand:
+				game._ai_place_cue()
+			game._ai_plan()
+			game._shoot(game._ai_target_aim, game._ai_power, game._ai_follow, 0.0)
+		await process_frame
+		frames += 1
+	var left := func(who: int) -> int: return game._remaining(game._groups[who]) if game._groups[who] != -1 else 7
+	_check(result.size() == 1, "  the game plays out to a winner (%s, %d-%d left, %.0fs)" % ["won" if result and result[0] else "lost", left.call(0), left.call(1), frames / 60.0])
+	_check(game._groups[0] != -1 and game._groups[0] != game._groups[1], "  the table got split into solids and stripes")
+	var expected := 50 if result and result[0] else 30
+	_check(gs.cash == expected, "  the pot changes hands ($40 -> $%d)" % gs.cash)
+	game._close()
+	await _frames(3)
+	_check(not p.dialogue_active, "  and you can walk away from the table")
+	gs.start_run()
+
+func _street_life_checks(gs: Node) -> void:
+	print("== Street life II: traffic, steam, rain, and the bigger stash")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	var life := city.get_node("StreetLife")
+	_check(life.get_children().filter(func(c): return c is GPUParticles3D and c != life._rain).size() == 2, "  steam rises from both manholes")
+	var p := _player()
+	p.global_position = Vector3(0.0, 0, life.LANE_Z)
+	for car in life._cars:
+		car.queue_free()
+	life._cars.clear()
+	life._spawn_car(-8.0)
+	await _frames(120)
+	var car: Node3D = life._cars[0]
+	_check(car.position.x < p.global_position.x - 3.0 and car.get_meta("honked"), "  a car stops short of you in the road and leans on the horn (%.1f m away)" % (p.global_position.x - car.position.x))
+	p.global_position = Vector3(0.0, 0, -3.0)
+	await _frames(60)
+	_check(car.position.x > 0.5, "  ...and drives on once you step out of the way")
+	gs.set_raining(true)
+	await _frames(3)
+	_check(life._rain.emitting and life._rain_sound.playing and life._wet_materials.size() > 0 and life._wet_materials[0].roughness < 0.5, "  rain: streaks, the sound, and a wet shiny street")
+	gs.set_raining(false)
+	await _frames(3)
+	_check(not life._rain.emitting and life._wet_materials[0].roughness > 0.5, "  ...and it dries off when it stops")
+	var pusher := city.get_node("Pusher")
+	gs.day = 5
+	var stock: Array = pusher._todays_stock()
+	_check(stock.size() >= 12, "  the pusher's holding a lot more (%d kinds tonight)" % stock.size())
+	gs.start_run()

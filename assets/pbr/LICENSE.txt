@@ -1,0 +1,14 @@
+Textures from Poly Haven (https://polyhaven.com), CC0 1.0 -- public domain.
+
+asphalt: Worn Asphalt (worn_asphalt), 2 x 2 m, by Amal Kumar
+sidewalk: Concrete Pavement (concrete_pavement), 1.8 x 1.8 m, by Charlotte Baglioni
+brick: Brick Wall 02 (brick_wall_02), 2 x 2 m, by Dimitrios Savva
+wood_floor: Old Wooden Floor 02 (old_wooden_floor_02), 2.03 x 2.03 m, by Charlotte Baglioni, Jenelle van Heerden
+concrete_floor: Dirty Concrete (dirty_concrete), 3 x 3 m, by Rob Tuytel
+linoleum: Linoleum Brown (linoleum_brown), 2 x 2 m, by Rob Tuytel
+linoleum_retro: Old Linoleum Flooring 01 (old_linoleum_flooring_01), 1.99 x 1.99 m, by Charlotte Baglioni
+store_tiles: Grey Tiles (grey_tiles), 2.2 x 2.2 m, by Amal Kumar
+checker_tiles: Floor Tiles 06 (floor_tiles_06), 3 x 3 m, by Rob Tuytel
+cinder_block: Concrete Block Wall (concrete_block_wall), 2 x 2 m, by Charlotte Baglioni
+wood_panels: Wooden Panels (wooden_panels), 2.1 x 2.1 m, by Dimitrios Savva
+planks: Weathered Planks (weathered_planks), 2 x 2 m, by Dario Barresi, Dimitrios Savva

@@ -21,3 +21,11 @@ func _ready() -> void:
 func _on_wanted_changed(is_wanted: bool) -> void:
 	if is_wanted:
 		_whistle.play()
+
+## Off his hours the lookout's still on the corner, and he'll tell you when
+## to come back -- the only way to learn the pusher keeps hours at all.
+func _flavor_interact(hud: Node) -> void:
+	if not GameState.pusher_on_shift():
+		hud.show_dialogue(npc_name, "He ain't out yet. Four o'clock, maybe. Come back then.", _portrait())
+		return
+	super._flavor_interact(hud)

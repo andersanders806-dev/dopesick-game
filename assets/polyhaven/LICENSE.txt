@@ -1,0 +1,20 @@
+3D models from Poly Haven (https://polyhaven.com), CC0 1.0 -- public domain.
+
+trashbag: Trashbag by Benny Weimer
+street_rat: Street Rat by Sean Buckley
+water_manhole_cover: Water Manhole Cover by Raunox
+utility_box_01: Utility Box 01 by James Ray Cock
+security_light: Security Light by Maximilian Schuster
+old_tyre: Old Tyre by MP
+sofa_02: Sofa 02 by Kirill Sannikov
+Television_01: Television 01 by Gabriel Radić
+dartboard: Dartboard by Satyaki Mandal
+CashRegister_01: Cash Register 01 by Joe Seabuhr
+security_camera_01: Security Camera 01 by Alexander Otterbeck, Yann Kervran
+WetFloorSign_01: Wet Floor Sign 01 by Fran Calvente
+barrel_stove: Barrel Stove by MP
+plastic_crate_01: Plastic Crate 01 by PierreB3D
+propane_tank: Propane Tank by Slinc
+rollershutter_door: Rollershutter Door by MP
+plastic_monobloc_chair_01: Plastic Monobloc Chair 01 by Kuutti Siitonen
+metal_office_desk: Metal Office Desk by Ulan Cabanilla

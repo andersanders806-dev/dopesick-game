@@ -1,0 +1,12 @@
+Music, all from OpenGameArt.org:
+
+lofi_hiphop.ogg     "lofi hip hop" by omfgdude -- CC0
+                    https://opengameart.org/content/lofi-hip-hop
+lofi_loop.ogg       "Lofi Hip Hop Loop" by omfgdude -- CC0
+                    https://opengameart.org/content/lofi-hip-hop-loop
+downtempo_chase.ogg "Music loop, strong, downtempo, seamless" by Nostromo -- CC0
+                    https://opengameart.org/content/music-loop-strong-downtempo-seamless
+friendly_trap.ogg   "Friendly Trap" by Of Far Different Nature -- CC-BY 4.0
+                    (mixed with "Emotional piano loop" by extenz, CC0, and
+                    "Singularity (calm)" by vitalezzz, CC0)
+                    https://opengameart.org/content/friendly-trap-of-far-different-nature-extenz-vitalezzz

@@ -16,6 +16,11 @@ const BLACK := Color(0.08, 0.08, 0.09)
 const CARD := Color(0.72, 0.6, 0.42)
 
 const RECIPES := {
+	"tape": [
+		["box", Vector3(0.11, 0.07, 0.018), Vector3(0, 0.035, 0), Color(0.85, 0.88, 0.9, 0.55), "glass"],
+		["box", Vector3(0.1, 0.064, 0.012), Vector3(0, 0.035, 0), Color(0.12, 0.12, 0.14)],
+		["box", Vector3(0.09, 0.03, 0.013), Vector3(0, 0.045, 0), Color(0.95, 0.75, 0.2)],
+	],
 	"cigs": [
 		["box", Vector3(0.24, 0.06, 0.1), Vector3(0, 0.03, 0), WHITE],
 		["box", Vector3(0.242, 0.03, 0.102), Vector3(0, 0.045, 0), RED],
@@ -125,7 +130,9 @@ const RECIPES := {
 static func build(id: String) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Model_" + id
-	for part in RECIPES.get(id, []):
+	# Every tape looks the same on the rack: a cassette in its case.
+	var recipe: Array = RECIPES.get("tape", []) if id.begins_with("tape:") else RECIPES.get(id, [])
+	for part in recipe:
 		var mesh: PrimitiveMesh
 		var size: Vector3 = part[1]
 		if part[0] == "cyl":

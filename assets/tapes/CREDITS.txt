@@ -1,0 +1,39 @@
+Tapes for the walkman, all CC0 from OpenGameArt.org.
+
+instrumental_hip_hop_theme.ogg             "Instrumental Hip Hop Theme" by obscure music  https://opengameart.org/content/instrumental-hip-hop-theme
+grime_of_the_city.ogg                      "Grime of the City" by section31  https://opengameart.org/content/grime-of-the-city
+city_loop_0.ogg                            "City Loop" by wipics  https://opengameart.org/content/city-loop-0
+the_groove.ogg                             "The Groove" by section31  https://opengameart.org/content/the-groove
+jazzy_blues.ogg                            "Jazzy Blues" by LushoGames  https://opengameart.org/content/jazzy-blues
+wild_jazz.ogg                              "Wild Jazz" by Pro Sensory  https://opengameart.org/content/wild-jazz
+night_prowler.ogg                          "Night Prowler" by section31  https://opengameart.org/content/night-prowler
+nighttime_solitude.ogg                     "Nighttime Solitude" by celestialghost8  https://opengameart.org/content/nighttime-solitude
+midnight.ogg                               "Midnight" by AR  https://opengameart.org/content/midnight
+cyberpunk_moonlight_sonata.ogg             "Cyberpunk Moonlight Sonata" by Joth  https://opengameart.org/content/cyberpunk-moonlight-sonata
+sewer_nightclub.ogg                        "Sewer Nightclub" by section31  https://opengameart.org/content/sewer-nightclub
+1_up_nightclub.ogg                         "1-UP Nightclub" by neonarkade  https://opengameart.org/content/1-up-nightclub
+drum_and_bass.ogg                          "Drum and Bass" by bertsz  https://opengameart.org/content/drum-and-bass
+dub_improv.ogg                             "Dub Improv" by Sudocolon  https://opengameart.org/content/dub-improv
+reggae.ogg                                 "Reggae" by Pro Sensory  https://opengameart.org/content/reggae
+rock_theme.ogg                             "Rock Theme" by obscure music  https://opengameart.org/content/rock-theme
+space_synth_wave.ogg                       "Cool 80's Synth Wave" by Pro Sensory  https://opengameart.org/content/space-synth-wave
+vivid_existence_glitch_hop.ogg             "Vivid Existence" by Deva  https://opengameart.org/content/vivid-existence-glitch-hop
+xenocity_digital_acid_glitch_hop.ogg       "Xenocity - Digital Acid" by Deva  https://opengameart.org/content/xenocity-digital-acid-glitch-hop
+emptycity_background_music.ogg             "Empty City" by yd  https://opengameart.org/content/emptycity-background-music
+trance_trap_electronic_237.ogg             "Vaporwave Trap" by Dizzy Crow  https://opengameart.org/content/trance-trap-electronic-237
+the_familiar_city.ogg                      "The Familiar City" by RawGames  https://opengameart.org/content/the-familiar-city
+subtle_bass.ogg                            "Subtle Bass" by TinyWorlds  https://opengameart.org/content/subtle-bass
+blueswonkybells.ogg                        "Blues Wonky Bells" by Tozan  https://opengameart.org/content/blueswonkybells
+christian_acid_rock.ogg                    "B.M.I." by obscure music  https://opengameart.org/content/christian-acid-rock
+polygraph_city.ogg                         "Polygraph City" by RawGames  https://opengameart.org/content/polygraph-city
+
+Also used as tapes (see assets/music/CREDITS.txt): lofi_loop, lofi_hiphop,
+downtempo_chase (CC0) and friendly_trap (CC-BY 4.0 -- keep the credit).
+
+Punk tapes (in the shoebox from the start), all CC0 from OpenGameArt.org:
+
+flesh_and_blood.ogg                        "Flesh and Blood" by Pro Sensory  https://opengameart.org/content/punk-hardcore
+punk_rock_metal.ogg                        "W4CK" (Punk Rock Metal) by madworldgames  https://opengameart.org/content/punk-rock-metal-background-music
+fast_cheerful_punk.ogg                     "Fast Song" by annandistance  https://opengameart.org/content/fast-cheerful-punk-rock-lo-fi
+la_war_zone.ogg                            "L.A. War Zone" by Tsorthan Grove  https://opengameart.org/content/la-war-zone
+streets_after_midnight.ogg                 "Streets After Midnight" by Tsorthan Grove  https://opengameart.org/content/streets-after-midnight

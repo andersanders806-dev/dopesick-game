@@ -6,6 +6,7 @@ const RETARGET_INTERVAL := 0.25
 const TURN_SPEED := 10.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
 # The Kenney sprint clip is 0.5 s per cycle, two footfalls.
 const STEP_INTERVAL := 0.25
@@ -31,6 +32,7 @@ var _left_foot: bool = true
 
 func _ready() -> void:
 	add_to_group("police")
+	CharacterCast.dress(model, "police")
 	anim = CharacterAnimator.new(model, "sprint")
 	GameState.set_wanted(true)
 	catch_zone.body_entered.connect(_on_catch_body_entered)
@@ -85,8 +87,9 @@ func _update_footsteps(delta: float, moving: bool) -> void:
 		return
 	_step_timer += STEP_INTERVAL
 	_left_foot = not _left_foot
-	footsteps.stream = SFX.SOUNDS["footstep_a" if _left_foot else "footstep_b"]
+	footsteps.stream = SFX.footstep_stream()
 	footsteps.pitch_scale = randf_range(0.85, 0.95)
+	footsteps.volume_db = 2.0 + SFX.FOOTSTEP_GAIN_DB
 	footsteps.play()
 
 func _update_beacon(delta: float) -> void:
@@ -97,6 +100,8 @@ func _update_beacon(delta: float) -> void:
 		beacon.light_color = BEACON_RED if _beacon_red else BEACON_BLUE
 
 func _has_line_of_sight(player: Node) -> bool:
+	if player.get("hiding"):
+		return false
 	var space_state := get_world_3d().direct_space_state
 	var from: Vector3 = global_position + Vector3(0, 0.8, 0)
 	var to: Vector3 = player.global_position + Vector3(0, 0.8, 0)
@@ -113,6 +118,9 @@ func _give_up() -> void:
 func _on_catch_body_entered(body: Node) -> void:
 	if not body.is_in_group("player") or GameState.in_custody:
 		return
+	# Crouched out of sight behind the dumpster: he walks right past.
+	if body.get("hiding"):
+		return
 	GameState.get_busted()
 	body.dialogue_active = true  # hold still while being cuffed
 	var hud := get_tree().get_first_node_in_group("hud")
@@ -123,7 +131,13 @@ func _on_catch_body_entered(body: Node) -> void:
 	# Hold the tree ourselves: this officer is freed below, and a timer
 	# callback that calls *its* get_tree() would never fire.
 	var tree := get_tree()
+	# A bust that ends the run gets the "sent away" scene from the run-end
+	# screen instead; an ordinary one plays the arrest before the cell.
+	var run_over := GameState.strikes >= GameState.max_strikes()
 	tree.create_timer(0.9).timeout.connect(
-		func(): tree.change_scene_to_file("res://world/Jail3D.tscn")
+		func():
+			if not run_over:
+				await Cutscene.play("busted")
+			tree.change_scene_to_file("res://world/Jail3D.tscn")
 	)
 	queue_free()

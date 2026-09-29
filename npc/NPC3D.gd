@@ -54,7 +54,11 @@ signal order_fulfilled
 ## Multiplies the model's clothing colours, for telling characters that share
 ## a base model apart. White leaves it unchanged.
 @export var clothes_tint: Color = Color.WHITE
-@export var model_path: String = "res://assets/kenney/characters/character-male-b.glb"
+## Which member of the cast this is (see npc/CharacterCast.gd). When set it
+## decides both the body and its colours, and `model_path` is ignored --
+## that's how a named regular keeps the same face visit after visit.
+@export var role: String = ""
+@export var model_path: String = "res://assets/quaternius/characters/Smooth_Male_LongSleeve.fbx"
 
 @onready var model_root: Node3D = $ModelRoot
 @onready var idle_sound: AudioStreamPlayer3D = $IdleSound
@@ -62,12 +66,13 @@ signal order_fulfilled
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
 var anim: CharacterAnimator
 
 ## "idle" to stand, "sit" to sit. Kept here (not just on the animator) so it
 ## survives set_model() swapping in a different body.
-var pose: String = "idle"
+@export var pose: String = "idle"
 
 var request_id: String = ""
 var request_price: int = 0
@@ -85,6 +90,7 @@ func _ready() -> void:
 	# Random first delay so a freshly entered bar doesn't have every patron
 	# coughing on the same frame.
 	_idle_sound_timer = randf_range(1.0, IDLE_SOUND_MAX_GAP)
+	Voice.prewarm(npc_name, Array(flavor_lines.split("\n", false)))
 
 func _profile() -> Dictionary:
 	return PATRON_PROFILES.get(npc_name, {})
@@ -115,7 +121,11 @@ func play_idle_sound() -> void:
 	idle_sound.pitch_scale = randf_range(0.93, 1.07)
 	idle_sound.play()
 
+## The old mumbled "voice" -- now only a fallback for lines Voice can't
+## speak (no Piper and nothing cached).
 func _speak() -> void:
+	if Voice._piper_ok:
+		return
 	var profile := _profile()
 	if profile.is_empty():
 		return
@@ -134,9 +144,14 @@ func set_model(path: String) -> void:
 		model_root.remove_child(child)
 		child.queue_free()
 	anim = null
+	if role != "":
+		path = CharacterCast.model_for(role)
+		model_path = path
 	if path != "":
 		var model: Node = load(path).instantiate()
 		model_root.add_child(model)
+		if role != "":
+			CharacterCast.dress(model, role)
 		CharacterLook.tint_clothes(model, clothes_tint)
 		anim = CharacterAnimator.new(model)
 		anim.set_rest_clip(pose)

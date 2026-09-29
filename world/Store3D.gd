@@ -6,6 +6,10 @@ extends "res://world/WorldRoot3D.gd"
 
 ## Which store this is ("pharmacy", ...), matching GameState.REQUEST_POOL.
 @export var store_id: String = ""
+## How long after grabbing something you still look like you're stealing
+## (stuffing it under your jacket): the window a guard has to notice. Tuned
+## per store with dev-tools/balance_sim.gd.
+@export var theft_window: float = 1.0
 ## One item id per fixture, in any order -- shuffled each visit.
 @export var item_ids: Array[String] = []
 ## Each entry is one layout: a PackedVector2Array of (x, z) floor positions,
@@ -49,6 +53,7 @@ func _place_items() -> void:
 	for i in range(fixtures.size()):
 		var offset: Vector3 = fixtures[i].get_meta("item_offset", Vector3(0, 0.45, 0.5))
 		item_slots[i].position = fixtures[i].position + offset
+		item_slots[i].theft_window = theft_window
 
 ## Fixtures with a "stock" meta list (e.g. the supermarket's meat cooler)
 ## only ever hold those items; the rest share `item_ids`, shuffled.

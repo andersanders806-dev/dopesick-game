@@ -14,4 +14,4 @@ func interact(player: Node) -> void:
 		return
 	SFX.play("sleep")
 	GameState.sleep()
-	hud.show_dialogue("", "You black out... and wake up again. Day %d." % GameState.day)
+	hud.show_dialogue("", "You black out... and wake up again. Day %d, %s." % [GameState.day, GameState.clock_text()])

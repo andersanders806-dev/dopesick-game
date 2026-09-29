@@ -1,0 +1,18 @@
+{
+  "_about": "Prompts for the cutscene stills in assets/cutscenes/, painted by dev-tools/gen_cutscenes.py through AI Horde. First tried on Perchance's generator (Cinematic style), which can't be saved from a script; its style preset is approximated by style_prefix. Kept to what happened, not gore: these are about loneliness and consequence, not shock.",
+  "shared_suffix": ", gritty 1990s American inner city, dim sodium and fluorescent light, muted desaturated colours with teal shadows, film grain, no text",
+  "negative": "text, watermark, logo, caption, cartoon, anime, illustration, 3d render, gore, blood, nudity, shirtless, bright, overexposed",
+  "images": {
+    "intro_mattress": "a thin young man lying awake on a bare stained mattress on the floor of a squalid one-room apartment at dawn, grey light through a bedsheet nailed over the window, empty bottles and clothes on the floor, a bare light bulb",
+    "intro_sick": "close-up of a pale sweating young man sitting on the edge of a mattress hugging himself, shivering, hollow eyes, dark circles, cold grey morning light, cramped dirty room",
+    "intro_street": "a lone figure in a grey hoodie stepping out of a rundown apartment building onto a wet empty city street at morning, boarded windows, liquor store and pharmacy signs down the block, overcast sky",
+    "busted_cuffs": "a police officer kneeling on a young man's back, handcuffing him face down on a wet sidewalk at night, red and blue police lights reflecting in puddles, shopping bags spilled on the ground",
+    "busted_car": "view from inside the back seat of a police cruiser at night, a handcuffed young man slumped against the scratched plexiglass partition, city lights smeared on the rain-streaked window",
+    "sent_away_court": "a young man in an orange jumpsuit standing before a judge's bench in a shabby fluorescent-lit courtroom, seen from behind, a public defender beside him, tired bored faces",
+    "sent_away_bus": "a young man in an orange jumpsuit sitting alone in a prison transport bus, looking out of a barred window at a grey city passing by, overcast daylight",
+    "overdose_fade": "blurred dreamlike view of a squalid apartment ceiling and a bare light bulb, warm hazy glow, tilted dutch angle, soft focus, drifting out of consciousness",
+    "overdose_floor": "an empty dark apartment at night, a figure lying still on the floor beside a mattress, seen from the doorway, a single bare light bulb, long shadows, silent and lonely",
+    "overdose_lights": "blue and red emergency lights flickering across the ceiling and wall of a dark apartment stairwell at night, a paramedic stretcher at the top of the stairs, no faces visible"
+  },
+  "style_prefix": "cinematic film still, 35mm photograph, low-key moody lighting, "
+}

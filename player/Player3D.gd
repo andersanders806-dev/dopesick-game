@@ -1,38 +1,97 @@
 extends CharacterBody3D
 
 const BASE_SPEED := 4.2
+## Sprinting is the risk/reward half of the stealth layer: it gets you out of
+## a room fast, and it is the single loudest thing you can do in front of a
+## guard (see Guard3D.SUSPICION_SPRINTING). Withdrawal takes it away -- when
+## you are sick you cannot run, which is when you most need to.
+const SPRINT_MULT := 1.55
 const SICK_SPEED_MULT := 0.55
 const SICK_THRESHOLD := 20.0
+## Limping for a few hours after the collector's been at you.
+const HURT_SPEED_MULT := 0.75
 const TURN_SPEED := 10.0
+## Getting up to speed and pulling up: about a fifth of a second either
+## way, so starts and stops ease instead of snapping.
+const ACCEL := 24.0
+const DECEL := 30.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 
-# The Kenney walk clip is 0.67 s per full cycle, i.e. two footfalls.
+# One full walk cycle is two footfalls.
 const STEP_INTERVAL := 0.333
 
-# Kenney's pick-up clip is only 0.33 s; slowed down it reads as a
-# deliberate, furtive grab instead of a twitch.
-const PICKUP_ANIM_SPEED := 0.55
+## How long the player is rooted in place for a grab. Long enough to read
+## as deliberate rather than a twitch; the animation is stretched to fit,
+## whatever its authored length.
+const PICKUP_DURATION := 0.6
+## In withdrawal your hands shake: a grab takes up to this much longer at
+## the bottom of the meter, which is more time rooted in a guard's view.
+const TREMOR_GRAB_MULT := 0.6
+## Stomach cramps: every so often in withdrawal you double over and can't
+## move for a moment. Seconds between cramps, and how long one holds you.
+const CRAMP_INTERVAL := Vector2(9.0, 18.0)
+const CRAMP_DURATION := 0.9
+## Camera shake at full sickness: metres of drift and degrees of roll.
+const SHAKE_OFFSET := 0.08
+const SHAKE_ROLL_DEG := 1.6
 
 @onready var interact_zone: Area3D = $InteractZone
 @onready var model: Node3D = $Model
+@onready var camera: Camera3D = $CameraMount/Camera3D
 
 var nearby: Array = []
 var dialogue_active: bool = false
 var is_stealing: bool = false
+## Crouched in a hiding spot (Backyard3D). Nobody can see you -- see
+## Police3D/Guard3D._has_line_of_sight -- and moving gets you up again.
+var hiding: bool = false
 var _facing_angle: float = 0.0
 var anim: CharacterAnimator
 var _step_timer: float = 0.0
 var _left_foot: bool = true
+var _sprinting: bool = false
 var _busy_timer: float = 0.0
+var _theft_serial: int = 0
+var _camera_base: Transform3D
+var _shake_t: float = 0.0
+var _cramp_timer: float = 0.0
 
 func _ready() -> void:
 	add_to_group("player")
+	CharacterCast.dress(model, "player")
 	anim = CharacterAnimator.new(model)
 	# Hear the world from the character, not the camera hanging 9 m above.
 	$Listener.make_current()
+	_camera_base = camera.transform
+	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
+
+func _process(delta: float) -> void:
+	_update_camera_shake(delta)
+
+## The view trembles and lists in withdrawal: two sine waves at unrelated
+## rates, so it never settles into a rhythm you can tune out.
+func _update_camera_shake(delta: float) -> void:
+	var s := GameState.sickness()
+	_shake_t += delta
+	var offset := Vector3(sin(_shake_t * 1.7) + 0.5 * sin(_shake_t * 5.3), cos(_shake_t * 1.3) * 0.6, 0.0) * SHAKE_OFFSET * s
+	var roll := deg_to_rad(sin(_shake_t * 0.8) * SHAKE_ROLL_DEG * s)
+	camera.transform = _camera_base.translated_local(offset).rotated_local(Vector3.FORWARD, roll)
+
+## Doubled over by a cramp: rooted for a moment, with a groan.
+func _update_cramps(delta: float) -> void:
+	if GameState.craving > SICK_THRESHOLD:
+		_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
+		return
+	_cramp_timer -= delta
+	if _cramp_timer > 0.0:
+		return
+	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
+	_busy_timer = anim.play_once_timed("pick-up", CRAMP_DURATION)
+	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
 	if dialogue_active:
@@ -49,6 +108,17 @@ func _physics_process(delta: float) -> void:
 		_update_footsteps(delta, false, 1.0)
 		return
 
+	_update_cramps(delta)
+	if _busy_timer > 0.0:
+		return
+	if hiding:
+		var wants_move := Input.get_vector("move_left", "move_right", "move_up", "move_down").length() > 0.1
+		if not wants_move:
+			velocity = Vector3.ZERO
+			move_and_slide()
+			return
+		set_hiding(false)
+
 	var dir := Vector3(
 		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
 		0.0,
@@ -58,16 +128,27 @@ func _physics_process(delta: float) -> void:
 
 	var speed := BASE_SPEED
 	var sick := GameState.craving <= SICK_THRESHOLD
+	var hurt := GameState.is_hurt()
+	_sprinting = (not sick) and (not hurt) and dir.length() > 0.1 and Input.is_action_pressed("sprint")
 	if sick:
 		speed *= SICK_SPEED_MULT
+	elif _sprinting:
+		speed *= SPRINT_MULT
+	if hurt:
+		speed *= HURT_SPEED_MULT
 
-	velocity = dir * speed
+	var target := dir * speed
+	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
 	move_and_slide()
 	# Withdrawal slows the stride along with the movement, so it reads as a
-	# shuffle rather than the feet sliding.
-	var anim_speed := SICK_SPEED_MULT if sick else 1.0
-	anim.update(Vector2(velocity.x, velocity.z).length(), anim_speed)
-	_update_footsteps(delta, dir.length() > 0.1, anim_speed)
+	# shuffle rather than the feet sliding; so does easing in and out.
+	var moved := Vector2(velocity.x, velocity.z).length()
+	var anim_speed := (SICK_SPEED_MULT if sick else 1.0) * clampf(moved / maxf(speed, 0.01), 0.35, 1.0)
+	if _sprinting:
+		anim.play("sprint", anim_speed)
+	else:
+		anim.update(moved, anim_speed)
+	_update_footsteps(delta, dir.length() > 0.1, anim_speed * (SPRINT_MULT if _sprinting else 1.0))
 
 	if dir.length() > 0.1:
 		var target_angle := atan2(dir.x, dir.z)
@@ -86,7 +167,7 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 		return
 	_step_timer += STEP_INTERVAL
 	_left_foot = not _left_foot
-	SFX.play("footstep_a" if _left_foot else "footstep_b", -8.0, randf_range(0.92, 1.05))
+	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
@@ -100,8 +181,20 @@ func play_pickup(target_pos: Vector3) -> float:
 	if to_target.length() > 0.01:
 		_facing_angle = atan2(to_target.x, to_target.z)
 		model.rotation.y = _facing_angle
-	_busy_timer = anim.play_once("pick-up", PICKUP_ANIM_SPEED)
+	var duration := MetaProgress.pickup_duration(PICKUP_DURATION)
+	if GameState.craving <= SICK_THRESHOLD:
+		duration *= 1.0 + TREMOR_GRAB_MULT * GameState.sickness()
+	_busy_timer = anim.play_once_timed("pick-up", duration)
 	return _busy_timer
+
+func set_hiding(value: bool) -> void:
+	hiding = value
+	anim.set_rest_clip("sit" if hiding else "idle")
+	model.position.y = -0.35 if hiding else 0.0
+
+## True while actually running, for the guards' suspicion check.
+func is_sprinting() -> bool:
+	return _sprinting
 
 func is_busy() -> bool:
 	return _busy_timer > 0.0
@@ -144,4 +237,10 @@ func _on_area_exited(area: Area3D) -> void:
 
 func begin_theft_window(duration: float) -> void:
 	is_stealing = true
-	get_tree().create_timer(duration).timeout.connect(func(): is_stealing = false)
+	# Only the latest theft's timer may end the window, so a quick second grab
+	# isn't cut short by the first one's timer.
+	_theft_serial += 1
+	var serial := _theft_serial
+	get_tree().create_timer(duration).timeout.connect(func():
+		if serial == _theft_serial:
+			is_stealing = false)

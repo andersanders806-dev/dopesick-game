@@ -59,27 +59,18 @@ var _theft_serial: int = 0
 var _camera_base: Transform3D
 
 # --- Camera framing ---------------------------------------------------------
-## The rig floats free of the player (top_level) and follows a focus point
-## that leads a little in the direction you're walking, stays inside the
-## room (so small rooms don't show black past their walls), and zooms to
-## fit: in a room narrower than the view it moves in until the room fills
-## the screen. The scroll wheel nudges the zoom on top of that.
-const CAM_FOLLOW := 6.0
-const CAM_LOOK_AHEAD := 0.35
-## Ground visible around the focus at zoom 1, from the rig's 9 m height,
-## 55 degree pitch and 50 degree FOV: 9.2 m either side, but lopsided front
-## to back -- the tilted view reaches 9.3 m beyond the focus (screen top)
-## and only 4.7 m toward the camera (screen bottom).
-const CAM_HALF_WIDTH := 9.2
-const CAM_VIEW_FAR := 9.3
-const CAM_VIEW_NEAR := 4.7
-const CAM_ZOOM_RANGE := Vector2(0.5, 1.0)
-const CAM_USER_ZOOM := Vector2(0.8, 1.25)
+## The rig floats free of the player (top_level) and eases after them, so
+## the character stays in the middle of the screen wherever they walk. It
+## is the same distance in every room, so a room's size reads as its size:
+## the old rig zoomed in on small rooms and pinned itself to the walls,
+## which made rooms jump in scale and left you walking off-centre. The
+## scroll wheel moves it in and out.
+const CAM_FOLLOW := 8.0
+## Of the scene file's 9 m-high rig: close enough to read faces and hands.
+const CAM_ZOOM := 0.75
+const CAM_USER_ZOOM := Vector2(0.7, 1.4)
 var _cam_offset: Vector3
 var _cam_focus: Vector3
-var _cam_ahead: Vector3
-var _room: AABB = AABB()
-var _room_zoom: float = 1.0
 var _user_zoom: float = 1.0
 var _cam_ready: bool = false
 var _shake_t: float = 0.0
@@ -99,38 +90,15 @@ func _ready() -> void:
 	interact_zone.area_exited.connect(_on_area_exited)
 
 
-## The room's walkable area, from the navmesh the room just baked
-## (WorldRoot3D). Picks the zoom that fits the room to the screen.
-func set_room_bounds(bounds: AABB) -> void:
-	_room = bounds
-	var fit_x := bounds.size.x / (2.0 * CAM_HALF_WIDTH)
-	var fit_z := bounds.size.z / (CAM_VIEW_FAR + CAM_VIEW_NEAR)
-	_room_zoom = clampf(minf(fit_x, fit_z), CAM_ZOOM_RANGE.x, CAM_ZOOM_RANGE.y)
-	_cam_ready = false
-
 func _update_camera_rig(delta: float) -> void:
-	var zoom := _room_zoom * _user_zoom
-	var flat_vel := Vector3(velocity.x, 0.0, velocity.z)
-	_cam_ahead = _cam_ahead.lerp(flat_vel * CAM_LOOK_AHEAD, 1.0 - exp(-3.0 * delta))
-	var target := global_position + _cam_ahead
-	target.y = global_position.y
-	if _room.size != Vector3.ZERO:
-		target.x = _clamp_axis(target.x, _room.position.x, _room.end.x, CAM_HALF_WIDTH * zoom, CAM_HALF_WIDTH * zoom)
-		target.z = _clamp_axis(target.z, _room.position.z, _room.end.z, CAM_VIEW_FAR * zoom, CAM_VIEW_NEAR * zoom)
+	var target := global_position
 	# Snap after a spawn or a door; ease otherwise.
 	if not _cam_ready or _cam_focus.distance_to(target) > 8.0:
 		_cam_focus = target
 		_cam_ready = true
 	else:
 		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
-	$CameraMount.global_position = _cam_focus + _cam_offset * zoom
-
-## Keep the view -- `before` short of the focus on this axis, `after` past
-## it -- inside [lo, hi]; if the room's smaller than the view, centre it.
-static func _clamp_axis(v: float, lo: float, hi: float, before: float, after: float) -> float:
-	if hi - lo <= before + after:
-		return (lo + hi) * 0.5 + (before - after) * 0.5
-	return clampf(v, lo + before, hi - after)
+	$CameraMount.global_position = _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.

@@ -1427,8 +1427,11 @@ func _round4_checks(gs: Node) -> void:
 	jobs._on_machine(null, _player())
 	_check(gs.cash == cash_before + jobs.BOTTLES_PER_DAY / jobs.BOTTLES_PER_DOLLAR and jobs.bottles == jobs.BOTTLES_PER_DAY % jobs.BOTTLES_PER_DOLLAR, "  the machine pays a dollar a %d, keeps the change" % jobs.BOTTLES_PER_DOLLAR)
 	_player().dialogue_active = false
-	# The camera learned this room's size.
-	_check(_player()._room.size.x > 40.0, "  the camera knows how big the block is (%.0f m)" % _player()._room.size.x)
+	# The camera eases after you and settles back on you.
+	_player().global_position.x += 3.0
+	await _frames(90)
+	var off: Vector3 = _player()._cam_focus - _player().global_position
+	_check(Vector2(off.x, off.z).length() < 0.2, "  the camera settles back on you (%.2f m off)" % Vector2(off.x, off.z).length())
 	# The notebook.
 	var book = load("res://ui/Notebook.gd").new()
 	root.add_child(book)

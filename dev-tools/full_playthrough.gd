@@ -325,9 +325,10 @@ func play_pool() -> void:
 	await key(KEY_SPACE)  # past the how-to
 	await screenshot("pool_break")
 	var shots := 0
-	while not game._over and shots < 30:
+	# A game runs about 40 of our shots against the regular.
+	while not game._over and shots < 80:
 		await process_frame
-		if game._moving or game._shooter != 0:
+		if game._over or game._moving or game._shooter != 0:
 			continue
 		shots += 1
 		if game._ball_in_hand:

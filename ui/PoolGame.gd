@@ -778,13 +778,12 @@ func _ai_shots(cue: Vector2) -> Array:
 	for b in _ai_legal_targets():
 		var bp: Vector2 = b["pos"]
 		for i in _pockets.size():
-			var pocket: Vector2 = _pockets[i]
-			var to_pocket := (pocket - bp).normalized()
-			# Can the ball get into this pocket from here? Corners take a
-			# wide range of angles, sides only a fairly square one.
-			var window := 0.35 if i == 1 or i == 4 else -0.2
-			if to_pocket.dot(-_pocket_dirs[i]) < window:
+			# Can the ball get into this pocket from here, and where in the
+			# mouth does it have to go?
+			var pocket := _pocket_entry(bp, i)
+			if not pocket.is_finite():
 				continue
+			var to_pocket := (pocket - bp).normalized()
 			var ghost := bp - to_pocket * BALL_R * 2.0
 			var shot := ghost - cue
 			var cut := absf(shot.normalized().angle_to(to_pocket))
@@ -801,6 +800,26 @@ func _ai_shots(cue: Vector2) -> Array:
 			found.append({"cost": cost, "angle": shot.angle(), "power": clampf(speed / MAX_POWER, 0.08, 1.0)})
 	found.sort_custom(func(a, b): return a["cost"] < b["cost"])
 	return found
+
+## A point in pocket `i` that a ball rolled straight from `bp` reaches
+## without touching a cushion or a jaw, or Vector2.INF if there's none.
+## Aiming at the pocket's centre isn't enough: the centre sits behind the
+## jaws, so a ball sent there along a rail clips a nose and stays out.
+## Tries the centre first, then points across the mouth.
+func _pocket_entry(bp: Vector2, i: int) -> Vector2:
+	var centre: Vector2 = _pockets[i]
+	var across := (centre - bp).normalized().orthogonal()
+	for off in [0.0, 5.0, -5.0, 10.0, -10.0]:
+		var aim: Vector2 = centre + across * off
+		var clear := true
+		for seg in _segments:
+			var pts := Geometry2D.get_closest_points_between_segments(bp, aim, seg[0], seg[1])
+			if pts[0].distance_to(pts[1]) < BALL_R + 2.0:
+				clear = false
+				break
+		if clear:
+			return aim
+	return Vector2.INF
 
 ## Initial speed a ball needs to cover `dist` and still be doing `end_speed`,
 ## under the same friction and drag the table uses.

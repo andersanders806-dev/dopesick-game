@@ -148,12 +148,12 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   game waits while it's out: who wants what and from where, every opening
   hour with "open now", a map of the block with you and the pusher on it,
   and notes on the run so far. Also on the pause menu.
-- **The camera frames the room.** The rig floats free of the player and
-  follows a point that leads where you're walking, stays inside the room
-  (from the baked navmesh's bounds, so no more black past the walls) and
-  zooms in on rooms smaller than the view. The clamp knows the tilted view
-  is lopsided: 9.3 m beyond the focus, 4.7 m toward the camera. The scroll
-  wheel nudges the zoom.
+- **The camera follows you.** The rig floats free of the player and eases
+  after them, keeping the character centred on screen, at the same
+  distance in every room so a room's size reads as its size. (It used to
+  clamp to each room's walls and zoom in on small rooms, which left you
+  walking off-centre and made rooms jump in scale through a door.) The
+  scroll wheel moves it in and out.
 - **The run, told back.** `GameState.log_event()` records the run's
   moments -- waking up, the walkman, orders delivered, scores, busts,
   games won and lost, jobs, the program's days, temptation -- each with the

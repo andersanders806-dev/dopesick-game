@@ -44,6 +44,7 @@ func _ready() -> void:
 	_save(_build_pawn(), "res://world/Pawn3D.tscn")
 	_save(_build_backyard(), "res://world/Backyard3D.tscn")
 	_save(_build_music_store(), "res://world/MusicStore3D.tscn")
+	_save(_build_kart_center(), "res://world/KartCenter3D.tscn")
 	_save(_build_city(), "res://world/City3D.tscn")
 	get_tree().quit()
 
@@ -1186,6 +1187,103 @@ func _build_pawn() -> Node3D:
 	_player_and_hud(Vector3(-3.3, 0, 2.3))
 	return _root
 
+# --- Southside Speedway (kart track) --------------------------------------
+#
+# The front office of a rental kart track in an old industrial lot: a
+# chequered floor, a sign-up desk with a marshal in hi-vis, a kart up on a
+# display stand, a rack of loaner helmets, stacked tyres, a shelf of cheap
+# trophies, and the lap record on the board. The race itself is
+# ui/KartRace.gd; world/KartCenter3D.gd sells the ride.
+
+func _build_kart_center() -> Node3D:
+	_store_shell("KartCenter3D", 12.0, 8.0, "pbr:checker_tiles", 0.35, "SpawnFromKarts", Color(0.16, 0.17, 0.2), 0.34, Color(1.0, 0.95, 0.88), 1.6, Color(0.85, 0.85, 0.88), "res://world/KartCenter3D.gd")
+	var orange := Color(1.0, 0.55, 0.1)
+	var black := _color_mat(Color(0.05, 0.05, 0.06), 0.7)
+	# The sign-up desk across the back, the marshal behind it.
+	var counter := _counter(_root, "Counter", Vector3(-1.4, 0, -2.2), 3)
+	_box_mesh(counter, "Stripe", Vector3(3.2, 0.12, 0.02), Vector3(1.6, 0.85, 0.01), _color_mat(orange, 0.4, 1.5))
+	_box_mesh(counter, "Screen", Vector3(0.5, 0.32, 0.04), Vector3(2.3, 1.3, -0.3), _color_mat(Color(0.2, 0.6, 1.0), 0.2, 2.0))
+	_box_mesh(counter, "Waiver", Vector3(0.3, 0.01, 0.4), Vector3(0.9, 1.06, -0.2), _color_mat(Color(0.95, 0.95, 0.9), 0.8))
+	_person("Marshal", Vector3(0.2, 0, -3.1), "kart_marshal", "\"Five bucks, three laps. Helmet's not optional.\"\n\"Brake BEFORE the hairpin. Everybody learns that one the hard way.\"\n\"Hold the drift and let go -- blue sparks, then orange. Orange is the good one.\"\n\"The kid in the green kart holds the lap record. Don't tell him I said he's good.\"", 0.0)
+	_zone(_root, "KartDesk", Vector3(0.2, 0, -1.2), Vector3(3.4, 1.4, 1.2))
+	# Neon over the desk, and the board.
+	_label(_root, "SpeedwayNeon", "SOUTHSIDE SPEEDWAY", Vector3(0.2, 2.1, -3.95), 0.0, orange, 64, true)
+	_light(_root, "NeonGlow", Vector3(0.2, 2.0, -3.4), orange, 1.4, 5.0, false)
+	_label(_root, "PriceSign", "$5  -  3 LAPS  -  HELMET INCLUDED", Vector3(0.2, 1.75, -3.95), 0.0, Color(0.95, 0.95, 0.9), 28)
+	_box_mesh(_root, "RecordBoard", Vector3(1.8, 1.1, 0.05), Vector3(-4.2, 1.5, -3.95), black)
+	_label(_root, "RecordTitle", "LAP RECORD", Vector3(-4.2, 1.85, -3.91), 0.0, Color(1.0, 0.85, 0.3), 30, true)
+	_label(_root, "RecordTime", "0:24.81", Vector3(-4.2, 1.5, -3.91), 0.0, Color(0.95, 0.95, 0.9), 56, true)
+	_label(_root, "RecordName", "QUIET KID  #41", Vector3(-4.2, 1.18, -3.91), 0.0, Color(0.3, 0.95, 0.5), 26, true)
+	# A chequered band round the top of the walls.
+	for i in 24:
+		var mat := _color_mat(Color(0.92, 0.92, 0.9) if i % 2 == 0 else Color(0.05, 0.05, 0.05), 0.6)
+		_box_mesh(_root, "CheckN%d" % i, Vector3(0.5, 0.25, 0.02), Vector3(-5.75 + i * 0.5, 2.3, -3.97), mat)
+		_box_mesh(_root, "CheckN2_%d" % i, Vector3(0.5, 0.25, 0.02), Vector3(-5.75 + i * 0.5, 2.05, -3.97), _color_mat(Color(0.05, 0.05, 0.05) if i % 2 == 0 else Color(0.92, 0.92, 0.9), 0.6))
+	# A kart up on a display plinth in the middle of the floor.
+	var plinth := _solid(_root, "Plinth", Vector3(1.8, 0.3, 2.4), Vector3(1.6, 0.15, 1.2), _color_mat(Color(0.12, 0.12, 0.14), 0.4))
+	_box_mesh(plinth, "PlinthEdge", Vector3(1.84, 0.04, 2.44), Vector3(0, 0.14, 0), _color_mat(orange, 0.3, 2.0))
+	var kart := Node3D.new()
+	kart.name = "DisplayKart"
+	_add(_root, kart)
+	kart.position = Vector3(1.6, 0.3, 1.2)
+	kart.rotation_degrees.y = 25.0
+	var body := _color_mat(orange, 0.3)
+	_box_mesh(kart, "Tray", Vector3(0.95, 0.05, 1.55), Vector3(0, 0.12, 0), black)
+	_box_mesh(kart, "Nose", Vector3(0.95, 0.22, 0.45), Vector3(0, 0.22, -0.85), body)
+	_box_mesh(kart, "PodL", Vector3(0.22, 0.2, 0.75), Vector3(-0.62, 0.2, 0.08), body)
+	_box_mesh(kart, "PodR", Vector3(0.22, 0.2, 0.75), Vector3(0.62, 0.2, 0.08), body)
+	_box_mesh(kart, "Seat", Vector3(0.48, 0.1, 0.48), Vector3(0, 0.2, 0.25), black)
+	var seat_back := _box_mesh(kart, "SeatBack", Vector3(0.48, 0.55, 0.08), Vector3(0, 0.45, 0.52), black)
+	seat_back.rotation.x = -0.35
+	var wheel_m := MeshInstance3D.new()
+	wheel_m.name = "SteeringWheel"
+	var tor := TorusMesh.new()
+	tor.inner_radius = 0.13
+	tor.outer_radius = 0.16
+	wheel_m.mesh = tor
+	wheel_m.material_override = black
+	_add(kart, wheel_m)
+	wheel_m.position = Vector3(0, 0.56, -0.28)
+	wheel_m.rotation.x = 1.15
+	_box_mesh(kart, "Engine", Vector3(0.32, 0.32, 0.32), Vector3(0.42, 0.32, 0.6), _color_mat(Color(0.5, 0.5, 0.52), 0.4))
+	_box_mesh(kart, "Bumper", Vector3(1.3, 0.08, 0.08), Vector3(0, 0.18, 0.98), black)
+	var tyre := _color_mat(Color(0.04, 0.04, 0.04), 0.85)
+	var wheel_specs := [[-0.6, -0.72, 0.13], [0.6, -0.72, 0.13], [-0.62, 0.68, 0.14], [0.62, 0.68, 0.14]]
+	for wi in wheel_specs.size():
+		var w: Array = wheel_specs[wi]
+		var t := _cylinder(kart, "Wheel%d" % wi, w[2], 0.2, Vector3(w[0], w[2], w[1]), tyre)
+		t.rotation_degrees.z = 90.0
+	_label(kart, "Number", "1", Vector3(0, 0.38, -1.0), 180.0, Color(0.05, 0.05, 0.05), 64)
+	_light(_root, "DisplaySpot", Vector3(1.6, 2.2, 1.2), Color(1.0, 0.9, 0.75), 1.6, 4.0, true)
+	# Loaner helmets on a rack along the east wall.
+	_box_mesh(_root, "HelmetRack", Vector3(0.3, 0.05, 3.0), Vector3(5.75, 1.4, -0.5), _color_mat(Color(0.3, 0.3, 0.32), 0.4))
+	var helmet_colors := [Color(0.9, 0.9, 0.9), Color(0.85, 0.1, 0.1), Color(0.1, 0.3, 0.8), Color(0.95, 0.75, 0.1), Color(0.1, 0.1, 0.1), Color(0.9, 0.9, 0.9)]
+	for h in helmet_colors.size():
+		var helmet := MeshInstance3D.new()
+		helmet.name = "Helmet%d" % h
+		var sm := SphereMesh.new()
+		sm.radius = 0.15
+		sm.height = 0.3
+		helmet.mesh = sm
+		helmet.material_override = _color_mat(helmet_colors[h], 0.15)
+		_add(_root, helmet)
+		helmet.position = Vector3(5.75, 1.57, -1.75 + h * 0.5)
+	# Stacked tyres in the corners and a shelf of trophies.
+	var corners := [Vector3(-5.3, 0, -3.3), Vector3(5.3, 0, 3.2), Vector3(5.3, 0, 2.4)]
+	for ci in corners.size():
+		for h in 4:
+			var t := _cylinder(_root, "Tyre%d_%d" % [ci, h], 0.36, 0.22, corners[ci] + Vector3(0, 0.12 + h * 0.23, 0), tyre)
+			if h == 3:
+				t.material_override = _color_mat(Color(0.85, 0.1, 0.08), 0.6)
+	_box_mesh(_root, "TrophyShelf", Vector3(1.6, 0.05, 0.3), Vector3(3.6, 1.6, -3.8), _color_mat(Color(0.35, 0.22, 0.12), 0.5))
+	var gold := _color_mat(Color(0.95, 0.75, 0.2), 0.25)
+	gold.metallic = 0.9
+	for t in 4:
+		_cylinder(_root, "Trophy%d" % t, 0.07 + t % 2 * 0.02, 0.22 + t % 2 * 0.1, Vector3(3.0 + t * 0.4, 1.75 + t % 2 * 0.05, -3.8), gold)
+	_room_tone("city_ambience_loop.wav", -26.0)
+	_player_and_hud(Vector3(-4.6, 0, 2.6))
+	return _root
+
 # --- Tape Deck (music store) ---------------------------------------------
 
 func _build_music_store() -> Node3D:
@@ -1902,6 +2000,8 @@ func _build_city() -> Node3D:
 		{"name": "Electronics", "file": "city/building-a.glb", "x": 24.5, "sign": "ELECTRONICS", "color": Color(0.3, 0.9, 1.0),
 			"scene": "res://world/StoreElectronics3D.tscn", "door": "DoorToElectronics", "spawn": "SpawnFromElectronics"},
 		# In what used to be the low filler buildings between the shops.
+		{"name": "Karts", "file": "city/low-detail-building-a.glb", "x": -14.0, "sign": "KARTS", "color": Color(1.0, 0.55, 0.1),
+			"scene": "res://world/KartCenter3D.tscn", "door": "DoorToKarts", "spawn": "SpawnFromKarts", "z": street_z - 1.45},
 		{"name": "Pawn", "file": "city/low-detail-building-a.glb", "x": 0.0, "sign": "PAWN", "color": Color(1.0, 0.75, 0.15),
 			"scene": "res://world/Pawn3D.tscn", "door": "DoorToPawn", "spawn": "SpawnFromPawn", "z": street_z - 1.45},
 		{"name": "Music", "file": "city/low-detail-building-b.glb", "x": -7.0, "sign": "TAPE DECK", "color": Color(1.0, 0.3, 0.8),
@@ -1953,9 +2053,10 @@ func _build_city() -> Node3D:
 	_box_mesh(cruiser, "Lightbar", Vector3(0.3, 0.1, 1.2), Vector3(-0.2, 1.48, 0), _color_mat(Color(0.2, 0.3, 1.0), 0.3, 2.0))
 	_box_mesh(cruiser, "Stripe", Vector3(3.82, 0.15, 1.72), Vector3(0, 0.55, 0), _color_mat(Color(0.1, 0.15, 0.4), 0.3))
 
-	# Low filler buildings in the gaps, except the two alleys at x = 14 and
-	# x = 21: the pusher's stash and his hiding spot.
-	for gx in [-21.0, -14.0]:
+	# A low filler building in the gap by the station (the one at -14 is the
+	# kart track now), and the two alleys at x = 14 and x = 21: the
+	# pusher's stash and his hiding spot.
+	for gx in [-21.0]:
 		_model(_root, "Filler%d" % int(gx), "city/low-detail-building-a.glb" if int(gx) % 2 == 0 else "city/low-detail-building-b.glb", Vector3(gx, 0, street_z - 1.45), 5.0)
 	_model(_root, "FillerWestEnd", "city/building-e.glb", Vector3(-30.5, 0, street_z - 2.6), 5.0)
 	_model(_root, "FillerEastEnd", "city/building-c.glb", Vector3(30.5, 0, street_z - 2.8), 5.0)
@@ -2042,9 +2143,10 @@ func _build_city() -> Node3D:
 		rat.position = Vector3([-2.0, 17.0][r], 0, street_z + 0.12)
 		_ph(rat, "Model", "street_rat", Vector3.ZERO, 1.0)
 
-	# Ray, sitting on a milk crate against the wall between the apartments
-	# and the pharmacy, with everything he owns in a shopping cart beside him.
-	var ray_x := -13.2
+	# Ray, sitting on a milk crate against the wall between the kart track
+	# and the pharmacy, with everything he owns in a shopping cart beside him
+	# -- clear of the track's door at x = -14.
+	var ray_x := -12.1
 	var ray_z := street_z + 0.55
 	var crate := StaticBody3D.new()
 	crate.name = "RayCrate"

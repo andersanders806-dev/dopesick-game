@@ -68,6 +68,7 @@ const STORE_NAMES := {
 	"supermarket": "the supermarket",
 	"liquor": "the liquor store",
 	"electronics": "the electronics store",
+	"karts": "the kart track",
 }
 
 ## The clock. Four game minutes pass per real second, so a full day is six
@@ -91,6 +92,8 @@ const OPENING_HOURS := {
 	"shelter": [17, 10],
 	"pawn": [10, 19],
 	"music": [10, 21],
+	# Floodlit evenings; the track runs late.
+	"karts": [14, 24],
 }
 ## The shelter's two meal services, [start, end) hours.
 const MEAL_HOURS := [[7, 10], [17, 20]]
@@ -108,6 +111,7 @@ const SCENE_PLACE := {
 	"Shelter3D": "shelter",
 	"Pawn3D": "pawn",
 	"MusicStore3D": "music",
+	"KartCenter3D": "karts",
 }
 
 ## Credit. When you're short he'll front you a dose -- at a markup, one

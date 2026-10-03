@@ -129,6 +129,11 @@ const CAST := {
 		"model": MALE_SHIRT,
 		"look": {"Shirt": Color(0.70, 0.66, 0.56), "Pants": Color(0.22, 0.20, 0.18), "Hair": Color(0.50, 0.48, 0.46)},
 	},
+	# The kart track's desk: hi-vis orange polo, the speedway's colour.
+	"kart_marshal": {
+		"model": FEMALE_CASUAL,
+		"look": {"Shirt": Color(0.95, 0.42, 0.06), "Pants": Color(0.12, 0.12, 0.14), "Hair": Color(0.55, 0.32, 0.14)},
+	},
 	# Rush-hour floor staff (Guard3D.shift_hours): only on during the busy
 	# middle of the day, in their store's colours so they read as staff.
 	"stocker_supermarket": {

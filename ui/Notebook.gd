@@ -12,12 +12,12 @@ const RED_INK := Color(0.62, 0.12, 0.12)
 const PAGE := Rect2(190, 70, 900, 580)
 ## West to east along the block (build_rooms_3d.gd's city), for the map.
 const BLOCK := [
-	[-24.5, "Police"], [-17.5, "Home"], [-10.5, "Pharmacy"], [-7.0, "Tape Deck"], [-3.5, "Bar"],
+	[-24.5, "Police"], [-17.5, "Home"], [-14.0, "Karts"], [-10.5, "Pharmacy"], [-7.0, "Tape Deck"], [-3.5, "Bar"],
 	[0.0, "Pawn"], [3.5, "24/7 Shop"], [7.0, "Shelter"], [10.5, "Liquor"], [17.5, "Supermarket"], [24.5, "Electronics"],
 ]
 const PLACE_NAMES := {"convenience": "24/7 Shop", "pharmacy": "Pharmacy", "supermarket": "Supermarket",
 	"liquor": "Liquor store", "electronics": "Electronics", "bar": "Dive Bar", "shelter": "Shelter",
-	"pawn": "Pawn shop", "music": "Tape Deck"}
+	"pawn": "Pawn shop", "music": "Tape Deck", "karts": "Kart track"}
 
 var _page: int = 0
 var _canvas: Control

@@ -148,6 +148,69 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   game waits while it's out: who wants what and from where, every opening
   hour with "open now", a map of the block with you and the pusher on it,
   and notes on the run so far. Also on the pause menu.
+- **Southside Speedway: go-karts, $5 a ride.** The KARTS door on the
+  block (x = -14, open 14:00-24:00) leads to the front office
+  (`world/KartCenter3D.gd`): a chequered floor, a marshal at the sign-up
+  desk, a kart on a display stand, loaner helmets, the lap record on the
+  board. Pay $5 and you race three laps against five of the Dive Bar
+  regulars in `ui/KartRace.gd`, a floodlit night track in an old
+  industrial lot, built entirely in code inside its own SubViewport world.
+  - *The track* is a closed Catmull-Rom spline (`CIRCUIT`) resampled every
+    metre into points, tangents, normals and signed curvature, and
+    everything reads those samples: the asphalt and gravel ribbons, painted
+    edge lines, red-and-white kerbs on every bend under ~40 m radius (one
+    vertex-coloured mesh), tyre walls (a MultiMesh of ~3000 tyres, spaced
+    evenly along the wall rather than the centre line), floodlight masts
+    with real spotlights, a grandstand with a MultiMesh crowd, a pit
+    building, sponsor boards from businesses on the block, cones at the
+    apexes, a start gantry with five working start lights, a chequered
+    grid, and a skyline of lit towers past the fence. The layout was
+    checked for no bend tighter than 9 m (the walls sit 7 m out) and 30 m+
+    between separate parts of the track.
+  - *Karts* are arcade, not a physics engine: speed along the nose, slip
+    across it that grip bleeds off, a yaw rate from the wheel. Collisions
+    are against the track itself (distance from the centre line), so a wall
+    hit is exact and never snags: it bounces you back in and costs pace.
+    The gravel slows you; karts bump each other. Each kart is modelled from
+    primitives (nose, pods, seat, engine, exhaust, number board, slicks
+    that spin and steer, a steering wheel that turns) with the driver's
+    actual character model seated in it, wearing a helmet.
+  - *Drifting* follows the Mario Kart mini-turbo (researched from public
+    Godot kart write-ups): hold Shift or Space while steering at speed and
+    the kart hops into a drift. In a drift the wheel sets an *arc*, from
+    7 m at full lock to 30 m at full counter-steer, so it's controllable at
+    any speed. Hold ~1 s for blue sparks, ~2 s for orange; let go for a
+    blue (0.8 s) or orange (1.4 s) turbo, up to 35% over top speed, with
+    exhaust flame, a wider FOV and a whoosh. Drifts and hard braking lay
+    rubber on the asphalt (a ring-buffered MultiMesh of skid marks).
+  - *The AI* chases a point ahead on the line ("chase the rabbit"), shifted
+    into a lane toward the apex and around slower karts, brakes for the
+    curvature coming up (v = sqrt(a / curvature)), drifts the long bends,
+    and gets a mild rubber band so a race stays close. Skill sets top speed
+    and cornering.
+  - *Race flow:* a slow camera swing round the grid, five red lights, GO,
+    a chase cam that swings wide in a drift and shakes on a hit, lap and
+    "FINAL LAP" banners, wrong-way warning, then an orbiting victory camera
+    and a results board. The HUD has position, lap, lap/best/total times,
+    the running order with gaps, a minimap, a speedometer, and the drift
+    and turbo meter. E races again for $5; Esc leaves (mid-race it asks
+    first, and the $5 stays spent).
+  - *Sound* is synthesised: a two-stroke engine generated live from your
+    speed and throttle, the pack as a drone that swells when they're close,
+    tyre squeal while drifting, start beeps, thuds, the turbo whoosh, and a
+    crowd cheer at the flag.
+  - *Stakes:* the day's first race pays the podium $15 / $8 / $5; after
+    that you're racing for the board. The world waits while you race (like
+    pool), it goes in the run diary, and finishing takes the edge off the
+    craving a little.
+  - *Frame rate:* the race renders like the rooms, below native and
+    upscaled with FSR at whatever scale Graphics' governor has settled on,
+    so it runs ~55 FPS on the UHD 620 that does ~45 on the block; the moon
+    shadow is High-only and the tyres don't cast shadows.
+  - *Tests:* the smoke test sells a ride, runs a whole race on
+    `autopilot`, checks prize money (once a day), that the clock waited,
+    and that a drift held through the track's longest bend charges a blue
+    and then an orange turbo.
 - **The camera follows you.** The rig floats free of the player and eases
   after them, keeping the character centred on screen, at the same
   distance in every room so a room's size reads as its size. (It used to

@@ -746,6 +746,7 @@ func _run() -> void:
 	await _regulars_checks(gs)
 	await _round4_checks(gs)
 	await _street_life_checks(gs)
+	await _kart_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -1484,4 +1485,112 @@ func _street_life_checks(gs: Node) -> void:
 	gs.day = 5
 	var stock: Array = pusher._todays_stock()
 	_check(stock.size() >= 12, "  the pusher's holding a lot more (%d kinds tonight)" % stock.size())
+	gs.start_run()
+
+func _kart_checks(gs: Node) -> void:
+	print("== Southside Speedway: $5 a ride, three laps, prize money once a day")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var door := city.find_child("DoorToKarts", true, false)
+	_check(door != null and door.target_scene.ends_with("KartCenter3D.tscn"), "  the kart track has a door on the block")
+	_check(not gs.is_open("karts"), "  ...shut at 13:00")
+	gs.clock = 19 * 60
+	_check(gs.is_open("karts"), "  ...open at 19:00")
+	var track := await _load("res://world/KartCenter3D.tscn")
+	_check(track.find_child("KartDesk", true, false) != null, "  there's a desk to sign up at")
+	var p := _player()
+	gs.cash = 20
+	track._start_race(p)
+	await _frames(2)
+	var race: Node = null
+	for c in root.get_children():
+		if c.has_method("_ai_inputs"):
+			race = c
+	_check(race != null and gs.cash == 15, "  a ride costs $5 ($20 -> $%d)" % gs.cash)
+	_check(race._karts.size() == 6, "  six karts on the grid")
+	var clock_before: float = gs.clock
+	var placed := []
+	race.finished.connect(func(place): placed.append(place))
+	race.autopilot = true
+	var frames := 0
+	while not race._results_shown and frames < 60 * 240:
+		await physics_frame
+		frames += 1
+	_check(race._results_shown and placed.size() == 1, "  the race runs three laps to a result (%s, %.0fs)" % [race.ORDINALS[placed[0] - 1] if placed else "none", frames / 60.0])
+	var laps_ok := true
+	for k in race._karts:
+		laps_ok = laps_ok and k["finished"] and float(k["best_lap"]) > 15.0 and float(k["best_lap"]) < 60.0
+	_check(laps_ok, "  every kart finishes with a sane lap time")
+	var prize: int = race.PRIZES[placed[0] - 1] if placed and placed[0] <= race.PRIZES.size() else 0
+	_check(gs.cash == 15 + prize, "  the podium pays ($15 -> $%d)" % gs.cash)
+	_check(is_equal_approx(gs.clock, clock_before), "  the day waits while you race")
+	race._close()
+	await _frames(3)
+	_check(not p.dialogue_active and track.visible, "  and you're back in the office afterwards")
+	# Second race of the day: no prize money.
+	track._start_race(p)
+	await _frames(2)
+	for c in root.get_children():
+		if c.has_method("_ai_inputs"):
+			race = c
+	race.autopilot = true
+	var cash_before: int = gs.cash
+	frames = 0
+	while not race._results_shown and frames < 60 * 240:
+		await physics_frame
+		frames += 1
+	_check(gs.cash == cash_before, "  the prize only pays once a day")
+	race._close()
+	await _frames(3)
+	# Drifting: held through the longest bend, steering to match it like a
+	# player would, ~1 s charges a blue turbo and ~2 s an orange one.
+	race = load("res://ui/KartRace.gd").new()
+	root.add_child(race)
+	race.start()
+	race._phase = race.Phase.RACE
+	var n: int = race._pts.size()
+	var bend := 0
+	var bend_sum := 0.0
+	for k in n:
+		var sum := 0.0
+		for o in 40:
+			sum += race._curv[(k + o) % n]
+		if absf(sum) > bend_sum:
+			bend_sum = absf(sum)
+			bend = k
+	for want in [[1.2, 1, "blue"], [2.2, 2, "orange"]]:
+		var you: Dictionary = race._karts[0]
+		var k0 := (bend - 8 + n) % n
+		you["pos"] = race._pts[k0]
+		you["k"] = k0
+		you["yaw"] = atan2(-race._tan[k0].x, -race._tan[k0].z)
+		you["vel"] = race._tan[k0] * 15.0
+		for key in ["boost", "drift_t", "steer", "hop"]:
+			you[key] = 0.0
+		you["drift"] = 0
+		you["boost_kind"] = 0
+		var t := 0.0
+		var held := true
+		while t < want[0]:
+			var kk: int = you["k"]
+			var fwd := Vector3(-sin(you["yaw"]), 0, -cos(you["yaw"]))
+			var head_err: float = fwd.signed_angle_to(race._tan[kk], Vector3.UP)
+			var lat: float = race._lateral(you["pos"], kk)
+			var kappa: float = race._curv[(kk + 3) % n] + lat * 0.02 - head_err * 0.15
+			var steer := signf(race._curv[(bend + 5) % n])
+			if int(you["drift"]) != 0:
+				var f: float = (absf(kappa) - 1.0 / race.DRIFT_RADIUS.y) / (1.0 / race.DRIFT_RADIUS.x - 1.0 / race.DRIFT_RADIUS.y)
+				steer = float(you["drift"]) * clampf(2.0 * f - 1.0, -1.0, 1.0)
+			race._drive(you, steer, 1.0, true, 1.0 / 60.0, true)
+			you["k"] = race._nearest(you["pos"], you["k"])
+			if t > 0.2 and int(you["drift"]) == 0:
+				held = false
+			t += 1.0 / 60.0
+		race._drive(you, 0.0, 1.0, false, 1.0 / 60.0, true)
+		_check(held and int(you["boost_kind"]) == want[1] and float(you["boost"]) > 0.0, "  hold a drift %.1fs through the bend, let go: %s turbo (%.2fs)" % [want[0], want[2], you["boost"]])
+	race._close()
+	await _frames(3)
 	gs.start_run()

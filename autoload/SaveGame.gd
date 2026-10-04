@@ -23,7 +23,8 @@ const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "str
 	"tolerance", "last_dose_at", "run_time", "naloxone", "doses_taken", "active_duration",
 	"debt", "debt_due", "hurt_until", "homeless_trust", "has_walkman", "tapes",
 	"daily_used", "last_meal_slot", "orders_delivered", "cash_earned", "bar_patrons",
-	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary"]
+	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary",
+	"headline", "headline_day", "sabotage_day", "rep", "store_heat"]
 
 ## Where to put the player once the saved room has loaded.
 var pending_position = null

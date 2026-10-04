@@ -148,6 +148,45 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   game waits while it's out: who wants what and from where, every opening
   hour with "open now", a map of the block with you and the pusher on it,
   and notes on the run so far. Also on the pause menu.
+- **Word on the block: a different day, every day** (`autoload/Headlines.gd`).
+  Each day rolls one event, announced in a strip under the HUD when you're
+  up and noted at the top of the notebook: *crackdown* (staff x1.25, the
+  beat cop sees 35% further and comes back sooner, pusher +25%), *delivery
+  strike* (supermarket shut, no truck or dock job), *pool tournament* ($20
+  in, $80 pot, once), *storm* (rain all day, fewer people, sleepier staff),
+  *payday* (orders pay x1.4, busier street), *dry spell* (6-8 kinds at the
+  pusher, +50%), *Speedway Cup* (karts open at noon, triple prizes), *track
+  shut* (the day after a carburetor goes missing), or a quiet day. Day one
+  is always quiet. It saves with the run; tests pin it with
+  `Headlines.forced`.
+- **The regulars remember you** (`GameState.rep`, -5..5 by name). Deliver
+  what they asked for and they like you more, and pay $3 a point extra.
+  At 2+ they tip you off once a day about a store's staff (that clerk
+  watches x0.7 for the day). Sell their order to the bartender or the
+  pawnshop instead and they hear about it; at -2 they won't give you work,
+  and they have a word with the clerk where you'd steal it (x1.3 for two
+  days). The notebook lists who feels what.
+- **The kart hustle.** Big Eddie hangs around the kart office
+  (`npc/KartHustler3D.gd`) and pays $30 for a thrown race: 4th or worse,
+  within 8 s of the kart ahead and without driving the wrong way, or it's
+  "too obvious" and he doesn't pay. Take the podium after shaking on it and
+  he's burned (-2), and stops showing up. When the pusher's on shift his
+  runner takes $10 on yourself; a podium pays $25. The spares box behind
+  the desk has a carburetor ($30 at the pawnshop): get seen (35%) and
+  you're thrown out for the day; don't, and the track's shut tomorrow.
+- **Losing the police.** Two hiding spots on the block (behind pallets in
+  the alley mouth at x = 14, and the far end of the dumpster), plus the
+  one in the lot out back. Walking among passersby, a cop more than 5 m
+  off loses you in the crowd. And officers search now: one who saw you
+  walks to where he lost you and checks the hiding spots within 4.5 m of
+  it, so ducking in right in front of him gets you found -- break line of
+  sight first, then hide. One who never saw you (called in by a clerk)
+  gives up after 4 s, as before.
+- **Withdrawal you can see.** As the meter bottoms out the room's colour
+  drains (saturation down to 30%, a harder contrast), every neon sign on
+  the block starts to stutter, people react to how you look, and in the
+  notebook your own handwriting swims -- letters swap in item and store
+  names. All of it comes back as you do.
 - **Southside Speedway: go-karts, $5 a ride.** The KARTS door on the
   block (x = -14, open 14:00-24:00) leads to the front office
   (`world/KartCenter3D.gd`): a chequered floor, a marshal at the sign-up

@@ -72,6 +72,9 @@ var opponent_name: String = "Regular"
 ## 0..1: how precise the opponent is.
 var skill: float = 0.5
 var bet: int = 5
+## What a win pays, if it isn't just the stake back from the other side --
+## a tournament pot (Headlines).
+var prize: int = -1
 
 var _balls: Array = []  # of Dictionary, index 0 is the cue ball
 var _pockets: Array[Vector2] = []
@@ -118,7 +121,8 @@ var _ball_shader: Shader
 var _sounds := {}
 var _voices: Array = []
 
-func start(opponent: String, opponent_skill: float, stake: int) -> void:
+func start(opponent: String, opponent_skill: float, stake: int, pot := -1) -> void:
+	prize = pot
 	opponent_name = opponent
 	skill = opponent_skill
 	bet = stake
@@ -700,7 +704,7 @@ func _start_turn(who: int) -> void:
 		_ai_timer = 0.9
 
 func _end_game(won: bool, line: String) -> void:
-	_message = line + ("  You take the $%d." % bet if won else "  %s holds out a hand. $%d, pal." % [opponent_name, bet])
+	_message = line + ("  You take the $%d." % (prize if prize > 0 else bet) if won else "  %s holds out a hand. $%d, pal." % [opponent_name, bet])
 	_finish(won)
 
 func _finish(won: bool) -> void:
@@ -708,9 +712,10 @@ func _finish(won: bool) -> void:
 	GameState.log_event(("Won $%d at eight-ball off %s." if won else "Lost $%d at eight-ball to %s.") % [bet, opponent_name])
 	_moving = false
 	_charging = false
+	var winnings := prize if prize > 0 else bet
 	if won:
-		GameState.cash += bet
-		GameState.cash_earned += bet
+		GameState.cash += winnings
+		GameState.cash_earned += winnings
 		GameState.cash_changed.emit(GameState.cash)
 		SFX.play("cash")
 	else:

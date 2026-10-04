@@ -14,6 +14,9 @@ func _initialize() -> void:
 	# Don't touch the player's progress, settings or saved run.
 	Engine.set_meta("sandbox", true)
 	await process_frame
+	# A quiet day every day unless a check asks for something else.
+	root.get_node("Headlines").forced = "quiet"
+	root.get_node("Headlines").roll(root.get_node("GameState").day)
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
@@ -747,6 +750,11 @@ func _run() -> void:
 	await _round4_checks(gs)
 	await _street_life_checks(gs)
 	await _kart_checks(gs)
+	await _headline_checks(gs)
+	await _rep_checks(gs)
+	await _hustle_checks(gs)
+	await _search_checks(gs)
+	await _sick_world_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -906,7 +914,8 @@ func _debt_checks(gs: Node) -> void:
 
 	var debt_before: int = gs.debt
 	gs.cash = 5
-	_check(gs.pay_debt(5) == 5 and gs.debt == debt_before - 5, "  paying some back brings the debt down")
+	# A dollar, so there's always some left for the collector to come for.
+	_check(gs.pay_debt(1) == 1 and gs.debt == debt_before - 1, "  paying some back brings the debt down")
 
 	# Overdue, broke: the collector comes.
 	gs.cash = 0
@@ -1593,4 +1602,278 @@ func _kart_checks(gs: Node) -> void:
 		_check(held and int(you["boost_kind"]) == want[1] and float(you["boost"]) > 0.0, "  hold a drift %.1fs through the bend, let go: %s turbo (%.2fs)" % [want[0], want[2], you["boost"]])
 	race._close()
 	await _frames(3)
+	gs.start_run()
+
+func _headline_checks(gs: Node) -> void:
+	print("== Word on the block: one thing different every day")
+	_close_menus()
+	var hl := root.get_node("Headlines")
+	gs.start_run()
+	hl.forced = ""
+	hl.roll(1)
+	_check(hl.today() == "quiet", "  day one is always quiet")
+	var seen := {}
+	for d in range(2, 60):
+		hl.roll(d)
+		seen[hl.today()] = true
+	_check(seen.size() >= 6, "  and after that it varies (%d kinds in 58 days)" % seen.size())
+	gs.clock = 12 * 60
+	hl.forced = "strike"
+	hl.roll(gs.day)
+	_check(not gs.is_open("supermarket") and not hl.delivery_today(), "  delivery strike: supermarket shut, no truck")
+	gs.clock = 7 * 60
+	var yard := await _load("res://world/Backyard3D.tscn")
+	await _frames(2)
+	_check(not is_instance_valid(yard.get_node_or_null("Item1")), "  ...and nothing on the dock")
+	gs.clock = 12 * 60
+	hl.forced = "quiet"
+	hl.roll(gs.day)
+	var calm: float = gs.staff_alertness()
+	var calm_price: int = gs.price_of("heroin")
+	hl.forced = "crackdown"
+	hl.roll(gs.day)
+	_check(gs.staff_alertness() > calm * 1.2 and gs.price_of("heroin") > calm_price, "  crackdown: staff x%.2f, heroin $%d -> $%d" % [gs.staff_alertness() / calm, calm_price, gs.price_of("heroin")])
+	hl.forced = "drought"
+	hl.roll(gs.day)
+	var r: Vector2i = hl.pusher_stock_range(Vector2i(12, 17))
+	_check(r.y <= 8 and gs.price_of("heroin") >= int(calm_price * 1.4), "  dry spell: %d-%d kinds, heroin $%d" % [r.x, r.y, gs.price_of("heroin")])
+	hl.forced = "payday"
+	hl.roll(gs.day)
+	_check(gs.order_price("Wiry Guy", 50) == 70, "  payday: a $50 order pays $%d" % gs.order_price("Wiry Guy", 50))
+	gs.clock = 12 * 60 + 30
+	hl.forced = "kart_cup"
+	hl.roll(gs.day)
+	_check(gs.is_open("karts") and hl.kart_prize_mult() == 3, "  Speedway Cup: karts open at 12:30, triple prizes")
+	hl.forced = "storm"
+	hl.roll(gs.day)
+	gs._roll_weather()
+	_check(gs.raining, "  storm: raining, and it stays raining")
+	gs.set_raining(false)
+	hl.forced = ""
+	gs.sabotage_day = gs.day + 1
+	hl.roll(gs.day + 1)
+	_check(hl.today() == "track_shut" and not gs.is_open("karts"), "  the day after the carburetor goes missing, the track's shut")
+	# The banner, once a day.
+	hl.forced = "payday"
+	hl.roll(gs.day)
+	hl.announced_day = -1
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	var hud = city.get_tree().get_first_node_in_group("hud")
+	_check(hud._headline_panel.visible and hud._headline_title.text.contains("PAYDAY"), "  the HUD announces it (\"%s\")" % hud._headline_title.text)
+	# It saves with the run.
+	gs.clock_running = false
+	root.get_node("SaveGame").save()
+	hl.forced = "quiet"
+	hl.roll(gs.day)
+	hl.forced = ""
+	root.get_node("SaveGame").continue_run()
+	await _frames(10)
+	_check(gs.headline == "payday", "  a saved run keeps its headline (%s)" % gs.headline)
+	root.get_node("SaveGame").delete()
+	hl.forced = "quiet"
+	gs.start_run()
+	hl.roll(gs.day)
+
+func _rep_checks(gs: Node) -> void:
+	print("== The regulars remember you")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 20 * 60
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	var p := _player()
+	var hud = bar.get_tree().get_first_node_in_group("hud")
+	var patron = bar.patrons[0]
+	var who: String = patron.npc_name
+	var item: String = patron.request_id
+	var base_price: int = gs.bar_patrons[0]["price"]
+	gs.steal_item(item)
+	var cash_before: int = gs.cash
+	patron.interact(p)
+	_check(gs.rep_of(who) == 1 and gs.cash == cash_before + base_price, "  delivering: %s likes you more (%d), and pays $%d" % [who, gs.rep_of(who), gs.cash - cash_before])
+	hud.advance_or_close_dialogue()
+	# A friend tips you off about a store.
+	var patron2 = bar.patrons[1]
+	var who2: String = patron2.npc_name
+	var store: String = gs.item_info(patron2.request_id)["store"]
+	gs.rep[who2] = 2
+	var before: float = gs.store_alertness(store)
+	patron2.interact(p)
+	_check(gs.store_alertness(store) < before * 0.8 and hud.text_label.text.contains("listen"), "  a friend tips you off: %s watches x%.2f today" % [store, gs.store_alertness(store) / before])
+	hud.advance_or_close_dialogue()
+	# Sell what someone wanted to someone else, twice over: a grudge.
+	var patron3 = bar.patrons[2]
+	var who3: String = patron3.npc_name
+	var item3: String = patron3.request_id
+	var store3: String = gs.item_info(item3)["store"]
+	gs.rep[who3] = -1
+	var heat_before: float = gs.store_alertness(store3)
+	gs.steal_item(item3)
+	gs.fence_everything()
+	_check(gs.rep_of(who3) == -2 and gs.store_alertness(store3) > heat_before * 1.2, "  sell their order elsewhere: %s holds a grudge and talks to the clerk (x%.2f)" % [who3, gs.store_alertness(store3) / heat_before])
+	patron3.interact(p)
+	_check(hud.text_label.text.find("$") == -1, "  ...and won't give you work (\"%s\")" % hud.text_label.text.left(40))
+	hud.advance_or_close_dialogue()
+	gs.start_run()
+
+func _hustle_checks(gs: Node) -> void:
+	print("== The kart hustle: Eddie's money, the runner's book, the spares box")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 19 * 60
+	var track := await _load("res://world/KartCenter3D.tscn")
+	var p := _player()
+	var hud = track.get_tree().get_first_node_in_group("hud")
+	var eddie := track.find_child("BigEddie", true, false)
+	_check(eddie != null, "  Big Eddie's hanging around the office")
+	track.accept_throw("Big Eddie", 30)
+	_check(track.throw_deal_active(), "  ...and you can take his money to lose")
+	# Score the throw three ways without running whole races.
+	var race = load("res://ui/KartRace.gd").new()
+	root.add_child(race)
+	race.start("player", {"kind": "throw", "by": "Big Eddie", "pay": 30})
+	var cash0: int = gs.cash
+	race._finish_order.assign([1, 2, 3])
+	race._karts[3]["time"] = 95.0
+	race._karts[0]["time"] = 99.0
+	race._settle_deal(4)
+	_check(gs.cash == cash0 + 30 and gs.rep_of("Big Eddie") == 1, "  4th, four seconds back: Eddie pays $%d" % (gs.cash - cash0))
+	cash0 = gs.cash
+	race._karts[0]["time"] = 120.0
+	race._settle_deal(4)
+	_check(gs.cash == cash0 and gs.rep_of("Big Eddie") == 0, "  4th but 25 seconds back: too obvious, no pay")
+	race._finish_order.assign([1])
+	race._settle_deal(2)
+	_check(gs.rep_of("Big Eddie") == -2, "  2nd: you crossed him (%d)" % gs.rep_of("Big Eddie"))
+	race._deal = {"kind": "bet", "stake": 10, "pays": 25}
+	cash0 = gs.cash
+	race._settle_deal(3)
+	_check(gs.cash == cash0 + 25, "  $10 on yourself, 3rd: the runner pays $25")
+	race._close()
+	await _frames(3)
+	# Burned him: he doesn't show next time.
+	track = await _load("res://world/KartCenter3D.tscn")
+	_check(track.find_child("BigEddie", true, false) == null, "  ...and once you've burned Eddie he stays away")
+	# The spares box.
+	p = _player()
+	hud = track.get_tree().get_first_node_in_group("hud")
+	track.parts_seen_chance = 1.0
+	track._on_parts(null, p)
+	_check(not gs.has_item("carburetor") and not gs.daily_available("kart_banned"), "  caught in the spares box: thrown out for the day")
+	hud.advance_or_close_dialogue()
+	gs.daily_used.erase("kart_parts")
+	gs.daily_used.erase("kart_banned")
+	track.parts_seen_chance = 0.0
+	track._on_parts(null, p)
+	_check(gs.has_item("carburetor") and gs.sabotage_day == gs.day + 1, "  not seen: a carburetor in your jacket, and the track's shut tomorrow")
+	hud.advance_or_close_dialogue()
+	_check(load("res://npc/PawnBroker3D.gd").offer_for("carburetor") == 30, "  the pawnshop gives $30 for it")
+	gs.start_run()
+
+func _search_checks(gs: Node) -> void:
+	print("== Losing the police: crowds, hiding spots, and a search")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var p := _player()
+	_check(city.find_child("AlleyHide", true, false) != null and get_nodes_in_group("hide_spots").size() >= 2, "  hiding spots on the block (%d)" % get_nodes_in_group("hide_spots").size())
+	# In a crowd.
+	var walker: Node3D = null
+	for w in get_nodes_in_group("pedestrians"):
+		walker = w
+		break
+	if walker:
+		p.global_position = walker.global_position + Vector3(0.6, 0, 0)
+		var cop = PoliceScene.instantiate()
+		city.add_child(cop)
+		cop.global_position = p.global_position + Vector3(7.0, 0, 1.5)
+		await _frames(2)
+		p.global_position = walker.global_position + Vector3(0.6, 0, 0)
+		_check(p.in_crowd() and not cop._has_line_of_sight(p), "  walking among passersby, a cop 7 m off loses you")
+		cop.queue_free()
+		gs.set_wanted(false)
+		await _frames(2)
+	# Seen ducking in: he checks the spot and finds you.
+	var spot := city.find_child("AlleyHide", true, false) as Node3D
+	for w in get_nodes_in_group("pedestrians"):
+		w.queue_free()
+	p.global_position = spot.global_position
+	await _frames(3)
+	city._on_hide_spot(spot, p)
+	var cop2 = PoliceScene.instantiate()
+	city.add_child(cop2)
+	cop2.global_position = spot.global_position + Vector3(-6.0, 0, 3.0)
+	cop2._saw_player = true
+	cop2._last_seen = spot.global_position + Vector3(-1.0, 0, 0.5)
+	var waited := 0
+	while not gs.in_custody and is_instance_valid(cop2) and waited < 60 * 20:
+		await _frames(10)
+		waited += 10
+	var found: bool = gs.in_custody or current_scene.name == "Jail3D"
+	# Let the arrest finish (cutscene, then the cell) before moving on.
+	var settle := 0
+	while current_scene.name != "Jail3D" and settle < 60 * 15:
+		await _frames(10)
+		settle += 10
+	_check(found and current_scene.name == "Jail3D", "  seen going in: he searches the spot and finds you (%.1fs)" % (waited / 60.0))
+	await _frames(10)
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 13 * 60
+	city = await _load("res://world/City3D.tscn")
+	p = _player()
+	spot = city.find_child("DumpsterHide", true, false) as Node3D
+	for w in get_nodes_in_group("pedestrians"):
+		w.queue_free()
+	p.global_position = spot.global_position
+	await _frames(3)
+	city._on_hide_spot(spot, p)
+	var cop3 = PoliceScene.instantiate()
+	city.add_child(cop3)
+	cop3.global_position = Vector3(2.0, 0, 1.0)
+	cop3._saw_player = true
+	cop3._last_seen = Vector3(8.0, 0, -2.5)
+	waited = 0
+	while gs.wanted and waited < 60 * 25:
+		await _frames(10)
+		waited += 10
+	_check(not gs.wanted and not gs.in_custody, "  out of sight first, then hidden: he searches where he lost you and gives up (%.1fs)" % (waited / 60.0))
+	p.set_hiding(false)
+	gs.start_run()
+
+func _sick_world_checks(gs: Node) -> void:
+	print("== Withdrawal you can see")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 21 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var hud = city.get_tree().get_first_node_in_group("hud")
+	gs.craving = 100.0
+	await _frames(3)
+	var well_sat: float = hud._graded_env.adjustment_saturation
+	var life = city.get_node("StreetLife")
+	var well_signs: int = life._flicker.size()
+	gs.craving = 0.0
+	await _frames(3)
+	_check(hud._graded_env.adjustment_saturation < well_sat * 0.5, "  sick, the colour drains out (saturation %.2f -> %.2f)" % [well_sat, hud._graded_env.adjustment_saturation])
+	_check(life._flicker.size() > well_signs, "  ...and the neon starts to stutter (%d signs -> %d)" % [well_signs, life._flicker.size()])
+	var book = load("res://ui/Notebook.gd").new()
+	var name: String = "a bottle of good whiskey"
+	_check(book._misread(name) != name, "  ...and your notes swim (\"%s\")" % book._misread(name))
+	book.free()
+	var npc = load("res://npc/NPC3D.gd").new()
+	var reacted := 0
+	for i in 40:
+		if npc._sick_prefix() != "":
+			reacted += 1
+	npc.free()
+	_check(reacted > 5, "  ...and people notice ( %d of 40 lines)" % reacted)
+	gs.craving = 100.0
+	await _frames(3)
+	_check(absf(hud._graded_env.adjustment_saturation - well_sat) < 0.01, "  well again, the colour comes back")
 	gs.start_run()

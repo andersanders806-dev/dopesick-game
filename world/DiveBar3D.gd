@@ -59,7 +59,7 @@ func _new_patron(seat: int, current: Array) -> Dictionary:
 	var name: String = PATRON_NAMES.filter(func(n): return n not in taken_names).pick_random()
 	if seat < 0:
 		seat = range(SEATS.size()).filter(func(s): return s not in taken_seats).pick_random()
-	var order: Dictionary = GameState.REQUEST_POOL.filter(func(r): return r["id"] not in taken_items).pick_random()
+	var order: Dictionary = GameState.REQUEST_POOL.filter(func(r): return r["id"] not in taken_items and not r.get("no_order", false)).pick_random()
 	# "model" is kept in the saved entry for compatibility with runs saved
 	# before looks were tied to names; nothing reads it any more.
 	return {"name": name, "model": "", "seat": seat, "request_id": order["id"], "price": order["price"], "fulfilled": false}
@@ -81,11 +81,13 @@ func _apply_patrons() -> void:
 		patrons[i].npc_name = entry["name"]
 		patrons[i].role = entry["name"]
 		patrons[i].set_model("")
-		patrons[i].set_request(entry["request_id"], entry["price"])
+		# What they pay today: payday, and a bit extra if they like you.
+		patrons[i].set_request(entry["request_id"], GameState.order_price(entry["name"], entry["price"]))
 		patrons[i].order_fulfilled.connect(func():
 			entry["fulfilled"] = true
 			GameState.orders_delivered += 1
-			GameState.log_event("Brought %s what they asked for: %s." % [entry["name"], GameState.item_name_for(entry["request_id"])]))
+			GameState.log_event("Brought %s what they asked for: %s." % [entry["name"], GameState.item_name_for(entry["request_id"])])
+			GameState.change_rep(entry["name"], 1))
 
 # --- Pool for money -----------------------------------------------------
 
@@ -160,16 +162,27 @@ func _connect_pool() -> void:
 	if zone:
 		zone.interacted.connect(_on_pool)
 
+## Tournament night (Headlines): one shot a day at the final, $20 in and
+## the whole $80 pot to the winner.
+const TOURNAMENT := {"bet": 20, "pot": 80, "name": "The Champ", "skill": 0.7,
+	"line": "The tournament's down to you and a guy in a bowling shirt with CHAMP stitched on it. \"Twenty in, eighty to the winner. Break.\""}
+
 func _on_pool(_zone: Area3D, player: Node) -> void:
 	player.dialogue_active = true
-	var options: Array = POOL_TABLES.map(func(t): return "$%d against %s" % [t["bet"], t["name"]])
+	var tables: Array = POOL_TABLES.duplicate()
+	if Headlines.is_today("tournament") and GameState.daily_available("pool_tournament"):
+		tables.append(TOURNAMENT)
+	var options: Array = tables.map(func(t): return ("Tournament final: $%d in, $%d pot" % [t["bet"], t["pot"]]) if t.has("pot") else "$%d against %s" % [t["bet"], t["name"]])
 	var disabled := []
-	for i in POOL_TABLES.size():
-		if GameState.cash < POOL_TABLES[i]["bet"]:
+	for i in tables.size():
+		if GameState.cash < tables[i]["bet"]:
 			disabled.append(i)
 	var menu: CanvasLayer = ChoiceMenu.new()
 	get_tree().root.add_child(menu)
-	menu.chosen.connect(func(i: int): _start_pool(POOL_TABLES[i], player))
+	menu.chosen.connect(func(i: int):
+		if tables[i].has("pot"):
+			GameState.daily_available("pool_tournament", true)
+		_start_pool(tables[i], player))
 	menu.cancelled.connect(func(): player.dialogue_active = false)
 	menu.open("Pool table", "Quarters on the rail, a crooked cue rack, felt worn to the weave. Somebody's always up for a game with money on it. First to five balls.", options, disabled)
 
@@ -178,7 +191,7 @@ func _start_pool(table: Dictionary, player: Node) -> void:
 	Voice.say("", table["line"])
 	var game: CanvasLayer = PoolGame.new()
 	get_tree().root.add_child(game)
-	game.start(table["name"], table["skill"], table["bet"])
+	game.start(table["name"], table["skill"], table["bet"], table.get("pot", -1))
 	game.tree_exited.connect(func():
 		if is_instance_valid(player):
 			player.dialogue_active = false)

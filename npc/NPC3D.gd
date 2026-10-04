@@ -180,10 +180,42 @@ func interact(player: Node) -> void:
 	else:
 		_flavor_interact(hud)
 
+## How people react when you're sick and it shows: a line in front of
+## whatever they were going to say, now and then.
+const SICK_REACTIONS := [
+	"They lean back from you. \"Christ, you're grey.\" ",
+	"\"You're sweating through your jacket, man.\" ",
+	"They glance at your hands, shaking, and look away. ",
+	"\"Don't get sick on me.\" ",
+	"\"You look like death. Make it quick.\" ",
+]
+const SICK_REACTION_FROM := 0.6
+const SICK_REACTION_CHANCE := 0.45
+
+func _sick_prefix() -> String:
+	if GameState.sickness() >= SICK_REACTION_FROM and randf() < SICK_REACTION_CHANCE:
+		return SICK_REACTIONS.pick_random()
+	return ""
+
 func _portrait() -> Texture2D:
 	return PORTRAITS.get(npc_name)
 
+## A regular who likes you passes on what they've noticed about a store's
+## staff, once a day; the clerk there is easier on you for the rest of it.
+const TIPS := {
+	"convenience": "The night guy at the 24/7 watches the door, not the back aisle.",
+	"pharmacy": "Pharmacy cashier's on her phone half the time. Go when she's ringing someone up.",
+	"supermarket": "Supermarket's short-staffed today. The stocker can't see past the end-caps.",
+	"liquor": "Liquor store guy's got a bad eye on his left. Come at the shelves from that side.",
+	"electronics": "Electronics has a new kid on the floor today. He doesn't know what he's looking at.",
+}
+const TIP_MULT := 0.7
+
 func _patron_interact(hud: Node) -> void:
+	var mood := GameState.rep_of(npc_name)
+	if mood <= -2:
+		hud.show_dialogue(npc_name, ["\"Don't. I know what you did with my stuff.\"", "They turn their back on you.", "\"Find someone else to run for. We're done.\""].pick_random(), _portrait())
+		return
 	if request_id == "":
 		hud.show_dialogue(npc_name, "Not looking for anything right now.", _portrait())
 		return
@@ -199,7 +231,13 @@ func _patron_interact(hud: Node) -> void:
 	else:
 		var item_name := GameState.item_name_for(request_id)
 		var where := GameState.store_name_for(request_id)
-		hud.show_dialogue(npc_name, "I need %s. Try %s. Get it for me and I'll pay $%d." % [item_name, where, request_price], _portrait())
+		var line := "I need %s. Try %s. Get it for me and I'll pay $%d." % [item_name, where, request_price]
+		var store: String = GameState.item_info(request_id).get("store", "")
+		if mood >= 2 and TIPS.has(store) and GameState.daily_available("tip_" + npc_name, true):
+			GameState.set_store_heat(store, TIP_MULT, 1)
+			GameState.log_event("%s tipped you off about %s." % [npc_name, where])
+			line += " And listen -- " + TIPS[store].substr(0, 1).to_lower() + TIPS[store].substr(1)
+		hud.show_dialogue(npc_name, _sick_prefix() + line, _portrait())
 
 func _flavor_interact(hud: Node) -> void:
 	if fences_items and not GameState.inventory.is_empty():
@@ -211,4 +249,4 @@ func _flavor_interact(hud: Node) -> void:
 	if lines.is_empty():
 		hud.show_dialogue(npc_name, "...", _portrait())
 		return
-	hud.show_dialogue(npc_name, lines[randi() % lines.size()], _portrait())
+	hud.show_dialogue(npc_name, _sick_prefix() + lines[randi() % lines.size()], _portrait())

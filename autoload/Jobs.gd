@@ -52,7 +52,8 @@ func decorate(room: Node3D) -> void:
 		return
 	match room.name:
 		"Backyard3D":
-			if GameState.hours_contain([6, 10], GameState.hour()):
+			# No truck on a strike day (Headlines), so no job unloading it.
+			if GameState.hours_contain([6, 10], GameState.hour()) and Headlines.delivery_today():
 				_zone(room, "DockAsk", Vector3(3.4, 0, -0.4), _on_dock_ask)
 				_zone(room, "DockTruck", Vector3(3.9, 0, -2.3), _on_dock_truck)
 				_zone(room, "DockPallet", Vector3(1.3, 0, -2.4), _on_dock_pallet)

@@ -108,23 +108,49 @@ func _line(c: Control, font: Font, row: int, text: String, col := INK, indent :=
 
 func _draw_orders(c: Control, font: Font) -> void:
 	_line(c, font, 0, "Who wants what", INK, 0.0, 22)
+	_line(c, font, 1, "Today: %s" % Headlines.title().to_lower(), RED_INK if not Headlines.is_today("quiet") else INK_FADED, 0.0, 15)
 	var row := 2
 	var open := GameState.bar_patrons.filter(func(p): return not p.get("fulfilled", false))
 	if open.is_empty():
 		_line(c, font, row, "Nothing yet. Go sit at the bar and listen.", INK_FADED)
 	for p in open:
-		var item: String = GameState.item_name_for(p["request_id"])
-		var store: String = GameState.store_name_for(p["request_id"])
+		var item: String = _misread(GameState.item_name_for(p["request_id"]))
+		var store: String = _misread(GameState.store_name_for(p["request_id"]))
 		var have: bool = GameState.has_item(p["request_id"])
-		_line(c, font, row, "%s  --  %s   ($%d)" % [p["name"], item, p["price"]])
+		_line(c, font, row, "%s  --  %s   ($%d)" % [p["name"], item, GameState.order_price(p["name"], p["price"])])
 		_line(c, font, row + 1, ("got it, take it to the bar" if have else "from %s" % store), RED_INK if have else INK_FADED, 30.0, 15)
 		row += 2
 	row += 1
+	# The regulars, and how they feel about you.
+	var known: Array = GameState.rep.keys().filter(func(n): return GameState.rep_of(n) != 0)
+	if not known.is_empty():
+		var bits: Array = known.map(func(n): return "%s %s" % [n, GameState.rep_word(GameState.rep_of(n))])
+		_line(c, font, row, "People: " + ", ".join(bits), INK_FADED, 0.0, 15)
+		row += 1
 	if GameState.debt > 0:
 		_line(c, font, row, "Owe the pusher $%d  -- %s" % [GameState.debt, GameState.debt_due_text()], RED_INK)
 		row += 1
 	if GameState.in_treatment:
 		_line(c, font, row, "Program: %d of %d clean days. Clinic dose at the shelter, every day." % [GameState.treatment_streak, GameState.RECOVERY_DAYS], Color(0.1, 0.4, 0.2))
+
+## Badly sick, your own handwriting swims: letters swap and drop out of
+## the names, a little differently every time you look.
+func _misread(text: String) -> String:
+	var s := GameState.sickness()
+	if s < 0.8:
+		return text
+	var chars := text.split("")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(text) + int(Time.get_ticks_msec() / 1500)
+	for i in range(1, chars.size() - 1):
+		if chars[i] == " " or rng.randf() > (s - 0.75) * 1.2:
+			continue
+		var j := i + 1
+		if chars[j] != " ":
+			var t := chars[i]
+			chars[i] = chars[j]
+			chars[j] = t
+	return "".join(chars)
 
 func _draw_hours(c: Control, font: Font) -> void:
 	_line(c, font, 0, "When things are open", INK, 0.0, 22)

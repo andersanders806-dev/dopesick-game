@@ -41,6 +41,7 @@ func _sell(id: String, player: Node, hud: Node) -> void:
 	if not GameState.has_item(id):
 		return
 	var price := offer_for(id)
+	GameState._sold_out_from_under(id)
 	GameState.inventory.erase(id)
 	GameState.cash += price
 	GameState.cash_earned += price

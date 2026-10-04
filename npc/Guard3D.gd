@@ -171,7 +171,7 @@ func _update_suspicion(player: Node, delta: float) -> void:
 			rate *= SUSPICION_CLOSE_MULTIPLIER
 
 	if rate > 0.0:
-		suspicion = min(1.0, suspicion + rate * MetaProgress.suspicion_scale() * GameState.staff_alertness() * delta)
+		suspicion = min(1.0, suspicion + rate * MetaProgress.suspicion_scale() * _alertness() * delta)
 	else:
 		# Once they've clocked you they stay wary a while longer.
 		var decay := SUSPICION_DECAY * (0.5 if suspicion > SUSPICION_NOTICED else 1.0)
@@ -249,3 +249,12 @@ func _redraw_cone(facing_deg: float) -> void:
 	else:
 		var u := (suspicion - SUSPICION_NOTICED) / (1.0 - SUSPICION_NOTICED)
 		cone_material.albedo_color = VISION_COLOR_SUSPICIOUS.lerp(VISION_COLOR_ALERT, clampf(u, 0.0, 1.0))
+
+## How hard this clerk is watching: the hour, today's headline, and any tip
+## or grudge a regular left about this store (GameState.store_alertness).
+func _alertness() -> float:
+	var scene := get_tree().current_scene
+	var store_id = scene.get("store_id") if scene else null
+	if store_id is String and store_id != "":
+		return GameState.store_alertness(store_id)
+	return GameState.staff_alertness()

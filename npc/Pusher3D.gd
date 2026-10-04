@@ -208,7 +208,9 @@ func _todays_stock() -> Array:
 		return _stock
 	var pool: Array = Drugs.CATALOGUE.filter(func(d): return d["class"] != Drugs.RESCUE).map(func(d): return d["id"])
 	pool.shuffle()
-	_stock = pool.slice(0, randi_range(STOCK_MIN, STOCK_MAX))
+	# A dry spell (Headlines) leaves him holding less.
+	var stock_range := Headlines.pusher_stock_range(Vector2i(STOCK_MIN, STOCK_MAX))
+	_stock = pool.slice(0, randi_range(stock_range.x, stock_range.y))
 	_stock.append("naloxone")
 	_stock_day = GameState.day
 	return _stock

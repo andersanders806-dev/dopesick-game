@@ -243,6 +243,17 @@ func play_pickup(target_pos: Vector3) -> float:
 	_busy_timer = anim.play_once_timed("pick-up", duration)
 	return _busy_timer
 
+## Walking among passersby (not running, not crouched): a cop more than a
+## few metres off loses you in the crowd (npc/Police3D.gd).
+const CROWD_RADIUS := 2.0
+func in_crowd() -> bool:
+	if hiding or is_sprinting():
+		return false
+	for p in get_tree().get_nodes_in_group("pedestrians"):
+		if (p as Node3D).global_position.distance_to(global_position) <= CROWD_RADIUS:
+			return true
+	return false
+
 func set_hiding(value: bool) -> void:
 	hiding = value
 	anim.set_rest_clip("sit" if hiding else "idle")

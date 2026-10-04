@@ -263,8 +263,30 @@ func _pick_flickering_signs() -> void:
 		var sign := get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
 		_flicker.append({"light": glow, "sign": sign, "energy": glow.light_energy, "timer": randf_range(1.0, 6.0), "off": 0.0})
 
+## Sick enough, every sign on the block starts to stutter, not just the two
+## that always do; they settle again as you come back up.
+const SICK_FLICKER := 0.5
+var _sick_signs_added: bool = false
+
+func _add_sick_flicker() -> void:
+	_sick_signs_added = true
+	var taken := _flicker.map(func(f): return f["light"])
+	for glow in get_parent().find_children("*SignGlow", "Light3D", true, false):
+		if glow in taken:
+			continue
+		var sign := get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
+		_flicker.append({"light": glow, "sign": sign, "energy": glow.light_energy, "timer": randf_range(0.5, 4.0), "off": 0.0, "sick": true})
+
 func _update_flicker(delta: float) -> void:
+	var sick := GameState.sickness() >= SICK_FLICKER
+	if sick and not _sick_signs_added:
+		_add_sick_flicker()
 	for f in _flicker:
+		if f.get("sick", false) and not sick:
+			if f["off"] > 0.0:
+				f["off"] = 0.0
+				_set_sign(f, true)
+			continue
 		if f["off"] > 0.0:
 			f["off"] -= delta
 			if f["off"] <= 0.0:

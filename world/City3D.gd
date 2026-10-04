@@ -95,6 +95,7 @@ func _ready() -> void:
 	var scenes: Node3D = preload("res://world/StreetScenes.gd").new()
 	scenes.name = "StreetScenes"
 	add_child(scenes)
+	_add_hide_spots()
 	var temptation: Node3D = preload("res://world/Temptation.gd").new()
 	temptation.name = "Temptation"
 	add_child(temptation)
@@ -110,6 +111,64 @@ func _ready() -> void:
 		mat.roughness = 0.35
 		(body as MeshInstance3D).material_override = mat
 
+## Places on the block to crouch out of sight when the police are after
+## you: in the mouth of the alley by the pusher's corner, behind a stack of
+## pallets, and at the far end of the dumpster. E to crouch, move to get
+## up. A cop who saw you go in will look there (npc/Police3D.gd), so break
+## line of sight first.
+const HIDE_SPOTS := [
+	{"name": "AlleyHide", "pos": Vector3(14.0, 0, -4.05), "cover": "pallets"},
+	{"name": "DumpsterHide", "pos": Vector3(22.6, 0, -3.95), "cover": "bags"},
+]
+const InteractableScript := preload("res://interactables/Interactable3D.gd")
+
+func _add_hide_spots() -> void:
+	for spec in HIDE_SPOTS:
+		var zone := Area3D.new()
+		zone.name = spec["name"]
+		zone.collision_layer = 4
+		zone.collision_mask = 0
+		zone.monitoring = false
+		zone.set_script(InteractableScript)
+		add_child(zone)
+		zone.global_position = spec["pos"]
+		zone.add_to_group("hide_spots")
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(1.2, 1.2, 1.0)
+		shape.shape = box
+		shape.position = Vector3(0, 0.6, 0)
+		zone.add_child(shape)
+		# Cover between the spot and the street, visual only.
+		var wood := StandardMaterial3D.new()
+		wood.albedo_color = Color(0.42, 0.32, 0.2)
+		wood.roughness = 0.9
+		var black := StandardMaterial3D.new()
+		black.albedo_color = Color(0.05, 0.05, 0.06)
+		black.roughness = 0.4
+		for i in 3:
+			var piece := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			if spec["cover"] == "pallets":
+				bm.size = Vector3(1.1, 0.14, 0.9)
+				piece.material_override = wood
+				zone.add_child(piece)
+				piece.position = Vector3(0.0, 0.08 + i * 0.16, 0.55)
+				piece.rotation.y = i * 0.12
+			else:
+				bm.size = Vector3(0.5, 0.45, 0.4)
+				piece.material_override = black
+				zone.add_child(piece)
+				piece.position = Vector3(-0.35 + i * 0.35, 0.22 + (0.25 if i == 1 else 0.0), 0.5)
+				piece.rotation.y = i * 0.7
+			piece.mesh = bm
+		zone.interacted.connect(_on_hide_spot)
+
+func _on_hide_spot(_zone: Area3D, player: Node) -> void:
+	player.set_hiding(not player.hiding)
+	if player.hiding:
+		SFX.play("steal", -8.0, 0.8)
+
 func _process(delta: float) -> void:
 	super._process(delta)
 	_update_collector(delta)
@@ -117,7 +176,7 @@ func _process(delta: float) -> void:
 	_update_patrol(delta)
 
 func _pedestrian_target() -> int:
-	return int(round(lerpf(PEDESTRIANS_NIGHT, PEDESTRIANS_DAY, GameState.daylight())))
+	return int(round(lerpf(PEDESTRIANS_NIGHT, PEDESTRIANS_DAY, GameState.daylight()) * Headlines.pedestrian_mult()))
 
 func _update_pedestrians(delta: float) -> void:
 	_pedestrian_timer -= delta
@@ -145,7 +204,7 @@ func _spawn_patrol(pos: Vector3) -> void:
 	cop.set_script(PatrolScript)
 	cop.name = "PatrolCop"
 	cop.set("role", "police")
-	cop.set("vision_range", 7.5)
+	cop.set("vision_range", 7.5 * Headlines.patrol_vision_mult())
 	cop.set("vision_angle_deg", 70.0)
 	cop.set("sweep_arc_deg", 80.0)
 	cop.set("sweep_speed", 0.5)
@@ -165,7 +224,7 @@ func _on_patrol_spotted(cop: Node3D) -> void:
 	var police := PoliceScene.instantiate()
 	add_child(police)
 	police.global_position = at
-	_patrol_timer = PATROL_RETURN_DELAY
+	_patrol_timer = PATROL_RETURN_DELAY * Headlines.patrol_return_mult()
 
 func _update_patrol(delta: float) -> void:
 	if GameState.wanted or get_tree().get_first_node_in_group("patrol") != null:

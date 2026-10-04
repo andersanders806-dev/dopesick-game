@@ -60,6 +60,9 @@ const REQUEST_POOL := [
 	{"id": "videogame", "name": "a new video game", "price": 40, "store": "electronics"},
 	{"id": "watch", "name": "a decent watch", "price": 55, "store": "electronics"},
 	{"id": "smartphone", "name": "a smartphone", "price": 80, "store": "electronics"},
+	# From the kart track's spares box (world/KartCenter3D.gd), not a shop
+	# shelf: nobody at the bar orders one, but the pawnshop pays for it.
+	{"id": "carburetor", "name": "a kart carburetor", "price": 60, "store": "karts", "no_order": true},
 ]
 
 const STORE_NAMES := {
@@ -229,6 +232,24 @@ var last_meal_slot: int = -1
 var orders_delivered: int = 0
 var cash_earned: int = 0
 
+## Today's word on the block (autoload/Headlines.gd) and the day it's for.
+var headline: String = ""
+var headline_day: int = -1
+## The day the kart track's shut because someone stole a carburetor.
+var sabotage_day: int = -1
+
+## How the Dive Bar regulars feel about you, by name: -5 (you're dead to
+## them) to 5 (they'd go to bat for you). Delivering what they asked for
+## raises it; selling the thing they wanted to someone else lowers it.
+var rep: Dictionary = {}
+const REP_MIN := -5
+const REP_MAX := 5
+## A regular who likes you tips you off about a store; one who's sore about
+## you has a word with its clerk. store id -> [suspicion multiplier, last
+## day it applies].
+var store_heat: Dictionary = {}
+signal rep_changed(name: String, value: int)
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -271,6 +292,11 @@ func start_run() -> void:
 	# _ready(), before autoloads after us in the list exist.
 	tapes = WalkmanScript.STARTING_TAPES.duplicate()
 	daily_used.clear()
+	headline = ""
+	headline_day = -1
+	sabotage_day = -1
+	rep.clear()
+	store_heat.clear()
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -354,6 +380,10 @@ func now_minutes() -> float:
 	return (day - 1) * MINUTES_PER_DAY + clock
 
 func _roll_weather() -> void:
+	var hl := _headlines()
+	if hl and hl.rain_locked():
+		set_raining(true)
+		return
 	var was := raining
 	raining = (randf() > RAIN_STOP_CHANCE) if raining else (randf() < RAIN_START_CHANCE)
 	if raining != was:
@@ -378,10 +408,24 @@ static func hours_contain(hours: Array, h: float) -> bool:
 	return h >= open or h < close
 
 func is_open(place: String) -> bool:
-	return hours_contain(OPENING_HOURS.get(place, [0, 24]), hour())
+	var hl := _headlines()
+	if hl and hl.closed_today(place):
+		return false
+	var hours: Array = OPENING_HOURS.get(place, [0, 24])
+	if hl and hl.opens_early(place) >= 0:
+		hours = [hl.opens_early(place), hours[1]]
+	return hours_contain(hours, hour())
 
 func opening_hour(place: String) -> int:
+	var hl := _headlines()
+	if hl and hl.opens_early(place) >= 0:
+		return hl.opens_early(place)
 	return OPENING_HOURS.get(place, [0, 24])[0]
+
+## Headlines is an autoload after this one, so it isn't there during our
+## own _ready.
+func _headlines() -> Node:
+	return get_node_or_null("/root/Headlines")
 
 func place_for_scene(scene_path: String) -> String:
 	return SCENE_PLACE.get(scene_path.get_file().get_basename(), "")
@@ -420,11 +464,73 @@ func daylight() -> float:
 ## tired clerk.
 func staff_alertness() -> float:
 	var h := hour()
+	var base := 1.0
 	if h >= 22.0 or h < 6.0:
-		return 0.75
-	if h >= 12.0 and h < 18.0:
-		return 1.15
-	return 1.0
+		base = 0.75
+	elif h >= 12.0 and h < 18.0:
+		base = 1.15
+	var hl := _headlines()
+	return base * (hl.alertness_mult() if hl else 1.0)
+
+## staff_alertness() for one store, with whatever a regular did about it:
+## a tip-off makes its clerk easier, a word in his ear makes him harder.
+func store_alertness(store_id: String) -> float:
+	var a := staff_alertness()
+	var heat: Array = store_heat.get(store_id, [])
+	if heat.size() == 2 and day <= int(heat[1]):
+		a *= float(heat[0])
+	return a
+
+func set_store_heat(store_id: String, mult: float, days: int) -> void:
+	store_heat[store_id] = [mult, day + days - 1]
+
+# --- The regulars ---------------------------------------------------------
+
+func rep_of(who: String) -> int:
+	return int(rep.get(who, 0))
+
+func change_rep(who: String, by: int, why := "") -> void:
+	var before := rep_of(who)
+	var after := clampi(before + by, REP_MIN, REP_MAX)
+	if after == before:
+		return
+	rep[who] = after
+	rep_changed.emit(who, after)
+	if why != "":
+		log_event(why)
+
+## One word for how a regular feels about you, for the notebook.
+static func rep_word(value: int) -> String:
+	if value >= 4:
+		return "would go to bat for you"
+	if value >= 2:
+		return "friendly"
+	if value >= 0:
+		return "neutral" if value == 0 else "warming up"
+	if value >= -2:
+		return "cold"
+	return "won't deal with you"
+
+## What a regular pays for an order today: payday, plus a bit extra from
+## the ones who like you.
+func order_price(who: String, base_price: int) -> int:
+	var hl := _headlines()
+	var mult: float = hl.order_pay_mult() if hl else 1.0
+	return int(round(base_price * mult)) + 3 * maxi(0, rep_of(who))
+
+## You sold `id` somewhere other than to the regular who asked for it.
+## Word gets around.
+func _sold_out_from_under(id: String) -> void:
+	for p in bar_patrons:
+		if not p.get("fulfilled", false) and p.get("request_id", "") == id:
+			var was := rep_of(p["name"])
+			change_rep(p["name"], -1, "%s heard you sold %s to someone else." % [p["name"], item_name_for(id)])
+			# Crossing into a grudge: they have a word with the clerk at the
+			# store you'd steal their kind of thing from.
+			if was > -2 and rep_of(p["name"]) <= -2:
+				var store: String = item_info(id).get("store", "")
+				set_store_heat(store, 1.3, 2)
+				log_event("%s had a word with the clerk at %s." % [p["name"], STORE_NAMES.get(store, "the store")])
 
 func _setup_input_actions() -> void:
 	_bind("interact", [KEY_E])
@@ -490,6 +596,8 @@ func fence_everything() -> int:
 	var count := inventory.size()
 	if count == 0:
 		return 0
+	for id in inventory:
+		_sold_out_from_under(id)
 	var earned := count * FENCE_PRICE
 	inventory.clear()
 	cash += earned
@@ -567,7 +675,9 @@ func tolerance_for(drug_id: String) -> float:
 
 ## What this drug costs you right now, given the tolerance you've built.
 func price_of(drug_id: String) -> int:
-	return Drugs.price_for(drug_id, tolerance_for(drug_id))
+	var hl := _headlines()
+	var mult: float = hl.pusher_price_mult() if hl else 1.0
+	return int(round(Drugs.price_for(drug_id, tolerance_for(drug_id)) * mult))
 
 ## The fix itself, separate from paying: the 3D pusher takes your cash first
 ## and only hands it over after fetching it from his stash. `drug_id` is what

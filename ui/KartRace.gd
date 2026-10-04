@@ -142,6 +142,15 @@ var _hidden_scene: Node3D
 var _room_hud: CanvasLayer
 ## Tests and the playthrough bot: your kart drives itself.
 var autopilot: bool = false
+var _deal: Dictionary = {}
+## How the deal went, for the results board.
+var _deal_line: String = ""
+## Seconds you spent pointed the wrong way: throwing a race by reversing
+## round the track doesn't look real.
+var _wrong_way_total: float = 0.0
+## A throw "looks real" if you're this close to the kart ahead of you.
+const THROW_GAP := 8.0
+const THROW_WRONG_WAY := 3.0
 
 # --- Sound --------------------------------------------------------------------
 var _engine: AudioStreamPlayer
@@ -166,9 +175,13 @@ func _ready() -> void:
 	layer = 95
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
-## `player_role`: whose body sits in your kart (CharacterCast).
-func start(player_role := "player") -> void:
+## `player_role`: whose body sits in your kart (CharacterCast). `deal` is
+## the hustle riding on this race (world/KartCenter3D.gd), if any:
+## {"kind": "throw", "by", "pay"} -- finish 4th or worse and make it look
+## real -- or {"kind": "bet", "stake", "pays"} -- podium and collect.
+func start(player_role := "player", deal: Dictionary = {}) -> void:
 	_player_role = player_role
+	_deal = deal
 	_room_hud = get_tree().get_first_node_in_group("hud") as CanvasLayer
 	if _room_hud:
 		_room_hud.visible = false
@@ -1251,6 +1264,8 @@ func _reset_race() -> void:
 	_finish_order.clear()
 	_results_shown = false
 	_prize_paid = 0
+	_deal_line = ""
+	_wrong_way_total = 0.0
 	_cam_ready = false
 	_skid_mm.multimesh.visible_instance_count = 0
 	_skid_next = 0
@@ -1539,6 +1554,8 @@ func _track_progress(i: int) -> void:
 	var fwd := Vector3(-sin(kart["yaw"]), 0.0, -cos(kart["yaw"]))
 	if fwd.dot(_tan[k]) < -0.4 and (kart["vel"] as Vector3).length() > 3.0:
 		kart["wrong_way"] = float(kart["wrong_way"]) + get_physics_process_delta_time()
+		if i == 0 and _phase == Phase.RACE:
+			_wrong_way_total += get_physics_process_delta_time()
 	else:
 		kart["wrong_way"] = 0.0
 
@@ -1572,19 +1589,55 @@ func _on_player_finished() -> void:
 	_phase = Phase.DONE
 	_play(_cheer_sfx, -4.0)
 	_show_banner("%s PLACE!" % ORDINALS[place - 1].to_upper() if place <= 3 else "FINISHED %s" % ORDINALS[place - 1].to_upper(), Color(1.0, 0.85, 0.2) if place == 1 else Color(0.9, 0.9, 0.95), 2.5)
-	# Prize money for the podium, once a day.
+	# Prize money for the podium, once a day (triple on Cup night).
 	if place <= PRIZES.size() and GameState.daily_available(PRIZE_DAILY_KEY, true):
-		_prize_paid = PRIZES[place - 1]
+		_prize_paid = PRIZES[place - 1] * Headlines.kart_prize_mult()
 		GameState.cash += _prize_paid
 		GameState.cash_earned += _prize_paid
 		GameState.cash_changed.emit(GameState.cash)
 		SFX.play("cash")
 	var you: Dictionary = _karts[0]
 	GameState.log_event("Raced karts at the Southside Speedway: %s of %d, best lap %s.%s" % [ORDINALS[place - 1], _karts.size(), _fmt(you["best_lap"]), (" Won $%d." % _prize_paid) if _prize_paid > 0 else ""])
+	_settle_deal(place)
 	# For a couple of minutes there, nothing else was in your head.
 	GameState.craving = minf(100.0, GameState.craving + 4.0)
 	GameState.craving_changed.emit(GameState.craving)
 	finished.emit(place)
+
+## Pays out (or doesn't) on whatever hustle rode on this race.
+func _settle_deal(place: int) -> void:
+	match _deal.get("kind", ""):
+		"bet":
+			if place <= 3:
+				var won: int = _deal["pays"]
+				GameState.cash += won
+				GameState.cash_earned += won
+				GameState.cash_changed.emit(GameState.cash)
+				_deal_line = "The kid in the stands pays out: $%d on your $%d." % [won, _deal["stake"]]
+				GameState.log_event("Won $%d betting on yourself at the kart track." % won)
+			else:
+				_deal_line = "The kid in the stands keeps your $%d." % _deal["stake"]
+		"throw":
+			var who: String = _deal["by"]
+			var you: Dictionary = _karts[0]
+			var ahead_time := 0.0
+			if place >= 2:
+				# The kart that finished just ahead of you.
+				ahead_time = float(_karts[_finish_order[place - 2]]["time"])
+			var gap := float(you["time"]) - ahead_time
+			if place < 4:
+				_deal_line = "%s watched you take the podium. He's not happy." % who
+				GameState.change_rep(who, -2, "Took the podium after promising %s you'd lose." % who)
+			elif gap > THROW_GAP or _wrong_way_total > THROW_WRONG_WAY:
+				_deal_line = "%s: \"Everybody saw that. You think I'm paying for that?\"" % who
+				GameState.change_rep(who, -1, "Threw the race for %s, badly. No pay." % who)
+			else:
+				var pay: int = _deal["pay"]
+				GameState.cash += pay
+				GameState.cash_earned += pay
+				GameState.cash_changed.emit(GameState.cash)
+				_deal_line = "%s slips you $%d on the way out. \"Beautiful. Nobody suspected a thing.\"" % [who, pay]
+				GameState.change_rep(who, 1, "Threw a kart race for %s. $%d." % [who, pay])
 
 func _update_positions_and_finish() -> void:
 	if _phase != Phase.DONE:
@@ -1866,7 +1919,7 @@ func _draw_hud() -> void:
 	_text(c, font, Vector2(36, 132), "TIME  %s" % _fmt(_race_time if _phase != Phase.INTRO and _phase != Phase.COUNTDOWN else 0.0), 22, Color.WHITE)
 	_text(c, font, Vector2(36, 158), "LAP %s   BEST %s" % [_fmt(cur), _fmt(you["best_lap"])], 18, Color(0.8, 0.85, 0.9))
 	# --- Running order, down the left.
-	var y := 196.0
+	var y := 206.0 if not _deal.is_empty() else 196.0
 	_panel(c, Rect2(20, y - 8, 300, 34.0 * order.size() + 14))
 	for i in order.size():
 		var kart: Dictionary = _karts[order[i]]
@@ -1884,6 +1937,14 @@ func _draw_hud() -> void:
 		elif kart["finished"] and _results_shown:
 			gap = _fmt(kart["time"])
 		_text(c, font, Vector2(220, row_y), gap, 18, Color(0.75, 0.8, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, 90)
+	# --- The hustle, under the timing panel.
+	if not _deal.is_empty() and not _results_shown:
+		var note := ""
+		if _deal["kind"] == "throw":
+			note = "%s's money: 4th or worse. Make it look real." % _deal["by"]
+		else:
+			note = "$%d on yourself: podium pays $%d." % [_deal["stake"], _deal["pays"]]
+		_text(c, font, Vector2(24, 186), note, 16, Color(1.0, 0.75, 0.3))
 	# --- Drift charge, bottom centre.
 	var drift_t: float = you["drift_t"]
 	if int(you["drift"]) != 0 or float(you["boost"]) > 0.0:
@@ -1933,7 +1994,7 @@ func _draw_hud() -> void:
 
 func _draw_results(c: Control, font: Font, size: Vector2, order: Array[int]) -> void:
 	var w := 640.0
-	var h := 120.0 + order.size() * 40.0 + 70.0
+	var h := 120.0 + order.size() * 40.0 + 70.0 + (30.0 if _deal_line != "" else 0.0)
 	var r := Rect2(size.x / 2 - w / 2, size.y / 2 - h / 2, w, h)
 	c.draw_rect(r, Color(0.02, 0.02, 0.03, 0.88))
 	c.draw_rect(r, Color(1.0, 0.55, 0.1, 0.9), false, 3.0)
@@ -1955,6 +2016,8 @@ func _draw_results(c: Control, font: Font, size: Vector2, order: Array[int]) -> 
 		_text(c, font, Vector2(r.position.x + 380, y), _fmt(kart["time"]), 22, Color.WHITE)
 		_text(c, font, Vector2(r.position.x + 500, y), _fmt(kart["best_lap"]), 22, Color(0.75, 0.9, 0.8))
 	var foot_y := r.end.y - 50
+	if _deal_line != "":
+		_text(c, font, Vector2(r.position.x, foot_y - 30), _deal_line, 18, Color(0.85, 0.95, 0.75), HORIZONTAL_ALIGNMENT_CENTER, w)
 	var place := order.find(0) + 1
 	var prize_line := "The day's prize pot's been paid out -- you raced for the board."
 	if _prize_paid > 0:
@@ -2049,6 +2112,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_close()
 		elif (key == KEY_E or key == KEY_ENTER or key == KEY_KP_ENTER) and GameState.spend_cash(5):
 			SFX.play("cash")
+			# A rerun is just a ride: the deal was for the race you ran.
+			_deal = {}
 			_reset_race()
 		return
 	if key == KEY_ESCAPE:

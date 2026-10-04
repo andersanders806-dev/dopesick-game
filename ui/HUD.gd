@@ -85,6 +85,87 @@ func _ready() -> void:
 	_update_wanted(GameState.wanted)
 	dialogue_panel.visible = false
 	busted_overlay.visible = false
+	_build_headline()
+	Headlines.headline_changed.connect(_on_headline_changed)
+
+# --- Word on the block ------------------------------------------------------
+## Today's headline (autoload/Headlines.gd), once a day: a strip under the
+## top bar that slides in, holds, and fades. Waits out any cutscene.
+const HEADLINE_HOLD := 9.0
+var _headline_panel: PanelContainer
+var _headline_title: Label
+var _headline_text: Label
+var _headline_t: float = -1.0
+
+func _build_headline() -> void:
+	_headline_panel = PanelContainer.new()
+	_headline_panel.name = "Headline"
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.05, 0.04, 0.88)
+	sb.border_color = Color(0.95, 0.8, 0.45, 0.8)
+	sb.set_border_width_all(1)
+	sb.border_width_left = 4
+	sb.set_content_margin_all(10)
+	sb.content_margin_left = 14
+	_headline_panel.add_theme_stylebox_override("panel", sb)
+	_headline_panel.offset_left = 330.0
+	_headline_panel.offset_right = 950.0
+	_headline_panel.offset_top = 64.0
+	var box := VBoxContainer.new()
+	_headline_panel.add_child(box)
+	_headline_title = Label.new()
+	_headline_title.add_theme_font_size_override("font_size", 13)
+	_headline_title.add_theme_color_override("font_color", Color(0.95, 0.8, 0.45))
+	box.add_child(_headline_title)
+	_headline_text = Label.new()
+	_headline_text.add_theme_font_size_override("font_size", 14)
+	_headline_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_headline_text.custom_minimum_size = Vector2(590, 0)
+	box.add_child(_headline_text)
+	_headline_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_headline_panel.visible = false
+	add_child(_headline_panel)
+
+func _on_headline_changed(_id: String) -> void:
+	_headline_t = -1.0
+
+## Sick, the world goes grey: the room's grade loses its colour and gains a
+## hard edge as the craving bottoms out. Graphics sets the base grade; this
+## leans on it every frame, so it follows the meter both ways.
+const SICK_SATURATION := 0.3
+var _graded_env: Environment
+
+func _update_sick_grade() -> void:
+	if _graded_env == null:
+		var scene := get_tree().current_scene
+		var we := scene.find_child("WorldEnvironment", false, false) as WorldEnvironment if scene else null
+		if we == null or we.environment == null:
+			return
+		_graded_env = we.environment
+	var s := GameState.sickness()
+	var k := s * s
+	_graded_env.adjustment_saturation = Graphics.SATURATION * lerpf(1.0, SICK_SATURATION, k)
+	_graded_env.adjustment_contrast = Graphics.CONTRAST * lerpf(1.0, 1.18, k)
+
+func _process(delta: float) -> void:
+	_update_sick_grade()
+	if _headline_panel == null:
+		return
+	if Headlines.announced_day != GameState.day and not Cutscene.is_playing() and not get_tree().paused:
+		Headlines.announced_day = GameState.day
+		_headline_title.text = "WORD ON THE BLOCK  -  DAY %d  -  %s" % [GameState.day, Headlines.title().to_upper()]
+		_headline_text.text = Headlines.text()
+		_headline_t = 0.0
+		SFX.play("blip", -6.0, 0.7)
+	if _headline_t < 0.0:
+		_headline_panel.visible = false
+		return
+	_headline_t += delta
+	_headline_panel.visible = true
+	var a := clampf(_headline_t / 0.4, 0.0, 1.0) * clampf((HEADLINE_HOLD - _headline_t) / 1.2, 0.0, 1.0)
+	_headline_panel.modulate.a = a
+	if _headline_t >= HEADLINE_HOLD:
+		_headline_t = -1.0
 
 ## Drawn first in the HUD, then a back-buffer copy so the PostFX above reads
 ## the film-looked frame rather than the raw one.
@@ -189,6 +270,12 @@ func _update_inventory() -> void:
 	var icon_count := 0
 	for id in GameState.inventory:
 		if not ResourceLoader.exists(ICON_PATH % id):
+			# No rendered icon (the carburetor): its name, small.
+			var tag := Label.new()
+			tag.text = GameState.item_name_for(id).trim_prefix("a ").trim_prefix("an ")
+			tag.add_theme_font_size_override("font_size", 11)
+			inventory_icons.add_child(tag)
+			icon_count += 3
 			continue
 		icon_count += 1
 		var icon := TextureRect.new()

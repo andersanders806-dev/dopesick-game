@@ -21,7 +21,7 @@ const ROUGH_SLEEP_ROB_CHANCE := 0.35
 func _ready() -> void:
 	# No delivery outside the morning: take the pallet, its goods, and the
 	# driver out before Store3D goes looking for fixtures and guards.
-	if not GameState.hours_contain(DELIVERY_HOURS, GameState.hour()):
+	if not GameState.hours_contain(DELIVERY_HOURS, GameState.hour()) or not Headlines.delivery_today():
 		for n in ["Fixture1", "Item1", "Fixture2", "Item2", "Driver", "DeliveryTruck"]:
 			var node := get_node_or_null(n)
 			if node:
@@ -34,6 +34,8 @@ func _ready() -> void:
 	for zone in find_children("*", "Area3D", true, false):
 		if zone.has_signal("interacted"):
 			zone.interacted.connect(interact_zone)
+		if zone.name == "HideSpot":
+			zone.add_to_group("hide_spots")
 
 func interact_zone(zone: Area3D, player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")

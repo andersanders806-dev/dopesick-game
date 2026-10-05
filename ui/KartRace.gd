@@ -374,7 +374,14 @@ func _environment() -> void:
 	moon.light_color = Color(0.6, 0.7, 1.0)
 	moon.light_energy = 0.35
 	moon.rotation_degrees = Vector3(-38, 30, 0)
-	moon.shadow_enabled = Graphics.preset == Graphics.Preset.HIGH
+	moon.shadow_enabled = Graphics.is_high()
+	if Graphics.preset == Graphics.Preset.PS5:
+		# The passes the race leaves off for frame rate elsewhere.
+		_env.ssao_enabled = true
+		_env.ssao_radius = 1.2
+		_env.ssr_enabled = true
+		_env.ssr_max_steps = 48
+		moon.directional_shadow_max_distance = 90.0
 	moon.directional_shadow_max_distance = 45.0
 	_world.add_child(moon)
 

@@ -187,7 +187,7 @@ func _build_film_look() -> void:
 	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	# About 12 FPS on a UHD 620, so High only; Graphics toggles the group.
 	rect.add_to_group("film_look")
-	rect.visible = Graphics.preset == Graphics.Preset.HIGH
+	rect.visible = Graphics.is_high()
 	add_child(rect)
 	move_child(rect, 0)
 	var copy := BackBufferCopy.new()

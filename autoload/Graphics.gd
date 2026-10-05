@@ -19,12 +19,20 @@ extends Node
 ## headroom, inside each preset's range, so the game holds a steady frame
 ## rate instead of stuttering -- High on a UHD 620 used to run 15 FPS.
 ##
+## "PS5" sits above High for a strong desktop GPU, aiming at what a current
+## console version would look like: everything High has, at higher
+## quality -- FSR 2 from a 75-100% base instead of 50-77%, the softest
+## shadow filtering and a bigger shadow atlas, full-quality bounce light and
+## ambient occlusion, finer volumetric fog, longer reflection traces, and
+## 16x anisotropic filtering -- still under the same 60 FPS governor, so it
+## drops resolution before it drops frames.
+##
 ## The colour grade (a 3D LUT built here, plus saturation and contrast)
 ## applies at every preset: cool teal shadows, warm highlights, and colour
 ## pushed back up, so neon and sodium light actually read as colour.
 
-enum Preset { LOW, MEDIUM, HIGH }
-const PRESET_NAMES := ["Low", "Medium", "High"]
+enum Preset { LOW, MEDIUM, HIGH, PS5 }
+const PRESET_NAMES := ["Low", "Medium", "High", "PS5"]
 const SETTINGS_PATH := "user://settings.cfg"
 const LUT_SIZE := 32
 
@@ -35,8 +43,8 @@ const SHADOW_TINT := Color(-0.03, 0.035, 0.07)
 const HIGHLIGHT_TINT := Color(0.07, 0.025, -0.045)
 
 ## [min, max] 3D render scale per preset, and where each starts.
-const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.5, 0.77]]
-const SCALE_START := [0.77, 0.85, 0.59]
+const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.5, 0.77], [0.75, 1.0]]
+const SCALE_START := [0.77, 0.85, 0.59, 0.85]
 const TARGET_FPS := 58.0
 
 ## Volume sliders in the settings menu, 0..1 per bus. They scale each bus
@@ -158,9 +166,14 @@ func _adapt_resolution(delta: float) -> void:
 		render_scale = next
 		get_viewport().scaling_3d_scale = render_scale
 
+## High or above: the presets with the full-fat room effects.
+func is_high() -> bool:
+	return preset >= Preset.HIGH
+
 func _apply_viewport() -> void:
 	var vp := get_viewport()
-	var high := preset == Preset.HIGH
+	var high := is_high()
+	var ps5 := preset == Preset.PS5
 	# FSR 2 is temporal: it anti-aliases and reconstructs detail itself.
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if high else Viewport.SCALING_3D_MODE_FSR
 	vp.fsr_sharpness = 0.25 if high else 0.35
@@ -173,11 +186,21 @@ func _apply_viewport() -> void:
 	vp.scaling_3d_scale = render_scale
 	# Cheaper versions of the expensive passes; at a sub-native render scale
 	# the difference doesn't show.
-	RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 4, 50.0, 300.0)
-	RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM, true, 0.5, 2, 50.0, 300.0)
-	RenderingServer.environment_set_volumetric_fog_volume_size(64, 64)
+	if ps5:
+		# Full resolution and quality for the screen-space passes.
+		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_HIGH, false, 0.5, 4, 50.0, 300.0)
+		RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_HIGH, false, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_volumetric_fog_volume_size(128, 96)
+	else:
+		RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW, true, 0.5, 4, 50.0, 300.0)
+		RenderingServer.environment_set_ssao_quality(RenderingServer.ENV_SSAO_QUALITY_MEDIUM, true, 0.5, 2, 50.0, 300.0)
+		RenderingServer.environment_set_volumetric_fog_volume_size(64, 64)
 	RenderingServer.environment_set_volumetric_fog_filter_active(true)
-	var soft := RenderingServer.SHADOW_QUALITY_SOFT_HIGH if high else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if preset == Preset.MEDIUM else RenderingServer.SHADOW_QUALITY_HARD)
+	RenderingServer.environment_glow_set_use_bicubic_upscale(ps5)
+	vp.positional_shadow_atlas_size = 8192 if ps5 else 4096
+	if "anisotropic_filtering_level" in vp:
+		vp.set("anisotropic_filtering_level", Viewport.ANISOTROPY_16X if ps5 else Viewport.ANISOTROPY_4X)
+	var soft := RenderingServer.SHADOW_QUALITY_SOFT_ULTRA if ps5 else (RenderingServer.SHADOW_QUALITY_SOFT_HIGH if high else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if preset == Preset.MEDIUM else RenderingServer.SHADOW_QUALITY_HARD))
 	RenderingServer.directional_soft_shadow_filter_set_quality(soft)
 	RenderingServer.positional_soft_shadow_filter_set_quality(soft)
 
@@ -197,10 +220,10 @@ func _apply_env(we: WorldEnvironment) -> void:
 	if not we.has_meta("built_camera_attributes"):
 		we.set_meta("built_camera_attributes", we.camera_attributes)
 	var built: Dictionary = env.get_meta("built")
-	var high := preset == Preset.HIGH
+	var high := is_high()
 	env.ssil_enabled = high and built["ssil"]
 	env.ssr_enabled = high and built["ssr"]
-	env.ssr_max_steps = 32
+	env.ssr_max_steps = 64 if preset == Preset.PS5 else 32
 	env.volumetric_fog_enabled = high and built["vol"]
 	env.ssao_enabled = preset != Preset.LOW and built["ssao"]
 	# Without volumetric fog the rooms lose their haze entirely; plain depth
@@ -294,7 +317,7 @@ func _load_settings() -> void:
 	if cfg.load(SETTINGS_PATH) == OK:
 		# Settings from before adaptive resolution (version 1) kept High on
 		# integrated graphics at 15 FPS; start those over on Medium once.
-		var saved := int(cfg.get_value("graphics", "preset", Preset.MEDIUM))
+		var saved := clampi(int(cfg.get_value("graphics", "preset", Preset.MEDIUM)), 0, PRESET_NAMES.size() - 1)
 		if int(cfg.get_value("graphics", "version", 1)) >= 2 or not integrated:
 			preset = saved
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))

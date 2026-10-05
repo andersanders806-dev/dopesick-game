@@ -10,6 +10,7 @@ const PRESET_NOTES := [
 	"Low: fastest. No point-light shadows, simpler effects.",
 	"Medium: the default. Smooth on integrated graphics.",
 	"High: volumetric fog, bounce light, reflections and the film look. Wants a real GPU.",
+	"PS5: High at console quality -- sharper upscaling, ultra shadows, full-res bounce light and AO. Wants a strong GPU.",
 ]
 const BUS_LABELS := {"Master": "Master", "Music": "Music", "SFX": "Effects", "Voice": "Voices", "Walkman": "Walkman"}
 

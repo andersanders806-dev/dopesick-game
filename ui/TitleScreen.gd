@@ -13,6 +13,7 @@ const MUSIC := "res://assets/tapes/la_war_zone.ogg"
 var _art: TextureRect
 var _buttons: VBoxContainer
 var _music: AudioStreamPlayer
+var _choosing_view: bool = false
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -132,11 +133,37 @@ func _on_continue() -> void:
 	_fade_out()
 	SaveGame.continue_run()
 
+## New run asks how you want to see it first: through your own eyes, or
+## the camera up over the room. Back (Esc / circle) returns to the menu.
 func _on_new_run() -> void:
+	for b in _buttons.get_children():
+		b.visible = false
+	var fp := _button("First person", _start_run.bind(true))
+	var tp := _button("Third person", _start_run.bind(false))
+	var note := _label("Through your own eyes, or from up over the room. Settings can change it later.", 13, Color(0.6, 0.58, 0.54))
+	_buttons.add_child(note)
+	_choosing_view = true
+	# Last time's choice is the default.
+	(fp if Graphics.first_person else tp).grab_focus.call_deferred()
+
+func _start_run(first_person: bool) -> void:
+	Graphics.set_first_person(first_person)
 	SaveGame.delete()
 	GameState.start_run()
 	_fade_out()
 	get_tree().change_scene_to_file(START_SCENE)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _choosing_view and event.is_action_pressed("cancel_ui"):
+		get_viewport().set_input_as_handled()
+		_choosing_view = false
+		var kids := _buttons.get_children()
+		for i in kids.size():
+			if i >= kids.size() - 3:
+				kids[i].queue_free()
+			else:
+				kids[i].visible = true
+		(kids[0] as Control).grab_focus()
 
 func _on_settings() -> void:
 	_buttons.visible = false

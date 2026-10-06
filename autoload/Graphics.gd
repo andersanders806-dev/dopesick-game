@@ -55,6 +55,10 @@ const VOLUME_BUSES := ["Master", "Music", "SFX", "Voice", "Walkman"]
 var preset: int = Preset.MEDIUM
 var show_fps: bool = false
 var fullscreen: bool = false
+## Through your own eyes, or the camera up over the room. Asked on New run,
+## and switchable from Settings.
+var first_person: bool = false
+signal view_changed(first_person: bool)
 var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
 var _bus_base_db := {}
 var render_scale: float = 0.77
@@ -90,6 +94,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_save_settings()
 
 func _process(delta: float) -> void:
+	_update_mouse_mode()
 	_adapt_resolution(delta)
 	if show_fps:
 		_fps_label.text = "%d FPS  (%s, %d%%)" % [Engine.get_frames_per_second(), PRESET_NAMES[preset], roundi(render_scale * 100.0)]
@@ -109,6 +114,22 @@ func _apply_volume(bus: String) -> void:
 	var v: float = volumes.get(bus, 1.0)
 	AudioServer.set_bus_mute(i, v <= 0.01)
 	AudioServer.set_bus_volume_db(i, _bus_base_db.get(bus, 0.0) + linear_to_db(maxf(v, 0.01)))
+
+## In first person the mouse steers the view, so it's captured -- except
+## when a menu, a conversation or a minigame needs a pointer.
+func _update_mouse_mode() -> void:
+	var player := get_tree().get_first_node_in_group("player")
+	var want: bool = first_person and player != null and player.has_method("wants_mouse_captured") and player.wants_mouse_captured()
+	var mode := Input.MOUSE_MODE_CAPTURED if want else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != mode and not DisplayServer.get_name() == "headless":
+		Input.mouse_mode = mode
+
+func set_first_person(on: bool) -> void:
+	if on == first_person:
+		return
+	first_person = on
+	_save_settings()
+	view_changed.emit(on)
 
 func set_fullscreen(on: bool) -> void:
 	fullscreen = on
@@ -322,6 +343,7 @@ func _load_settings() -> void:
 			preset = saved
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))
 		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
+		first_person = bool(cfg.get_value("controls", "first_person", false))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
@@ -335,4 +357,5 @@ func _save_settings() -> void:
 	for bus in VOLUME_BUSES:
 		cfg.set_value("audio", bus, volumes[bus])
 	cfg.set_value("graphics", "show_fps", show_fps)
+	cfg.set_value("controls", "first_person", first_person)
 	cfg.save(SETTINGS_PATH)

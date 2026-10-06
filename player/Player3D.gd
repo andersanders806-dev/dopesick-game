@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const PauseMenuScript := preload("res://ui/PauseMenu.gd")
+const FirstPersonRoom := preload("res://world/FirstPersonRoom.gd")
 const NotebookScript := preload("res://ui/Notebook.gd")
 const BASE_SPEED := 4.2
 ## Sprinting is the risk/reward half of the stealth layer: it gets you out of
@@ -76,6 +77,22 @@ var _user_zoom: float = 1.0
 const PAD_ZOOM_RATE := 0.8
 var _sprint_latched: bool = false
 var _cam_ready: bool = false
+
+# --- First person ------------------------------------------------------------
+## Graphics.first_person: the camera at your eyes, the mouse or right stick
+## to look, and walking goes where you're facing. Your body still casts its
+## shadow, but you don't see the inside of your own head.
+const EYE_HEIGHT := 1.62
+const FP_FOV := 70.0
+## Radians per second at full right-stick tilt, and per pixel of mouse.
+const LOOK_SPEED := 2.6
+const MOUSE_SENS := 0.0025
+const PITCH_LIMIT := deg_to_rad(80.0)
+var _first_person: bool = false
+var _look_yaw: float = 0.0
+var _look_pitch: float = 0.0
+var _tp_camera_base: Transform3D
+var _tp_fov: float
 var _shake_t: float = 0.0
 var _cramp_timer: float = 0.0
 
@@ -86,14 +103,55 @@ func _ready() -> void:
 	# Hear the world from the character, not the camera hanging 9 m above.
 	$Listener.make_current()
 	_camera_base = camera.transform
+	_tp_camera_base = _camera_base
+	_tp_fov = camera.fov
 	_cam_offset = $CameraMount.position
 	$CameraMount.top_level = true
 	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
+	Graphics.view_changed.connect(_apply_view)
+	# Deferred: the room around us is still being built.
+	_apply_view.call_deferred(Graphics.first_person)
+
+func _apply_view(on: bool) -> void:
+	_first_person = on
+	for m in model.find_children("*", "GeometryInstance3D", true, false):
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	if on:
+		# Look the way you were facing.
+		set_look(_facing_angle + PI, 0.0)
+		_camera_base = Transform3D()
+		camera.fov = FP_FOV
+		camera.near = 0.05
+	else:
+		_camera_base = _tp_camera_base
+		camera.fov = _tp_fov
+		$CameraMount.rotation = Vector3.ZERO
+		_cam_ready = false
+	FirstPersonRoom.apply(get_tree().current_scene, on)
+	_update_camera_rig(0.0)
+
+## Where you're looking, in radians: yaw round from -Z, pitch up from level.
+func set_look(yaw: float, pitch: float) -> void:
+	_look_yaw = wrapf(yaw, -PI, PI)
+	_look_pitch = clampf(pitch, -PITCH_LIMIT, PITCH_LIMIT)
+
+## Graphics asks, each frame: should the mouse be steering the view?
+func wants_mouse_captured() -> bool:
+	if not _first_person or dialogue_active or get_tree().paused:
+		return false
+	for c in get_tree().root.get_children():
+		if c is CanvasLayer and (c.has_method("open") or c.has_method("open_with") or c.has_method("start")):
+			return false
+	return true
 
 
 func _update_camera_rig(delta: float) -> void:
+	if _first_person:
+		$CameraMount.global_position = global_position + Vector3(0, EYE_HEIGHT, 0)
+		$CameraMount.rotation = Vector3(_look_pitch, _look_yaw, 0.0)
+		return
 	var target := global_position
 	# Snap after a spawn or a door; ease otherwise.
 	if not _cam_ready or _cam_focus.distance_to(target) > 8.0:
@@ -125,10 +183,16 @@ func _update_cramps(delta: float) -> void:
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
-	# The right stick pulls the camera in and out, as the wheel does.
-	var zoom := Input.get_axis("look_up", "look_down")
-	if absf(zoom) > 0.0:
-		_user_zoom = clampf(_user_zoom + zoom * PAD_ZOOM_RATE * delta, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
+	if _first_person:
+		# The right stick looks round, as the mouse does.
+		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if look.length() > 0.0 and not dialogue_active:
+			set_look(_look_yaw - look.x * LOOK_SPEED * delta, _look_pitch - look.y * LOOK_SPEED * delta)
+	else:
+		# The right stick pulls the camera in and out, as the wheel does.
+		var zoom := Input.get_axis("look_up", "look_down")
+		if absf(zoom) > 0.0:
+			_user_zoom = clampf(_user_zoom + zoom * PAD_ZOOM_RATE * delta, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
 	# On the physics tick, so interpolation smooths the shake with the rest.
 	_update_camera_shake(delta)
 	_update_camera_rig(delta)
@@ -163,6 +227,9 @@ func _physics_process(delta: float) -> void:
 		Input.get_action_strength("move_down") - Input.get_action_strength("move_up")
 	)
 	dir = dir.normalized()
+	if _first_person:
+		# Forward is where you're looking.
+		dir = dir.rotated(Vector3.UP, _look_yaw)
 
 	var speed := BASE_SPEED
 	var sick := GameState.craving <= SICK_THRESHOLD
@@ -214,6 +281,9 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _first_person:
+		set_look(_look_yaw - event.relative.x * MOUSE_SENS, _look_pitch - event.relative.y * MOUSE_SENS)
+		return
 	if event is InputEventJoypadButton and event.is_action_pressed("sprint"):
 		_sprint_latched = true
 	if event.is_action_pressed("interact"):
@@ -224,7 +294,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var book := NotebookScript.new()
 			get_tree().root.add_child(book)
 			book.open()
-	elif event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+	elif event is InputEventMouseButton and event.pressed and not _first_person and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		var step := -0.06 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.06
 		_user_zoom = clampf(_user_zoom + step, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
 	elif event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause"):

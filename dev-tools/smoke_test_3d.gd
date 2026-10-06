@@ -766,6 +766,7 @@ func _run() -> void:
 	await _batch1_checks(gs)
 	await _batch2_checks(gs)
 	await _controller_checks(gs)
+	await _view_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2603,4 +2604,85 @@ func _controller_checks(gs: Node) -> void:
 	_check(not race._paused_confirm and not paused, "  ...and cross carries on")
 	race.free()
 	paused = false
+	gs.start_run()
+
+func _view_checks(gs: Node) -> void:
+	await _section("First person or third, picked when the run starts")
+	_close_menus()
+	var gfx := root.get_node("Graphics")
+	gfx.set_first_person(false)
+	# New run asks which.
+	var title := await _load("res://ui/TitleScreen.tscn")
+	title._on_new_run()
+	await _frames(2)
+	var labels: Array = title._buttons.get_children().filter(func(b): return b is Button and b.visible).map(func(b): return b.text)
+	_check(labels.has("First person") and labels.has("Third person"), "  new run asks: first person or third (%s)" % [labels])
+	var fp_button: Button = title._buttons.get_children().filter(func(b): return b is Button and b.text == "First person")[0] if labels.has("First person") else null
+	if fp_button:
+		fp_button.pressed.emit()
+	await _frames(20)
+	_check(gfx.first_person and current_scene != null and current_scene.name == "Apartment3D", "  ...first person, and you wake up in the apartment")
+	var p := _player()
+	gs.clock_running = false
+	p.dialogue_active = false
+	await _frames(3)
+	var cam: Camera3D = p.camera
+	var eye: Vector3 = cam.global_position
+	_check(Vector2(eye.x - p.global_position.x, eye.z - p.global_position.z).length() < 0.35 and eye.y > 1.4 and eye.y < 1.8, "  the camera is your eyes (%s, feet at %s)" % [eye, p.global_position])
+	var meshes: Array = p.model.find_children("*", "GeometryInstance3D", true, false)
+	_check(meshes.size() > 0 and meshes.all(func(m): return m.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY), "  ...you don't see your own insides, just your shadow")
+	_check(current_scene.find_child("FPCeiling", true, false) != null, "  the room has a ceiling")
+	var south := current_scene.find_child("WallSouth", true, false)
+	var south_mesh: MeshInstance3D = south.get_node("Mesh") if south else null
+	_check(south_mesh != null and (south_mesh.mesh as BoxMesh).size.y > 2.0, "  ...and its front wall is full height again")
+	# Walking goes where you look.
+	p.global_position = Vector3(0, 0, 0.5)
+	p.set_look(deg_to_rad(90.0), 0.0)
+	await _frames(3)
+	var start: Vector3 = p.global_position
+	Input.action_press("move_up")
+	await _frames(20)
+	Input.action_release("move_up")
+	var moved: Vector3 = p.global_position - start
+	_check(moved.x < -0.3 and absf(moved.z) < absf(moved.x) * 0.5, "  facing west, forward walks west (%s)" % moved)
+	var yaw0: float = p._look_yaw
+	_stick(JOY_AXIS_RIGHT_X, 1.0)
+	await _settle()
+	await _frames(10)
+	_stick(JOY_AXIS_RIGHT_X, 0.0)
+	await _settle()
+	_check(p._look_yaw < yaw0 - 0.1, "  the right stick looks round (%.2f -> %.2f)" % [yaw0, p._look_yaw])
+	var pitch0: float = p._look_pitch
+	_stick(JOY_AXIS_RIGHT_Y, -1.0)
+	await _settle()
+	await _frames(60)
+	_stick(JOY_AXIS_RIGHT_Y, 0.0)
+	await _settle()
+	_check(p._look_pitch > pitch0 and p._look_pitch <= deg_to_rad(80.0), "  ...up, but not over backwards (%.0f deg)" % rad_to_deg(p._look_pitch))
+	# The street, in first person.
+	await _load("res://world/City3D.tscn")
+	_check(_player().camera.global_position.y < 2.0 and current_scene.find_child("FPCeiling", true, false) == null, "  out on the street: eye level, open sky")
+	# Third person is the old camera, high and behind.
+	gfx.set_first_person(false)
+	await _load("res://world/Apartment3D.tscn")
+	p = _player()
+	await _frames(3)
+	_check(p.camera.global_position.y > 4.0 and current_scene.find_child("FPCeiling", true, false) == null, "  third person: the camera's back up over the room, no lid on it")
+	var shown: Array = p.model.find_children("*", "GeometryInstance3D", true, false)
+	_check(shown.all(func(m): return m.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY), "  ...and you can see yourself")
+	# Switchable mid-run from settings.
+	var SettingsMenu = load("res://ui/SettingsMenu.gd")
+	var sm = SettingsMenu.new()
+	root.add_child(sm)
+	sm.open()
+	await _frames(2)
+	var fp_check: Array = sm.find_children("*", "CheckButton", true, false).filter(func(c): return c.text.begins_with("First person"))
+	_check(fp_check.size() == 1, "  settings has a first-person switch")
+	if fp_check.size() == 1:
+		fp_check[0].button_pressed = true
+		await _frames(3)
+		_check(gfx.first_person and p.camera.global_position.y < 2.0, "  ...which takes effect right away")
+	sm.queue_free()
+	gfx.set_first_person(false)
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	gs.start_run()

@@ -102,6 +102,22 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   (`assets/sfx/kenney/`), several takes each picked at random. Footsteps
   follow the floor: wood in the Apartment and Dive Bar, concrete
   everywhere else (`SFX.ROOM_SURFACE`), for the player and police alike.
+- **First person or third.** New run asks which: through your own eyes
+  (mouse or right stick to look, walking goes where you face), or the
+  camera up over the room as before. Settings switches it any time
+  (`Graphics.first_person`). The rooms were built to be seen from above,
+  with no lid and a cut-down front wall, so in first person
+  `world/FirstPersonRoom.gd` gives each one a ceiling and its front wall
+  back. The street and the lot stay open to the sky.
+- **PS5 controller, laid out like Call of Duty** (`GameState.PAD`). Left
+  stick moves, right stick is the camera, L3 sprints (click and go, until
+  you stop), square is use, circle backs out, options pauses, the touchpad
+  is the notebook, triangle is the tapes and the d-pad skips one. R2 fires:
+  a dart, the cue (hold and let go), the kart's gas. L2 steadies your
+  breath at the board, fine-aims the cue, and brakes. Every binding is on
+  any pad, not just joypad 0, and hints name the pad's buttons while
+  you're on it. `dev-tools/smoke_controller.gd` and `smoke_view.gd` run
+  just these checks.
 - **Graphics presets (F3) and FPS counter (F4):** `autoload/Graphics.gd`.
   The rooms are built with the full look (SSIL, SSR, volumetric fog, TAA,
   far DOF); that's "High", which runs at ~12 FPS in the City on an Intel

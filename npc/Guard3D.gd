@@ -163,7 +163,7 @@ func _update_suspicion(player: Node, delta: float) -> void:
 			# Loitering in view is only suspicious once you're actually
 			# holding something you shouldn't be; otherwise browsing a shop
 			# would be impossible.
-			if not GameState.inventory.is_empty():
+			if GameState.carrying_stolen():
 				rate += SUSPICION_CARRYING + SUSPICION_LOITERING
 			if player.has_method("is_sprinting") and player.is_sprinting():
 				rate += SUSPICION_SPRINTING

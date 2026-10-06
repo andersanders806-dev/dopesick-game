@@ -240,7 +240,7 @@ func _patron_interact(hud: Node) -> void:
 		hud.show_dialogue(npc_name, _sick_prefix() + line, _portrait())
 
 func _flavor_interact(hud: Node) -> void:
-	if fences_items and not GameState.inventory.is_empty():
+	if fences_items and GameState.carrying_stolen():
 		var earned := GameState.fence_everything()
 		SFX.play("cash")
 		hud.show_dialogue(npc_name, "I'll take that off your hands. Here's $%d, no questions." % earned, _portrait())

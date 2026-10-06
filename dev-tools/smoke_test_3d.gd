@@ -763,6 +763,7 @@ func _run() -> void:
 	await _hustle_checks(gs)
 	await _search_checks(gs)
 	await _sick_world_checks(gs)
+	await _batch1_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -1884,4 +1885,33 @@ func _sick_world_checks(gs: Node) -> void:
 	gs.craving = 100.0
 	await _frames(3)
 	_check(absf(hud._graded_env.adjustment_saturation - well_sat) < 0.01, "  well again, the colour comes back")
+	gs.start_run()
+
+func _batch1_checks(gs: Node) -> void:
+	await _belongings_checks(gs)
+
+func _belongings_checks(gs: Node) -> void:
+	await _section("Your own things: belongings")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	_check(gs.BELONGINGS.all(func(id): return gs.belongings[id] == "home"), "  a run starts with all five belongings at home")
+	_check(gs.is_belonging("tv") and not gs.is_belonging("cognac"), "  the TV is a belonging, cognac isn't")
+	gs.take_belonging("tv")
+	_check(gs.has_item("tv") and gs.belongings["tv"] == "carried", "  taking the TV puts it in your pockets")
+	_check(not gs.carrying_stolen(), "  ...and it doesn't count as stolen goods")
+	gs.steal_item("cognac")
+	gs.get_busted()
+	gs.in_custody = false
+	_check(gs.has_item("tv") and not gs.has_item("cognac"), "  a bust takes the cognac but leaves you your TV")
+	gs.steal_item("cigs")
+	var earned: int = gs.fence_everything()
+	_check(earned == gs.FENCE_PRICE and gs.has_item("tv"), "  the bar fences the cigarettes, not your TV")
+	gs.inventory.erase("tv")
+	gs._reconcile_belongings()
+	_check(gs.belongings["tv"] == "gone", "  a belonging that left your pockets some other way is gone")
+	gs.take_belonging("radio")
+	var back: Array = gs.return_belongings_home()
+	_check(back == ["radio"] and gs.belongings["radio"] == "home" and not gs.has_item("radio"), "  carrying it home puts it back")
 	gs.start_run()

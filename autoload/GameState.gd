@@ -63,6 +63,13 @@ const REQUEST_POOL := [
 	# From the kart track's spares box (world/KartCenter3D.gd), not a shop
 	# shelf: nobody at the bar orders one, but the pawnshop pays for it.
 	{"id": "carburetor", "name": "a kart carburetor", "price": 60, "store": "karts", "no_order": true},
+	# Your own things, from the apartment. Nobody orders them; the pawnshop
+	# pays their full value and holds them for a while.
+	{"id": "tv", "name": "your TV", "price": 24, "store": "home", "no_order": true},
+	{"id": "radio", "name": "the old radio", "price": 8, "store": "home", "no_order": true},
+	{"id": "guitar", "name": "your guitar", "price": 30, "store": "home", "no_order": true},
+	{"id": "coat", "name": "your winter coat", "price": 10, "store": "home", "no_order": true},
+	{"id": "ring", "name": "your mother's ring", "price": 45, "store": "home", "no_order": true},
 ]
 
 const STORE_NAMES := {
@@ -72,6 +79,7 @@ const STORE_NAMES := {
 	"liquor": "the liquor store",
 	"electronics": "the electronics store",
 	"karts": "the kart track",
+	"home": "your apartment",
 }
 
 ## The clock. Four game minutes pass per real second, so a full day is six
@@ -250,6 +258,18 @@ const REP_MAX := 5
 var store_heat: Dictionary = {}
 signal rep_changed(name: String, value: int)
 
+## Your own things: id -> "home", "carried", "pawned" or "gone". Selling
+## them is the slow way down, and the apartment shows it.
+const BELONGINGS := ["tv", "radio", "guitar", "coat", "ring"]
+var belongings: Dictionary = {}
+## Pawn tickets: belonging id -> the day it went over the counter.
+var pawn_tickets: Dictionary = {}
+const PAWN_HOLD_DAYS := 4
+const BUYBACK_MARKUP := 1.5
+## The "room echoes" line plays once a run.
+var apartment_echo_seen: bool = false
+signal belongings_changed
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -297,6 +317,11 @@ func start_run() -> void:
 	sabotage_day = -1
 	rep.clear()
 	store_heat.clear()
+	belongings.clear()
+	for id in BELONGINGS:
+		belongings[id] = "home"
+	pawn_tickets.clear()
+	apartment_echo_seen = false
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -532,6 +557,61 @@ func _sold_out_from_under(id: String) -> void:
 				set_store_heat(store, 1.3, 2)
 				log_event("%s had a word with the clerk at %s." % [p["name"], STORE_NAMES.get(store, "the store")])
 
+# --- Your own things ------------------------------------------------------
+
+func is_belonging(id: String) -> bool:
+	return item_info(id).get("store", "") == "home"
+
+## What you're carrying that you shouldn't be. Your own TV isn't evidence,
+## and nobody on the street looks twice at a man with a guitar.
+func stolen_goods() -> Array:
+	return inventory.filter(func(id): return not is_belonging(id))
+
+func carrying_stolen() -> bool:
+	return not stolen_goods().is_empty()
+
+func belongings_away() -> int:
+	return BELONGINGS.filter(func(id): return belongings.get(id, "home") != "home").size()
+
+func take_belonging(id: String) -> void:
+	if belongings.get(id, "") != "home":
+		return
+	belongings[id] = "carried"
+	inventory.append(id)
+	inventory_changed.emit()
+	belongings_changed.emit()
+	log_event("Took %s to sell." % item_name_for(id))
+
+## Back through the apartment door with something you'd taken: it goes
+## back where it lives. Returns what was put back.
+func return_belongings_home() -> Array:
+	var back := []
+	for id in BELONGINGS:
+		if belongings.get(id, "") == "carried" and inventory.has(id):
+			inventory.erase(id)
+			belongings[id] = "home"
+			back.append(id)
+	if not back.is_empty():
+		inventory_changed.emit()
+		belongings_changed.emit()
+	return back
+
+## Anything "carried" that isn't in your pockets any more went some other
+## way -- a shelter cot, a gift to Ray -- and isn't coming back.
+func _reconcile_belongings() -> void:
+	var changed := false
+	for id in BELONGINGS:
+		if belongings.get(id, "") == "carried" and not inventory.has(id):
+			belongings[id] = "gone"
+			changed = true
+	if changed:
+		belongings_changed.emit()
+		_note_nothing_left()
+
+func _note_nothing_left() -> void:
+	if belongings_away() == BELONGINGS.size() and BELONGINGS.all(func(id): return belongings[id] != "carried"):
+		log_event("Nothing left to sell.")
+
 func _setup_input_actions() -> void:
 	_bind("interact", [KEY_E])
 	_bind("sprint", [KEY_SHIFT])
@@ -593,13 +673,14 @@ func sell_item(id: String, price: int) -> bool:
 	return true
 
 func fence_everything() -> int:
-	var count := inventory.size()
+	var goods := stolen_goods()
+	var count := goods.size()
 	if count == 0:
 		return 0
-	for id in inventory:
+	for id in goods:
 		_sold_out_from_under(id)
+		inventory.erase(id)
 	var earned := count * FENCE_PRICE
-	inventory.clear()
 	cash += earned
 	cash_earned += earned
 	inventory_changed.emit()
@@ -779,7 +860,8 @@ func get_busted() -> void:
 	if in_custody:
 		return
 	in_custody = true
-	inventory.clear()
+	# Everything stolen is evidence; your own things you keep.
+	inventory.assign(inventory.filter(func(id): return is_belonging(id)))
 	# A fine, not ruin: you still walk out with most of your cash.
 	var fine := int(cash * BUST_FINE_FRACTION * MetaProgress.bust_fine_scale())
 	cash -= fine

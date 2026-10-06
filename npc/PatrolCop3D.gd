@@ -58,7 +58,7 @@ func _update_suspicion(player: Node, delta: float) -> void:
 		return
 	var rate := 0.0
 	if can_see_player and player != null and is_instance_valid(player):
-		var carrying := not GameState.inventory.is_empty()
+		var carrying := GameState.carrying_stolen()
 		if carrying:
 			rate += RATE_CARRYING
 			if player.has_method("is_sprinting") and player.is_sprinting():

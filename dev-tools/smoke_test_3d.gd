@@ -1892,6 +1892,7 @@ func _batch1_checks(gs: Node) -> void:
 	await _pawn_ticket_checks(gs)
 	await _rent_checks(gs)
 	await _court_checks(gs)
+	await _status_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -2076,4 +2077,34 @@ func _court_checks(gs: Node) -> void:
 	await _frames(15)
 	_check(not gs.warrant and gs.strikes == strikes_now and gs.court_day == gs.day + 2 and current_scene.name == "Jail3D", "  turning yourself in: no strike, a new court date, a night in the cell")
 	_player().dialogue_active = false
+	gs.start_run()
+
+func _status_checks(gs: Node) -> void:
+	await _section("What's hanging over you: HUD and notebook")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	_check(gs.status_line().is_empty(), "  day 1, nothing pressing")
+	gs.day = 5
+	_check(gs.status_line() == ["Rent $35 due tonight", false], "  rent day")
+	gs.court_day = 5
+	_check(String(gs.status_line()[0]).begins_with("Court 09-12"), "  court beats rent")
+	gs.warrant = true
+	_check(gs.status_line() == ["WARRANT", true], "  a warrant beats everything")
+	var city := await _load("res://world/City3D.tscn")
+	var hud = city.get_tree().get_first_node_in_group("hud")
+	hud._update_status()
+	_check(hud.status_label.visible and hud.status_label.text == "WARRANT", "  the HUD shows it")
+	gs.warrant = false
+	gs.court_day = -1
+	gs.day = 2
+	hud._update_status()
+	_check(not hud.status_label.visible, "  ...and hides when there's nothing")
+	gs.take_belonging("guitar")
+	gs.pawn_belonging("guitar")
+	var book = load("res://ui/Notebook.gd").new()
+	var lines: Array = book._obligations().map(func(l): return l[0])
+	book.free()
+	_check(lines.any(func(l): return l.begins_with("Rent: $35 due day 5")) and lines.any(func(l): return l.contains("guitar, $45 by day 6")), "  the notebook lists rent and the pawn ticket: %s" % [lines])
 	gs.start_run()

@@ -205,15 +205,36 @@ func _draw_map(c: Control, font: Font) -> void:
 		_line(c, font, 12, "You're inside: %s." % (String(scene.name).trim_suffix("3D") if scene else "?"), INK_FADED)
 
 func _draw_notes(c: Control, font: Font) -> void:
-	_line(c, font, 0, "What's happened", INK, 0.0, 22)
+	# What's coming up goes at the top, and the diary gives up a line for
+	# each of them.
+	var due := _obligations()
+	for i in due.size():
+		_line(c, font, i, due[i][0], RED_INK if due[i][1] else INK, 0.0, 15)
+	var top := due.size() + 1
+	_line(c, font, top, "What's happened", INK, 0.0, 22)
 	var entries: Array = GameState.diary
-	var shown := entries.slice(maxi(0, entries.size() - 15))
+	var shown := entries.slice(maxi(0, entries.size() - (15 - top)))
 	if shown.is_empty():
-		_line(c, font, 2, "Nothing yet.", INK_FADED)
+		_line(c, font, top + 2, "Nothing yet.", INK_FADED)
 	for i in shown.size():
 		var e: Dictionary = shown[i]
-		_line(c, font, 2 + i, "Day %d, %s" % [e["day"], e["clock"]], INK_FADED, 0.0, 14)
-		_line(c, font, 2 + i, e["text"], INK, 140.0, 16)
+		_line(c, font, top + 2 + i, "Day %d, %s" % [e["day"], e["clock"]], INK_FADED, 0.0, 14)
+		_line(c, font, top + 2 + i, e["text"], INK, 140.0, 16)
+
+## Dates and debts, for the top of the notes page: [text, urgent].
+func _obligations() -> Array:
+	var out := []
+	if GameState.warrant:
+		out.append(["WARRANT -- they know your face", true])
+	if GameState.court_day > 0:
+		out.append(["Court: day %d, 9-12 at the station" % GameState.court_day, true])
+	if not GameState.probation_days.is_empty():
+		out.append(["Probation: check in days %s" % ", ".join(GameState.probation_days.map(func(d): return str(int(d)))), true])
+	var rent_when: String = "LOCKED OUT" if GameState.locked_out() else "due day %d" % GameState.rent_due_day
+	out.append(["Rent: $%d %s" % [GameState.rent_amount(), rent_when], GameState.rent_stage > 0])
+	for id in GameState.pawn_tickets:
+		out.append(["Pawn ticket: %s, $%d by day %d" % [GameState.item_name_for(id).trim_prefix("your "), GameState.buyback_price(id), GameState.ticket_last_day(id)], false])
+	return out
 
 ## Lined notebook paper: faint blue rules, a red margin, grain, the edges
 ## gone grey from being in a pocket.

@@ -709,6 +709,23 @@ func pay_rent() -> bool:
 	rent_changed.emit()
 	return true
 
+## The most pressing thing hanging over you, for the HUD: [text, urgent],
+## or [] when there's nothing.
+func status_line() -> Array:
+	if warrant:
+		return ["WARRANT", true]
+	if day == court_day:
+		return ["Court 09-12 today, police station", true]
+	if not probation_days.is_empty() and int(probation_days[0]) == day:
+		return ["Check in at the station by 17:00", true]
+	if rent_stage == 2:
+		return ["Locked out: $%d to the landlord" % rent_owed, true]
+	if rent_stage == 1:
+		return ["Final notice: $%d rent by midnight" % rent_owed, true]
+	if day == rent_due_day:
+		return ["Rent $%d due tonight" % RENT, false]
+	return []
+
 # --- Court ----------------------------------------------------------------
 
 func _schedule_court() -> void:

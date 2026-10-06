@@ -57,6 +57,8 @@ const CLOCK_NIGHT_COLOR := Color(0.55, 0.65, 0.95)
 var clock_label: Label
 ## What you owe the pusher, under the stats panel; red once it's overdue.
 var debt_label: Label
+## Rent, court, probation or a warrant -- whichever's most pressing.
+var status_label: Label
 
 const TEXT_LEFT_WITH_PORTRAIT := 150.0
 const TEXT_LEFT_NO_PORTRAIT := 16.0
@@ -77,6 +79,9 @@ func _ready() -> void:
 	_build_clock()
 	_build_debt()
 	GameState.debt_changed.connect(_on_debt_changed)
+	_build_status()
+	GameState.rent_changed.connect(_update_status)
+	GameState.legal_changed.connect(_update_status)
 	GameState.clock_changed.connect(_on_clock_changed)
 	_update_day()
 	_update_cash(GameState.cash)
@@ -213,6 +218,29 @@ func _on_day_or_strikes_changed(_value: int = 0) -> void:
 func _on_clock_changed(_minute: int) -> void:
 	_update_clock()
 	_update_debt()
+	_update_status()
+
+func _build_status() -> void:
+	status_label = Label.new()
+	status_label.name = "StatusLabel"
+	status_label.add_theme_font_size_override("font_size", 12)
+	status_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	status_label.add_theme_constant_override("outline_size", 4)
+	status_label.offset_left = 12.0
+	status_label.offset_right = 300.0
+	$TopBar.add_child(status_label)
+	_update_status()
+
+func _update_status() -> void:
+	var s: Array = GameState.status_line()
+	status_label.visible = not s.is_empty()
+	# Under the debt line when there is one, in its place when there isn't.
+	status_label.offset_top = 86.0 if debt_label.visible else 70.0
+	status_label.offset_bottom = status_label.offset_top + 16.0
+	if s.is_empty():
+		return
+	status_label.text = s[0]
+	status_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.25) if s[1] else Color(0.9, 0.78, 0.45))
 
 func _build_debt() -> void:
 	debt_label = Label.new()

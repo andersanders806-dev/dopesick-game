@@ -2087,6 +2087,17 @@ func _build_city() -> Node3D:
 			plate.position = Vector3(x + 0.95, 1.55, street_z + 0.02)
 		if f["scene"] == "":
 			_box_mesh(_root, f["door"], Vector3(1.0, 2.0, 0.1), Vector3(x, 1.0, street_z + 0.01), _tex_mat("res://assets/env/door.png", 1.0, 0.7))
+			# You can't walk in, but you can walk up: court, probation
+			# check-ins, turning yourself in (PoliceDoor3D.gd).
+			var pd := Area3D.new()
+			pd.name = "StationDoor"
+			pd.collision_layer = 4
+			pd.collision_mask = 0
+			pd.monitoring = false
+			pd.set_script(load("res://interactables/PoliceDoor3D.gd"))
+			_add(_root, pd)
+			pd.position = Vector3(x, 0, street_z + 0.45)
+			_collision(pd, _box_shape(Vector3(1.4, 2.0, 1.2)), Vector3(0, 1.0, 0))
 		else:
 			_door(f["door"], Vector3(x, 0, street_z + 0.45), Vector3.BACK, f["scene"], "SpawnFromCity")
 		_marker(f["spawn"], Vector3(x, 0, street_z + 1.5))

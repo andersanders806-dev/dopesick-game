@@ -21,6 +21,8 @@ const RATE_RUNNING_WITH_GOODS := 1.1
 ## Watching you buy from the pusher is the one thing he's out here for.
 const RATE_HAND_TO_HAND := 2.6
 const HAND_TO_HAND_RANGE := 3.0
+## With a warrant out, he's seen your face on the board at roll call.
+const RATE_WARRANT := 0.9
 
 var heading: float = 1.0
 var _pause_timer: float = 0.0
@@ -58,6 +60,8 @@ func _update_suspicion(player: Node, delta: float) -> void:
 		return
 	var rate := 0.0
 	if can_see_player and player != null and is_instance_valid(player):
+		if GameState.warrant:
+			rate += RATE_WARRANT
 		var carrying := GameState.carrying_stolen()
 		if carrying:
 			rate += RATE_CARRYING

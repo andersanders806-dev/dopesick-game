@@ -284,6 +284,22 @@ var rent_stage: int = 0
 var rent_owed: int = 0
 signal rent_changed
 
+## The court date after a bust. Show up in the program and drug court takes
+## a strike off; otherwise probation, a test at every check-in. Miss either
+## and there's a warrant: the beat cop knows your face.
+const COURT_HOURS := [9, 12]
+const STATION_HOURS := [9, 17]
+const PROBATION_CHECKINS := 3
+## Opioids show up in a test for a day or more.
+const DIRTY_WINDOW_MINUTES := 24 * 60
+var court_day: int = -1
+## Days still to check in on, earliest first.
+var probation_days: Array = []
+var warrant: bool = false
+## now_minutes() of the last dose off the street.
+var last_street_use: float = -99999.0
+signal legal_changed
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -340,6 +356,10 @@ func start_run() -> void:
 	rent_due_day = RENT_PERIOD
 	rent_stage = 0
 	rent_owed = 0
+	court_day = -1
+	probation_days.clear()
+	warrant = false
+	last_street_use = -99999.0
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -414,6 +434,7 @@ func _emit_clock() -> void:
 	if minute != _last_minute:
 		if _last_minute >= 0 and minute / 60 != _last_minute / 60:
 			_roll_weather()
+			_check_legal_deadlines()
 		_last_minute = minute
 		clock_changed.emit(minute)
 
@@ -688,6 +709,73 @@ func pay_rent() -> bool:
 	rent_changed.emit()
 	return true
 
+# --- Court ----------------------------------------------------------------
+
+func _schedule_court() -> void:
+	court_day = day + 2
+	probation_days.clear()
+	warrant = false
+	legal_changed.emit()
+
+func in_court_hours() -> bool:
+	return day == court_day and hours_contain(COURT_HOURS, hour())
+
+func tested_dirty() -> bool:
+	return now_minutes() - last_street_use < DIRTY_WINDOW_MINUTES
+
+## Returns "diverted", "probation", or "" if court isn't sitting for you now.
+func appear_in_court() -> String:
+	if not in_court_hours():
+		return ""
+	court_day = -1
+	var outcome := "probation"
+	if in_treatment:
+		outcome = "diverted"
+		strikes = maxi(0, strikes - 1)
+		strikes_changed.emit(strikes)
+		log_event("Drug court. The judge saw the program card and struck one off.")
+	else:
+		probation_days.clear()
+		for i in PROBATION_CHECKINS:
+			probation_days.append(day + 1 + i)
+		log_event("Court. Three days' probation: check in at the station, clean every time.")
+	legal_changed.emit()
+	return outcome
+
+## Returns "passed", "failed", or "" if today's check-in isn't open.
+func probation_check_in() -> String:
+	if probation_days.is_empty() or int(probation_days[0]) != day or not hours_contain(STATION_HOURS, hour()):
+		return ""
+	if tested_dirty():
+		probation_days.clear()
+		log_event("Failed the probation test.")
+		get_busted()
+		return "failed"
+	probation_days.pop_front()
+	log_event("Checked in clean. %d to go." % probation_days.size())
+	legal_changed.emit()
+	return "passed"
+
+func turn_self_in() -> void:
+	log_event("Turned yourself in on the warrant.")
+	_schedule_court()
+
+func _issue_warrant(why: String) -> void:
+	warrant = true
+	log_event(why + " There's a warrant out.")
+	legal_changed.emit()
+
+## Hourly: a court date or a check-in that came and went.
+func _check_legal_deadlines() -> void:
+	if court_day > 0 and (day > court_day or (day == court_day and hour() >= COURT_HOURS[1])):
+		court_day = -1
+		_issue_warrant("Missed court.")
+	if not probation_days.is_empty():
+		var due := int(probation_days[0])
+		if day > due or (day == due and hour() >= STATION_HOURS[1]):
+			probation_days.clear()
+			_issue_warrant("Missed a probation check-in.")
+
 ## One step a day at most, however many days pass at once.
 func _roll_rent() -> void:
 	if rent_stage == 0 and day > rent_due_day:
@@ -875,6 +963,7 @@ func take_drug(drug_id: String) -> String:
 	doses_taken += 1
 	if drug_class != Drugs.TREATMENT and drug_class != Drugs.CANNABIS:
 		used_today = true
+		last_street_use = now_minutes()
 	var since_opioid: float = run_time - float(last_dose_at.get(Drugs.OPIOID, -9999.0))
 
 	# Buprenorphine binds harder than heroin or fentanyl and displaces them.
@@ -962,6 +1051,8 @@ func get_busted() -> void:
 	cash -= fine
 	strikes += 1
 	log_event("Picked up by the police. Strike %d." % strikes, "busted_cuffs")
+	# A bust settles any warrant and puts you in front of a judge.
+	_schedule_court()
 	inventory_changed.emit()
 	cash_changed.emit(cash)
 	strikes_changed.emit(strikes)

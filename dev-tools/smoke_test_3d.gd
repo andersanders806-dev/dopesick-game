@@ -1891,6 +1891,7 @@ func _batch1_checks(gs: Node) -> void:
 	await _belongings_checks(gs)
 	await _pawn_ticket_checks(gs)
 	await _rent_checks(gs)
+	await _court_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -2012,5 +2013,67 @@ func _rent_checks(gs: Node) -> void:
 	gs.advance_clock(24 * 60)
 	await _frames(60 * 7)
 	_check(current_scene.name == "City3D", "  locked out while you're home, you're shown out")
+	_player().dialogue_active = false
+	gs.start_run()
+
+func _court_checks(gs: Node) -> void:
+	await _section("Court, probation, and the warrant")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	gs.get_busted()
+	gs.in_custody = false
+	_check(gs.court_day == gs.day + 2, "  a bust sets a court date two days out")
+	gs.advance_clock(2 * 24 * 60 - 4 * 60)  # day+2, 10:00
+	gs.in_treatment = true
+	var strikes_before: int = gs.strikes
+	_check(gs.appear_in_court() == "diverted" and gs.strikes == strikes_before - 1 and gs.court_day == -1, "  in the program, drug court takes a strike off")
+	gs.in_treatment = false
+	gs.get_busted()
+	gs.in_custody = false
+	gs.advance_clock(2 * 24 * 60)  # busted at 10:00, so day+2 at 10:00 -- not past noon
+	_check(not gs.warrant and gs.appear_in_court() == "probation" and gs.probation_days == [gs.day + 1, gs.day + 2, gs.day + 3], "  otherwise, three days' probation")
+	gs.advance_clock(24 * 60)
+	_check(gs.probation_check_in() == "passed" and gs.probation_days.size() == 2, "  a clean check-in passes")
+	# Naloxone on hand so a random overdose can't end the run mid-test.
+	gs.naloxone = 5
+	gs.clock = 16 * 60
+	gs.take_drug("heroin")
+	_check(gs.now_minutes() - gs.last_street_use < 1.0, "  a street dose is remembered for the test")
+	var strikes_mid: int = gs.strikes
+	gs.advance_clock(18 * 60)  # next morning, 10:00
+	_check(gs.tested_dirty() and gs.probation_check_in() == "failed" and gs.strikes == strikes_mid + 1 and gs.probation_days.is_empty(), "  using the day before fails the test: a strike")
+	gs.in_custody = false
+	gs.court_day = gs.day
+	gs.clock = 11 * 60
+	gs.advance_clock(3 * 60)
+	_check(gs.warrant and gs.court_day == -1, "  missing court gets you a warrant")
+	gs.advance_clock(24 * 60)
+	_check(gs.warrant and gs.diary.filter(func(e): return e["text"].contains("warrant")).size() == 1, "  ...once")
+	gs.probation_days.assign([gs.day])
+	gs.warrant = false
+	gs.clock = 16 * 60
+	gs.advance_clock(2 * 60)
+	_check(gs.warrant and gs.probation_days.is_empty(), "  missing a check-in gets you one too")
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var cop = city.get_tree().get_first_node_in_group("patrol")
+	var p := _player()
+	gs.inventory.clear()
+	cop.suspicion = 0.0
+	cop.can_see_player = true
+	cop._update_suspicion(p, 0.5)
+	_check(cop.suspicion > 0.3, "  with a warrant, the beat cop knows your face (%.2f)" % cop.suspicion)
+	gs.warrant = false
+	cop.suspicion = 0.0
+	cop.can_see_player = true
+	cop._update_suspicion(p, 0.5)
+	_check(cop.suspicion == 0.0, "  ...without one, an empty-handed man is nobody")
+	gs.warrant = true
+	var strikes_now: int = gs.strikes
+	city.get_node("StationDoor").to_cell()
+	await _frames(15)
+	_check(not gs.warrant and gs.strikes == strikes_now and gs.court_day == gs.day + 2 and current_scene.name == "Jail3D", "  turning yourself in: no strike, a new court date, a night in the cell")
 	_player().dialogue_active = false
 	gs.start_run()

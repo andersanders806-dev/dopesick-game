@@ -24,12 +24,14 @@ func interact(player: Node) -> void:
 	player.dialogue_active = true
 	SFX.play("blip")
 	var program := "Your clinic dose  (program: %d/%d clean days)" % [GameState.treatment_streak, GameState.RECOVERY_DAYS] if GameState.in_treatment else "Ask about treatment (start the program)"
-	var options := ["Take a naloxone kit", program, "Just talk"]
+	var options := ["Take a naloxone kit", program, "Take test strips", "Just talk"]
 	var disabled := []
 	if not GameState.daily_available("shelter_naloxone"):
 		disabled.append(0)
 	if not GameState.daily_available("shelter_bupe"):
 		disabled.append(1)
+	if not GameState.daily_available("shelter_strips"):
+		disabled.append(2)
 	var menu: CanvasLayer = ChoiceMenu.new()
 	get_tree().root.add_child(menu)
 	menu.chosen.connect(func(i: int): _on_choice(i, player, hud))
@@ -61,4 +63,10 @@ func _on_choice(i: int, player: Node, hud: Node) -> void:
 			else:
 				hud.show_dialogue(npc_name, "It doesn't sit right. \"...Okay. Sit down. Breathe. I've got you.\"")
 		2:
+			if not GameState.daily_available("shelter_strips", true):
+				hud.show_dialogue(npc_name, "\"I gave you some this morning. Use them -- that's what they're for.\"")
+				return
+			GameState.test_strips += 2
+			hud.show_dialogue(npc_name, "Two strips in a little baggie. \"Dissolve a few grains in water, dip it, wait. One line means fentanyl. It won't tell you how much. Use less, go slow, don't use alone.\"")
+		3:
 			hud.show_dialogue(npc_name, TALK.pick_random())

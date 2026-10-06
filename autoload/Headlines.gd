@@ -37,6 +37,11 @@ const EVENTS := {
 		"text": "Word is the pusher's re-up didn't come in. He's holding less, and he knows what that means for prices."},
 	"kart_cup": {"weight": 1, "title": "Speedway Cup",
 		"text": "Banners over the KARTS door: SPEEDWAY CUP TONIGHT. Open from noon, triple prize money for the podium."},
+	"bad_batch": {"weight": 2, "title": "Bad batch",
+		"text": "Something bad's going round. Two people went over on the next block last night. Outreach is handing out test strips."},
+	# The day after someone dies in the alley (forced, like the track).
+	"vigil": {"weight": 0, "title": "Vigil",
+		"text": "Candles at the mouth of the alley, and a name in marker on the wall. The corner's quiet today."},
 	"track_shut": {"weight": 0, "title": "Track shut",
 		"text": "A hand-written sign on the KARTS door: CLOSED -- SOMEBODY STOLE A CARBURETOR. YOU KNOW WHO YOU ARE."},
 }
@@ -62,6 +67,8 @@ func roll(day: int) -> void:
 		id = forced
 	elif GameState.sabotage_day == day:
 		id = "track_shut"
+	elif GameState.vigil_day == day:
+		id = "vigil"
 	elif day > 1:
 		id = _weighted_pick()
 	GameState.headline = id
@@ -112,6 +119,8 @@ func pusher_price_mult() -> float:
 			return 1.25
 		"drought":
 			return 1.5
+		"vigil":
+			return 0.9
 	return 1.0
 
 ## How many kinds he's holding, [min, max].

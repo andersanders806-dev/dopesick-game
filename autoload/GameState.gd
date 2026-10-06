@@ -300,6 +300,17 @@ var warrant: bool = false
 var last_street_use: float = -99999.0
 signal legal_changed
 
+## Bad batch: on its day, a lot of what's sold as opioids is cut with
+## something stronger. Test strips from outreach tell you; nothing else does.
+const BAD_BATCH_CHANCE := 0.4
+const CONTAMINATED_RISK := 3.0
+var test_strips: int = 0
+## The overdose risk of the last dose taken, for tests.
+var last_risk: float = 0.0
+## The day after someone dies in the alley, and who it was.
+var vigil_day: int = -1
+var vigil_for: String = ""
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -360,6 +371,10 @@ func start_run() -> void:
 	probation_days.clear()
 	warrant = false
 	last_street_use = -99999.0
+	test_strips = 0
+	last_risk = 0.0
+	vigil_day = -1
+	vigil_for = ""
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -726,6 +741,20 @@ func status_line() -> Array:
 		return ["Rent $%d due tonight" % RENT, false]
 	return []
 
+# --- Bad batch ------------------------------------------------------------
+
+func roll_contaminated(drug_id: String) -> bool:
+	var hl := _headlines()
+	return hl != null and hl.is_today("bad_batch") and Drugs.info(drug_id).get("class", "") == Drugs.OPIOID and randf() < BAD_BATCH_CHANCE
+
+## What a strip tells you about what you were handed.
+func strip_reading(asked: String, got: String, contaminated: bool) -> String:
+	if got == "fentanyl" and asked != "fentanyl":
+		return "One line. Fentanyl. Whatever he called it, that's what it is."
+	if contaminated:
+		return "The strip lights up. It's cut with something, and it's strong."
+	return "Two clean lines. It shows nothing it shouldn't."
+
 # --- Court ----------------------------------------------------------------
 
 func _schedule_court() -> void:
@@ -965,7 +994,9 @@ func price_of(drug_id: String) -> int:
 ## you *asked* for; what you actually got was decided at purchase.
 ##
 ## Returns the outcome: "relief", "precipitated", "overdose" or "saved".
-func take_drug(drug_id: String) -> String:
+## `dose_scale` is how much of it you take (a little at a time is 0.5: half
+## the relief, half the risk); `risk_mult` is what it's cut with.
+func take_drug(drug_id: String, dose_scale := 1.0, risk_mult := 1.0) -> String:
 	var d := Drugs.info(drug_id)
 	if d.is_empty():
 		return "relief"
@@ -994,7 +1025,7 @@ func take_drug(drug_id: String) -> String:
 
 	# Opioids and benzodiazepines both suppress breathing; together they are
 	# what actually kills people, far more than either alone.
-	var risk: float = d["od_risk"]
+	var risk: float = float(d["od_risk"]) * risk_mult * dose_scale
 	var mixing := false
 	if drug_class == Drugs.OPIOID:
 		mixing = run_time - float(last_dose_at.get(Drugs.BENZO, -9999.0)) < Drugs.MIX_WINDOW
@@ -1014,15 +1045,16 @@ func take_drug(drug_id: String) -> String:
 	# Stacking: the dose lands on top of whatever's still working.
 	if drug_class == Drugs.OPIOID or drug_class == Drugs.BENZO:
 		risk *= 1.0 + Drugs.LOAD_STACK * resp_load * resp_load
-		resp_load += (float(d["od_risk"]) / 0.006) * maxf(tol_factor, Drugs.LOAD_TOLERANCE_FLOOR)
+		resp_load += (float(d["od_risk"]) / 0.006) * maxf(tol_factor, Drugs.LOAD_TOLERANCE_FLOOR) * dose_scale
 
 	last_dose_at[drug_class] = run_time
-	tolerance[drug_class] = max(0.0, tolerance_for(drug_id) + float(d["tolerance"]))
+	tolerance[drug_class] = max(0.0, tolerance_for(drug_id) + float(d["tolerance"]) * dose_scale)
 
+	last_risk = risk
 	if randf() < risk:
 		return _overdose()
 
-	craving = min(100.0, craving + float(d["relief"]))
+	craving = min(100.0, craving + float(d["relief"]) * dose_scale)
 	active_duration = max(0.1, float(d["hours"]))
 	craving_changed.emit(craving)
 	dose_taken.emit(drug_id, "relief")

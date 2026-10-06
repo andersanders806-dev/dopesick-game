@@ -764,6 +764,7 @@ func _run() -> void:
 	await _search_checks(gs)
 	await _sick_world_checks(gs)
 	await _batch1_checks(gs)
+	await _batch2_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2141,4 +2142,50 @@ func _batch1_save_checks(gs: Node) -> void:
 	_check(gs.court_day == 7 and gs.warrant and gs.tested_dirty() and gs.apartment_echo_seen, "  ...the court date, the warrant, and what's in your system")
 	_check(gs.probation_days.size() == 2 and int(gs.probation_days[0]) == 8, "  ...and the probation days")
 	save.delete()
+	gs.start_run()
+
+func _batch2_checks(gs: Node) -> void:
+	await _bad_batch_checks(gs)
+
+func _bad_batch_checks(gs: Node) -> void:
+	await _section("Bad batch and test strips")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 18 * 60
+	var hl := root.get_node("Headlines")
+	hl.forced = "bad_batch"
+	hl.roll(gs.day)
+	var hits := 0
+	for i in 2000:
+		if gs.roll_contaminated("heroin"):
+			hits += 1
+	_check(hits > 700 and hits < 900, "  about 40%% of opioids are cut on a bad batch day (%d/2000)" % hits)
+	_check(not gs.roll_contaminated("meth"), "  ...only the opioids")
+	hl.forced = "quiet"
+	hl.roll(gs.day)
+	_check(not gs.roll_contaminated("heroin"), "  ...and none on an ordinary day")
+	gs.take_drug("bupe")
+	var base: float = gs.last_risk
+	gs.start_run()
+	gs.take_drug("bupe", 1.0, gs.CONTAMINATED_RISK)
+	_check(base > 0.0 and absf(gs.last_risk - base * 3.0) < 1e-9, "  contaminated is three times the risk")
+	gs.start_run()
+	gs.craving = 10.0
+	gs.take_drug("bupe", 0.5)
+	var relief: float = float(root.get_node("Drugs").info("bupe")["relief"])
+	_check(absf(gs.last_risk - base * 0.5) < 1e-9 and gs.craving <= 10.0 + relief * 0.5 + 0.01, "  a little at a time: half the risk, half the relief")
+	_check(gs.strip_reading("oxy", "fentanyl", false).contains("Fentanyl"), "  a strip shows the blue was a press")
+	_check(gs.strip_reading("heroin", "heroin", true).contains("cut"), "  ...and a cut bag")
+	_check(gs.strip_reading("heroin", "heroin", false).contains("nothing"), "  ...and a clean one")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 18 * 60
+	var shelter := await _load("res://world/Shelter3D.tscn")
+	var outreach := shelter.get_node("Outreach")
+	var hud = shelter.get_tree().get_first_node_in_group("hud")
+	outreach._on_choice(2, _player(), hud)
+	outreach._on_choice(2, _player(), hud)
+	_check(gs.test_strips == 2, "  outreach hands out two strips, once a day")
+	_player().dialogue_active = false
 	gs.start_run()

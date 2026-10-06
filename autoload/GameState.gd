@@ -400,6 +400,12 @@ func start_run() -> void:
 	od_event = {}
 	dead_regulars.clear()
 	events_rolled_day = -1
+	booster_day = -1
+	booster_gone = false
+	booster_store = ""
+	booster_hit.clear()
+	booster_team = ""
+	booster_cut_pending = false
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -476,6 +482,7 @@ func _emit_clock() -> void:
 		if _last_minute >= 0 and minute / 60 != _last_minute / 60:
 			_roll_weather()
 			_check_legal_deadlines()
+			_booster_hour()
 		_last_minute = minute
 		clock_changed.emit(minute)
 
@@ -793,6 +800,8 @@ func _on_headline_rolled(_id: String) -> void:
 		return
 	events_rolled_day = day
 	_roll_overdose()
+	# After the alley: it reads vigil_day.
+	_roll_booster()
 
 func living_regulars() -> Array:
 	return REGULARS.filter(func(n): return n not in dead_regulars)
@@ -856,6 +865,75 @@ func _regular_died(who: String, robbed: bool) -> void:
 		for n in living_regulars():
 			change_rep(n, -2)
 		log_event("Somebody saw you go through their pockets.")
+
+# --- Tasha -----------------------------------------------------------------
+
+## A rival booster, out some days, hitting the same stores you do: each
+## hour she works one, and when she's done its staff are on edge for the
+## day. Team up and she works a clerk for you, for a cut; rat her out and
+## she's gone, and so is your standing on the street.
+const BOOSTER_CHANCE := 0.4
+const BOOSTER_HOURS := [10, 20]
+const BOOSTER_STORES := ["pharmacy", "convenience", "liquor", "supermarket", "electronics"]
+var booster_day: int = -1
+var booster_gone: bool = false
+## The store she's casing this hour, and the ones she's done today.
+var booster_store: String = ""
+var booster_hit: Array = []
+## The store she's working for you today, or "".
+var booster_team: String = ""
+var booster_cut_pending: bool = false
+signal booster_changed
+
+func _roll_booster() -> void:
+	booster_day = -1
+	booster_hit.clear()
+	booster_store = ""
+	booster_team = ""
+	if booster_gone or day <= 1 or day == vigil_day or randf() >= BOOSTER_CHANCE:
+		return
+	booster_day = day
+
+func booster_present() -> bool:
+	return not booster_gone and booster_day == day and hours_contain(BOOSTER_HOURS, hour())
+
+## On the hour: the store she was casing is hit, and she moves on. Runs
+## whether you're on the block or not.
+func _booster_hour() -> void:
+	if booster_team != "" or booster_gone or booster_day != day:
+		return
+	if booster_store != "":
+		booster_hit.append(booster_store)
+		set_store_heat(booster_store, 1.3, 1)
+		Graphics._show_toast("Someone just hit %s. Staff will be jumpy." % STORE_NAMES[booster_store])
+		log_event("Tasha hit %s." % STORE_NAMES[booster_store])
+	booster_store = ""
+	if booster_present():
+		var left: Array = BOOSTER_STORES.filter(func(s): return s not in booster_hit)
+		booster_store = left.pick_random() if not left.is_empty() else ""
+	booster_changed.emit()
+
+func booster_team_up(store: String) -> void:
+	booster_team = store
+	booster_store = store
+	set_store_heat(store, 0.6, 1)
+	booster_cut_pending = true
+	log_event("Teamed up with Tasha on %s. She gets half the next order." % STORE_NAMES[store])
+	booster_changed.emit()
+
+func booster_rat() -> void:
+	booster_gone = true
+	for s in booster_hit:
+		store_heat.erase(s)
+	booster_store = ""
+	if warrant:
+		warrant = false
+		legal_changed.emit()
+	homeless_trust = 0
+	for n in living_regulars():
+		change_rep(n, -1)
+	log_event("Gave Tasha up to the beat cop. The street will remember.")
+	booster_changed.emit()
 
 # --- Court ----------------------------------------------------------------
 
@@ -997,6 +1075,10 @@ func sell_item(id: String, price: int) -> bool:
 		return false
 	inventory.erase(id)
 	var paid := int(round(price * MetaProgress.payout_scale()))
+	if booster_cut_pending:
+		paid = paid / 2
+		booster_cut_pending = false
+		log_event("Tasha took her half.")
 	cash += paid
 	cash_earned += paid
 	inventory_changed.emit()

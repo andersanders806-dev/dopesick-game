@@ -102,6 +102,9 @@ func _ready() -> void:
 	var alley: Node3D = preload("res://world/AlleyOverdose.gd").new()
 	alley.name = "AlleyOverdose"
 	add_child(alley)
+	var booster: Node3D = preload("res://world/Booster.gd").new()
+	booster.name = "Booster"
+	add_child(booster)
 	# Start with the street already populated rather than empty.
 	for i in _pedestrian_target():
 		_spawn_pedestrian(randf_range(-STREET_END_X + 3.0, STREET_END_X - 3.0))

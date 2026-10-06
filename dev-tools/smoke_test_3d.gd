@@ -2148,6 +2148,7 @@ func _batch2_checks(gs: Node) -> void:
 	await _bad_batch_checks(gs)
 	await _strip_checks(gs)
 	await _alley_checks(gs)
+	await _booster_checks(gs)
 
 func _bad_batch_checks(gs: Node) -> void:
 	await _section("Bad batch and test strips")
@@ -2339,4 +2340,66 @@ func _alley_checks(gs: Node) -> void:
 	gs.clock = 20 * 60
 	city = await _load("res://world/City3D.tscn")
 	_check(city.get_node("AlleyOverdose").get_node_or_null("Vigil") != null, "  ...with candles in the alley")
+	gs.start_run()
+
+func _booster_checks(gs: Node) -> void:
+	await _section("Tasha, working the same stores")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	var days := 0
+	for i in 400:
+		gs.day = 3
+		gs._roll_booster()
+		if gs.booster_day == 3:
+			days += 1
+	_check(days > 130 and days < 190, "  out about two days in five (%d/400)" % days)
+	gs.day = 1
+	gs._roll_booster()
+	_check(gs.booster_day != 1, "  never day 1")
+	gs.day = 3
+	gs.vigil_day = 3
+	gs._roll_booster()
+	_check(gs.booster_day != 3, "  never on a vigil day")
+	gs.vigil_day = -1
+	gs.booster_day = 3
+	gs.clock = 9 * 60 + 50
+	gs.advance_clock(20)
+	_check(gs.booster_present() and gs.booster_store != "", "  at ten she's out, casing %s" % gs.booster_store)
+	var first: String = gs.booster_store
+	gs.advance_clock(60)
+	_check(gs.booster_hit == [first] and gs.store_alertness(first) > gs.staff_alertness() * 1.25, "  an hour later it's hit, and its staff are jumpy")
+	gs.booster_team_up("liquor")
+	_check(gs.booster_team == "liquor" and gs.store_alertness("liquor") < gs.staff_alertness() * 0.7 and gs.booster_cut_pending, "  teaming up: she works the liquor clerk")
+	var hits: int = gs.booster_hit.size()
+	gs.advance_clock(120)
+	_check(gs.booster_hit.size() == hits, "  ...and stops hitting other stores")
+	gs.inventory.append("vodka")
+	var cash0: int = gs.cash
+	gs.sell_item("vodka", 30)
+	_check(gs.cash - cash0 == int(round(30 * root.get_node("MetaProgress").payout_scale())) / 2 and not gs.booster_cut_pending, "  ...and takes half your next order")
+	gs.start_run()
+	gs.clock_running = false
+	gs.day = 3
+	gs.booster_day = 3
+	gs.clock = 10 * 60 + 5
+	gs.advance_clock(60)
+	var hit: String = gs.booster_hit[0] if gs.booster_hit.size() > 0 else ""
+	gs.warrant = true
+	gs.homeless_trust = 3
+	gs.change_rep("Big Eddie", 2)
+	gs.booster_rat()
+	_check(gs.booster_gone and not gs.booster_present() and not gs.store_heat.has(hit) and not gs.warrant, "  ratting her out: gone, heat cleared, warrant lost")
+	_check(gs.homeless_trust == 0 and gs.rep_of("Big Eddie") == 1, "  ...and the street knows")
+	gs.day = 9
+	gs._roll_booster()
+	_check(gs.booster_day != 9, "  ...for good")
+	gs.start_run()
+	gs.day = 3
+	gs.booster_day = 3
+	gs.clock = 14 * 60
+	gs._booster_hour()
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(3)
+	_check(city.get_node("Booster").npc.visible, "  she's on the block")
 	gs.start_run()

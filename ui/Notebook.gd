@@ -11,6 +11,7 @@ const INK_FADED := Color(0.3, 0.32, 0.45)
 const RED_INK := Color(0.62, 0.12, 0.12)
 const PAGE := Rect2(190, 70, 900, 580)
 ## West to east along the block (build_rooms_3d.gd's city), for the map.
+const Booster := preload("res://world/Booster.gd")
 const BLOCK := [
 	[-24.5, "Police"], [-17.5, "Home"], [-14.0, "Karts"], [-10.5, "Pharmacy"], [-7.0, "Tape Deck"], [-3.5, "Bar"],
 	[0.0, "Pawn"], [3.5, "24/7 Shop"], [7.0, "Shelter"], [10.5, "Liquor"], [17.5, "Supermarket"], [24.5, "Electronics"],
@@ -190,6 +191,13 @@ func _draw_map(c: Control, font: Font) -> void:
 		c.draw_set_transform(Vector2(x - 6, top + 100), -PI / 2.6)
 		c.draw_string(font, Vector2.ZERO, b[1], HORIZONTAL_ALIGNMENT_LEFT, -1, 15, INK)
 		c.draw_set_transform(Vector2.ZERO)
+	# What Tasha's done today, and where she is now.
+	for s in GameState.booster_hit:
+		var hx: float = sx.call(Booster.STORE_X[s])
+		c.draw_string(font, Vector2(hx + 14, top + 128), "x", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, RED_INK)
+	if GameState.booster_present() and GameState.booster_store != "":
+		var tx: float = sx.call(Booster.STORE_X[GameState.booster_store] + 1.6)
+		c.draw_string(font, Vector2(tx - 4, top + 130), "T", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
 	var px: float = sx.call(14.0)
 	c.draw_circle(Vector2(px, top + 135), 6.0, RED_INK)
 	c.draw_string(font, Vector2(px + 10, top + 140), "him (4pm on)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, RED_INK)

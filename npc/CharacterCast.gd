@@ -46,6 +46,11 @@ const CAST := {
 		"model": MALE_CASUAL,
 		"look": {"Shirt": Color(0.34, 0.34, 0.36), "Pants": Color(0.22, 0.22, 0.25), "Hair": Color(0.16, 0.14, 0.13)},
 	},
+	# Tasha, the rival booster: dark, plain, nothing a guard remembers.
+	"booster": {
+		"model": FEMALE_ALT,
+		"look": {"Shirt": Color(0.12, 0.12, 0.14), "Pants": Color(0.18, 0.20, 0.26), "Hair": Color(0.08, 0.06, 0.05)},
+	},
 	"lookout": {
 		"model": MALE_LONGSLEEVE,
 		"look": {"Shirt": Color(0.45, 0.22, 0.20), "Pants": Color(0.26, 0.27, 0.30), "Hair": Color(0.20, 0.17, 0.15)},

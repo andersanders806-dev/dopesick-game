@@ -42,7 +42,7 @@ func _ready() -> void:
 func _refresh_patrons() -> void:
 	var state: Array = GameState.bar_patrons
 	for i in range(state.size()):
-		if state[i]["fulfilled"]:
+		if state[i]["fulfilled"] or state[i]["name"] in GameState.dead_regulars:
 			state[i] = _new_patron(state[i]["seat"], state)
 	while state.size() < patrons.size():
 		state.append(_new_patron(-1, state))
@@ -56,7 +56,13 @@ func _new_patron(seat: int, current: Array) -> Dictionary:
 	var taken_names := current.map(func(p): return p["name"])
 	var taken_items := current.map(func(p): return p["request_id"])
 	var taken_seats := current.filter(func(p): return not p["fulfilled"]).map(func(p): return p["seat"])
-	var name: String = PATRON_NAMES.filter(func(n): return n not in taken_names).pick_random()
+	var living: Array = PATRON_NAMES.filter(func(n): return n not in GameState.dead_regulars)
+	var free_names := living.filter(func(n): return n not in taken_names)
+	# Only ever short if the alley's taken too many: then the one going home
+	# can come straight back in.
+	if free_names.is_empty():
+		free_names = living.filter(func(n): return n not in current.filter(func(p): return not p["fulfilled"]).map(func(p): return p["name"]))
+	var name: String = free_names.pick_random()
 	if seat < 0:
 		seat = range(SEATS.size()).filter(func(s): return s not in taken_seats).pick_random()
 	var order: Dictionary = GameState.REQUEST_POOL.filter(func(r): return r["id"] not in taken_items and not r.get("no_order", false)).pick_random()

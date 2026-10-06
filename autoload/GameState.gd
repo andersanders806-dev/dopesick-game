@@ -311,10 +311,32 @@ var last_risk: float = 0.0
 var vigil_day: int = -1
 var vigil_for: String = ""
 
+## The Dive Bar's regulars (DiveBar3D.PATRON_NAMES -- a test keeps the two
+## lists the same). Some nights one of them goes over behind the dumpster.
+const REGULARS := ["Wiry Guy", "Tired Woman", "Big Eddie", "Quiet Kid", "Old Sailor", "Nervous Dave"]
+const OD_CHANCE := 0.25
+## Real seconds they've got once they're down, counted only while you're
+## on the block to see it.
+const OD_WINDOW := 90.0
+const OD_POCKETS := Vector2i(8, 20)
+## The bar seats three and needs a fourth to swap in when one goes home, so
+## the alley stops taking them at four.
+const MIN_LIVING_REGULARS := 4
+## {day, minute, who, state, left}; state "pending", "down", "saved" or
+## "dead", or {} for a night when nobody goes over.
+var od_event: Dictionary = {}
+var dead_regulars: Array = []
+## The day the day's events (the alley) were last rolled, so a loaded save
+## keeps its night instead of rolling a new one.
+var events_rolled_day: int = -1
+signal overdose_changed
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
 	day_changed.connect(_on_new_day)
+	# Headlines is an autoload after us; the day's events depend on its roll.
+	(func(): get_node("/root/Headlines").headline_changed.connect(_on_headline_rolled)).call_deferred()
 
 ## Wipes the per-run state and applies whatever the meta upgrades grant at
 ## the start of a run. Called once at boot and again after each run ends.
@@ -375,6 +397,9 @@ func start_run() -> void:
 	last_risk = 0.0
 	vigil_day = -1
 	vigil_for = ""
+	od_event = {}
+	dead_regulars.clear()
+	events_rolled_day = -1
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -447,6 +472,7 @@ func advance_clock(minutes: float) -> void:
 func _emit_clock() -> void:
 	var minute := int(clock)
 	if minute != _last_minute:
+		_check_overdose_start()
 		if _last_minute >= 0 and minute / 60 != _last_minute / 60:
 			_roll_weather()
 			_check_legal_deadlines()
@@ -688,6 +714,9 @@ func buy_back(id: String) -> bool:
 
 ## Once a day, when the date turns over (sleeping, or staying up).
 func _on_new_day(_d: int) -> void:
+	# Last night's: still down when the night ran out, nobody came.
+	if od_event.get("state", "") == "down" and int(od_event.get("day", day)) < day:
+		resolve_overdose("walk")
 	for id in pawn_tickets.keys():
 		if day > ticket_last_day(id):
 			pawn_tickets.erase(id)
@@ -754,6 +783,79 @@ func strip_reading(asked: String, got: String, contaminated: bool) -> String:
 	if contaminated:
 		return "The strip lights up. It's cut with something, and it's strong."
 	return "Two clean lines. It shows nothing it shouldn't."
+
+# --- The alley ------------------------------------------------------------
+
+## Today's word on the block is in: roll what else today holds. Once a day,
+## so a loaded save (which doesn't reroll its headline) keeps its night.
+func _on_headline_rolled(_id: String) -> void:
+	if events_rolled_day == day:
+		return
+	events_rolled_day = day
+	_roll_overdose()
+
+func living_regulars() -> Array:
+	return REGULARS.filter(func(n): return n not in dead_regulars)
+
+func _roll_overdose() -> void:
+	od_event = {}
+	var alive := living_regulars()
+	var hl := _headlines()
+	var chance := 1.0 if hl and hl.is_today("bad_batch") else OD_CHANCE
+	if day <= 1 or alive.size() <= MIN_LIVING_REGULARS or randf() >= chance:
+		return
+	od_event = {"day": day, "minute": randi_range(18 * 60, 23 * 60 + 30), "who": alive.pick_random(), "state": "pending", "left": OD_WINDOW}
+
+## The time came: they're down, wherever you are.
+func _check_overdose_start() -> void:
+	if od_event.get("state", "") == "pending" and day == int(od_event["day"]) and clock >= float(od_event["minute"]):
+		od_event["state"] = "down"
+		log_event("Someone went down in the alley by the dumpster.")
+		overdose_changed.emit()
+
+## "naloxone", "payphone", "pockets" or "walk". Returns "saved" or "dead".
+func resolve_overdose(choice: String) -> String:
+	if od_event.get("state", "") != "down":
+		return ""
+	var who: String = od_event["who"]
+	var outcome := "saved"
+	match choice:
+		"naloxone":
+			naloxone -= 1
+			inventory_changed.emit()
+			change_rep(who, 3)
+			log_event("Found %s in the alley, not breathing. The naloxone brought them back." % who)
+		"payphone":
+			change_rep(who, 2)
+			log_event("Ran for the payphone. The ambulance got to %s in time." % who)
+		"pockets":
+			var took := randi_range(OD_POCKETS.x, OD_POCKETS.y)
+			cash += took
+			cash_changed.emit(cash)
+			od_event["took"] = took
+			outcome = "dead"
+			_regular_died(who, true)
+		_:
+			if randf() < 1.0 / 3.0:
+				log_event("Somebody else called it in for %s." % who)
+			else:
+				outcome = "dead"
+				_regular_died(who, false)
+	od_event["state"] = outcome
+	overdose_changed.emit()
+	return outcome
+
+func _regular_died(who: String, robbed: bool) -> void:
+	dead_regulars.append(who)
+	# The day after the night it happened -- which is today, if the night
+	# ran out while they were still down.
+	vigil_day = int(od_event.get("day", day)) + 1
+	vigil_for = who
+	log_event("%s died in the alley." % who, "overdose_floor")
+	if robbed and randf() < 0.5:
+		for n in living_regulars():
+			change_rep(n, -2)
+		log_event("Somebody saw you go through their pockets.")
 
 # --- Court ----------------------------------------------------------------
 

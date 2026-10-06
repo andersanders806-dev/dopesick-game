@@ -36,6 +36,9 @@ const CLIP_ALIASES := {
 	# clap brings both hands together in front of the chest, which passes for
 	# handing something over at this distance.
 	"interact": ["interact-right", "interact", "_interact", "_clapping"],
+	# Going over in the alley. Not looped, so as a rest clip it plays once
+	# and holds the last frame.
+	"collapse": ["death", "_death"],
 }
 
 var _player: AnimationPlayer

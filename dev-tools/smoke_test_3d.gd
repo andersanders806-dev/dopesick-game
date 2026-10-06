@@ -2147,6 +2147,7 @@ func _batch1_save_checks(gs: Node) -> void:
 func _batch2_checks(gs: Node) -> void:
 	await _bad_batch_checks(gs)
 	await _strip_checks(gs)
+	await _alley_checks(gs)
 
 func _bad_batch_checks(gs: Node) -> void:
 	await _section("Bad batch and test strips")
@@ -2230,4 +2231,105 @@ func _strip_checks(gs: Node) -> void:
 	await _frames(2)
 	_check(answer[0] == "half", "  ...then you can take a little at a time")
 	p.dialogue_active = false
+	gs.start_run()
+
+func _alley_checks(gs: Node) -> void:
+	await _section("Someone goes over in the alley")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	_check(gs.REGULARS == load("res://world/DiveBar3D.gd").PATRON_NAMES, "  one list of regulars")
+	var hl := root.get_node("Headlines")
+	var rolled := 0
+	gs.day = 3
+	for i in 400:
+		gs._roll_overdose()
+		if gs.od_event.get("state", "") == "pending":
+			rolled += 1
+	_check(rolled > 70 and rolled < 130, "  about one night in four (%d/400)" % rolled)
+	gs.day = 1
+	gs._roll_overdose()
+	_check(gs.od_event.get("state", "") == "", "  never on day 1")
+	gs.day = 3
+	hl.forced = "bad_batch"
+	hl.roll(3)
+	gs._roll_overdose()
+	_check(gs.od_event.get("state", "") == "pending" and gs.od_event["who"] in gs.REGULARS and gs.od_event["minute"] >= 18 * 60, "  always on a bad batch night, a regular, after 18:00")
+	hl.forced = "quiet"
+	# The start time passes whether you're there or not.
+	gs.clock = float(gs.od_event["minute"]) - 30.0
+	gs.advance_clock(60)
+	_check(gs.od_event["state"] == "down", "  at the time, they go down")
+	var city := await _load("res://world/City3D.tscn")
+	var alley := city.get_node("AlleyOverdose")
+	await _frames(3)
+	_check(alley.victim != null and alley.victim.visible, "  ...and they're in the alley")
+	var who: String = gs.od_event["who"]
+	gs.naloxone = 1
+	_check(alley._choose("naloxone") == "saved" and gs.naloxone == 0 and gs.rep_of(who) == 3, "  naloxone: saved, and they owe you (rep 3)")
+	await _frames(2)
+	_check(not alley.victim.visible, "  ...and they get up and go")
+	gs.od_event = {"day": gs.day, "minute": 20 * 60, "who": "Quiet Kid", "state": "down", "left": 90.0}
+	alley.refresh()
+	gs.rep.clear()
+	var cops: int = city.get_tree().get_nodes_in_group("patrol").size()
+	_check(alley._choose("payphone") == "saved" and gs.rep_of("Quiet Kid") == 2 and city.get_tree().get_nodes_in_group("patrol").size() == cops + 1, "  the payphone: saved, and a cop comes with the ambulance")
+	gs.od_event = {"day": gs.day, "minute": 20 * 60, "who": "Quiet Kid", "state": "down", "left": 90.0}
+	alley.refresh()
+	var cash0: int = gs.cash
+	_check(alley._choose("pockets") == "dead" and gs.cash >= cash0 + 8 and gs.dead_regulars.has("Quiet Kid") and gs.vigil_day == gs.day + 1, "  their pockets: $%d, and they die" % (gs.cash - cash0))
+	_player().dialogue_active = false
+	var died := 0
+	for i in 300:
+		gs.dead_regulars.clear()
+		gs.od_event = {"day": gs.day, "minute": 20 * 60, "who": "Old Sailor", "state": "down", "left": 90.0}
+		if gs.resolve_overdose("walk") == "dead":
+			died += 1
+	_check(died > 170 and died < 230, "  walking away: two in three die (%d/300)" % died)
+	gs.dead_regulars.clear()
+	gs.od_event = {"day": gs.day, "minute": 20 * 60, "who": "Old Sailor", "state": "down", "left": 0.5}
+	alley.refresh()
+	await _frames(60)
+	_check(gs.od_event["state"] in ["saved", "dead"], "  run out the clock and it's decided for you")
+	gs.dead_regulars.clear()
+	gs.od_event = {"day": gs.day, "minute": 20 * 60, "who": "Nervous Dave", "state": "down", "left": 90.0}
+	_close_menus()
+	await _load("res://world/Pawn3D.tscn")
+	var diary_before: int = gs.diary.size()
+	gs.clock = 23 * 60
+	gs.advance_clock(120)
+	var about_dave: Array = gs.diary.slice(diary_before).filter(func(e): return e["text"].contains("Nervous Dave"))
+	_check(about_dave.size() == 1, "  the night ends while they're down somewhere you aren't: decided, once (%s)" % [about_dave.map(func(e): return e["text"])])
+	gs.dead_regulars.clear()
+	gs.od_event = {"day": gs.day - 1, "minute": 23 * 60, "who": "Nervous Dave", "state": "down", "left": 90.0}
+	gs._regular_died("Nervous Dave", false)
+	_check(gs.vigil_day == gs.day, "  dying after midnight, the vigil is today, not tomorrow")
+	# The dead stay dead.
+	gs.dead_regulars.assign(["Big Eddie", "Wiry Guy"])
+	gs.bar_patrons.clear()
+	gs.bar_patrons.append({"name": "Big Eddie", "model": "", "seat": 0, "request_id": "cigs", "price": 22, "fulfilled": false})
+	gs.clock = 18 * 60
+	await _load("res://world/DiveBar3D.tscn")
+	var names: Array = gs.bar_patrons.map(func(p): return p["name"])
+	_check(names.size() == 3 and not names.any(func(n): return n in gs.dead_regulars), "  nobody who died sits in the bar again: %s" % [names])
+	for p in gs.bar_patrons:
+		p["fulfilled"] = true
+	await _load("res://world/DiveBar3D.tscn")
+	_check(gs.bar_patrons.size() == 3, "  ...and with four left, the bar still fills when they all go home")
+	var none := true
+	for i in 50:
+		gs._roll_overdose()
+		if gs.od_event.get("state", "") == "pending":
+			none = false
+	_check(none, "  with only four regulars left, nobody else goes over")
+	gs.dead_regulars.clear()
+	gs.vigil_day = gs.day + 1
+	gs.vigil_for = "Quiet Kid"
+	hl.forced = ""
+	gs.advance_clock(24 * 60)
+	hl.forced = "quiet"
+	_check(hl.is_today("vigil") and absf(hl.pusher_price_mult() - 0.9) < 1e-6, "  the next day is a vigil, and he charges less")
+	gs.clock = 20 * 60
+	city = await _load("res://world/City3D.tscn")
+	_check(city.get_node("AlleyOverdose").get_node_or_null("Vigil") != null, "  ...with candles in the alley")
 	gs.start_run()

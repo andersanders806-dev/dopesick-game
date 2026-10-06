@@ -122,7 +122,7 @@ func _draw_orders(c: Control, font: Font) -> void:
 		row += 2
 	row += 1
 	# The regulars, and how they feel about you.
-	var known: Array = GameState.rep.keys().filter(func(n): return GameState.rep_of(n) != 0)
+	var known: Array = GameState.rep.keys().filter(func(n): return GameState.rep_of(n) != 0 and n not in GameState.dead_regulars)
 	if not known.is_empty():
 		var bits: Array = known.map(func(n): return "%s %s" % [n, GameState.rep_word(GameState.rep_of(n))])
 		_line(c, font, row, "People: " + ", ".join(bits), INK_FADED, 0.0, 15)

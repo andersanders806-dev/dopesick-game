@@ -768,6 +768,7 @@ func _run() -> void:
 	await _controller_checks(gs)
 	await _view_checks(gs)
 	await _aa_checks(gs)
+	await _perf_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2798,3 +2799,54 @@ func _aa_checks(gs: Node) -> void:
 	gfx.set_preset(gfx.Preset.PS5)
 	_check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR2 and not vp.use_taa, "  PS5 keeps FSR 2 (a desktop GPU's preset)")
 	gfx.set_preset(before)
+
+func _perf_checks(gs: Node) -> void:
+	await _section("A shadow budget: only the lamps near you cast shadows")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 21 * 60
+	var gfx := root.get_node("Graphics")
+	var before: int = gfx.preset
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	var city := await _load("res://world/City3D.tscn")
+	var p := _player()
+	var lamps: Array = city.find_children("*", "Light3D", true, false).filter(func(l): return not (l is DirectionalLight3D) and l.get_meta("built_shadow", false))
+	_check(lamps.size() > 2, "  the street has more shadowed lamps than the budget (%d)" % lamps.size())
+	for x in [-20.0, 20.0]:
+		p.global_position = Vector3(x, 0, -2.5)
+		await _frames(40)
+		var on: Array = lamps.filter(func(l): return l.shadow_enabled)
+		var by_dist: Array = lamps.duplicate()
+		by_dist.sort_custom(func(a, b): return a.global_position.distance_to(p.global_position) < b.global_position.distance_to(p.global_position))
+		_check(on.size() == gfx.SHADOW_BUDGET[gfx.Preset.MEDIUM] and on.all(func(l): return l in by_dist.slice(0, on.size())), "  Medium at x=%d: the %d nearest lamps cast shadows, the rest don't (%d on)" % [x, gfx.SHADOW_BUDGET[gfx.Preset.MEDIUM], on.size()])
+	# The moon: barely there at night, and its shadow pass costs ~3.5 ms on
+	# the street. Medium and Low drop it after dark; the sun keeps its own.
+	var moon: DirectionalLight3D = city.get_node("Moon")
+	_check(not moon.shadow_enabled, "  Medium at night: the moon casts no shadow")
+	gs.clock = 13 * 60
+	gs.advance_clock(1)
+	await _frames(40)
+	_check(moon.shadow_enabled, "  ...by day the sun does")
+	gfx.set_preset(gfx.Preset.HIGH)
+	gs.clock = 21 * 60
+	gs.advance_clock(1)
+	await _frames(40)
+	_check(moon.shadow_enabled, "  High keeps the moon's shadow at night")
+	var env: Environment = city.find_children("*", "WorldEnvironment", true, false)[0].environment
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	await _frames(5)
+	_check(env.glow_enabled, "  Medium keeps the neon glow")
+	gfx.set_preset(gfx.Preset.LOW)
+	await _frames(40)
+	_check(not env.glow_enabled, "  Low: no glow pass (3.5 ms)")
+	_check(lamps.all(func(l): return not l.shadow_enabled), "  Low: no lamp shadows")
+	gfx.set_preset(gfx.Preset.PS5)
+	await _frames(40)
+	_check(lamps.all(func(l): return l.shadow_enabled), "  PS5: every lamp, as built")
+	gfx.set_preset(before)
+	# An integrated GPU left on High (or PS5) is moved to Medium, once.
+	_check(gfx.migrate_preset(gfx.Preset.HIGH, 2, true) == gfx.Preset.MEDIUM and gfx.migrate_preset(gfx.Preset.PS5, 2, true) == gfx.Preset.MEDIUM, "  integrated GPU on High: moved to Medium")
+	_check(gfx.migrate_preset(gfx.Preset.HIGH, 3, true) == gfx.Preset.HIGH, "  ...once: put it back with F3 and it stays")
+	_check(gfx.migrate_preset(gfx.Preset.HIGH, 2, false) == gfx.Preset.HIGH and gfx.migrate_preset(gfx.Preset.LOW, 2, true) == gfx.Preset.LOW, "  ...a real GPU, or Low, is left alone")
+	gs.start_run()

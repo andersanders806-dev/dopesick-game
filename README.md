@@ -126,7 +126,12 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   on Low. Edges: SMAA at every preset, and on High TAA too, upscaled with
   FSR 1 from 67-85%. High used FSR 2 from ~59%, which on a UHD 620 left
   edges crawling at 20-25 FPS, and measured slower than this. FSR 2 is
-  now the PS5 preset's, for a desktop GPU. The colour grade -- a 3D LUT built in code (teal shadows, amber
+  now the PS5 preset's, for a desktop GPU. Shadows run on a budget: only
+  the lamps nearest you cast them (2 on Medium, 3 on High, all on PS5).
+  Below High the moon drops its shadow after dark (faint, and ~3.5 ms on
+  the street), and Low drops the glow pass (a fixed ~3.5 ms). An
+  integrated GPU left on High or PS5 is moved to Medium once, with a toast
+  saying F3 puts it back. The colour grade -- a 3D LUT built in code (teal shadows, amber
   highlights, an S-curve) plus saturation 1.18 -- applies at every preset.
   The withdrawal tint only appears once you're actually getting sick; it
   used to sit at ~20% green over everything.

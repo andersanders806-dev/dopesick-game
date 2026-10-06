@@ -46,6 +46,13 @@ const HIGHLIGHT_TINT := Color(0.07, 0.025, -0.045)
 const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.67, 0.85], [0.75, 1.0]]
 const SCALE_START := [0.77, 0.85, 0.77, 0.85]
 const TARGET_FPS := 58.0
+## How many lamps (omni and spot lights) may cast shadows at once, per
+## preset: the ones nearest you. Each shadowed omni light redraws the scene
+## six times into its cube map; on a UHD 620 the City's six shadowed street
+## lamps cost 12-15 ms a frame, most of them lighting street you can't see.
+const SHADOW_BUDGET := [0, 2, 3, 99]
+const SHADOW_BUDGET_INTERVAL := 0.25
+var _shadow_budget_t: float = 0.0
 
 ## Volume sliders in the settings menu, 0..1 per bus. They scale each bus
 ## from the level SFX set it up at, so the mix (voices up, ambience down,
@@ -82,6 +89,10 @@ func _ready() -> void:
 	_build_overlay()
 	get_tree().node_added.connect(_on_node_added)
 	_apply_viewport()
+	if _migrated:
+		_save_settings()
+		_show_toast("Graphics set to Medium to run smoothly on this GPU. F3 to change.")
+		_toast_timer = 6.0
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -96,6 +107,10 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	_update_mouse_mode()
 	_adapt_resolution(delta)
+	_shadow_budget_t -= delta
+	if _shadow_budget_t <= 0.0:
+		_shadow_budget_t = SHADOW_BUDGET_INTERVAL
+		_apply_shadow_budget()
 	if show_fps:
 		_fps_label.text = "%d FPS  (%s, %d%%)" % [Engine.get_frames_per_second(), PRESET_NAMES[preset], roundi(render_scale * 100.0)]
 	if _toast_timer > 0.0:
@@ -124,6 +139,18 @@ func _update_mouse_mode() -> void:
 	if Input.mouse_mode != mode and not DisplayServer.get_name() == "headless":
 		Input.mouse_mode = mode
 
+## Settings from older versions, on an integrated GPU: version 1 kept High
+## at 15 FPS; version 2 let you stay on High or PS5, which a UHD 620 runs at
+## 16-20 FPS in the City against Medium's 30-38. Each moves you to Medium
+## once -- F3 puts it back, and that choice is kept.
+const SETTINGS_VERSION := 3
+var _migrated: bool = false
+
+func migrate_preset(saved: int, version: int, integrated: bool) -> int:
+	if integrated and version < SETTINGS_VERSION and saved >= Preset.HIGH:
+		return Preset.MEDIUM
+	return saved
+
 func set_first_person(on: bool) -> void:
 	if on == first_person:
 		return
@@ -149,6 +176,7 @@ func _apply_fullscreen() -> void:
 
 func set_preset(p: int) -> void:
 	preset = p
+	_shadow_budget_t = 0.0
 	_save_settings()
 	_apply_viewport()
 	var scene := get_tree().current_scene
@@ -238,7 +266,7 @@ func _apply_env(we: WorldEnvironment) -> void:
 	if not env.has_meta("built"):
 		env.set_meta("built", {
 			"ssil": env.ssil_enabled, "ssr": env.ssr_enabled, "ssao": env.ssao_enabled,
-			"vol": env.volumetric_fog_enabled, "fog": env.fog_enabled, "fog_density": env.fog_density,
+			"vol": env.volumetric_fog_enabled, "fog": env.fog_enabled, "fog_density": env.fog_density, "glow": env.glow_enabled,
 			"fog_color": env.fog_light_color, "glow_levels": [env.get_glow_level(3), env.get_glow_level(4), env.get_glow_level(5), env.get_glow_level(6)],
 		})
 	# Per node, not per Environment: a room loaded twice shares its cached
@@ -264,9 +292,11 @@ func _apply_env(we: WorldEnvironment) -> void:
 		if not built["fog"]:
 			env.fog_light_color = Color(0.07, 0.07, 0.09)
 		env.fog_sky_affect = 0.0
-	# Wide glow levels are the expensive ones.
+	# Wide glow levels are the expensive ones. On a UHD 620 the glow pass
+	# itself is a fixed ~3.5 ms whatever the levels, so Low drops it.
 	for i in 4:
 		env.set_glow_level(3 + i, built["glow_levels"][i] if preset != Preset.LOW else false)
+	env.glow_enabled = built.get("glow", env.glow_enabled) and preset != Preset.LOW
 	we.camera_attributes = we.get_meta("built_camera_attributes") if high else null
 	# The grade, at every preset.
 	env.adjustment_enabled = true
@@ -279,8 +309,42 @@ func _apply_light(light: Light3D) -> void:
 		return
 	if not light.has_meta("built_shadow"):
 		light.set_meta("built_shadow", light.shadow_enabled)
-	# Low: no point-light shadows at all. Medium keeps them.
-	light.shadow_enabled = light.get_meta("built_shadow") and preset != Preset.LOW
+	# Low: no point-light shadows at all. The budget picks which of the
+	# rest are on; until it runs, nothing new is.
+	light.shadow_enabled = light.get_meta("built_shadow") and preset == Preset.PS5
+
+## The SHADOW_BUDGET lamps nearest the player get their shadows; the rest
+## light without them.
+func _apply_shadow_budget() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	# The City's sky light is the moon by night and the sun by day. The
+	# moon's shadow is faint and its pass costs ~3.5 ms on the street, so
+	# below High it goes after dark.
+	var sky := scene.get_node_or_null("Moon") as DirectionalLight3D
+	if sky:
+		if not sky.has_meta("built_shadow"):
+			sky.set_meta("built_shadow", sky.shadow_enabled)
+		var want: bool = sky.get_meta("built_shadow") and (is_high() or GameState.daylight() > 0.3)
+		if sky.shadow_enabled != want:
+			sky.shadow_enabled = want
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var lamps: Array = scene.find_children("*", "Light3D", true, false).filter(func(l): return not (l is DirectionalLight3D) and l.get_meta("built_shadow", false))
+	if lamps.is_empty():
+		return
+	var budget: int = SHADOW_BUDGET[preset]
+	if player and lamps.size() > budget:
+		var at := player.global_position
+		lamps.sort_custom(func(a, b): return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))
+	# A lamp that's switched off doesn't use up a slot.
+	var slots := budget
+	for lamp in lamps:
+		var on: bool = slots > 0 and lamp.is_visible_in_tree()
+		if on:
+			slots -= 1
+		if lamp.shadow_enabled != on:
+			lamp.shadow_enabled = on
 
 ## A 32^3 colour lookup: saturation lifted, shadows pushed toward teal,
 ## highlights toward amber, a gentle S-curve for bite.
@@ -344,8 +408,10 @@ func _load_settings() -> void:
 		# Settings from before adaptive resolution (version 1) kept High on
 		# integrated graphics at 15 FPS; start those over on Medium once.
 		var saved := clampi(int(cfg.get_value("graphics", "preset", Preset.MEDIUM)), 0, PRESET_NAMES.size() - 1)
-		if int(cfg.get_value("graphics", "version", 1)) >= 2 or not integrated:
-			preset = saved
+		var version := int(cfg.get_value("graphics", "version", 1))
+		preset = migrate_preset(saved, version, integrated)
+		if preset != saved:
+			_migrated = true
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))
 		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
 		first_person = bool(cfg.get_value("controls", "first_person", false))
@@ -357,7 +423,7 @@ func _save_settings() -> void:
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "preset", preset)
-	cfg.set_value("graphics", "version", 2)
+	cfg.set_value("graphics", "version", SETTINGS_VERSION)
 	cfg.set_value("graphics", "fullscreen", fullscreen)
 	for bus in VOLUME_BUSES:
 		cfg.set_value("audio", bus, volumes[bus])

@@ -339,6 +339,8 @@ func _process(delta: float) -> void:
 	elif not _over and not _howto:
 		if _shooter == 0 and not _ball_in_hand:
 			_player_controls(delta)
+		elif _shooter == 0 and _ball_in_hand:
+			_pad_cue_in_hand(delta)
 		elif _shooter == 1:
 			_ai_update(delta)
 	_animate_sinking(delta)
@@ -350,12 +352,14 @@ func _player_controls(delta: float) -> void:
 	if _charging:
 		_charge_t += delta
 		_charge = pingpong(_charge_t / CHARGE_TIME, 1.0)
-	var fine := 0.25 if Input.is_key_pressed(KEY_SHIFT) else 1.0
-	if Input.is_physical_key_pressed(KEY_LEFT):
-		_aim -= 0.9 * fine * delta
-	if Input.is_physical_key_pressed(KEY_RIGHT):
-		_aim += 0.9 * fine * delta
+	# Shift or L2 for fine aim; the arrows or the left stick turn the cue.
+	var fine := 0.25 if Input.is_key_pressed(KEY_SHIFT) or Input.is_action_pressed("steady") else 1.0
+	_aim += Input.get_axis("aim_left", "aim_right") * 0.9 * fine * delta
 	var spin_rate := 1.6 * delta
+	# The right stick moves the dot on the cue ball: up for follow, down
+	# for draw, sideways for side.
+	_follow = clampf(_follow - Input.get_axis("look_up", "look_down") * spin_rate, -1.0, 1.0)
+	_side = clampf(_side + Input.get_axis("look_left", "look_right") * spin_rate, -1.0, 1.0)
 	if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP):
 		_follow = minf(1.0, _follow + spin_rate)
 	if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN):
@@ -372,7 +376,7 @@ func _player_controls(delta: float) -> void:
 		_follow = -v.y
 
 func _unhandled_input(event: InputEvent) -> void:
-	if _howto and (event is InputEventKey or event is InputEventMouseButton) and event.pressed and not event.is_action_pressed("cancel_ui"):
+	if _howto and (event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton) and event.is_pressed() and not event.is_action_pressed("cancel_ui"):
 		get_viewport().set_input_as_handled()
 		_howto = false
 		return
@@ -384,20 +388,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		_message = "You lay the cue on the table. %s takes the $%d." % [opponent_name, bet]
 		_finish(false)
 		return
-	if _over and (event.is_action_pressed("interact") or (event is InputEventKey and event.pressed and event.physical_keycode == KEY_SPACE)):
+	if _over and (event.is_action_pressed("interact") or event.is_action_pressed("fire")):
 		get_viewport().set_input_as_handled()
 		_close()
 		return
-	if not (event is InputEventKey):
-		return
-	if event.physical_keycode == KEY_R and event.pressed:
+	if (event is InputEventKey and event.physical_keycode == KEY_R and event.pressed) \
+			or (event is InputEventJoypadButton and event.button_index == JOY_BUTTON_RIGHT_STICK and event.pressed):
 		_follow = 0.0
 		_side = 0.0
-	if _shooter == 0 and not _moving and not _over and not _ball_in_hand and event.physical_keycode == KEY_SPACE:
+	if _shooter == 0 and not _moving and not _over and _ball_in_hand and event.is_action_pressed("fire") and not event.is_echo():
 		get_viewport().set_input_as_handled()
-		if event.pressed and not event.echo:
+		_place_cue_ball()
+		return
+	# Space, R2 or cross: hold to draw the cue back, let go to strike.
+	if _shooter == 0 and not _moving and not _over and not _ball_in_hand and event.is_action("fire"):
+		get_viewport().set_input_as_handled()
+		if event.is_action_pressed("fire") and not event.is_echo() and not _charging:
 			_begin_charge()
-		elif not event.pressed and _charging:
+		elif event.is_action_released("fire") and _charging:
 			_shoot(_aim, _charge, _follow, _side)
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -415,10 +423,7 @@ func _on_gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseMotion:
 			_move_cue_in_hand(event.position)
 		elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			if _cue_spot_free(_balls[0]["pos"]):
-				_ball_in_hand = false
-				_balls[0]["sunk"] = false
-				_message = "Cue ball's down. Your shot."
+			_place_cue_ball()
 		return
 	if event is InputEventMouseMotion and not _charging:
 		_aim = (event.position - (_balls[0]["pos"] as Vector2)).angle()
@@ -432,6 +437,18 @@ func _begin_charge() -> void:
 	_charging = true
 	_charge_t = 0.0
 	_charge = 0.0
+
+func _place_cue_ball() -> void:
+	if _cue_spot_free(_balls[0]["pos"]):
+		_ball_in_hand = false
+		_balls[0]["sunk"] = false
+		_message = "Cue ball's down. Your shot."
+
+## Ball in hand on the pad: the left stick slides it round the table.
+func _pad_cue_in_hand(delta: float) -> void:
+	var v := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+	if v.length() > 0.0:
+		_move_cue_in_hand((_balls[0]["pos"] as Vector2) + v * 260.0 * delta)
 
 func _move_cue_in_hand(at: Vector2) -> void:
 	var inner := PLAY.grow(-BALL_R - 1.0)
@@ -1015,11 +1032,13 @@ func _draw_over() -> void:
 	_draw_spin(c, font)
 	var hint := ""
 	if _over:
-		hint = "[E] / click to walk away from the table"
+		hint = "[Square] walk away from the table" if GameState.using_pad else "[E] / click to walk away from the table"
 	elif _ball_in_hand and _shooter == 0:
 		hint = "Ball in hand: move the cue ball and click to set it down"
 	elif _shooter == 0 and not _moving:
 		hint = "Mouse aim  -  hold click/Space, let go to shoot  -  W/S follow/draw  -  A/D side  -  R reset  -  Esc concede"
+		if GameState.using_pad:
+			hint = "Left stick aim (L2 fine)  -  hold R2, let go to shoot  -  right stick spin  -  R3 reset  -  Circle concede"
 	elif _shooter == 1 and not _moving:
 		hint = "%s is lining up..." % opponent_name
 	_text(c, font, Vector2(PLAY.position.x - 56, 703), hint, 14, Color(0.78, 0.74, 0.62))

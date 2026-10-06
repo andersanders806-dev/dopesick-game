@@ -72,6 +72,9 @@ const CAM_USER_ZOOM := Vector2(0.7, 1.4)
 var _cam_offset: Vector3
 var _cam_focus: Vector3
 var _user_zoom: float = 1.0
+## Zoom per second at full right-stick tilt.
+const PAD_ZOOM_RATE := 0.8
+var _sprint_latched: bool = false
 var _cam_ready: bool = false
 var _shake_t: float = 0.0
 var _cramp_timer: float = 0.0
@@ -122,6 +125,10 @@ func _update_cramps(delta: float) -> void:
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
+	# The right stick pulls the camera in and out, as the wheel does.
+	var zoom := Input.get_axis("look_up", "look_down")
+	if absf(zoom) > 0.0:
+		_user_zoom = clampf(_user_zoom + zoom * PAD_ZOOM_RATE * delta, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
 	# On the physics tick, so interpolation smooths the shake with the rest.
 	_update_camera_shake(delta)
 	_update_camera_rig(delta)
@@ -160,7 +167,11 @@ func _physics_process(delta: float) -> void:
 	var speed := BASE_SPEED
 	var sick := GameState.craving <= SICK_THRESHOLD
 	var hurt := GameState.is_hurt()
-	_sprinting = (not sick) and (not hurt) and dir.length() > 0.1 and Input.is_action_pressed("sprint")
+	# Hold Shift, or click L3 once and keep going, like COD: a pad sprint
+	# lasts until you let the stick go.
+	if dir.length() <= 0.1:
+		_sprint_latched = false
+	_sprinting = (not sick) and (not hurt) and dir.length() > 0.1 and (Input.is_action_pressed("sprint") or _sprint_latched)
 	if sick:
 		speed *= SICK_SPEED_MULT
 	elif _sprinting:
@@ -203,9 +214,11 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton and event.is_action_pressed("sprint"):
+		_sprint_latched = true
 	if event.is_action_pressed("interact"):
 		_try_interact()
-	elif event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_J:
+	elif event.is_action_pressed("notebook") and not event.is_echo():
 		if not dialogue_active and not get_tree().paused:
 			get_viewport().set_input_as_handled()
 			var book := NotebookScript.new()
@@ -214,7 +227,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		var step := -0.06 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.06
 		_user_zoom = clampf(_user_zoom + step, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
-	elif event.is_action_pressed("cancel_ui"):
+	elif event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause"):
 		# Menus parented to the root (the shoebox, the pusher, pool) get Esc
 		# before this does; anything reaching here means the world has it.
 		get_viewport().set_input_as_handled()
@@ -223,7 +236,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			if hud and hud.dialogue_panel.visible:
 				hud.advance_or_close_dialogue()
 			return
-		if get_tree().paused or _busy_timer > 0.0:
+		# Circle backs out of things; only Options (or Esc) pauses.
+		if get_tree().paused or _busy_timer > 0.0 or not event.is_action_pressed("pause"):
 			return
 		var menu := PauseMenuScript.new()
 		get_tree().root.add_child(menu)

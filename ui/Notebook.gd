@@ -56,14 +56,16 @@ func open(page := 0) -> void:
 	add_child(_canvas)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
+	# Keys and pad buttons both; the game waits while it's out, so nothing
+	# behind it gets them either.
+	if not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
 	get_viewport().set_input_as_handled()
-	if event.physical_keycode == KEY_J or event.is_action("cancel_ui"):
+	if event.is_action("notebook") or event.is_action("cancel_ui") or event.is_action("pause"):
 		_close()
-	elif event.physical_keycode == KEY_TAB or event.physical_keycode == KEY_RIGHT:
+	elif event.is_action("page_next"):
 		_turn(1)
-	elif event.physical_keycode == KEY_LEFT:
+	elif event.is_action("page_prev"):
 		_turn(-1)
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -102,7 +104,7 @@ func _draw() -> void:
 		1: _draw_hours(c, font)
 		2: _draw_map(c, font)
 		3: _draw_notes(c, font)
-	c.draw_string(font, Vector2(PAGE.position.x + 20, PAGE.end.y + 26), "J / Esc: put it away     Tab or arrows: turn the page", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.78, 0.72))
+	c.draw_string(font, Vector2(PAGE.position.x + 20, PAGE.end.y + 26), ("Touchpad / Circle: put it away     L1 / R1: turn the page" if GameState.using_pad else "J / Esc: put it away     Tab or arrows: turn the page"), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.78, 0.72))
 
 func _line(c: Control, font: Font, row: int, text: String, col := INK, indent := 0.0, size := 17) -> void:
 	c.draw_string(font, Vector2(PAGE.position.x + 70 + indent, PAGE.position.y + 62 + row * 30), text, HORIZONTAL_ALIGNMENT_LEFT, PAGE.size.x - 110 - indent, size, col)

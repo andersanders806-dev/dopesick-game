@@ -296,7 +296,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.physical_keycode >= KEY_F1 and event.physical_keycode <= KEY_F12:
 		return
 	get_viewport().set_input_as_handled()
-	if event is InputEventKey and event.physical_keycode == KEY_ESCAPE:
+	if event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause"):
 		_skip_all = true
 	else:
 		_advance = true

@@ -46,7 +46,7 @@ func open() -> void:
 	info.add_theme_color_override("font_color", Color(0.6, 0.58, 0.54))
 	col.add_child(info)
 	var resume := _button(col, "Resume", _close)
-	_button(col, "Notebook  (J)", _open_notebook)
+	_button(col, "Notebook  (%s)" % GameState.control_name("notebook"), _open_notebook)
 	_button(col, "Settings", _open_settings)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"
 	_button(col, quit_label, _quit_to_title)
@@ -61,7 +61,7 @@ func _button(col: VBoxContainer, text: String, action: Callable) -> Button:
 	return b
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("cancel_ui") and _panel.visible:
+	if (event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause")) and _panel.visible:
 		get_viewport().set_input_as_handled()
 		_close()
 

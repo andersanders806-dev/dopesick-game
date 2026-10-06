@@ -1346,8 +1346,8 @@ func _physics_process(delta: float) -> void:
 				drift = ai.z > 0.5
 			else:
 				steer = Input.get_axis("move_left", "move_right")
-				throttle = Input.get_axis("move_down", "move_up")
-				drift = Input.is_action_pressed("sprint") or Input.is_key_pressed(KEY_SPACE)
+				throttle = _player_throttle()
+				drift = Input.is_action_pressed("drift")
 		elif racing and kart["finished"]:
 			# Cool-down lap: everyone who's done coasts round on autopilot.
 			var ai := _ai_inputs(i, delta)
@@ -1355,7 +1355,7 @@ func _physics_process(delta: float) -> void:
 			throttle = minf(ai.y, 0.45)
 		elif _phase == Phase.COUNTDOWN and not kart["ai"]:
 			# Revving on the grid: you can blip the throttle.
-			kart["throttle"] = Input.get_axis("move_down", "move_up")
+			kart["throttle"] = _player_throttle()
 		_drive(kart, steer, throttle, drift, delta, racing)
 	_collide_karts()
 	for i in _karts.size():
@@ -1992,10 +1992,12 @@ func _draw_hud() -> void:
 		_draw_results(c, font, size, order)
 	# --- Controls hint / pause.
 	var hint := "W/Up gas   S/Down brake   A/D steer   hold Shift/Space in a turn to drift, let go for a turbo   Esc quit"
+	if GameState.using_pad:
+		hint = "R2 gas   L2 brake   left stick steer   hold R1 in a turn to drift, let go for a turbo   Options quit"
 	if _paused_confirm:
 		_panel(c, Rect2(size.x / 2 - 300, size.y / 2 - 70, 600, 140))
 		_text(c, font, Vector2(0, size.y / 2 - 14), "Leave the race? Your $5 stays here.", 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, size.x)
-		_text(c, font, Vector2(0, size.y / 2 + 30), "Esc again to leave   -   any other key to keep racing", 20, Color(0.85, 0.85, 0.85), HORIZONTAL_ALIGNMENT_CENTER, size.x)
+		_text(c, font, Vector2(0, size.y / 2 + 30), "Options again to leave   -   Cross to keep racing" if GameState.using_pad else "Esc again to leave   -   any other key to keep racing", 20, Color(0.85, 0.85, 0.85), HORIZONTAL_ALIGNMENT_CENTER, size.x)
 	elif not _results_shown:
 		_text(c, font, Vector2(0, size.y - 20), hint, 16, Color(0.85, 0.85, 0.85, 0.85), HORIZONTAL_ALIGNMENT_CENTER, size.x)
 
@@ -2032,8 +2034,8 @@ func _draw_results(c: Control, font: Font, size: Vector2, order: Array[int]) -> 
 	elif place > PRIZES.size():
 		prize_line = "Off the podium. No prize."
 	_text(c, font, Vector2(r.position.x, foot_y), prize_line, 20, Color(1.0, 0.9, 0.5), HORIZONTAL_ALIGNMENT_CENTER, w)
-	var again := "E / Enter: race again ($5)" if GameState.cash >= 5 else "Not enough for another ride"
-	_text(c, font, Vector2(r.position.x, foot_y + 32), again + "     Esc: leave", 18, Color(0.85, 0.85, 0.88), HORIZONTAL_ALIGNMENT_CENTER, w)
+	var again := ("Cross: race again ($5)" if GameState.using_pad else "E / Enter: race again ($5)") if GameState.cash >= 5 else "Not enough for another ride"
+	_text(c, font, Vector2(r.position.x, foot_y + 32), again + ("     Circle: leave" if GameState.using_pad else "     Esc: leave"), 18, Color(0.85, 0.85, 0.88), HORIZONTAL_ALIGNMENT_CENTER, w)
 
 func _draw_minimap() -> void:
 	var c := _minimap
@@ -2101,7 +2103,28 @@ func _draw_speedo() -> void:
 # Input
 # =============================================================================
 
+## W/S or the stick, or the triggers as a racing game has them: R2 gas, L2
+## brake.
+func _player_throttle() -> float:
+	var t := Input.get_axis("move_down", "move_up") + Input.get_action_strength("throttle") - Input.get_action_strength("brake")
+	return clampf(t, -1.0, 1.0)
+
 func _unhandled_input(event: InputEvent) -> void:
+	# A pad button stands in for the key it means: options or circle for
+	# Esc, cross or square for E. Anything else on the pad is still yours.
+	if event is InputEventJoypadButton and event.pressed:
+		var as_key := KEY_NONE
+		if event.is_action("pause") or event.is_action("cancel_ui"):
+			as_key = KEY_ESCAPE
+		elif event.is_action("interact") or event.is_action("ui_accept"):
+			as_key = KEY_E
+		get_viewport().set_input_as_handled()
+		if as_key == KEY_NONE:
+			return
+		var ev := InputEventKey.new()
+		ev.physical_keycode = as_key
+		ev.pressed = true
+		event = ev
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	var key := (event as InputEventKey).physical_keycode

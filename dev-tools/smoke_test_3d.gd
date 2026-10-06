@@ -765,6 +765,7 @@ func _run() -> void:
 	await _sick_world_checks(gs)
 	await _batch1_checks(gs)
 	await _batch2_checks(gs)
+	await _controller_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2440,3 +2441,166 @@ func _batch2_save_checks(gs: Node) -> void:
 	hl.forced = ""
 	gs.start_run()
 
+## A pad button or stick, as if from a DualSense. Device 1, not 0: on Linux
+## a PS5 pad often isn't the first joypad Godot sees.
+func _pad(button: int, pressed: bool) -> void:
+	var ev := InputEventJoypadButton.new()
+	ev.device = 1
+	ev.button_index = button
+	ev.pressed = pressed
+	ev.pressure = 1.0 if pressed else 0.0
+	Input.parse_input_event(ev)
+
+func _tap(button: int) -> void:
+	_pad(button, true)
+	await _frames(2)
+	_pad(button, false)
+	await _frames(2)
+
+func _stick(axis: int, value: float) -> void:
+	var ev := InputEventJoypadMotion.new()
+	ev.device = 1
+	ev.axis = axis
+	ev.axis_value = value
+	Input.parse_input_event(ev)
+
+## Parsed input is buffered until the next process frame, and a heavy
+## scene can run several physics frames before that comes.
+func _settle() -> void:
+	await process_frame
+	await process_frame
+
+func _trigger(axis: int, value: float) -> void:
+	_stick(axis, value)
+
+func _find_root_child(method: String) -> Node:
+	for n in root.get_children():
+		if n.has_method(method):
+			return n
+	return null
+
+func _controller_checks(gs: Node) -> void:
+	await _section("Playing on a PS5 controller")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 20 * 60
+	var missing := []
+	for a in ["move_up", "move_down", "move_left", "move_right", "look_left", "look_right", "look_up", "look_down",
+			"interact", "sprint", "cancel_ui", "pause", "fire", "steady", "aim_left", "aim_right", "aim_up", "aim_down", "drift",
+			"notebook", "walkman", "walkman_next", "page_next", "page_prev",
+			"throttle", "brake", "ui_up", "ui_down", "ui_left", "ui_right", "ui_accept", "ui_cancel"]:
+		if not InputMap.has_action(a) or not InputMap.action_get_events(a).any(func(e): return (e is InputEventJoypadButton or e is InputEventJoypadMotion) and e.device == -1):
+			missing.append(a)
+	_check(missing.is_empty(), "  every control is on the pad, whichever pad it is (missing: %s)" % [missing])
+	var city := await _load("res://world/City3D.tscn")
+	var p := _player()
+	_stick(JOY_AXIS_LEFT_X, 1.0)
+	await _frames(2)
+	_check(Input.get_vector("move_left", "move_right", "move_up", "move_down").x > 0.5, "  the left stick walks")
+	_check(not p._sprinting, "  ...at a walk")
+	await _tap(JOY_BUTTON_LEFT_STICK)
+	await _frames(3)
+	_check(p._sprinting, "  ...click L3 and you sprint, like COD")
+	_stick(JOY_AXIS_LEFT_X, 0.0)
+	await _frames(20)
+	_stick(JOY_AXIS_LEFT_X, 1.0)
+	await _frames(3)
+	_check(not p._sprinting, "  ...and stopping ends it")
+	_stick(JOY_AXIS_LEFT_X, 0.0)
+	await _frames(1)
+	_check(InputMap.action_get_events("interact").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "  square is use")
+	var z0: float = p._user_zoom
+	_stick(JOY_AXIS_RIGHT_Y, 1.0)
+	await _frames(20)
+	_stick(JOY_AXIS_RIGHT_Y, 0.0)
+	_check(p._user_zoom > z0, "  the right stick pulls the camera back (%.2f -> %.2f)" % [z0, p._user_zoom])
+	await _tap(JOY_BUTTON_TOUCHPAD)
+	var book := _find_root_child("_draw_map")
+	_check(book != null, "  the touchpad opens the notebook")
+	if book:
+		var page0: int = book._page
+		await _tap(JOY_BUTTON_RIGHT_SHOULDER)
+		_check(book._page == page0 + 1, "  ...R1 turns the page")
+		await _tap(JOY_BUTTON_B)
+		await _frames(2)
+		_check(not is_instance_valid(book) or book.is_queued_for_deletion() or _find_root_child("_draw_map") == null, "  ...circle closes it")
+	await _frames(2)
+	gs.has_walkman = true
+	await _tap(JOY_BUTTON_Y)
+	var ChoiceMenuScript = load("res://ui/ChoiceMenu.gd")
+	_check(root.get_children().any(func(n): return n.get_script() == ChoiceMenuScript), "  triangle opens the shoebox of tapes")
+	_close_menus()
+	p.dialogue_active = false
+	await _tap(JOY_BUTTON_START)
+	var PauseScript = load("res://ui/PauseMenu.gd")
+	_check(paused and root.get_children().any(func(n): return n.get_script() == PauseScript), "  options pauses")
+	paused = false
+	_close_menus()
+	# Darts: the stick aims, cross throws.
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	gs.cash = 40
+	bar._start_darts(bar.DART_TABLES[0], _player())
+	await _frames(2)
+	var darts := _find_root_child("score_at")
+	if darts:
+		darts._howto = false
+		darts._player_turn = true
+		var m0: Vector2 = darts._mouse
+		_stick(JOY_AXIS_LEFT_X, 1.0)
+		await _frames(20)
+		_stick(JOY_AXIS_LEFT_X, 0.0)
+		_check(darts._mouse.x > m0.x + 20.0, "  darts: the stick aims (%.0f -> %.0f)" % [m0.x, darts._mouse.x])
+		var left0: int = darts._darts_left
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+		await _frames(2)
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+		await _frames(2)
+		_check(not darts._flying.is_empty() or darts._darts_left < left0, "  ...R2 throws")
+		darts.free()
+	else:
+		_check(false, "  darts: a game starts")
+	# Pool: the stick aims, hold cross to draw the cue back, let go to shoot.
+	gs.cash = 60
+	bar._start_pool(bar.POOL_TABLES[3], _player())
+	await _frames(2)
+	var pool := _find_root_child("_ai_plan")
+	if pool:
+		await _tap(JOY_BUTTON_A)
+		_check(not pool._howto, "  pool: any button gets past the how-to")
+		pool._shooter = 0
+		pool._ball_in_hand = false
+		var a0: float = pool._aim
+		_stick(JOY_AXIS_LEFT_X, 1.0)
+		await _frames(20)
+		_stick(JOY_AXIS_LEFT_X, 0.0)
+		_check(absf(pool._aim - a0) > 0.1, "  ...the stick aims")
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+		await _frames(20)
+		_check(pool._charging, "  ...hold R2 and the cue draws back")
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+		await _frames(2)
+		_check(not pool._charging and pool._moving, "  ...let go and it's struck")
+		pool.free()
+	else:
+		_check(false, "  pool: a game starts")
+	# The karts: R2 is the throttle, options pauses, cross carries on.
+	var race = load("res://ui/KartRace.gd").new()
+	root.add_child(race)
+	race.start("player")
+	await _frames(2)
+	_trigger(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+	await _settle()
+	_check(race._player_throttle() > 0.5, "  karts: R2 is the throttle")
+	_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+	_trigger(JOY_AXIS_TRIGGER_LEFT, 1.0)
+	await _settle()
+	_check(race._player_throttle() < -0.5, "  ...L2 brakes")
+	_trigger(JOY_AXIS_TRIGGER_LEFT, 0.0)
+	await _tap(JOY_BUTTON_START)
+	_check(race._paused_confirm and paused, "  ...options pauses the race")
+	await _tap(JOY_BUTTON_A)
+	_check(not race._paused_confirm and not paused, "  ...and cross carries on")
+	race.free()
+	paused = false
+	gs.start_run()

@@ -360,6 +360,7 @@ func show_dialogue(speaker: String, text: String, portrait: Texture2D = null) ->
 	text_label.offset_left = text_left
 	# Keep the hint's width fixed as it moves, or its background box
 	# stretches across the panel when there's no portrait.
+	hint_label.text = "[%s] continue" % GameState.control_name("interact")
 	var hint_width := hint_label.offset_right - hint_label.offset_left
 	hint_label.offset_left = text_left
 	hint_label.offset_right = text_left + hint_width

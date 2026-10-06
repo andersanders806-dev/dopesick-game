@@ -1025,10 +1025,30 @@ func _setup_input_actions() -> void:
 	_bind("interact", [KEY_E])
 	_bind("sprint", [KEY_SHIFT])
 	_bind("cancel_ui", [KEY_ESCAPE])
+	_bind("pause", [KEY_ESCAPE])
 	_bind("move_left", [KEY_A, KEY_LEFT])
 	_bind("move_right", [KEY_D, KEY_RIGHT])
 	_bind("move_up", [KEY_W, KEY_UP])
 	_bind("move_down", [KEY_S, KEY_DOWN])
+	_bind("aim_left", [KEY_LEFT])
+	_bind("aim_right", [KEY_RIGHT])
+	_bind("aim_up", [KEY_UP])
+	_bind("aim_down", [KEY_DOWN])
+	_bind("look_left", [])
+	_bind("look_right", [])
+	_bind("look_up", [])
+	_bind("look_down", [])
+	_bind("fire", [KEY_SPACE])
+	_bind("steady", [KEY_SHIFT])
+	_bind("drift", [KEY_SPACE, KEY_SHIFT])
+	_bind("throttle", [])
+	_bind("brake", [])
+	_bind("notebook", [KEY_J])
+	_bind("walkman", [KEY_T])
+	_bind("walkman_next", [KEY_N])
+	_bind("page_next", [KEY_TAB, KEY_RIGHT])
+	_bind("page_prev", [KEY_LEFT])
+	_setup_pad()
 
 func _bind(action: String, keys: Array) -> void:
 	if InputMap.has_action(action):
@@ -1038,6 +1058,102 @@ func _bind(action: String, keys: Array) -> void:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = key
 		InputMap.action_add_event(action, ev)
+
+# --- The pad ---------------------------------------------------------------
+
+## A PS5 pad laid out like Call of Duty's default: left stick moves, right
+## stick is the camera, L3 sprints, square is use, circle backs out, options
+## pauses, R2 fires (throws a dart, strikes the cue ball, the kart's gas),
+## L2 steadies your aim (and brakes), and the touchpad is the notebook --
+## COD's map. Triangle (COD's weapon swap) opens the tapes and the d-pad
+## skips one, so the d-pad doesn't walk you anywhere, as in COD.
+##
+## Every binding is on device -1, any pad: on Linux a DualSense often isn't
+## joypad 0 (its motion sensors and touchpad can enumerate first), and the
+## project's own bindings were for pad 0 only.
+const PAD_DEADZONE := 0.2
+const PAD := {
+	"move_left": [[JOY_AXIS_LEFT_X, -1.0]],
+	"move_right": [[JOY_AXIS_LEFT_X, 1.0]],
+	"move_up": [[JOY_AXIS_LEFT_Y, -1.0]],
+	"move_down": [[JOY_AXIS_LEFT_Y, 1.0]],
+	"aim_left": [[JOY_AXIS_LEFT_X, -1.0], JOY_BUTTON_DPAD_LEFT],
+	"aim_right": [[JOY_AXIS_LEFT_X, 1.0], JOY_BUTTON_DPAD_RIGHT],
+	"aim_up": [[JOY_AXIS_LEFT_Y, -1.0], JOY_BUTTON_DPAD_UP],
+	"aim_down": [[JOY_AXIS_LEFT_Y, 1.0], JOY_BUTTON_DPAD_DOWN],
+	"look_left": [[JOY_AXIS_RIGHT_X, -1.0]],
+	"look_right": [[JOY_AXIS_RIGHT_X, 1.0]],
+	"look_up": [[JOY_AXIS_RIGHT_Y, -1.0]],
+	"look_down": [[JOY_AXIS_RIGHT_Y, 1.0]],
+	"interact": [JOY_BUTTON_X, JOY_BUTTON_A],
+	"sprint": [JOY_BUTTON_LEFT_STICK],
+	"cancel_ui": [JOY_BUTTON_B],
+	"pause": [JOY_BUTTON_START],
+	"fire": [[JOY_AXIS_TRIGGER_RIGHT, 1.0], JOY_BUTTON_A],
+	"steady": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
+	"drift": [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_X],
+	"throttle": [[JOY_AXIS_TRIGGER_RIGHT, 1.0]],
+	"brake": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
+	"notebook": [JOY_BUTTON_TOUCHPAD, JOY_BUTTON_BACK],
+	"walkman": [JOY_BUTTON_Y],
+	"walkman_next": [JOY_BUTTON_DPAD_RIGHT],
+	"page_next": [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_DPAD_RIGHT],
+	"page_prev": [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_DPAD_LEFT],
+	"ui_up": [[JOY_AXIS_LEFT_Y, -1.0], JOY_BUTTON_DPAD_UP],
+	"ui_down": [[JOY_AXIS_LEFT_Y, 1.0], JOY_BUTTON_DPAD_DOWN],
+	"ui_left": [[JOY_AXIS_LEFT_X, -1.0], JOY_BUTTON_DPAD_LEFT],
+	"ui_right": [[JOY_AXIS_LEFT_X, 1.0], JOY_BUTTON_DPAD_RIGHT],
+	"ui_accept": [JOY_BUTTON_A, JOY_BUTTON_X],
+	"ui_cancel": [JOY_BUTTON_B],
+}
+## The last thing touched was the pad, so hints name its buttons.
+var using_pad: bool = false
+signal input_device_changed(pad: bool)
+
+func _setup_pad() -> void:
+	for action in PAD:
+		# Replace the pad-0 bindings from project.godot rather than add to them.
+		for ev in InputMap.action_get_events(action):
+			if ev is InputEventJoypadButton or ev is InputEventJoypadMotion:
+				InputMap.action_erase_event(action, ev)
+		if not action.begins_with("ui_"):
+			InputMap.action_set_deadzone(action, PAD_DEADZONE)
+		for b in PAD[action]:
+			var ev: InputEvent
+			if b is Array:
+				ev = InputEventJoypadMotion.new()
+				ev.axis = b[0]
+				ev.axis_value = b[1]
+			else:
+				ev = InputEventJoypadButton.new()
+				ev.button_index = b
+			ev.device = -1
+			InputMap.action_add_event(action, ev)
+
+func _input(event: InputEvent) -> void:
+	var pad := using_pad
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
+		pad = true
+	elif event is InputEventKey or event is InputEventMouseButton:
+		pad = false
+	if pad != using_pad:
+		using_pad = pad
+		input_device_changed.emit(pad)
+
+## What to call a control in a hint: the key, or the pad button.
+func control_name(action: String) -> String:
+	if using_pad:
+		return PAD_NAMES.get(action, action)
+	return KEY_NAMES.get(action, action)
+
+const PAD_NAMES := {"interact": "Square", "cancel_ui": "Circle", "pause": "Options", "fire": "R2",
+	"steady": "L2", "sprint": "L3", "notebook": "Touchpad", "walkman": "Triangle",
+	"walkman_next": "D-pad right", "page": "L1/R1", "aim": "Left stick", "look": "Right stick",
+	"drift": "R1", "throttle": "R2", "brake": "L2", "steer": "Left stick", "accept": "Cross"}
+const KEY_NAMES := {"interact": "E", "cancel_ui": "Esc", "pause": "Esc", "fire": "Space",
+	"steady": "Shift", "sprint": "Shift", "notebook": "J", "walkman": "T", "walkman_next": "N",
+	"page": "Tab/arrows", "aim": "Mouse", "look": "Wheel", "drift": "Shift/Space", "throttle": "W",
+	"brake": "S", "steer": "A/D", "accept": "E/Enter"}
 
 func item_info(id: String) -> Dictionary:
 	for r in REQUEST_POOL:

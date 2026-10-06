@@ -105,14 +105,14 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	_sway_t += delta
-	_steady = (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_action_pressed("sprint")) and _breath > 0.0
+	# Hold your breath: right click, Shift, or L2 -- COD's aim-down-sights.
+	_steady = (Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT) or Input.is_action_pressed("sprint") or Input.is_action_pressed("steady")) and _breath > 0.0
 	if _steady:
 		_breath = maxf(0.0, _breath - delta)
 	else:
 		_breath = minf(BREATH_MAX, _breath + delta * 0.6)
-	var nudge := Vector2(
-		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
-		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP)))
+	# The arrows, or the left stick (analogue, so a light touch is fine aim).
+	var nudge := Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
 	_mouse += nudge * 220.0 * delta
 	_aim = _mouse + _sway()
 	if not _flying.is_empty():
@@ -153,7 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		_message = "You put the darts down. %s pockets the $%d." % [opponent_name, bet]
 		_finish(false)
-	elif event is InputEventKey and event.pressed and not event.echo and (event.physical_keycode == KEY_SPACE or event.is_action("interact")):
+	elif (event.is_action_pressed("fire") or event.is_action_pressed("interact")) and not event.is_echo():
 		get_viewport().set_input_as_handled()
 		_click()
 
@@ -384,6 +384,8 @@ func _draw_panel(c: Control, font: Font) -> void:
 	var wrapped := _message
 	_text(c, font, Vector2(x, 570), wrapped, 15, Color(0.9, 0.87, 0.8))
 	var hint := "[E] / click to walk away" if _over else "Mouse aim  -  hold right click/Shift: steady  -  click/Space: throw  -  Esc: give up"
+	if GameState.using_pad:
+		hint = "[Square] walk away" if _over else "Left stick aim  -  hold L2: steady  -  R2: throw  -  Circle: give up"
 	_text(c, font, Vector2(40, 704), hint, 13, Color(0.6, 0.58, 0.54))
 
 func _text(c: Control, font: Font, p: Vector2, s: String, size: int, col: Color) -> void:

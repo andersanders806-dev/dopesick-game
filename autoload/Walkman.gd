@@ -176,11 +176,11 @@ func _set_duck(on: bool) -> void:
 	SFX._update_music.call_deferred()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
+	if not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
-	if event.physical_keycode == KEY_T:
+	if event.is_action("walkman"):
 		open_menu()
-	elif event.physical_keycode == KEY_N and GameState.has_walkman and not get_tree().paused:
+	elif event.is_action("walkman_next") and GameState.has_walkman and not get_tree().paused:
 		next()
 
 ## The shoebox of tapes: pick one, shuffle them all, or stop.
@@ -243,5 +243,5 @@ func _draw_widget() -> void:
 		for k in 3:
 			var a := _reel_angle * (1.0 if i == 0 else 1.25) + k * TAU / 3.0
 			c.draw_line(centre, centre + Vector2.from_angle(a) * 4.0, Color(0.1, 0.1, 0.1), 1.5)
-	c.draw_string(font, Vector2(8, 46), "[T]", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.6, 0.6, 0.58))
+	c.draw_string(font, Vector2(8, 46), "[%s]" % GameState.control_name("walkman"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.6, 0.6, 0.58))
 	c.draw_string(font, Vector2(WIDGET_SIZE.x - 50, 46), "[N] >>" if shuffle else "[N] shfl", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.6, 0.6, 0.58))

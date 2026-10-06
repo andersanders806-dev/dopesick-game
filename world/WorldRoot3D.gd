@@ -18,6 +18,7 @@ func _ready() -> void:
 	_restore_saved_position()
 	_maybe_continue_chase(spawn_marker)
 	Jobs.decorate(self)
+	preload("res://world/PlaceAmbience.gd").apply(self)
 	# Autosave on arrival, once the room has settled.
 	SaveGame.save.call_deferred()
 

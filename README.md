@@ -135,6 +135,15 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   highlights, an S-curve) plus saturation 1.18 -- applies at every preset.
   The withdrawal tint only appears once you're actually getting sick; it
   used to sit at ~20% green over everything.
+- **Every place sounds like itself.** A real CC0 field recording loops
+  under each of the 14 rooms (`world/PlaceAmbience.gd`): distant
+  late-night LA traffic on the street, bar chatter in the Dive Bar, a
+  supermarket's tills and announcements, a convenience store's fridges, a
+  jail's echo, an empty shop's air conditioning in the pawnshop, a
+  cafeteria at the shelter, go-karts through the office wall. All from
+  Freesound, cut to seamless loops (4 s crossfade) and levelled to
+  -26 LUFS; see `assets/sfx/places/CREDITS.txt`. The rooms' positional
+  sounds (bulb, cooler, TV, jukebox) still play on top.
 - **Voices:** `autoload/Voice.gd` speaks the quoted part of every dialogue
   line in the character's own voice, using Piper
   (github.com/rhasspy/piper, MIT) with the LibriTTS-R model's 904 voices,

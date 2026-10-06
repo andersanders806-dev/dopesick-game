@@ -14,6 +14,12 @@ func _initialize() -> void:
 	# Don't touch the player's progress, settings or saved run.
 	Engine.set_meta("sandbox", true)
 	await process_frame
+	# Graphics has already read the player's settings.cfg by now. Put the
+	# defaults back (the sandbox never saves) so checks don't depend on
+	# whether you last played in first person or on High.
+	var gfx := root.get_node("Graphics")
+	gfx.set_first_person(false)
+	gfx.set_preset(gfx.Preset.MEDIUM)
 	# A quiet day every day unless a check asks for something else.
 	root.get_node("Headlines").forced = "quiet"
 	root.get_node("Headlines").roll(root.get_node("GameState").day)
@@ -138,6 +144,12 @@ func _run() -> void:
 	# section at the end moves it deliberately.
 	gs.clock_running = false
 	gs.clock = 17 * 60
+
+	await _section("The test sandbox ignores the player's own settings")
+	# Whatever you picked in your own game (first person, High) mustn't
+	# change what the checks below see.
+	var gfx := root.get_node("Graphics")
+	_check(not gfx.first_person and gfx.preset == gfx.Preset.MEDIUM, "  third person, Medium, whatever settings.cfg says (fp %s, %s)" % [gfx.first_person, gfx.PRESET_NAMES[gfx.preset]])
 
 	await _section("Every 3D room loads with a player, HUD, and baked navmesh")
 	# The corner shop goes last: the tests below carry on inside it.
@@ -769,6 +781,7 @@ func _run() -> void:
 	await _view_checks(gs)
 	await _aa_checks(gs)
 	await _perf_checks(gs)
+	await _ambience_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2849,4 +2862,23 @@ func _perf_checks(gs: Node) -> void:
 	_check(gfx.migrate_preset(gfx.Preset.HIGH, 2, true) == gfx.Preset.MEDIUM and gfx.migrate_preset(gfx.Preset.PS5, 2, true) == gfx.Preset.MEDIUM, "  integrated GPU on High: moved to Medium")
 	_check(gfx.migrate_preset(gfx.Preset.HIGH, 3, true) == gfx.Preset.HIGH, "  ...once: put it back with F3 and it stays")
 	_check(gfx.migrate_preset(gfx.Preset.HIGH, 2, false) == gfx.Preset.HIGH and gfx.migrate_preset(gfx.Preset.LOW, 2, true) == gfx.Preset.LOW, "  ...a real GPU, or Low, is left alone")
+	gs.start_run()
+
+func _ambience_checks(gs: Node) -> void:
+	await _section("Every place sounds like itself: a real recording each")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var Ambience = load("res://world/PlaceAmbience.gd")
+	var credits := FileAccess.get_file_as_string("res://assets/sfx/places/CREDITS.txt")
+	for scene in Ambience.PLACES:
+		var room := await _load("res://world/%s.tscn" % scene)
+		var p := room.get_node_or_null("PlaceAmbience") as AudioStreamPlayer
+		var stream := p.stream if p else null
+		var ok: bool = p != null and p.playing and p.bus == "Ambience" and stream is AudioStreamOggVorbis and stream.loop and stream.get_length() >= 30.0
+		var tone := room.get_node_or_null("RoomTone") as AudioStreamPlayer
+		var no_double: bool = tone == null or not tone.playing
+		var file: String = Ambience.PLACES[scene][0]
+		_check(ok and no_double and credits.contains(file.get_file()), "  %s: %s, looping on Ambience, credited%s" % [scene, file.get_file(), "" if no_double else " (old room tone still on)"])
 	gs.start_run()

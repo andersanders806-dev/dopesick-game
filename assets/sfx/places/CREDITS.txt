@@ -1,0 +1,18 @@
+Place ambience: field recordings from Freesound (freesound.org), all CC0 1.0
+(public domain, no attribution required -- credited here anyway). Each was
+cut to a loop with a 4 s crossfade at the seam and normalised to -26 LUFS.
+
+apartment.ogg    "Interior City Apartment - Los Angeles on Ventura Blvd" by MJSoundDesign   freesound.org/s/397889
+city.ogg         "Downtown LA, Little Tokyo, late night semi distant traffic" by janbezouska  freesound.org/s/330427
+bar.ogg          "bar chatter" by SoundsExciting                                             freesound.org/s/543913
+supermarket.ogg  "Supermarket" by Pacoc                                                      freesound.org/s/367880
+convenience.ogg  "AMB_Int_ConvenienceStore_001" by conleec                                   freesound.org/s/149444
+liquor.ogg       "Convenience Store Interior Ambiance" by JohnsonBrandEditing                freesound.org/s/244309
+pharmacy.ogg     "Bookshop - Shop - Interior - Quiet Atmosphere-01" by mzui                  freesound.org/s/202327
+electronics.ogg  "Shopping Mall Interior" by ptp8ss                                          freesound.org/s/346858
+jail.ogg         "Jail Prison Ambience" by ramonmineiro                                      freesound.org/s/477871
+backyard.ogg     "alley downtown ambience 01" by klankbeeld                                  freesound.org/s/171425
+pawn.ogg         "Barber shop interior, empty room with air conditioning" by felix.blume     freesound.org/s/706411
+shelter.ogg      "CafeteriaLight" by ViaTorci                                                freesound.org/s/66789
+music.ogg        "Bookshop - Shop - Interior - Quiet - Some Voices" by mzui                  freesound.org/s/202328
+karts.ogg        "Go Kart Racing Outdoors - Moderate Traffic - Sparse Crowd" by OverlookHotelRecords  freesound.org/s/317471

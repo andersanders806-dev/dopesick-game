@@ -15,7 +15,7 @@ extends RefCounted
 
 const BLEND_TIME := 0.15
 const MOVING_THRESHOLD := 0.1
-const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact"]
+const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse"]
 const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit"]
 
 ## Candidate real clip names per logical clip, best match first. Matched

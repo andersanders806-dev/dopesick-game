@@ -2264,6 +2264,13 @@ func _alley_checks(gs: Node) -> void:
 	var alley := city.get_node("AlleyOverdose")
 	await _frames(3)
 	_check(alley.victim != null and alley.victim.visible, "  ...and they're in the alley")
+	# Lying beside the dumpster (1.8 x 1.0), not inside it: a body is ~1.7 m
+	# long, so its centre wants a good half-metre of clear ground past the box.
+	var bin: Vector3 = city.find_child("Dumpster", true, false).global_position
+	var vp: Vector3 = alley.victim.global_position
+	_check(absf(vp.x - bin.x) > 0.9 + 0.5 or absf(vp.z - bin.z) > 0.5 + 0.5, "  ...beside the dumpster, not inside it (%s vs %s)" % [vp, bin])
+	var vap: AnimationPlayer = alley.victim.find_child("AnimationPlayer", true, false)
+	_check(vap != null and String(vap.current_animation).to_lower().ends_with("death"), "  ...on the ground, not standing there (%s)" % (vap.current_animation if vap else "no player"))
 	var who: String = gs.od_event["who"]
 	gs.naloxone = 1
 	_check(alley._choose("naloxone") == "saved" and gs.naloxone == 0 and gs.rep_of(who) == 3, "  naloxone: saved, and they owe you (rep 3)")

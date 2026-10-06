@@ -9,7 +9,7 @@ const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
 const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 const InteractableScript := preload("res://interactables/Interactable3D.gd")
-const SPOT := Vector3(21.5, 0, -3.6)
+const SPOT := Vector3(22.4, 0, -2.6)
 
 var victim: Area3D
 var _victim_for: String = ""

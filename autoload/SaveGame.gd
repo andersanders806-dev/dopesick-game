@@ -26,7 +26,9 @@ const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "str
 	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary",
 	"headline", "headline_day", "sabotage_day", "rep", "store_heat",
 	"belongings", "pawn_tickets", "apartment_echo_seen", "rent_due_day", "rent_stage", "rent_owed",
-	"court_day", "probation_days", "warrant", "last_street_use"]
+	"court_day", "probation_days", "warrant", "last_street_use",
+	"test_strips", "od_event", "dead_regulars", "vigil_day", "vigil_for", "events_rolled_day",
+	"booster_day", "booster_gone", "booster_store", "booster_hit", "booster_team", "booster_cut_pending"]
 
 ## Where to put the player once the saved room has loaded.
 var pending_position = null
@@ -98,6 +100,9 @@ func continue_run() -> bool:
 	GameState.day_changed.emit(GameState.day)
 	GameState.strikes_changed.emit(GameState.strikes)
 	GameState.debt_changed.emit(GameState.debt)
+	# Loading isn't an hour going by: no weather roll, no deadline check,
+	# no store hit by Tasha just for having pressed Continue.
+	GameState._last_minute = -1
 	GameState._emit_clock()
 	get_tree().change_scene_to_file(data["scene"])
 	var tape: String = data.get("tape", "")

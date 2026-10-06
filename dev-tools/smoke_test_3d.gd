@@ -2149,6 +2149,7 @@ func _batch2_checks(gs: Node) -> void:
 	await _strip_checks(gs)
 	await _alley_checks(gs)
 	await _booster_checks(gs)
+	await _batch2_save_checks(gs)
 
 func _bad_batch_checks(gs: Node) -> void:
 	await _section("Bad batch and test strips")
@@ -2403,3 +2404,39 @@ func _booster_checks(gs: Node) -> void:
 	await _frames(3)
 	_check(city.get_node("Booster").npc.visible, "  she's on the block")
 	gs.start_run()
+
+func _batch2_save_checks(gs: Node) -> void:
+	await _section("The alley, strips and Tasha survive save and continue")
+	_close_menus()
+	var save := root.get_node("SaveGame")
+	var hl := root.get_node("Headlines")
+	save.delete()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60 + 30
+	hl.forced = "quiet"
+	await _load("res://world/City3D.tscn")
+	gs.day = 5
+	hl.roll(5)
+	gs.test_strips = 2
+	gs.od_event = {"day": 5, "minute": 14 * 60, "who": "Old Sailor", "state": "down", "left": 42.0}
+	gs.dead_regulars.assign(["Quiet Kid"])
+	gs.vigil_day = 4
+	gs.vigil_for = "Quiet Kid"
+	gs.booster_day = 5
+	gs.booster_gone = false
+	gs.booster_store = "liquor"
+	gs.booster_hit.assign(["pharmacy"])
+	gs.booster_team = ""
+	gs.booster_cut_pending = true
+	_check(save.save(), "  saved")
+	gs.start_run()
+	save.continue_run()
+	await _frames(8)
+	_check(gs.test_strips == 2 and gs.dead_regulars == ["Quiet Kid"] and gs.vigil_day == 4 and gs.vigil_for == "Quiet Kid", "  strips, the dead, and the vigil come back")
+	_check(gs.od_event.get("state", "") == "down" and gs.od_event.get("who", "") == "Old Sailor" and absf(float(gs.od_event.get("left", 0.0)) - 42.0) < 1.0, "  ...someone still down, with the time they had left (%s)" % [gs.od_event])
+	_check(gs.booster_day == 5 and gs.booster_store == "liquor" and gs.booster_hit == ["pharmacy"] and gs.booster_cut_pending and not gs.booster_gone, "  ...and Tasha's day, not rerolled by loading (%s %s %s %s)" % [gs.booster_day, gs.booster_store, gs.booster_hit, gs.booster_cut_pending])
+	save.delete()
+	hl.forced = ""
+	gs.start_run()
+

@@ -213,6 +213,35 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   strike. The HUD shows whichever of rent, court, probation or a warrant
   is most pressing, and the notebook's notes page lists them all with any
   pawn tickets. `dev-tools/smoke_batch1.gd` runs just these checks.
+- **The street gets dangerous.** Three things that happen on the block
+  whether you're ready or not. `dev-tools/smoke_batch2.gd` runs just these
+  checks.
+  - *Bad batch.* Some days the word on the block is that what's going
+    around is cut. On those days 40% of the opioids the pusher sells are
+    contaminated, at three times the overdose risk. Nothing tells you,
+    except a test strip: the outreach worker hands out two a visit, once a
+    day. With a strip in your pocket the pusher's handoff lets you test
+    first, then take it all, take a little at a time, or bin it. Esc just
+    takes it, so a dose you paid for never vanishes by accident.
+  - *Someone goes over in the alley* (`world/AlleyOverdose.gd`). About one
+    night in four, every bad-batch night, never day 1: one of the Dive Bar
+    regulars goes down beside the dumpster some time after 18:00. You get
+    90 real seconds on the block to find them. Naloxone saves them (rep
+    +3). Running for the payphone saves them too (rep +2), but a cop comes
+    with the ambulance. You can go through their pockets ($8-20; they die).
+    Walk on and two times in three nobody else stops. The dead don't come
+    back to the bar. The day after there are candles and their name on the
+    wall, and the pusher charges 10% less. The alley
+    stops taking regulars when four are left, so the bar still fills.
+  - *Tasha* (`world/Booster.gd`). A rival booster, out about two days in
+    five, 10-20, never on a vigil day. Each hour she cases a store and
+    then hits it, and its staff are jumpy (x1.3) for the rest of the day,
+    whether or not you're out there to see it. The notebook's map marks
+    her with a T and what she's hit with an x. Team up and she works one
+    clerk for you (x0.6) for the day, for half your next order. Or give
+    her up to the beat cop: she's gone for good, her heat goes with her,
+    and so does your warrant. But Ray stops trusting you and every regular
+    thinks a little less of you.
 - **Southside Speedway: go-karts, $5 a ride.** The KARTS door on the
   block (x = -14, open 14:00-24:00) leads to the front office
   (`world/KartCenter3D.gd`): a chequered floor, a marshal at the sign-up

@@ -5,5 +5,9 @@
 .captures/
 tools/
 
-# Claude Code session data and worktrees
-.claude/
+# Claude Code session data and worktrees; project skills are shared
+.claude/*
+!.claude/skills/
+
+# The pilot's screenshots and log (dev-tools/pilot.gd)
+.pilot/

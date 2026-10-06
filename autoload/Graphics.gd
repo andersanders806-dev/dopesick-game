@@ -5,23 +5,23 @@ extends Node
 ## SSIL, SSR, volumetric fog, TAA, far DOF, shadows on every lamp. That's
 ## the "High" preset. On an integrated GPU it runs at 12-16 FPS, so "Medium"
 ## and "Low" strip the expensive passes and fake the important parts
-## cheaply -- depth fog stands in for volumetric fog, FXAA for TAA -- and
+## cheaply -- depth fog stands in for volumetric fog -- and
 ## this node applies the choice to every WorldEnvironment and light as rooms
 ## load. F3 cycles the preset, F4 shows the frame rate; both are remembered
 ## in user://settings.cfg.
 ##
 ## Every preset renders 3D below native and upscales with AMD FSR: FSR 1
-## (spatial, nearly free, with FXAA) on Low and Medium, FSR 2 on High, where
-## it also does the anti-aliasing in place of TAA and MSAA and keeps edges
-## and texture detail sharp. FSR 2's own pass costs ~8 ms on a UHD 620, so
-## it only pays off where the effects are expensive anyway. The render scale
+## (spatial, nearly free) with SMAA on Low and Medium, plus TAA on High;
+## FSR 2 on PS5, where it does the anti-aliasing itself. FSR 2's own pass
+## costs ~8 ms on a UHD 620 and smears at low frame rates, so it's kept for
+## the preset meant for a desktop GPU. The render scale
 ## floats: it drops when frames run long and creeps back up when there's
 ## headroom, inside each preset's range, so the game holds a steady frame
 ## rate instead of stuttering -- High on a UHD 620 used to run 15 FPS.
 ##
 ## "PS5" sits above High for a strong desktop GPU, aiming at what a current
 ## console version would look like: everything High has, at higher
-## quality -- FSR 2 from a 75-100% base instead of 50-77%, the softest
+## quality -- FSR 2 from a 75-100% base instead of FSR 1 from 67-85%, the softest
 ## shadow filtering and a bigger shadow atlas, full-quality bounce light and
 ## ambient occlusion, finer volumetric fog, longer reflection traces, and
 ## 16x anisotropic filtering -- still under the same 60 FPS governor, so it
@@ -43,8 +43,8 @@ const SHADOW_TINT := Color(-0.03, 0.035, 0.07)
 const HIGHLIGHT_TINT := Color(0.07, 0.025, -0.045)
 
 ## [min, max] 3D render scale per preset, and where each starts.
-const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.5, 0.77], [0.75, 1.0]]
-const SCALE_START := [0.77, 0.85, 0.59, 0.85]
+const SCALE_RANGE := [[0.6, 0.85], [0.67, 1.0], [0.67, 0.85], [0.75, 1.0]]
+const SCALE_START := [0.77, 0.85, 0.77, 0.85]
 const TARGET_FPS := 58.0
 
 ## Volume sliders in the settings menu, 0..1 per bus. They scale each bus
@@ -195,12 +195,17 @@ func _apply_viewport() -> void:
 	var vp := get_viewport()
 	var high := is_high()
 	var ps5 := preset == Preset.PS5
-	# FSR 2 is temporal: it anti-aliases and reconstructs detail itself.
-	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if high else Viewport.SCALING_3D_MODE_FSR
-	vp.fsr_sharpness = 0.25 if high else 0.35
-	vp.use_taa = false
+	# FSR 2 is temporal: it anti-aliases and reconstructs detail itself, but
+	# only well from a decent base resolution at a decent frame rate. On a
+	# UHD 620, High's FSR 2 from ~59% at 20-25 FPS left edges crawling;
+	# FSR 1 from 77% with TAA and SMAA measured faster (38 ms vs 40 in the
+	# Dive Bar) and smoother. So FSR 2 is the PS5 preset's, for desktop GPUs.
+	# SMAA everywhere else: crisper than FXAA for about half a millisecond.
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR2 if ps5 else Viewport.SCALING_3D_MODE_FSR
+	vp.fsr_sharpness = 0.25 if ps5 else 0.35
+	vp.use_taa = high and not ps5
 	vp.msaa_3d = Viewport.MSAA_DISABLED
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if high else Viewport.SCREEN_SPACE_AA_FXAA
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 else Viewport.SCREEN_SPACE_AA_SMAA
 	for n in get_tree().get_nodes_in_group("film_look"):
 		n.visible = high
 	render_scale = SCALE_START[preset]

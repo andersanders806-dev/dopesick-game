@@ -767,6 +767,7 @@ func _run() -> void:
 	await _batch2_checks(gs)
 	await _controller_checks(gs)
 	await _view_checks(gs)
+	await _aa_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2780,3 +2781,20 @@ func _batch1_review_checks(gs: Node) -> void:
 	_close_menus()
 	_player().dialogue_active = false
 	gs.start_run()
+
+func _aa_checks(gs: Node) -> void:
+	await _section("Smooth edges at every preset")
+	var gfx := root.get_node("Graphics")
+	var before: int = gfx.preset
+	var vp := root.get_viewport()
+	for p in [gfx.Preset.LOW, gfx.Preset.MEDIUM]:
+		gfx.set_preset(p)
+		_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "  %s: SMAA, not FXAA" % gfx.PRESET_NAMES[p])
+	gfx.set_preset(gfx.Preset.HIGH)
+	# On an integrated GPU FSR 2 from ~59% crawls at 20-25 FPS; FSR 1 from
+	# 77% with TAA and SMAA measured faster and smoother on a UHD 620.
+	_check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR and vp.use_taa and vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "  High: FSR 1 with TAA and SMAA")
+	_check(gfx.SCALE_RANGE[gfx.Preset.HIGH][0] >= 0.67 and absf(vp.scaling_3d_scale - 0.77) < 0.01, "  ...from at least 67%%, starting at 77%% (%.2f)" % vp.scaling_3d_scale)
+	gfx.set_preset(gfx.Preset.PS5)
+	_check(vp.scaling_3d_mode == Viewport.SCALING_3D_MODE_FSR2 and not vp.use_taa, "  PS5 keeps FSR 2 (a desktop GPU's preset)")
+	gfx.set_preset(before)

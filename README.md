@@ -123,7 +123,10 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   far DOF); that's "High", which runs at ~12 FPS in the City on an Intel
   UHD 620. "Medium" (~25-35 FPS there) and "Low" (~42-59 FPS) drop the
   expensive passes and fake the haze with depth fog. Integrated GPUs start
-  on Low. The colour grade -- a 3D LUT built in code (teal shadows, amber
+  on Low. Edges: SMAA at every preset, and on High TAA too, upscaled with
+  FSR 1 from 67-85%. High used FSR 2 from ~59%, which on a UHD 620 left
+  edges crawling at 20-25 FPS, and measured slower than this. FSR 2 is
+  now the PS5 preset's, for a desktop GPU. The colour grade -- a 3D LUT built in code (teal shadows, amber
   highlights, an S-curve) plus saturation 1.18 -- applies at every preset.
   The withdrawal tint only appears once you're actually getting sick; it
   used to sit at ~20% green over everything.

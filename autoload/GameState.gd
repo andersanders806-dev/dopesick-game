@@ -270,6 +270,20 @@ const BUYBACK_MARKUP := 1.5
 var apartment_echo_seen: bool = false
 signal belongings_changed
 
+## Rent: about one good order a week, due by midnight on the due day.
+## Missing it is a final notice and a late fee; missing that, the lock's
+## changed until you pay everything plus the locksmith.
+const RENT := 35
+const RENT_PERIOD := 5
+const RENT_LATE_FEE := 10
+const LOCKSMITH_FEE := 20
+const LANDLORD_HOURS := [8, 22]
+var rent_due_day: int = RENT_PERIOD
+## 0 paid up, 1 final notice, 2 locked out.
+var rent_stage: int = 0
+var rent_owed: int = 0
+signal rent_changed
+
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
@@ -323,6 +337,9 @@ func start_run() -> void:
 		belongings[id] = "home"
 	pawn_tickets.clear()
 	apartment_echo_seen = false
+	rent_due_day = RENT_PERIOD
+	rent_stage = 0
+	rent_owed = 0
 	last_meal_slot = -1
 	hurt_until = -1.0
 	pending_spawn = ""
@@ -642,6 +659,49 @@ func _on_new_day(_d: int) -> void:
 			log_event("The pawnshop sold %s. It's gone." % item_name_for(id))
 			belongings_changed.emit()
 	_reconcile_belongings()
+	_roll_rent()
+	if rent_stage == 0 and day == rent_due_day:
+		Graphics._show_toast("Rent's due tonight: $%d." % RENT)
+
+# --- Rent -----------------------------------------------------------------
+
+func rent_amount() -> int:
+	return RENT if rent_stage == 0 else rent_owed
+
+## Only this period's rent: no paying next week's early.
+func rent_payable() -> bool:
+	return rent_stage > 0 or day > rent_due_day - RENT_PERIOD
+
+func locked_out() -> bool:
+	return rent_stage == 2
+
+func pay_rent() -> bool:
+	if not rent_payable() or not spend_cash(rent_amount()):
+		return false
+	rent_due_day = rent_due_day + RENT_PERIOD if rent_stage == 0 else day + RENT_PERIOD
+	if rent_stage == 2:
+		log_event("Paid the landlord everything. New lock, new key.")
+	else:
+		log_event("Paid the rent. Next due day %d." % rent_due_day)
+	rent_stage = 0
+	rent_owed = 0
+	rent_changed.emit()
+	return true
+
+## One step a day at most, however many days pass at once.
+func _roll_rent() -> void:
+	if rent_stage == 0 and day > rent_due_day:
+		rent_stage = 1
+		rent_owed = RENT + RENT_LATE_FEE
+		rent_due_day = day
+		log_event("A final notice on the door: $%d by midnight." % rent_owed)
+	elif rent_stage == 1 and day > rent_due_day:
+		rent_stage = 2
+		rent_owed += LOCKSMITH_FEE
+		log_event("Locked out. The landlord changed the lock.")
+	else:
+		return
+	rent_changed.emit()
 
 func _note_nothing_left() -> void:
 	if belongings_away() == BELONGINGS.size() and BELONGINGS.all(func(id): return belongings[id] != "carried"):

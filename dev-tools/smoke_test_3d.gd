@@ -1890,6 +1890,7 @@ func _sick_world_checks(gs: Node) -> void:
 func _batch1_checks(gs: Node) -> void:
 	await _belongings_checks(gs)
 	await _pawn_ticket_checks(gs)
+	await _rent_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -1967,5 +1968,49 @@ func _pawn_ticket_checks(gs: Node) -> void:
 	_check(gs.belongings["ring"] == "pawned", "  the ticket holds through day +4")
 	gs.advance_clock(24 * 60)
 	_check(gs.belongings["ring"] == "gone" and not gs.pawn_tickets.has("ring"), "  ...and then it's sold to someone else")
+	_player().dialogue_active = false
+	gs.start_run()
+
+func _rent_checks(gs: Node) -> void:
+	await _section("Rent day")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	_check(gs.rent_due_day == 5 and gs.rent_amount() == 35, "  rent is $35, due day 5")
+	gs.cash = 100
+	_check(gs.pay_rent() and gs.cash == 65 and gs.rent_due_day == 10, "  paying moves it to day 10")
+	_check(not gs.pay_rent() and gs.cash == 65, "  ...and you can't pay next week's early")
+	gs.start_run()
+	gs.clock_running = false
+	gs.cash = 0
+	for i in 5:
+		gs.advance_clock(24 * 60)
+	_check(gs.day == 6 and gs.rent_stage == 1 and gs.rent_amount() == 45, "  missed: a final notice, $45 with the late fee")
+	gs.advance_clock(24 * 60)
+	_check(gs.rent_stage == 2 and gs.locked_out() and gs.rent_amount() == 65, "  missed again: locked out, $65 with the locksmith")
+	gs.advance_clock(24 * 60)
+	_check(gs.rent_stage == 2 and gs.rent_amount() == 65, "  ...and it stops there")
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	city.get_node("DoorToHome").interact(_player())
+	await _frames(5)
+	_check(current_scene.name == "City3D", "  the lock's been changed")
+	_close_menus()
+	gs.cash = 80
+	city.get_node("DoorToHome")._pay_landlord(_player())
+	await _frames(10)
+	_check(current_scene.name == "Apartment3D" and gs.rent_stage == 0 and gs.cash == 15 and gs.rent_due_day == gs.day + 5, "  paying the landlord lets you back in")
+	var slot := current_scene.get_node("RentSlot")
+	gs.cash = 50
+	current_scene._on_rent_slot(slot, _player())
+	_check(gs.cash == 50, "  the slot won't take next week's rent early")
+	gs.rent_due_day = gs.day
+	gs.rent_stage = 1
+	gs.rent_owed = 45
+	_player().dialogue_active = false
+	gs.advance_clock(24 * 60)
+	await _frames(60 * 7)
+	_check(current_scene.name == "City3D", "  locked out while you're home, you're shown out")
 	_player().dialogue_active = false
 	gs.start_run()

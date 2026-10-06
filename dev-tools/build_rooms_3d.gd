@@ -696,6 +696,12 @@ func _build_apartment() -> Node3D:
 		zone.set("prop_path", NodePath("../" + b[1]))
 		_collision(zone, _box_shape(Vector3(0.9, 1.2, 0.9)), Vector3(0, 0.6, 0))
 
+	# The envelope slot to the landlord's office, and the notice that goes up
+	# on rent day (Apartment3D shows it).
+	_zone(_root, "RentSlot", Vector3(4.6, 0, -1.9), Vector3(0.6, 1.4, 0.6))
+	_box_mesh(_root, "RentSlotPlate", Vector3(0.04, 0.06, 0.3), Vector3(4.97, 1.1, -1.9), _color_mat(Color(0.6, 0.5, 0.25), 0.3))
+	_label(_root, "RentNotice", "RENT DUE\nTONIGHT", Vector3(4.96, 1.5, -0.9), -90.0, Color(0.85, 0.1, 0.1), 28)
+
 	_door("DoorToCity", Vector3(4.55, 0, -0.9), Vector3.LEFT, "res://world/City3D.tscn", "SpawnFromHome")
 	_marker("SpawnDefault", Vector3(-1.5, 0, -0.5))
 	_marker("SpawnFromCity", Vector3(3.6, 0, -0.9))

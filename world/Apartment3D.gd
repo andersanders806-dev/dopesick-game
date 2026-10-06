@@ -36,6 +36,38 @@ func _ready() -> void:
 		GameState.apartment_echo_seen = true
 		_say.call_deferred("The room echoes now. You can see the marks on the floor where things used to stand.")
 	_buzz_db = bulb_buzz.volume_db
+	$RentSlot.interacted.connect(_on_rent_slot)
+	GameState.rent_changed.connect(_on_rent_changed)
+	GameState.day_changed.connect(_on_day_changed)
+	_on_rent_changed()
+
+func _on_day_changed(_day: int) -> void:
+	_on_rent_changed()
+
+## The notice on the door, and the landlord at it if you're too far behind.
+func _on_rent_changed() -> void:
+	$RentNotice.visible = GameState.rent_stage > 0 or GameState.day == GameState.rent_due_day
+	if GameState.locked_out() and not _closing:
+		_closing = true
+		var hud := get_tree().get_first_node_in_group("hud")
+		var player := get_tree().get_first_node_in_group("player")
+		if hud and player:
+			player.dialogue_active = true
+			hud.show_dialogue("", "Pounding on the door. \"I told you. Out. Lock's being changed today.\"")
+		get_tree().create_timer(CLOSING_GRACE).timeout.connect(_show_out)
+
+func _on_rent_slot(_zone: Area3D, player: Node) -> void:
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud == null:
+		return
+	player.dialogue_active = true
+	if not GameState.rent_payable():
+		hud.show_dialogue("", "Paid through day %d. Nothing to put through the slot till then." % GameState.rent_due_day)
+	elif GameState.pay_rent():
+		SFX.play("cash")
+		hud.show_dialogue("", "You count it twice and push the envelope through the slot. Paid through day %d." % GameState.rent_due_day)
+	else:
+		hud.show_dialogue("", "$%d. You've got $%d. The slot just looks at you." % [GameState.rent_amount(), GameState.cash])
 
 ## Shows each belonging's prop only while it's at home, and only lets you
 ## take what's actually there.

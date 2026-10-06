@@ -273,6 +273,7 @@ signal belongings_changed
 func _ready() -> void:
 	_setup_input_actions()
 	start_run()
+	day_changed.connect(_on_new_day)
 
 ## Wipes the per-run state and applies whatever the meta upgrades grant at
 ## the start of a run. Called once at boot and again after each run ends.
@@ -607,6 +608,40 @@ func _reconcile_belongings() -> void:
 	if changed:
 		belongings_changed.emit()
 		_note_nothing_left()
+
+func pawn_belonging(id: String) -> void:
+	belongings[id] = "pawned"
+	pawn_tickets[id] = day
+	belongings_changed.emit()
+	log_event("Pawned %s. The ticket holds till day %d." % [item_name_for(id), ticket_last_day(id)])
+	_note_nothing_left()
+
+func buyback_price(id: String) -> int:
+	return int(ceil(float(item_info(id).get("price", 0)) * BUYBACK_MARKUP))
+
+func ticket_last_day(id: String) -> int:
+	return int(pawn_tickets.get(id, day)) + PAWN_HOLD_DAYS
+
+func buy_back(id: String) -> bool:
+	if not pawn_tickets.has(id) or not spend_cash(buyback_price(id)):
+		return false
+	pawn_tickets.erase(id)
+	belongings[id] = "carried"
+	inventory.append(id)
+	inventory_changed.emit()
+	belongings_changed.emit()
+	log_event("Bought back %s." % item_name_for(id))
+	return true
+
+## Once a day, when the date turns over (sleeping, or staying up).
+func _on_new_day(_d: int) -> void:
+	for id in pawn_tickets.keys():
+		if day > ticket_last_day(id):
+			pawn_tickets.erase(id)
+			belongings[id] = "gone"
+			log_event("The pawnshop sold %s. It's gone." % item_name_for(id))
+			belongings_changed.emit()
+	_reconcile_belongings()
 
 func _note_nothing_left() -> void:
 	if belongings_away() == BELONGINGS.size() and BELONGINGS.all(func(id): return belongings[id] != "carried"):

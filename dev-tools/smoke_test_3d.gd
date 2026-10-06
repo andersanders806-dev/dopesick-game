@@ -1889,6 +1889,7 @@ func _sick_world_checks(gs: Node) -> void:
 
 func _batch1_checks(gs: Node) -> void:
 	await _belongings_checks(gs)
+	await _pawn_ticket_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -1937,5 +1938,34 @@ func _belongings_checks(gs: Node) -> void:
 	await _frames(3)
 	var hud := apt.get_tree().get_first_node_in_group("hud")
 	_check(gs.apartment_echo_seen and hud.text_label.text.contains("echo"), "  three things gone, and the room echoes")
+	_player().dialogue_active = false
+	gs.start_run()
+
+func _pawn_ticket_checks(gs: Node) -> void:
+	await _section("Pawn tickets: selling your things, buying them back")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var pawn := await _load("res://world/Pawn3D.tscn")
+	var hud = pawn.get_tree().get_first_node_in_group("hud")
+	var broker := pawn.get_node("Pawnbroker")
+	_check(broker.offer_for("tv") == 24 and broker.offer_for("ring") == 45, "  he pays full value for your own things ($24 TV, $45 ring)")
+	gs.cash = 0
+	gs.take_belonging("tv")
+	broker._sell("tv", _player(), hud)
+	_check(gs.cash == 24 and gs.belongings["tv"] == "pawned" and gs.pawn_tickets.get("tv", -1) == gs.day, "  selling the TV writes a ticket")
+	_check(gs.buyback_price("tv") == 36 and gs.ticket_last_day("tv") == gs.day + 4, "  buying back costs $36 and holds four days")
+	gs.cash = 35
+	_check(not gs.buy_back("tv"), "  can't buy it back short")
+	gs.cash = 40
+	_check(gs.buy_back("tv") and gs.has_item("tv") and gs.belongings["tv"] == "carried" and gs.cash == 4, "  buying back puts it in your pockets")
+	gs.take_belonging("ring")
+	broker._sell("ring", _player(), hud)
+	for i in 4:
+		gs.advance_clock(24 * 60)
+	_check(gs.belongings["ring"] == "pawned", "  the ticket holds through day +4")
+	gs.advance_clock(24 * 60)
+	_check(gs.belongings["ring"] == "gone" and not gs.pawn_tickets.has("ring"), "  ...and then it's sold to someone else")
 	_player().dialogue_active = false
 	gs.start_run()

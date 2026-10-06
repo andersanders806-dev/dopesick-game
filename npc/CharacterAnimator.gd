@@ -15,8 +15,8 @@ extends RefCounted
 
 const BLEND_TIME := 0.15
 const MOVING_THRESHOLD := 0.1
-const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse"]
-const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit"]
+const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"]
+const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"]
 
 ## Candidate real clip names per logical clip, best match first. Matched
 ## case-insensitively, first as an exact name and then as a suffix, so
@@ -31,14 +31,19 @@ const CLIP_ALIASES := {
 	# reaching out and taking something off a shelf -- see play_once_timed(),
 	# which stretches it to the duration the grab is meant to take. Kenney's
 	# own "pick-up" wins when it's there.
-	"pick-up": ["pick-up", "pickup", "_pickup", "_punch"],
+	"pick-up": ["pick-up", "pickup", "_pickup", "_punch", "take"],
 	# The pusher's hand-to-hand. Kenney has a dedicated reach; the Quaternius
 	# clap brings both hands together in front of the chest, which passes for
 	# handing something over at this distance.
-	"interact": ["interact-right", "interact", "_interact", "_clapping"],
+	"interact": ["interact-right", "interact", "_interact", "_clapping", "take"],
 	# Going over in the alley. Not looped, so as a rest clip it plays once
 	# and holds the last frame.
 	"collapse": ["death", "_death"],
+	# The Rocketbox avatars' withdrawal clips: a bruised, hunched walk and a
+	# nervous, fidgeting idle. Only those models ship them; has_clip() says.
+	"walk_sick": ["walk_sick"],
+	"idle_sick": ["idle_sick"],
+	"crouch": ["crouch"],
 }
 
 var _player: AnimationPlayer
@@ -96,6 +101,15 @@ func set_rest_clip(clip: String) -> void:
 	_rest_clip = clip
 	if _one_shot == "":
 		play(clip)
+
+## Which clips update() uses for moving and for standing still, from now on
+## -- without cutting off whatever's playing. Clips the model doesn't have
+## are ignored, so callers can ask for "walk_sick" on any body.
+func set_clips(moving: String, rest: String) -> void:
+	if has_clip(moving):
+		_moving_clip = moving
+	if has_clip(rest):
+		_rest_clip = rest
 
 func has_clip(logical: String) -> bool:
 	return _resolved.get(logical, "") != ""

@@ -19,30 +19,30 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   for props and buildings, reusing the photoreal floor/wall textures from
   the 2D pass as triplanar materials. *People* are Quaternius' CC0 human
   models (`assets/quaternius/characters/`) -- see **Characters** below.
-- **Characters: real human proportions.** The cast used to be Kenney Mini
-  Characters, which are chibi: about four heads tall, one flat colour
-  atlas, no facial geometry. At the ~11 m the camera sits back they read as
-  coloured lumps, and no amount of lighting or shader work fixes a
-  proportion problem. They were replaced with Quaternius' CC0 *Animated
-  Men/Women* (8 clothed bodies: casual, long-sleeve, shirt, suit, and four
-  female outfits), which are eight-heads-tall adults with hair geometry and
-  ordinary modern clothes. They import at `nodes/root_scale=0.2411`, which
-  lands them at 1.75 m (male) and 1.68 m (female) once the scenes' existing
-  1.5x `ModelRoot` scale applies -- so no scene needed its scale changed.
+- **Characters: realistic people.** The whole cast -- you, the pusher,
+  Tasha, the cops and guards, every clerk, the bartender, the Dive Bar
+  regulars, Ray, the passers-by: 43 people -- are Microsoft Rocketbox
+  avatars (MIT licence, `assets/rocketbox/LICENSE.md`): real faces, hair,
+  hands and textured clothes, rigged by professionals, made for research
+  and VR. They replaced Quaternius' CC0 low-poly humans, which had the
+  right proportions but no textures and simple faces. Each is a different
+  avatar matched to the part (the pusher is an ordinary guy in a grey
+  hoodie, hood up; Ray is a weathered older man in work clothes, greyed),
+  so nobody is recoloured. `dev-tools/fetch_rocketbox.py` downloads and
+  converts them: `rocketbox_to_glb.py` (Blender) retargets the library's
+  animations onto each avatar's own skeleton -- baking world-space
+  rotations, because the animation files' rest pose isn't the avatars' --
+  and shrinks the textures to 1024/512 px; `slim_glb.py` then drops the
+  animation channels that never move. In withdrawal you walk with the
+  library's bruised, hunched walk and fidget when you stand still. They
+  have no fall, so a body in the alley is laid down.
 - **One cast list.** `npc/CharacterCast.gd` maps a *role* ("player",
   "pusher", "bartender", "clerk_liquor", "security_guard", each Dive Bar
-  regular by name) to a body plus per-surface colours; nothing else in the
-  game hardcodes a model path. Eight bodies cover a cast of about twenty
-  because each model splits into *named surfaces* (Skin, Eyes, Hair, Shirt,
-  Pants, Shoes), which `npc/CharacterLook.gd` recolours independently --
-  richer than the old Kenney tint, which could only multiply one colour
-  over the whole body. Those surfaces ship untextured at roughness 1.0,
-  i.e. perfectly matte, so `CharacterLook` also gives each a sensible
-  roughness/specular; without that, characters were flat silhouettes with
-  no highlight anywhere, which was half of why they read as cardboard.
-  Colours are *set*, not multiplied -- the source surfaces are already dark
-  (a shirt is about 0.40 grey), and multiplying a dark tint over them drove
-  everyone to near-black in these dim rooms.
+  regular by name) to a body; nothing else in the game hardcodes a model
+  path, and `CharacterCast.dress()` even swaps out a body a scene has built
+  in if it isn't the role's. `npc/CharacterLook.gd` cuts the Rocketbox hair
+  and lashes out with alpha scissor (blended, they sort wrong and the hair
+  turns see-through) and applies an optional whole-body tint.
 - **Patrons keep their faces.** A Dive Bar regular's body now comes from
   their name, not from a pool shuffled per visit. Big Eddie used to come
   back as somebody else entirely, and since the pool was all *female*
@@ -50,8 +50,8 @@ the dark end of the block. Get caught and you wake up in a jail cell.
 - **Clip names are resolved, not hardcoded.** `npc/CharacterAnimator.gd`
   takes logical clips ("idle", "walk", "sprint", "sit", "pick-up",
   "interact") and resolves each against whatever the loaded model actually
-  ships, so the same call sites drive Kenney's `walk` and Quaternius'
-  `HumanArmature|Female_Walk`. It also has `play_once_timed()`, which
+  ships, so the same call sites drive Kenney's `walk`, Quaternius'
+  `HumanArmature|Female_Walk` and the Rocketbox clips baked in as `walk`. It also has `play_once_timed()`, which
   stretches a one-shot to a requested duration: source clips differ wildly
   between packs (Kenney's grab is 0.33 s, the Quaternius stand-in 0.917 s),
   so the old fixed speed multiplier tuned against Kenney turned the grab

@@ -71,7 +71,22 @@ func _build_victim(who: String) -> void:
 	root.add_child(model)
 	CharacterCast.dress(model, who)
 	var anim := CharacterAnimator.new(model)
-	anim.set_rest_clip("collapse")
+	if anim.has_clip("collapse"):
+		anim.set_rest_clip("collapse")
+	else:
+		# The Rocketbox people have no fall: lay the body down instead, on
+		# its back along the wall, still -- a little off the ground so it
+		# doesn't sink into the asphalt.
+		root.rotation_degrees = Vector3(-90.0, 100.0, 0.0)
+		root.position.y = 0.12
+		var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
+		if ap and ap.has_animation("idle"):
+			# Arms at the sides, not the bind pose's A: snap to the idle's
+			# first frame (no blend), then hold it.
+			ap.play("idle", 0.0)
+			ap.seek(0.0, true)
+			ap.pause()
+		victim.set_meta("lying", true)
 	victim.set_meta("anim", anim)
 	victim.interacted.connect(_on_victim)
 

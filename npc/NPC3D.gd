@@ -58,7 +58,7 @@ signal order_fulfilled
 ## decides both the body and its colours, and `model_path` is ignored --
 ## that's how a named regular keeps the same face visit after visit.
 @export var role: String = ""
-@export var model_path: String = "res://assets/quaternius/characters/Smooth_Male_LongSleeve.fbx"
+@export var model_path: String = "res://assets/rocketbox/Male_Adult_06.glb"
 
 @onready var model_root: Node3D = $ModelRoot
 @onready var idle_sound: AudioStreamPlayer3D = $IdleSound

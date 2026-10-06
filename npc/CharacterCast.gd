@@ -1,220 +1,90 @@
 extends RefCounted
-## Who wears which body, and in what colours. One source of truth for the
-## whole cast, so nobody in the game hardcodes a model path.
+## Who wears which body. One source of truth for the whole cast, so nobody
+## in the game hardcodes a model path.
 ##
-## The bodies are Quaternius' CC0 human models (assets/quaternius/characters,
-## see LICENSE.txt there), which replaced Kenney's Mini Characters. The Mini
-## Characters are chibi -- roughly four heads tall, with a flat colour atlas
-## and no facial geometry -- so at the ~11 m the camera sits back they read
-## as coloured lumps rather than people. These are eight-heads-tall adults at
-## real scale: the male bodies come out 1.75 m and the female 1.68 m once the
-## scenes' existing 1.5x ModelRoot scale is applied (the .fbx files import at
-## nodes/root_scale=0.2411 to land there).
+## The people are Microsoft Rocketbox avatars (MIT licence,
+## github.com/microsoft/Microsoft-Rocketbox; see assets/rocketbox/LICENSE.md):
+## 115 realistic, textured, fully rigged adults -- real faces, hair, hands
+## and clothes with folds -- made over ten years for research and VR. They
+## replaced Quaternius' CC0 low-poly humans, which had the right proportions
+## but no textures and very simple faces. dev-tools/fetch_rocketbox.py
+## downloads and converts the ones cast here, with the game's clips (idle,
+## walk, sprint, sit, and a sick walk and nervous idle for withdrawal) baked
+## onto each one's own skeleton.
 ##
-## Eight downloaded bodies cover a cast of about twenty because each model
-## splits into named surfaces -- Skin, Hair, Shirt, Pants, Shoes -- that
-## CharacterLook recolours independently. Two people in the same body with
-## different hair, skin, and clothes don't read as the same person at
-## gameplay distance.
-##
-## Palette note: everything here is deliberately desaturated and dark. The
-## game is lit by sodium streetlights, a bare bulb, and beer signs, and a
-## saturated colour on a character reads as a costume against that.
+## Each person is a different avatar, so nobody needs recolouring to look
+## like somebody else; `look` only carries an optional "tint" over the whole
+## body (Ray's grime). Real-size in the scenes' 1.5x ModelRoot: the .glb files
+## import at nodes/root_scale=0.6667.
 
-const DIR := "res://assets/quaternius/characters/"
+const DIR := "res://assets/rocketbox/"
 
-const MALE_CASUAL := DIR + "Smooth_Male_Casual.fbx"
-const MALE_LONGSLEEVE := DIR + "Smooth_Male_LongSleeve.fbx"
-const MALE_SHIRT := DIR + "Smooth_Male_Shirt.fbx"
-const MALE_SUIT := DIR + "Smooth_Male_Suit.fbx"
-const FEMALE_CASUAL := DIR + "Smooth_Female_Casual.fbx"
-const FEMALE_ALT := DIR + "Smooth_Female_Alternative.fbx"
-const FEMALE_DRESS := DIR + "Smooth_Female_Dress.fbx"
-const FEMALE_TANKTOP := DIR + "Smooth_Female_TankTop.fbx"
-
-## role -> {model, look}. `look` is passed straight to CharacterLook.apply(),
-## so its keys are surface names ("Shirt", "Pants", "Hair", "Skin", "Shoes")
-## plus the special "clothes" catch-all.
+## role -> {model, look}.
 const CAST := {
-	"player": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.42, 0.45, 0.40), "Pants": Color(0.30, 0.33, 0.42), "Hair": Color(0.28, 0.22, 0.18)},
-	},
+	# A brown hoodie and jeans: someone you'd walk past.
+	"player": {"model": DIR + "Male_Adult_20.glb", "look": {}},
 	# Modelled on how street-level sellers are described in policing guides:
 	# an ordinary guy in a grey hoodie, not a movie villain.
-	"pusher": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.34, 0.34, 0.36), "Pants": Color(0.22, 0.22, 0.25), "Hair": Color(0.16, 0.14, 0.13)},
-	},
+	"pusher": {"model": DIR + "Male_Adult_18.glb", "look": {}},
 	# Tasha, the rival booster: dark, plain, nothing a guard remembers.
-	"booster": {
-		"model": FEMALE_ALT,
-		"look": {"Shirt": Color(0.12, 0.12, 0.14), "Pants": Color(0.18, 0.20, 0.26), "Hair": Color(0.08, 0.06, 0.05)},
-	},
-	"lookout": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.45, 0.22, 0.20), "Pants": Color(0.26, 0.27, 0.30), "Hair": Color(0.20, 0.17, 0.15)},
-	},
-	"bartender": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.78, 0.76, 0.72), "Pants": Color(0.18, 0.18, 0.20), "Hair": Color(0.35, 0.33, 0.31)},
-	},
-	# Navy shirt over navy trousers reads as a uniform at distance without
-	# needing a uniform model.
-	"police": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.20, 0.26, 0.44), "Pants": Color(0.16, 0.19, 0.30), "Hair": Color(0.22, 0.19, 0.16)},
-	},
-	"booking_officer": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.24, 0.30, 0.48), "Pants": Color(0.16, 0.19, 0.30), "Hair": Color(0.45, 0.44, 0.42)},
-	},
-	# One clerk per store, each a different body/colour so you can tell at a
-	# glance which shop you walked into.
-	"clerk_convenience": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.52, 0.48, 0.30), "Pants": Color(0.25, 0.25, 0.27), "Hair": Color(0.15, 0.13, 0.12)},
-	},
-	# The pharmacy has two people: a front cashier and the pharmacist on the
-	# raised back counter, so they need to look like different staff.
-	"clerk_pharmacy_cashier": {
-		"model": FEMALE_ALT,
-		"look": {"Shirt": Color(0.42, 0.46, 0.52), "Pants": Color(0.24, 0.25, 0.28), "Hair": Color(0.18, 0.15, 0.13)},
-	},
-	"clerk_pharmacy": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.80, 0.82, 0.84), "Pants": Color(0.30, 0.32, 0.38), "Hair": Color(0.40, 0.38, 0.36)},
-	},
-	"clerk_supermarket": {
-		"model": FEMALE_CASUAL,
-		"look": {"Shirt": Color(0.30, 0.42, 0.34), "Pants": Color(0.24, 0.24, 0.28), "Hair": Color(0.32, 0.20, 0.13)},
-	},
-	"clerk_liquor": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.38, 0.26, 0.24), "Pants": Color(0.22, 0.22, 0.24), "Hair": Color(0.14, 0.12, 0.11)},
-	},
-	"clerk_electronics": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.26, 0.34, 0.46), "Pants": Color(0.20, 0.20, 0.22), "Hair": Color(0.25, 0.21, 0.17)},
-	},
-	# The pusher's collector: a size bigger than everyone else (Collector3D.tscn
-	# scales him up) in a dark jacket, so you know him when he turns the corner.
-	"collector": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.10, 0.10, 0.11), "Pants": Color(0.20, 0.21, 0.24), "Hair": Color(0.08, 0.07, 0.07)},
-	},
-	# St. Jude's shelter: a kitchen volunteer, the outreach worker, and a few
-	# people eating. The pawnbroker next door.
-	"volunteer": {
-		"model": FEMALE_CASUAL,
-		"look": {"Shirt": Color(0.55, 0.30, 0.28), "Pants": Color(0.26, 0.26, 0.30), "Hair": Color(0.62, 0.60, 0.56)},
-	},
-	"outreach_worker": {
-		"model": FEMALE_ALT,
-		"look": {"Shirt": Color(0.30, 0.44, 0.40), "Pants": Color(0.22, 0.24, 0.30), "Hair": Color(0.14, 0.11, 0.09)},
-	},
-	"shelter_diner_a": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.34, 0.30, 0.26), "Pants": Color(0.24, 0.24, 0.26), "Hair": Color(0.40, 0.38, 0.35)},
-	},
-	"shelter_diner_b": {
-		"model": FEMALE_TANKTOP,
-		"look": {"Shirt": Color(0.28, 0.30, 0.38), "Pants": Color(0.20, 0.20, 0.24), "Hair": Color(0.30, 0.22, 0.16)},
-	},
-	"shelter_diner_c": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.40, 0.40, 0.34), "Pants": Color(0.30, 0.28, 0.26), "Hair": Color(0.12, 0.10, 0.09)},
-	},
-	# Tape Deck's clerk: band tee, long hair, has opinions.
-	"clerk_music": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.12, 0.12, 0.14), "Pants": Color(0.20, 0.24, 0.36), "Hair": Color(0.30, 0.20, 0.12)},
-	},
-	"pawnbroker": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.70, 0.66, 0.56), "Pants": Color(0.22, 0.20, 0.18), "Hair": Color(0.50, 0.48, 0.46)},
-	},
-	# The kart track's desk: hi-vis orange polo, the speedway's colour.
-	"kart_marshal": {
-		"model": FEMALE_CASUAL,
-		"look": {"Shirt": Color(0.95, 0.42, 0.06), "Pants": Color(0.12, 0.12, 0.14), "Hair": Color(0.55, 0.32, 0.14)},
-	},
-	# Rush-hour floor staff (Guard3D.shift_hours): only on during the busy
-	# middle of the day, in their store's colours so they read as staff.
-	"stocker_supermarket": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.30, 0.42, 0.34), "Pants": Color(0.30, 0.28, 0.24), "Hair": Color(0.20, 0.16, 0.12)},
-	},
-	"assistant_pharmacy": {
-		"model": FEMALE_CASUAL,
-		"look": {"Shirt": Color(0.78, 0.80, 0.82), "Pants": Color(0.26, 0.28, 0.34), "Hair": Color(0.12, 0.10, 0.09)},
-	},
-	"sales_electronics": {
-		"model": FEMALE_ALT,
-		"look": {"Shirt": Color(0.26, 0.34, 0.46), "Pants": Color(0.18, 0.18, 0.20), "Hair": Color(0.45, 0.32, 0.20)},
-	},
-	# The electronics store's door guard: the one person in the game dressed
-	# to be noticed.
-	"security_guard": {
-		"model": MALE_SUIT,
-		"look": {"Shirt": Color(0.16, 0.16, 0.18), "Pants": Color(0.14, 0.14, 0.16), "Hair": Color(0.12, 0.11, 0.10)},
-	},
+	"booster": {"model": DIR + "Female_Adult_12.glb", "look": {}},
+	"lookout": {"model": DIR + "Male_Adult_17.glb", "look": {}},
+	"bartender": {"model": DIR + "Business_Male_07.glb", "look": {}},
+	"police": {"model": DIR + "Police_Male_03.glb", "look": {}},
+	"booking_officer": {"model": DIR + "Police_Male_01.glb", "look": {}},
+	"clerk_convenience": {"model": DIR + "Male_Adult_09.glb", "look": {}},
+	"clerk_pharmacy_cashier": {"model": DIR + "Medical_Female_01.glb", "look": {}},
+	"clerk_pharmacy": {"model": DIR + "Medical_Male_01.glb", "look": {}},
+	"clerk_supermarket": {"model": DIR + "Female_Adult_08.glb", "look": {}},
+	"clerk_liquor": {"model": DIR + "Male_Adult_14.glb", "look": {}},
+	"clerk_electronics": {"model": DIR + "Male_Adult_11.glb", "look": {}},
+	"collector": {"model": DIR + "Business_Male_04.glb", "look": {}},
+	"volunteer": {"model": DIR + "Female_Adult_02.glb", "look": {}},
+	"outreach_worker": {"model": DIR + "Female_Adult_14.glb", "look": {}},
+	"shelter_diner_a": {"model": DIR + "Male_Adult_05.glb", "look": {}},
+	"shelter_diner_b": {"model": DIR + "Female_Adult_09.glb", "look": {}},
+	"shelter_diner_c": {"model": DIR + "Male_Adult_04.glb", "look": {}},
+	"clerk_music": {"model": DIR + "Male_Adult_12.glb", "look": {}},
+	"pawnbroker": {"model": DIR + "Male_Adult_03.glb", "look": {}},
+	"kart_marshal": {"model": DIR + "Female_Adult_05.glb", "look": {}},
+	"stocker_supermarket": {"model": DIR + "Male_Adult_16.glb", "look": {}},
+	"assistant_pharmacy": {"model": DIR + "Medical_Female_02.glb", "look": {}},
+	"sales_electronics": {"model": DIR + "Female_Adult_04.glb", "look": {}},
+	"security_guard": {"model": DIR + "Security_Male_01.glb", "look": {}},
+	# The smoker outside the liquor store, on a break that runs long.
+	"smoker": {"model": DIR + "Construction_Male_08.glb", "look": {}},
 }
 
 ## Dive Bar regulars. Keyed by the same names as NPC3D.PATRON_PROFILES and
 ## the portraits in assets/portraits, so a patron's body, their portrait, and
-## the sounds they make all describe one person. Bodies used to be dealt out
-## at random per visit, which meant Big Eddie could come back as somebody
-## else entirely; tying the look to the name keeps a regular recognisable.
-## The looks lean on the same research as the portraits -- the gaunt restless
-## opioid users, the glazed benzo users, the flushed heavy drinkers.
+## the sounds they make all describe one person.
 const PATRONS := {
-	"Wiry Guy": {
-		"model": MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.36, 0.38, 0.33), "Pants": Color(0.24, 0.25, 0.28), "Hair": Color(0.18, 0.15, 0.13), "Skin": Color(0.88, 0.86, 0.82)},
-	},
-	"Tired Woman": {
-		"model": FEMALE_CASUAL,
-		"look": {"Shirt": Color(0.40, 0.32, 0.40), "Pants": Color(0.22, 0.22, 0.26), "Hair": Color(0.30, 0.24, 0.20), "Skin": Color(0.90, 0.87, 0.84)},
-	},
-	"Big Eddie": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.46, 0.30, 0.26), "Pants": Color(0.28, 0.28, 0.30), "Hair": Color(0.36, 0.30, 0.24), "Skin": Color(1.05, 0.92, 0.88)},
-	},
-	"Quiet Kid": {
-		"model": FEMALE_TANKTOP,
-		"look": {"Shirt": Color(0.30, 0.33, 0.40), "Pants": Color(0.20, 0.21, 0.25), "Hair": Color(0.14, 0.13, 0.12), "Skin": Color(0.92, 0.90, 0.88)},
-	},
-	"Old Sailor": {
-		"model": MALE_SHIRT,
-		"look": {"Shirt": Color(0.34, 0.40, 0.48), "Pants": Color(0.26, 0.26, 0.28), "Hair": Color(0.62, 0.61, 0.58), "Skin": Color(1.08, 0.90, 0.86)},
-	},
-	"Nervous Dave": {
-		"model": MALE_CASUAL,
-		"look": {"Shirt": Color(0.44, 0.42, 0.36), "Pants": Color(0.23, 0.24, 0.27), "Hair": Color(0.22, 0.18, 0.15), "Skin": Color(0.87, 0.86, 0.83)},
-	},
-	"Newcomer": {
-		"model": FEMALE_ALT,
-		"look": {"Shirt": Color(0.36, 0.34, 0.38), "Pants": Color(0.22, 0.23, 0.26), "Hair": Color(0.26, 0.20, 0.16)},
-	},
+	"Wiry Guy": {"model": DIR + "Male_Adult_10.glb", "look": {}},
+	"Tired Woman": {"model": DIR + "Female_Adult_07.glb", "look": {}},
+	"Big Eddie": {"model": DIR + "Male_Adult_13.glb", "look": {}},
+	"Quiet Kid": {"model": DIR + "Female_Adult_03.glb", "look": {}},
+	"Old Sailor": {"model": DIR + "Wood_Male_01.glb", "look": {}},
+	"Nervous Dave": {"model": DIR + "Male_Adult_08.glb", "look": {}},
+	"Newcomer": {"model": DIR + "Female_Adult_13.glb", "look": {}},
 }
 
 ## People walking the block (npc/Pedestrian3D.gd): nobody in particular,
 ## so they're dealt from this pool rather than cast by name. Office
-## clothes and work clothes by day; the same pool at night, just fewer.
+## clothes and everyday clothes.
 const PASSERSBY := [
-	{"model": MALE_SUIT, "look": {"Shirt": Color(0.22, 0.24, 0.30), "Pants": Color(0.20, 0.21, 0.25), "Hair": Color(0.30, 0.25, 0.20)}},
-	{"model": FEMALE_DRESS, "look": {"Shirt": Color(0.40, 0.20, 0.22), "Pants": Color(0.18, 0.18, 0.20), "Hair": Color(0.20, 0.15, 0.12)}},
-	{"model": MALE_CASUAL, "look": {"Shirt": Color(0.50, 0.46, 0.38), "Pants": Color(0.28, 0.32, 0.42), "Hair": Color(0.15, 0.12, 0.10)}},
-	{"model": FEMALE_TANKTOP, "look": {"Shirt": Color(0.30, 0.36, 0.40), "Pants": Color(0.22, 0.22, 0.26), "Hair": Color(0.55, 0.42, 0.28)}},
-	{"model": MALE_LONGSLEEVE, "look": {"Shirt": Color(0.45, 0.30, 0.18), "Pants": Color(0.30, 0.28, 0.24), "Hair": Color(0.24, 0.20, 0.16)}},
-	{"model": FEMALE_CASUAL, "look": {"Shirt": Color(0.36, 0.40, 0.30), "Pants": Color(0.20, 0.22, 0.30), "Hair": Color(0.10, 0.09, 0.08)}},
-	{"model": MALE_SHIRT, "look": {"Shirt": Color(0.62, 0.62, 0.60), "Pants": Color(0.24, 0.24, 0.26), "Hair": Color(0.40, 0.38, 0.34)}},
-	{"model": FEMALE_ALT, "look": {"Shirt": Color(0.24, 0.28, 0.36), "Pants": Color(0.30, 0.26, 0.24), "Hair": Color(0.26, 0.18, 0.12)}},
+	{"model": DIR + "Business_Male_02.glb", "look": {}},
+	{"model": DIR + "Business_Female_01.glb", "look": {}},
+	{"model": DIR + "Male_Adult_06.glb", "look": {}},
+	{"model": DIR + "Female_Adult_01.glb", "look": {}},
+	{"model": DIR + "Male_Adult_01.glb", "look": {}},
+	{"model": DIR + "Business_Female_02.glb", "look": {}},
+	{"model": DIR + "Male_Adult_02.glb", "look": {}},
+	{"model": DIR + "Business_Female_03.glb", "look": {}},
 ]
 
-## Who sits by the alley with his cart (npc/Homeless3D.gd).
-const HOMELESS := {"model": MALE_LONGSLEEVE, "look": {"Shirt": Color(0.30, 0.28, 0.22), "Pants": Color(0.24, 0.22, 0.20), "Hair": Color(0.36, 0.34, 0.32), "Skin": Color(0.95, 0.88, 0.82)}}
+## Who sits by the alley with his cart (npc/Homeless3D.gd): an older man in
+## work clothes, greyed and grimed.
+const HOMELESS := {"model": DIR + "Gardener_Male_01.glb", "look": {"tint": Color(0.78, 0.74, 0.68)}}
 
 static func entry(role: String) -> Dictionary:
 	if CAST.has(role):
@@ -231,6 +101,24 @@ static func model_for(role: String) -> String:
 static func look_for(role: String) -> Dictionary:
 	return entry(role)["look"]
 
-## Applies a role's colours to an already-instanced model.
+## Applies a role's look to an already-instanced model. `model` can also be
+## a container (Player3D, Police3D and Collector3D's $Model) whose scene
+## has a body built in: if that body isn't the role's, it's swapped for it,
+## so this file stays the one place that says who wears what.
 static func dress(model: Node, role: String) -> void:
-	preload("res://npc/CharacterLook.gd").apply(model, look_for(role))
+	var want := model_for(role)
+	var body := model
+	if model.scene_file_path != want:
+		for c in model.get_children():
+			if c.scene_file_path != "" and c.find_child("AnimationPlayer", true, false):
+				body = c
+				if c.scene_file_path != want:
+					var fresh: Node3D = load(want).instantiate()
+					fresh.name = c.name
+					fresh.transform = (c as Node3D).transform
+					model.remove_child(c)
+					c.queue_free()
+					model.add_child(fresh)
+					body = fresh
+				break
+	preload("res://npc/CharacterLook.gd").apply(body, look_for(role))

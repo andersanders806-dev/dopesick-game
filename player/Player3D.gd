@@ -254,7 +254,13 @@ func _physics_process(delta: float) -> void:
 	# Withdrawal slows the stride along with the movement, so it reads as a
 	# shuffle rather than the feet sliding; so does easing in and out.
 	var moved := Vector2(velocity.x, velocity.z).length()
-	var anim_speed := (SICK_SPEED_MULT if sick else 1.0) * clampf(moved / maxf(speed, 0.01), 0.35, 1.0)
+	# Sick, you walk like it: a hunched, bruised shuffle and a fidget when
+	# you stand, on the bodies that have those clips. The shuffle is already
+	# slow, so it isn't slowed again.
+	var sick_clips: bool = sick and anim.has_clip("walk_sick")
+	if not hiding:
+		anim.set_clips("walk_sick" if sick_clips else "walk", "idle_sick" if sick and anim.has_clip("idle_sick") else "idle")
+	var anim_speed := (SICK_SPEED_MULT if sick and not sick_clips else 1.0) * clampf(moved / maxf(speed, 0.01), 0.35, 1.0)
 	if _sprinting:
 		anim.play("sprint", anim_speed)
 	else:

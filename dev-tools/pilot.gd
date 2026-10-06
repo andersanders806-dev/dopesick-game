@@ -24,6 +24,8 @@ extends "res://dev-tools/playtest_bot.gd"
 ##   pad <BUTTON>               tap a DualSense button: CROSS CIRCLE SQUARE
 ##                              TRIANGLE OPTIONS TOUCHPAD L1 R1 L3 R3 DPAD_RIGHT
 ##   hold <action> <seconds>    hold an input action (move_up, sprint, fire...)
+##   closeup <NodeName>         a camera 2.4 m in front of it, at chest height
+##   gamecam                    back to the game's own camera
 ##   wait <seconds> | shot <label> | state
 
 const PAD_BUTTONS := {
@@ -163,6 +165,32 @@ func _do(step: String) -> bool:
 			Input.action_press(a)
 			await _wait(float(parts[2]) if parts.size() > 2 else 1.0)
 			Input.action_release(a)
+		"closeup":
+			var target := current_scene.find_child(arg, true, false) as Node3D
+			if target == null:
+				log_line("nothing called %s here; try 'list'" % arg)
+				return false
+			var cam := current_scene.get_node_or_null("PilotCamera") as Camera3D
+			if cam == null:
+				cam = Camera3D.new()
+				cam.name = "PilotCamera"
+				current_scene.add_child(cam)
+			var at := target.global_position
+			var fwd := target.global_transform.basis.z.normalized()
+			fwd.y = 0.0
+			if fwd.length() < 0.1:
+				fwd = Vector3.BACK
+			cam.global_position = at + fwd.normalized() * 2.4 + Vector3(0, 1.5, 0)
+			cam.look_at(at + Vector3(0, 1.0, 0))
+			cam.fov = 45.0
+			cam.current = true
+			await _wait(0.3)
+		"gamecam":
+			var cam := current_scene.get_node_or_null("PilotCamera")
+			if cam:
+				cam.queue_free()
+			if player():
+				player().camera.current = true
 		"wait":
 			await _wait(float(arg))
 		"shot":

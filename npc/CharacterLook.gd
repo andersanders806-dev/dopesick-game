@@ -45,6 +45,9 @@ const SURFACE_FINISH := {
 static func apply(model: Node, parts: Dictionary) -> void:
 	if model == null:
 		return
+	if _is_rocketbox(model):
+		_apply_rocketbox(model, parts)
+		return
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
 		var inst := mi as MeshInstance3D
 		if inst.mesh == null:
@@ -66,6 +69,34 @@ static func apply(model: Node, parts: Dictionary) -> void:
 			if not finish.is_empty():
 				dup.roughness = finish["roughness"]
 				dup.metallic_specular = finish["specular"]
+			inst.set_surface_override_material(i, dup)
+
+## Rocketbox avatars (assets/rocketbox) paint skin and clothes into one
+## texture per body, so there are no named surfaces to recolour -- every
+## person is already a different avatar. What they need is their hair,
+## lashes and brows (the "*_opacity" surface) cut out with alpha scissor:
+## blended, they sort wrong against the head and the hair turns see-through.
+## `parts["tint"]` multiplies the whole body (Ray's grime).
+static func _is_rocketbox(model: Node) -> bool:
+	return model.scene_file_path.begins_with("res://assets/rocketbox/")
+
+static func _apply_rocketbox(model: Node, parts: Dictionary) -> void:
+	var tint: Color = parts.get("tint", Color.WHITE)
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var inst := mi as MeshInstance3D
+		for i in inst.mesh.get_surface_count():
+			var mat := inst.mesh.surface_get_material(i) as BaseMaterial3D
+			if mat == null:
+				continue
+			var cutout := mat.resource_name.ends_with("opacity")
+			if not cutout and tint == Color.WHITE:
+				continue
+			var dup := mat.duplicate() as BaseMaterial3D
+			if cutout:
+				dup.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+				dup.alpha_scissor_threshold = 0.45
+				dup.cull_mode = BaseMaterial3D.CULL_DISABLED
+			dup.albedo_color = dup.albedo_color * tint
 			inst.set_surface_override_material(i, dup)
 
 ## Back-compatible helper: tints just the clothing. Works on the Quaternius

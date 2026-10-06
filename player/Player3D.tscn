@@ -1,7 +1,7 @@
 [gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://player/Player3D.gd" id="1"]
-[ext_resource type="PackedScene" path="res://assets/quaternius/characters/Smooth_Male_Casual.fbx" id="2"]
+[ext_resource type="PackedScene" path="res://assets/rocketbox/Male_Adult_20.glb" id="2"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.32

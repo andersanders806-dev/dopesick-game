@@ -11,3 +11,10 @@ tools/
 
 # The pilot's screenshots and log (dev-tools/pilot.gd)
 .pilot/
+
+# Textures Godot extracts from the Rocketbox .glb files on import; the .glb
+# files carry them, and a fresh import writes these again.
+assets/rocketbox/*.jpg
+assets/rocketbox/*.png
+assets/rocketbox/*.jpg.import
+assets/rocketbox/*.png.import

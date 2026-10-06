@@ -23,8 +23,7 @@ const REGULARS := [
 	# West of the liquor store's door: the pusher works the east side, and a
 	# regular that close would take the "E" from him.
 	{"name": "Smoker", "pos": Vector3(8.7, 0, -4.05), "yaw": -20.0, "hours": [10, 23], "pose": "idle",
-		"model": CharacterCast.MALE_LONGSLEEVE,
-		"look": {"Shirt": Color(0.32, 0.30, 0.28), "Pants": Color(0.22, 0.22, 0.25), "Hair": Color(0.25, 0.22, 0.2)},
+		"role": "smoker",
 		"lines": ["\"Break's fifteen minutes. I take twenty-five.\"", "\"Don't ask me for one. I'm down to three.\"", "\"You look like hell, man. No offence.\""]},
 	{"name": "Dee", "pos": Vector3(-5.6, 0, -3.3), "yaw": 80.0, "hours": [21, 2], "pose": "idle",
 		"role": "shelter_diner_b",

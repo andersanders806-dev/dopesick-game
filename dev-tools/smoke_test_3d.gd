@@ -782,6 +782,7 @@ func _run() -> void:
 	await _aa_checks(gs)
 	await _perf_checks(gs)
 	await _ambience_checks(gs)
+	await _cast_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2290,7 +2291,8 @@ func _alley_checks(gs: Node) -> void:
 	var vp: Vector3 = alley.victim.global_position
 	_check(absf(vp.x - bin.x) > 0.9 + 0.5 or absf(vp.z - bin.z) > 0.5 + 0.5, "  ...beside the dumpster, not inside it (%s vs %s)" % [vp, bin])
 	var vap: AnimationPlayer = alley.victim.find_child("AnimationPlayer", true, false)
-	_check(vap != null and String(vap.current_animation).to_lower().ends_with("death"), "  ...on the ground, not standing there (%s)" % (vap.current_animation if vap else "no player"))
+	var lying: bool = alley.victim.get_meta("lying", false)
+	_check(lying or (vap != null and String(vap.current_animation).to_lower().ends_with("death")), "  ...on the ground, not standing there (%s)" % (vap.current_animation if vap else "no player"))
 	var who: String = gs.od_event["who"]
 	gs.naloxone = 1
 	_check(alley._choose("naloxone") == "saved" and gs.naloxone == 0 and gs.rep_of(who) == 3, "  naloxone: saved, and they owe you (rep 3)")
@@ -2881,4 +2883,68 @@ func _ambience_checks(gs: Node) -> void:
 		var no_double: bool = tone == null or not tone.playing
 		var file: String = Ambience.PLACES[scene][0]
 		_check(ok and no_double and credits.contains(file.get_file()), "  %s: %s, looping on Ambience, credited%s" % [scene, file.get_file(), "" if no_double else " (old room tone still on)"])
+	gs.start_run()
+
+func _cast_checks(gs: Node) -> void:
+	await _section("Realistic people: Microsoft Rocketbox avatars for the whole cast")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var Cast = load("res://npc/CharacterCast.gd")
+	var roles: Array = Cast.CAST.keys() + Cast.PATRONS.keys() + ["homeless"]
+	var bad := []
+	for role in roles:
+		var path: String = Cast.model_for(role)
+		if not path.begins_with("res://assets/rocketbox/") or not ResourceLoader.exists(path):
+			bad.append("%s (%s)" % [role, path])
+	for e in Cast.PASSERSBY:
+		if not String(e["model"]).begins_with("res://assets/rocketbox/") or not ResourceLoader.exists(e["model"]):
+			bad.append("passerby " + e["model"])
+	_check(bad.is_empty(), "  every role, regular and passer-by is a Rocketbox person (%s)" % [bad])
+	var model: Node3D = load(Cast.model_for("player")).instantiate()
+	root.add_child(model)
+	Cast.dress(model, "player")
+	var ap: AnimationPlayer = model.find_child("AnimationPlayer", true, false)
+	var clips: Array = Array(ap.get_animation_list()) if ap else []
+	_check(["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick"].all(func(c): return c in clips), "  ...with the clips the game plays (%s)" % [clips])
+	var skins := 0
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var mat = mi.get_active_material(i)
+			if mat is BaseMaterial3D and mat.albedo_texture != null:
+				skins += 1
+	# Tasha has hair cards (an "*_opacity" surface); the player doesn't.
+	var tasha: Node3D = load(Cast.model_for("booster")).instantiate()
+	root.add_child(tasha)
+	Cast.dress(tasha, "booster")
+	var cutout := false
+	for mi in tasha.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var mat = mi.get_active_material(i)
+			if mat is BaseMaterial3D and mat.resource_name.ends_with("opacity"):
+				cutout = mat.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	tasha.free()
+	_check(cutout and skins >= 2, "  ...textured, with hair and lashes cut out rather than blended (%d textured surfaces)" % skins)
+	var aabb := AABB()
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		aabb = mi.get_aabb() if aabb.size == Vector3.ZERO else aabb.merge(mi.get_aabb())
+	model.free()
+	# In withdrawal you walk like it.
+	var apt := await _load("res://world/Apartment3D.tscn")
+	var p := _player()
+	p.dialogue_active = false
+	gs.craving = 5.0
+	Input.action_press("move_right")
+	await _frames(20)
+	var sick_walk: String = p.anim._player.current_animation
+	Input.action_release("move_right")
+	await _frames(20)
+	var sick_idle: String = p.anim._player.current_animation
+	gs.craving = 80.0
+	Input.action_press("move_right")
+	await _frames(20)
+	var well_walk: String = p.anim._player.current_animation
+	Input.action_release("move_right")
+	_check(sick_walk == "walk_sick" and sick_idle == "idle_sick" and well_walk == "walk", "  sick, you shuffle and fidget; well, you walk (%s / %s / %s)" % [sick_walk, sick_idle, well_walk])
 	gs.start_run()

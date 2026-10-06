@@ -656,6 +656,46 @@ func _build_apartment() -> Node3D:
 	_decal("FloorWaterCenter", ENV3D + "stain_water.png", Vector3(1.0, 0, 0.8), 2.4, 1.8, "floor", 70.0)
 	_decal("FloorGrimeDoor", ENV3D + "stain_grime.png", Vector3(3.8, 0, -0.9), 1.2, 1.4, "floor", 10.0, Color(1, 1, 1, 0.7))
 
+	# Your own things: each has a Belonging3D zone, and Apartment3D hides
+	# whatever isn't at home.
+	var guitar := Node3D.new()
+	guitar.name = "Guitar"
+	_add(_root, guitar)
+	guitar.position = Vector3(1.5, 0, 3.3)
+	guitar.rotation_degrees = Vector3(14, 0, 0)
+	var spruce := _color_mat(Color(0.72, 0.5, 0.26), 0.45)
+	_cylinder(guitar, "Lower", 0.2, 0.09, Vector3(0, 0.3, 0), spruce).rotation_degrees.x = 90
+	_cylinder(guitar, "Upper", 0.15, 0.09, Vector3(0, 0.6, 0), spruce).rotation_degrees.x = 90
+	_cylinder(guitar, "Hole", 0.05, 0.1, Vector3(0, 0.5, 0), _color_mat(Color(0.05, 0.04, 0.03), 1.0)).rotation_degrees.x = 90
+	_box_mesh(guitar, "Neck", Vector3(0.05, 0.55, 0.03), Vector3(0, 0.98, 0), _color_mat(Color(0.25, 0.15, 0.08), 0.6))
+	_box_mesh(guitar, "Head", Vector3(0.08, 0.14, 0.03), Vector3(0, 1.31, 0), _color_mat(Color(0.12, 0.08, 0.05), 0.6))
+
+	var hook := Node3D.new()
+	hook.name = "CoatHook"
+	_add(_root, hook)
+	hook.position = Vector3(4.95, 0, 0.3)
+	_box_mesh(hook, "Peg", Vector3(0.12, 0.04, 0.04), Vector3(0, 1.75, 0), _color_mat(Color(0.3, 0.3, 0.32), 0.4))
+	var coat := _box_mesh(hook, "Coat", Vector3(0.18, 0.95, 0.55), Vector3(-0.1, 1.25, 0), _color_mat(Color(0.18, 0.22, 0.17), 1.0))
+	_box_mesh(coat, "Collar", Vector3(0.2, 0.1, 0.45), Vector3(0, 0.45, 0), _color_mat(Color(0.14, 0.17, 0.13), 1.0))
+
+	var ring_box := _box_mesh(_root, "RingBox", Vector3(0.08, 0.06, 0.08), Vector3(3.75, 0.73, -2.9), _color_mat(Color(0.35, 0.05, 0.1), 0.5))
+	_box_mesh(ring_box, "Lid", Vector3(0.085, 0.02, 0.085), Vector3(0, 0.035, 0), _color_mat(Color(0.3, 0.04, 0.08), 0.5))
+
+	for b in [["tv", "TV", Vector3(4.0, 0, 1.5)], ["radio", "RadioCrate/Radio", Vector3(3.9, 0, -2.4)],
+			["guitar", "Guitar", Vector3(1.5, 0, 2.8)], ["coat", "CoatHook/Coat", Vector3(4.4, 0, 0.3)],
+			["ring", "RingBox", Vector3(3.3, 0, -2.6)]]:
+		var zone := Area3D.new()
+		zone.name = "Belonging_" + b[0]
+		zone.collision_layer = 4
+		zone.collision_mask = 0
+		zone.monitoring = false
+		zone.set_script(load("res://interactables/Belonging3D.gd"))
+		_add(_root, zone)
+		zone.position = b[2]
+		zone.set("belonging_id", b[0])
+		zone.set("prop_path", NodePath("../" + b[1]))
+		_collision(zone, _box_shape(Vector3(0.9, 1.2, 0.9)), Vector3(0, 0.6, 0))
+
 	_door("DoorToCity", Vector3(4.55, 0, -0.9), Vector3.LEFT, "res://world/City3D.tscn", "SpawnFromHome")
 	_marker("SpawnDefault", Vector3(-1.5, 0, -0.5))
 	_marker("SpawnFromCity", Vector3(3.6, 0, -0.9))

@@ -23,11 +23,43 @@ var _flicker_timer: float = 0.0
 
 func _ready() -> void:
 	_randomize_clutter()
+	var back := GameState.return_belongings_home()
+	GameState._reconcile_belongings()
+	refresh_belongings()
 	super._ready()
 	if GameState.intro_pending:
 		GameState.intro_pending = false
 		_wake_up.call_deferred()
+	elif not back.is_empty():
+		_say.call_deferred("You put %s back where it goes." % ", ".join(back.map(func(id): return GameState.item_name_for(id))))
+	elif not GameState.apartment_echo_seen and GameState.belongings_away() >= 3:
+		GameState.apartment_echo_seen = true
+		_say.call_deferred("The room echoes now. You can see the marks on the floor where things used to stand.")
 	_buzz_db = bulb_buzz.volume_db
+
+## Shows each belonging's prop only while it's at home, and only lets you
+## take what's actually there.
+func refresh_belongings() -> void:
+	for zone in find_children("Belonging_*", "Area3D", false, false):
+		var home: bool = GameState.belongings.get(zone.belonging_id, "home") == "home"
+		var prop := zone.get_node_or_null(zone.prop_path) as Node3D
+		if prop:
+			prop.visible = home
+			prop.process_mode = Node.PROCESS_MODE_INHERIT if home else Node.PROCESS_MODE_DISABLED
+			# The TV's static goes with it (its glow goes dark with the set).
+			for sound in prop.find_children("*", "AudioStreamPlayer3D"):
+				sound.playing = home
+		if home:
+			zone.add_to_group("interactable")
+		else:
+			zone.remove_from_group("interactable")
+
+func _say(text: String) -> void:
+	var hud := get_tree().get_first_node_in_group("hud")
+	var player := get_tree().get_first_node_in_group("player")
+	if hud and player and not player.dialogue_active:
+		player.dialogue_active = true
+		hud.show_dialogue("", text)
 
 ## The first morning of a run: the opening cutscene, then a nudge toward
 ## the one thing in here that makes the day bearable.

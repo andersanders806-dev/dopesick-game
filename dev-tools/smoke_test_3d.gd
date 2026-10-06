@@ -1893,6 +1893,7 @@ func _batch1_checks(gs: Node) -> void:
 	await _rent_checks(gs)
 	await _court_checks(gs)
 	await _status_checks(gs)
+	await _batch1_save_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -2107,4 +2108,37 @@ func _status_checks(gs: Node) -> void:
 	var lines: Array = book._obligations().map(func(l): return l[0])
 	book.free()
 	_check(lines.any(func(l): return l.begins_with("Rent: $35 due day 5")) and lines.any(func(l): return l.contains("guitar, $45 by day 6")), "  the notebook lists rent and the pawn ticket: %s" % [lines])
+	gs.start_run()
+
+func _batch1_save_checks(gs: Node) -> void:
+	await _section("Belongings, rent and court survive save and continue")
+	_close_menus()
+	var save := root.get_node("SaveGame")
+	save.delete()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	await _load("res://world/City3D.tscn")
+	gs.day = 6
+	gs.take_belonging("ring")
+	gs.inventory.erase("ring")
+	gs.pawn_belonging("ring")
+	gs.take_belonging("tv")
+	gs.rent_stage = 1
+	gs.rent_due_day = 6
+	gs.rent_owed = 45
+	gs.court_day = 7
+	gs.probation_days.assign([8, 9])
+	gs.warrant = true
+	gs.apartment_echo_seen = true
+	gs.last_street_use = gs.now_minutes() - 60.0
+	_check(save.save(), "  saved")
+	gs.start_run()
+	save.continue_run()
+	await _frames(8)
+	_check(gs.belongings["ring"] == "pawned" and int(gs.pawn_tickets.get("ring", -1)) == 6 and gs.belongings["tv"] == "carried" and gs.has_item("tv"), "  belongings and tickets come back")
+	_check(gs.rent_stage == 1 and gs.rent_owed == 45 and gs.rent_due_day == 6, "  ...the final notice, not rolled on by loading")
+	_check(gs.court_day == 7 and gs.warrant and gs.tested_dirty() and gs.apartment_echo_seen, "  ...the court date, the warrant, and what's in your system")
+	_check(gs.probation_days.size() == 2 and int(gs.probation_days[0]) == 8, "  ...and the probation days")
+	save.delete()
 	gs.start_run()

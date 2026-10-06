@@ -187,6 +187,32 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   the block starts to stutter, people react to how you look, and in the
   notebook your own handwriting swims -- letters swap in item and store
   names. All of it comes back as you do.
+- **Your own things.** Five things in the apartment are yours to sell: the
+  TV ($24), the old radio ($8), your guitar ($30), your winter coat ($10)
+  and your mother's ring ($45) (`interactables/Belonging3D.gd`,
+  `GameState.belongings`). Take one and its prop is gone from the room;
+  three gone and the room echoes. They're yours, not stolen: a bust leaves
+  them in your pockets, the bartender won't fence them, and the beat cop
+  doesn't look twice. The pawnshop pays full value and writes a ticket: buy
+  it back for 1.5x within four days, or it's sold. Carry it back through
+  the door and it goes where it lives.
+- **Rent.** $35 every five days, through the envelope slot by the door.
+  Miss it and there's a final notice ($10 late fee) and one more day; miss
+  that and the lock's changed -- the City door turns you away until you
+  buzz the landlord (08-22) and pay it all plus $20 for the locksmith. If
+  you're home when it happens, he shows you out. The shelter's cots are
+  where you sleep in the meantime.
+- **Court.** A bust that doesn't end the run puts you in front of a judge
+  two days later, 09-12, at the police station's door
+  (`interactables/PoliceDoor3D.gd`). In the program, it's drug court and a
+  strike comes off. Otherwise it's three days' probation: check in at the
+  same door 09-17, and the test fails on anything off the street in the
+  last 24 game hours (a strike, and the cell). Miss court or a check-in
+  and there's a warrant: the beat cop recognises you on sight. Turn
+  yourself in at the door for a night in the cell and a fresh date, no
+  strike. The HUD shows whichever of rent, court, probation or a warrant
+  is most pressing, and the notebook's notes page lists them all with any
+  pawn tickets. `dev-tools/smoke_batch1.gd` runs just these checks.
 - **Southside Speedway: go-karts, $5 a ride.** The KARTS door on the
   block (x = -14, open 14:00-24:00) leads to the front office
   (`world/KartCenter3D.gd`): a chequered floor, a marshal at the sign-up

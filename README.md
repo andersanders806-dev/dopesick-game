@@ -574,7 +574,12 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   run, that the summary is right, that a finished run always pays Know-How,
   and that buying an upgrade actually moves the numbers the game reads --
   restoring the player's real save afterwards, so running the tests can't
-  inflate it. It exits non-zero on any failure. `dev-tools/playtest_bot.gd` plays
+  inflate it. It exits non-zero on any failure.
+  `godot --path . -s res://dev-tools/watch_playtest.gd [-- <pause s>]` runs
+  the same checks in a window you can watch, with an overlay naming each
+  scenario and every check as it passes or fails. It drops to the Low
+  preset (the checks count physics frames, which outrun drawn frames at
+  12-16 FPS) and skips cutscenes, which pause the tree. `dev-tools/playtest_bot.gd` plays
   a full loop in a real window with screenshots.
   `dev-tools/capture_scene.gd` renders any scene to a PNG, either as an
   `overview` of the room or as `closeup:NodeName` framed on one character.

@@ -198,7 +198,10 @@ func _open_menu(player: Node) -> void:
 	menu.chosen.connect(func(id: String): _buy(player, id))
 	menu.fronted.connect(func(id: String): _buy(player, id, true))
 	menu.paid_back.connect(func(amount: int): _pay_back(player, amount))
-	menu.cancelled.connect(func(): player.dialogue_active = false)
+	# The menu lives on the root, so it can outlast the scene the player was in.
+	menu.cancelled.connect(func():
+		if is_instance_valid(player):
+			player.dialogue_active = false)
 	menu.open_with(_todays_stock())
 
 ## Rerolled once a day. Naloxone is always available -- he'd rather his

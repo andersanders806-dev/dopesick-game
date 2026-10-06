@@ -138,8 +138,10 @@ func play(scene_id: String, args: Array = []) -> void:
 		push_warning("Cutscene: unknown scene '%s'" % scene_id)
 		return
 	# Headless runs are the smoke test and the room builder; nobody's
-	# watching, and a paused tree would stall them.
-	if DisplayServer.get_name() == "headless":
+	# watching, and a paused tree would stall them. The watchable playtest
+	# (dev-tools/watch_playtest.gd) has a window but the same frame-counted
+	# checks, so it opts out too.
+	if DisplayServer.get_name() == "headless" or Engine.get_meta("no_cutscenes", false):
 		return
 	# One at a time: a bust that ends the run queues "sent_away" behind
 	# nothing, but guard against two callers overlapping anyway.

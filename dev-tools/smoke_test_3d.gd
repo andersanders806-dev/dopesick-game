@@ -20,12 +20,20 @@ func _initialize() -> void:
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
+	await _finished()
 	quit(1 if _failures > 0 else 0)
 
 func _check(ok: bool, what: String) -> void:
 	print(("  ok   " if ok else "  FAIL ") + what)
 	if not ok:
 		_failures += 1
+
+## Hooks for watch_playtest.gd, which runs these same checks in a window.
+func _section(title: String) -> void:
+	print("== " + title)
+
+func _finished() -> void:
+	pass
 
 func _frames(n: int) -> void:
 	for i in n:
@@ -131,7 +139,7 @@ func _run() -> void:
 	gs.clock_running = false
 	gs.clock = 17 * 60
 
-	print("== Every 3D room loads with a player, HUD, and baked navmesh")
+	await _section("Every 3D room loads with a player, HUD, and baked navmesh")
 	# The corner shop goes last: the tests below carry on inside it.
 	for path in ["res://world/Apartment3D.tscn", "res://world/City3D.tscn", "res://world/DiveBar3D.tscn", "res://world/Jail3D.tscn",
 			"res://world/StorePharmacy3D.tscn", "res://world/StoreSupermarket3D.tscn", "res://world/StoreLiquor3D.tscn",
@@ -159,7 +167,7 @@ func _run() -> void:
 	var shop := current_scene
 	var player := _player()
 
-	print("== Animation: idle when still, walk when moving")
+	await _section("Animation: idle when still, walk when moving")
 	player.global_position = Vector3(-4.8, 0, 2.8)
 	await _frames(5)
 	_check(player.anim.current_clip() == "idle", "player idles when standing still")
@@ -179,7 +187,7 @@ func _run() -> void:
 	var keeper_anim = shop.get_node("Shopkeeper").anim
 	_check(keeper_anim.current_clip() == "idle", "shopkeeper plays idle")
 
-	print("== Shop: stealing an item")
+	await _section("Shop: stealing an item")
 	var item := shop.get_node("Item1") as Area3D
 	var item_id: String = item.item_id
 	player.global_position = Vector3(item.global_position.x, 0, item.global_position.z + 0.35)
@@ -202,7 +210,7 @@ func _run() -> void:
 	_check(not is_instance_valid(item), "item is gone once the grab finishes")
 	_check(not player.is_busy() and player.anim.current_clip() == "idle", "player returns to idle after the grab")
 
-	print("== Shop: shopkeeper spots a theft in plain view")
+	await _section("Shop: shopkeeper spots a theft in plain view")
 	var keeper := shop.get_node("Shopkeeper") as Node3D
 	player.global_position = Vector3(keeper.global_position.x, 0, -1.95)
 	# Stop the cone sweeping and point it at the player. Being *seen* is not
@@ -240,7 +248,7 @@ func _run() -> void:
 	_check(police != null, "a police officer arrives shortly after")
 
 	if police:
-		print("== Police: chases along the navmesh")
+		await _section("Police: chases along the navmesh")
 		player.global_position = Vector3(4.5, 0, 3.0)
 		await _frames(3)
 		var start_dist := police.global_position.distance_to(player.global_position)
@@ -257,7 +265,7 @@ func _run() -> void:
 		_check(police.get_node("Footsteps").stream != null, "officer's positional footsteps play while chasing")
 		_check(closed_in, "officer closed at least 1 m on the player (started %.1f m away)" % start_dist)
 
-	print("== Door: chase follows the player into the City")
+	await _section("Door: chase follows the player into the City")
 	var door := shop.get_node("DoorToCity")
 	door.interact(player)
 	await _frames(10)
@@ -269,7 +277,7 @@ func _run() -> void:
 	for p in get_nodes_in_group("police"):
 		p.queue_free()
 
-	print("== City: buying from the pusher on the street")
+	await _section("City: buying from the pusher on the street")
 	# The beat cop gets his own section; here he'd just chase the pusher off.
 	_clear_patrol(current_scene)
 	var pusher := current_scene.get_node("Pusher") as Area3D
@@ -345,12 +353,12 @@ func _run() -> void:
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	gs.craving = 45.0
 
-	print("== City doors all lead somewhere real")
+	await _section("City doors all lead somewhere real")
 	for d in ["DoorToHome", "DoorToBar", "DoorToShop", "DoorToPharmacy", "DoorToLiquor", "DoorToSupermarket", "DoorToElectronics"]:
 		var target: String = current_scene.get_node(d).target_scene
 		_check(ResourceLoader.exists(target), "%s -> %s" % [d, target])
 
-	print("== Dive Bar: sell to a patron")
+	await _section("Dive Bar: sell to a patron")
 	current_scene.get_node("DoorToBar").interact(_player())
 	await _frames(10)
 	_check(current_scene.name == "DiveBar3D", "Bar door leads to DiveBar3D")
@@ -405,7 +413,7 @@ func _run() -> void:
 	await _frames(3)
 	_check(patron.idle_sound.playing, "patron's idle sounds resume after the dialogue closes")
 
-	print("== Dive Bar: orders stick until delivered")
+	await _section("Dive Bar: orders stick until delivered")
 	var paid_name: String = patron.npc_name
 	var waiting := {}
 	for p in bar.patrons:
@@ -443,7 +451,7 @@ func _run() -> void:
 	current_scene.get_node("DoorToBar").interact(_player())
 	await _frames(10)
 
-	print("== Busted: exactly one bust, then a jail cell")
+	await _section("Busted: exactly one bust, then a jail cell")
 	current_scene.get_node("DoorToCity").interact(_player())
 	await _frames(10)
 	current_scene.get_node("DoorToShop").interact(_player())
@@ -518,7 +526,7 @@ func _run() -> void:
 	current_scene.get_node("DoorToHome").interact(_player())
 	await _frames(10)
 
-	print("== Apartment: furniture and sleep")
+	await _section("Apartment: furniture and sleep")
 	_check(current_scene.name == "Apartment3D", "Home door leads to Apartment3D")
 	var apt := current_scene
 	var p3 := _player()
@@ -555,7 +563,7 @@ func _run() -> void:
 	current_scene.get_node("Bed").interact(_player())
 	_check(gs.day == day_before + 1, "sleeping advanced the day")
 
-	print("== Stealth: suspicion builds, drains, and only then raises the alarm")
+	await _section("Stealth: suspicion builds, drains, and only then raises the alarm")
 	var st := await _load("res://world/StoreConvenience3D.tscn")
 	var sp := _player()
 	var watcher := st.get_node("Shopkeeper") as Node3D
@@ -594,7 +602,7 @@ func _run() -> void:
 	sp.is_stealing = false
 	_check(raised, "  grabbing in plain sight fills suspicion and raises the alarm")
 
-	print("== Runs: strikes, the run-end payout, and meta upgrades")
+	await _section("Runs: strikes, the run-end payout, and meta upgrades")
 	var meta := root.get_node("MetaProgress")
 	var know_before: int = meta.know_how
 	gs.start_run()
@@ -652,7 +660,7 @@ func _run() -> void:
 	meta.save_progress()
 	gs.start_run()
 
-	print("== Drugs: prices, tolerance, interactions, and going over")
+	await _section("Drugs: prices, tolerance, interactions, and going over")
 	var drugs := root.get_node("Drugs")
 	gs.start_run()
 	gs.craving = 10.0
@@ -758,7 +766,7 @@ func _run() -> void:
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
-	print("== Day and night: the clock, opening hours, shifts, and the pusher's hours")
+	await _section("Day and night: the clock, opening hours, shifts, and the pusher's hours")
 	gs.start_run()
 	gs.clock_running = false
 	gs.clock = 23 * 60 + 59
@@ -813,7 +821,7 @@ func _day_night_checks(gs: Node) -> void:
 	_check(current_scene != null and current_scene.name == "City3D", "  ...and you're shown out onto the street")
 
 func _withdrawal_checks(gs: Node) -> void:
-	print("== Withdrawal: the senses, the hands, the cramps, and things that aren't there")
+	await _section("Withdrawal: the senses, the hands, the cramps, and things that aren't there")
 	gs.start_run()
 	gs.clock_running = false
 	gs.clock = 17 * 60
@@ -867,7 +875,7 @@ func _clear_patrol(city: Node) -> void:
 	city.set("_patrol_timer", 99999.0)
 
 func _debt_checks(gs: Node) -> void:
-	print("== Debt: fronting, paying back, and the collector")
+	await _section("Debt: fronting, paying back, and the collector")
 	# An earlier section can leave a drug menu open on the root.
 	for c in root.get_children():
 		if c is CanvasLayer and c.has_method("open_with"):
@@ -948,7 +956,7 @@ func _debt_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _street_checks(gs: Node) -> void:
-	print("== Street life: passersby, Ray, and the beat cop")
+	await _section("Street life: passersby, Ray, and the beat cop")
 	for c in root.get_children():
 		if c is CanvasLayer and (c.has_method("open_with") or c.has_method("open")):
 			c.free()
@@ -1030,7 +1038,7 @@ func _close_menus() -> void:
 			c.free()
 
 func _places_checks(gs: Node) -> void:
-	print("== New places: the shelter, the pawnshop, and the lot out back")
+	await _section("New places: the shelter, the pawnshop, and the lot out back")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1127,7 +1135,7 @@ func drugs_class_opioid() -> String:
 	return root.get_node("Drugs").OPIOID
 
 func _walkman_checks(gs: Node) -> void:
-	print("== Walkman: tapes at home, music everywhere, Tape Deck")
+	await _section("Walkman: tapes at home, music everywhere, Tape Deck")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1189,7 +1197,7 @@ func _walkman_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _pool_checks(gs: Node) -> void:
-	print("== Pool: a full game for money at the Dive Bar")
+	await _section("Pool: a full game for money at the Dive Bar")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1230,7 +1238,7 @@ func _pool_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _darts_checks(gs: Node) -> void:
-	print("== Darts: three rounds for money at the Dive Bar")
+	await _section("Darts: three rounds for money at the Dive Bar")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1276,7 +1284,7 @@ func _darts_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:
-	print("== Title, pause and save/continue")
+	await _section("Title, pause and save/continue")
 	_close_menus()
 	var save := root.get_node("SaveGame")
 	save.delete()
@@ -1323,7 +1331,7 @@ func _menu_and_save_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _recovery_checks(gs: Node) -> void:
-	print("== Getting out: the program, slips, and stacking doses")
+	await _section("Getting out: the program, slips, and stacking doses")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1368,7 +1376,7 @@ func _recovery_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _regulars_checks(gs: Node) -> void:
-	print("== The block's regulars")
+	await _section("The block's regulars")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1399,7 +1407,7 @@ func _regulars_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _round4_checks(gs: Node) -> void:
-	print("== Honest work, the notebook, temptation, the diary, the camera")
+	await _section("Honest work, the notebook, temptation, the diary, the camera")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1463,7 +1471,7 @@ func _round4_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _street_life_checks(gs: Node) -> void:
-	print("== Street life II: traffic, steam, rain, and the bigger stash")
+	await _section("Street life II: traffic, steam, rain, and the bigger stash")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1497,7 +1505,7 @@ func _street_life_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _kart_checks(gs: Node) -> void:
-	print("== Southside Speedway: $5 a ride, three laps, prize money once a day")
+	await _section("Southside Speedway: $5 a ride, three laps, prize money once a day")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1605,7 +1613,7 @@ func _kart_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _headline_checks(gs: Node) -> void:
-	print("== Word on the block: one thing different every day")
+	await _section("Word on the block: one thing different every day")
 	_close_menus()
 	var hl := root.get_node("Headlines")
 	gs.start_run()
@@ -1676,7 +1684,7 @@ func _headline_checks(gs: Node) -> void:
 	hl.roll(gs.day)
 
 func _rep_checks(gs: Node) -> void:
-	print("== The regulars remember you")
+	await _section("The regulars remember you")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1718,7 +1726,7 @@ func _rep_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _hustle_checks(gs: Node) -> void:
-	print("== The kart hustle: Eddie's money, the runner's book, the spares box")
+	await _section("The kart hustle: Eddie's money, the runner's book, the spares box")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1773,7 +1781,7 @@ func _hustle_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _search_checks(gs: Node) -> void:
-	print("== Losing the police: crowds, hiding spots, and a search")
+	await _section("Losing the police: crowds, hiding spots, and a search")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
@@ -1846,7 +1854,7 @@ func _search_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _sick_world_checks(gs: Node) -> void:
-	print("== Withdrawal you can see")
+	await _section("Withdrawal you can see")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false

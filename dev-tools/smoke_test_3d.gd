@@ -2146,6 +2146,7 @@ func _batch1_save_checks(gs: Node) -> void:
 
 func _batch2_checks(gs: Node) -> void:
 	await _bad_batch_checks(gs)
+	await _strip_checks(gs)
 
 func _bad_batch_checks(gs: Node) -> void:
 	await _section("Bad batch and test strips")
@@ -2188,4 +2189,45 @@ func _bad_batch_checks(gs: Node) -> void:
 	outreach._on_choice(2, _player(), hud)
 	_check(gs.test_strips == 2, "  outreach hands out two strips, once a day")
 	_player().dialogue_active = false
+	gs.start_run()
+
+func _choice_menu() -> CanvasLayer:
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("open") and c.has_signal("chosen"):
+			return c
+	return null
+
+func _strip_checks(gs: Node) -> void:
+	await _section("Testing what he sold you")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 18 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var pusher := city.get_tree().get_first_node_in_group("pusher")
+	var p := _player()
+	gs.craving = 20.0
+	_check(pusher._consume(p, "heroin", false, "toss") == "tossed" and gs.craving == 20.0 and gs.doses_taken == 0, "  thrown away: nothing goes in")
+	gs.naloxone = 5
+	pusher._consume(p, "heroin", true, "half")
+	var heroin_risk: float = float(root.get_node("Drugs").info("heroin")["od_risk"])
+	_check(gs.last_risk > heroin_risk * 1.0 and gs.last_risk <= heroin_risk * 1.5 + 1e-9, "  a cut bag taken slow: x3 risk, halved (%.4f)" % gs.last_risk)
+	gs.test_strips = 1
+	var answer := [""]
+	var asking = func(): answer[0] = await pusher._dose_choice(p, "heroin", "heroin", false)
+	asking.call()
+	await _frames(2)
+	_choice_menu()._on_cancel()
+	await _frames(2)
+	_check(answer[0] == "take" and gs.test_strips == 1, "  closing the menu just takes it, strip unspent")
+	asking.call()
+	await _frames(2)
+	_choice_menu()._on_pick(0)
+	await _frames(2)
+	var reading_menu := _choice_menu()
+	_check(gs.test_strips == 0 and reading_menu != null, "  testing spends the strip and shows the reading")
+	reading_menu._on_pick(1)
+	await _frames(2)
+	_check(answer[0] == "half", "  ...then you can take a little at a time")
+	p.dialogue_active = false
 	gs.start_run()

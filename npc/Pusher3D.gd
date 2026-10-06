@@ -43,6 +43,7 @@ const WAIT_LINES := [
 	"He takes your $%d without counting it. \"Stay put. Don't follow me.\"",
 ]
 const DrugMenuScene := preload("res://ui/DrugMenu.gd")
+const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 ## He never has everything. A nightly subset means what you can get is part
 ## of the problem, instead of the menu being the same every time.
 ## He's holding a lot now: most of the catalogue on any given night, but
@@ -81,6 +82,11 @@ var _owes_fix: bool = false
 ## What he asked for and what was actually pressed into his hand -- decided
 ## at purchase, revealed only when it hits.
 var _owed_drug: String = ""
+## What you asked him for (the strip compares it to what you got), and
+## whether today's batch was cut.
+var _asked_drug: String = ""
+var _owed_contaminated: bool = false
+signal _answered(index: int)
 ## Tonight's stock, rerolled each day.
 var _stock: Array = []
 var _stock_day: int = -1
@@ -227,6 +233,8 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 			return
 		GameState.take_front(cost)
 		_owed_drug = Drugs.resolve_purchase(drug_id)
+		_asked_drug = drug_id
+		_owed_contaminated = GameState.roll_contaminated(_owed_drug)
 		_owes_fix = true
 		if hud:
 			player.dialogue_active = true
@@ -238,6 +246,8 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 		return
 	# What he actually hands over is settled now, not when it hits you.
 	_owed_drug = Drugs.resolve_purchase(drug_id)
+	_asked_drug = drug_id
+	_owed_contaminated = GameState.roll_contaminated(_owed_drug)
 	_owes_fix = true
 	SFX.play("cash", -6.0, 0.8)
 	if hud:
@@ -270,12 +280,48 @@ func _handoff(player: Node) -> void:
 	SFX.play("fix")
 	var drug := _owed_drug if _owed_drug != "" else "heroin"
 	_owed_drug = ""
-	var outcome := GameState.take_drug(drug)
+	var contaminated := _owed_contaminated
+	_owed_contaminated = false
+	var action := "take"
+	if GameState.test_strips > 0 and Drugs.info(drug).get("class", "") == Drugs.OPIOID:
+		action = await _dose_choice(player, _asked_drug, drug, contaminated)
+	var outcome := _consume(player, drug, contaminated, action)
 	var hud := get_tree().get_first_node_in_group("hud")
-	if hud:
+	if hud and is_instance_valid(player):
 		player.dialogue_active = true
-		hud.show_dialogue("Pusher", _handoff_line(drug, outcome), PORTRAIT)
+		hud.show_dialogue("Pusher", "You tip it into the gutter. He shrugs. \"Your money.\"" if outcome == "tossed" else _handoff_line(drug, outcome), PORTRAIT)
 	sale_completed.emit()
+
+## A strip, if you've got one: test it, then decide. Esc on either menu
+## means you just take it -- you paid, and nobody throws it away by accident.
+func _dose_choice(player: Node, asked: String, drug: String, contaminated: bool) -> String:
+	var plural := "" if GameState.test_strips == 1 else "s"
+	if await _ask(player, "It's in your hand. You've got %d test strip%s." % [GameState.test_strips, plural], ["Test it first", "Just take it"]) != 0:
+		return "take"
+	GameState.test_strips -= 1
+	match await _ask(player, GameState.strip_reading(asked, drug, contaminated), ["Take it anyway", "Take a little at a time", "Throw it away"]):
+		1:
+			return "half"
+		2:
+			return "toss"
+	return "take"
+
+func _ask(player: Node, text: String, options: Array) -> int:
+	if is_instance_valid(player):
+		player.dialogue_active = true
+	var menu: CanvasLayer = ChoiceMenu.new()
+	get_tree().root.add_child(menu)
+	menu.chosen.connect(func(i: int): _answered.emit(i))
+	menu.cancelled.connect(func(): _answered.emit(-1))
+	menu.open("", text, options)
+	return await _answered
+
+func _consume(_player: Node, drug: String, contaminated: bool, action: String) -> String:
+	if action == "toss":
+		GameState.log_event("Tested it, and threw it away.")
+		return "tossed"
+	var risk := GameState.CONTAMINATED_RISK if contaminated else 1.0
+	return GameState.take_drug(drug, 0.5 if action == "half" else 1.0, risk)
 
 ## Naloxone is bought, not taken, so it never "hits". Everything else gets
 ## narrated by what it did to you -- which is the only way you find out the

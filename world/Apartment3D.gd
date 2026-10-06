@@ -49,12 +49,19 @@ func _on_rent_changed() -> void:
 	$RentNotice.visible = GameState.rent_stage > 0 or GameState.day == GameState.rent_due_day
 	if GameState.locked_out() and not _closing:
 		_closing = true
+		# Asleep in your bed, the new day's cutscene is up: he knocks once
+		# it's over, not halfway through it.
+		while Cutscene.is_playing():
+			await Cutscene.finished
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
 		var hud := get_tree().get_first_node_in_group("hud")
 		var player := get_tree().get_first_node_in_group("player")
 		if hud and player:
 			player.dialogue_active = true
 			hud.show_dialogue("", "Pounding on the door. \"I told you. Out. Lock's being changed today.\"")
-		get_tree().create_timer(CLOSING_GRACE).timeout.connect(_show_out)
+		get_tree().create_timer(CLOSING_GRACE, false).timeout.connect(_show_out)
 
 func _on_rent_slot(_zone: Area3D, player: Node) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")

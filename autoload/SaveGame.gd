@@ -85,6 +85,10 @@ func continue_run() -> bool:
 			GameState.set(f, int(v))
 		else:
 			GameState.set(f, v)
+	# A save from before rent: start the cycle from today, rather than
+	# from day 1 with every due date long gone.
+	if not data.has("rent_due_day"):
+		GameState.rent_due_day = GameState.day + GameState.RENT_PERIOD
 	GameState.intro_pending = false
 	GameState.pending_spawn = ""
 	var j: Dictionary = data.get("jobs", {})

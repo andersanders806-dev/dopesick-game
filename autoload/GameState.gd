@@ -985,6 +985,9 @@ func probation_check_in() -> String:
 func turn_self_in() -> void:
 	log_event("Turned yourself in on the warrant.")
 	_schedule_court()
+	# Walking in ends the chase too, or the cop on your heels follows you
+	# into the cell and busts you there -- a strike for turning yourself in.
+	set_wanted(false)
 
 func _issue_warrant(why: String) -> void:
 	warrant = true

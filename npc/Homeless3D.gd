@@ -54,13 +54,24 @@ func _on_choice(i: int, player: Node, hud: Node) -> void:
 			SFX.play("cash", -10.0, 1.1)
 			hud.show_dialogue(npc_name, "\"God bless.\" It goes into a coffee cup with a few coins. \"I see you, friend. I see you.\"")
 		1:
-			var item: String = GameState.inventory[0]
-			GameState.inventory.remove_at(0)
-			GameState.inventory_changed.emit()
-			GameState.homeless_trust += 2
-			hud.show_dialogue(npc_name, "He turns %s over in his hands. \"I can move that.\" It disappears into the cart. \"You're all right.\"" % GameState.item_name_for(item))
+			# You choose: with your mother's ring in your pocket, "something
+			# you're carrying" shouldn't mean whatever came first.
+			var items: Array = GameState.inventory.duplicate()
+			var menu: CanvasLayer = ChoiceMenu.new()
+			get_tree().root.add_child(menu)
+			menu.chosen.connect(func(k: int): _give(items[k], hud))
+			menu.cancelled.connect(func(): player.dialogue_active = false)
+			menu.open(npc_name, "\"What've you got?\"", items.map(func(id): return GameState.item_name_for(id)))
 		2:
 			hud.show_dialogue(npc_name, _tip())
+
+func _give(item: String, hud: Node) -> void:
+	if not GameState.inventory.has(item):
+		return
+	GameState.inventory.erase(item)
+	GameState.inventory_changed.emit()
+	GameState.homeless_trust += 2
+	hud.show_dialogue(npc_name, "He turns %s over in his hands. \"I can move that.\" It disappears into the cart. \"You're all right.\"" % GameState.item_name_for(item))
 
 ## What he's noticed. Worth something only once he trusts you.
 func _tip() -> String:

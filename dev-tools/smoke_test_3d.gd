@@ -1897,6 +1897,7 @@ func _batch1_checks(gs: Node) -> void:
 	await _court_checks(gs)
 	await _status_checks(gs)
 	await _batch1_save_checks(gs)
+	await _batch1_review_checks(gs)
 
 func _belongings_checks(gs: Node) -> void:
 	await _section("Your own things: belongings")
@@ -2558,6 +2559,20 @@ func _controller_checks(gs: Node) -> void:
 		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.0)
 		await _frames(2)
 		_check(not darts._flying.is_empty() or darts._darts_left < left0, "  ...R2 throws")
+		# A trigger is analogue: held down, it keeps sending events. One
+		# squeeze is one dart.
+		await _frames(30)
+		var left1: int = darts._darts_left
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 1.0)
+		await _settle()
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.9)
+		await _settle()
+		await _frames(30)
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.95)
+		await _settle()
+		_trigger(JOY_AXIS_TRIGGER_RIGHT, 0.0)
+		await _settle()
+		_check(left1 - darts._darts_left == 1, "  ...one squeeze, one dart, however long you hold it (%d thrown)" % (left1 - darts._darts_left))
 		darts.free()
 	else:
 		_check(false, "  darts: a game starts")
@@ -2567,6 +2582,8 @@ func _controller_checks(gs: Node) -> void:
 	await _frames(2)
 	var pool := _find_root_child("_ai_plan")
 	if pool:
+		# Earlier checks may have seen the how-to already; show it again.
+		pool._howto = true
 		await _tap(JOY_BUTTON_A)
 		_check(not pool._howto, "  pool: any button gets past the how-to")
 		pool._shooter = 0
@@ -2685,4 +2702,81 @@ func _view_checks(gs: Node) -> void:
 	sm.queue_free()
 	gfx.set_first_person(false)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	gs.start_run()
+
+## What batch 1's final review found.
+func _batch1_review_checks(gs: Node) -> void:
+	await _section("Batch 1 review: surrender, a lockout in your sleep, old saves, Ray and the ring")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	# Turning yourself in while they're after you ends the chase too.
+	var city := await _load("res://world/City3D.tscn")
+	gs.warrant = true
+	gs.set_wanted(true)
+	var strikes0: int = gs.strikes
+	city.find_child("StationDoor", true, false).to_cell()
+	await _frames(15)
+	_check(gs.strikes == strikes0, "  turning yourself in mid-chase: no strike for it (%d -> %d)" % [strikes0, gs.strikes])
+	_check(current_scene.name == "Jail3D" and not gs.wanted, "  turning yourself in mid-chase: the chase is over (wanted %s)" % gs.wanted)
+	_check(get_nodes_in_group("police").is_empty(), "  ...and no cop follows you into the cell (%d)" % get_nodes_in_group("police").size())
+	# Locked out while a cutscene's up (sleeping in your bed): it waits.
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 22 * 60
+	await _load("res://world/Apartment3D.tscn")
+	var cut := root.get_node("Cutscene")
+	cut._playing = true
+	paused = true
+	gs.rent_due_day = gs.day
+	gs.rent_stage = 1
+	gs.rent_owed = 45
+	gs.advance_clock(24 * 60)
+	await _frames(60 * 7)
+	_check(current_scene.name == "Apartment3D", "  locked out mid-cutscene: the landlord waits for it to end")
+	paused = false
+	cut._playing = false
+	cut.finished.emit()
+	await _frames(60 * 7)
+	_check(current_scene.name == "City3D", "  ...then shows you out")
+	_player().dialogue_active = false
+	# A save from before rent existed starts a fresh rent cycle.
+	gs.start_run()
+	gs.clock_running = false
+	var save := root.get_node("SaveGame")
+	save.delete()
+	await _load("res://world/City3D.tscn")
+	gs.day = 9
+	_check(save.save(), "  saved")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(save.PATH))
+	for k in ["rent_due_day", "rent_stage", "rent_owed"]:
+		data.erase(k)
+	var f := FileAccess.open(save.PATH, FileAccess.WRITE)
+	f.store_string(JSON.stringify(data))
+	f.close()
+	gs.start_run()
+	save.continue_run()
+	await _frames(8)
+	_check(gs.rent_stage == 0 and gs.rent_due_day > gs.day, "  an old save: no instant final notice (stage %d, due day %d on day %d)" % [gs.rent_stage, gs.rent_due_day, gs.day])
+	save.delete()
+	# Ray: you choose what you give him.
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	city = await _load("res://world/City3D.tscn")
+	var ray := city.get_node("Ray")
+	gs.take_belonging("ring")
+	gs.inventory.append("vodka")
+	ray._on_choice(1, _player(), get_first_node_in_group("hud"))
+	await _frames(2)
+	var ChoiceMenuScript = load("res://ui/ChoiceMenu.gd")
+	var pick: Array = root.get_children().filter(func(n): return n.get_script() == ChoiceMenuScript)
+	_check(pick.size() == 1 and gs.has_item("ring") and gs.has_item("vodka"), "  give him something: you get to pick, nothing's gone yet")
+	if pick.size() == 1:
+		pick[0]._on_pick(gs.inventory.find("vodka"))
+		await _frames(2)
+	_check(gs.has_item("ring") and not gs.has_item("vodka"), "  ...the vodka goes, your mother's ring stays")
+	_close_menus()
+	_player().dialogue_active = false
 	gs.start_run()

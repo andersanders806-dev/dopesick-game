@@ -149,10 +149,31 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   Below High the moon drops its shadow after dark (faint, and ~3.5 ms on
   the street), and Low drops the glow pass (a fixed ~3.5 ms). An
   integrated GPU left on High or PS5 is moved to Medium once, with a toast
-  saying F3 puts it back. The colour grade -- a 3D LUT built in code (teal shadows, amber
+  saying F3 puts it back. And if High still runs under 24 FPS for 5 s on
+  laptop graphics, it drops to Medium once a session, saying why; pick
+  High again with F3 and it stays. The colour grade -- a 3D LUT built in code (teal shadows, amber
   highlights, an S-curve) plus saturation 1.18 -- applies at every preset.
   The withdrawal tint only appears once you're actually getting sick; it
   used to sit at ~20% green over everything.
+- **Room changes fade instead of freezing** (`autoload/SceneLoader.gd`).
+  Going through a door used to freeze the game for 3.6-5.3 s on a UHD 620:
+  the street re-read both facade kits (1.5 s) and the extras' character
+  models (~1 s) and its fire escapes, cameras and shutters (0.6 s) on
+  every visit. Those now stay loaded for the session (`Facades.gd`,
+  `CharacterCast.scene_for`), every room you've been in stays loaded, the
+  street and its facade kits load on a background thread from the first
+  room you're in, and walking within 4 m of a door starts loading the room
+  behind it. Measured on the UHD 620 (longest frame, all of it behind the
+  black): first time onto the street 2.1 s (was 3.4-5.3), back onto it
+  0.5-0.6 s, into the bar or a store 0.2-0.3 s. The change itself is a fade through
+  black (0.25 s out, 0.35 s in, the world holding still until you can see
+  it), then a card under the HUD: "THE DIVE BAR · 20:14". Doors, arrests,
+  the station door and Continue all go through it.
+- **Interaction prompts** (`ui/Prompts.gd`, `ui/InteractPrompt.gd`): the
+  thing E / Square would use has a few words floating over it -- "E  Enter
+  the Dive Bar", "Square  Talk to Ray", "E  Steal a bottle of vodka",
+  "Sleep", "Your guitar". Under the crosshair in first person; hidden in
+  dialogue, menus and fades.
 - **Every place sounds like itself.** A real CC0 field recording loops
   under each of the 14 rooms (`world/PlaceAmbience.gd`): distant
   late-night LA traffic on the street, bar chatter in the Dive Bar, a

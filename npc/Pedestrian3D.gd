@@ -64,7 +64,7 @@ func _ready() -> void:
 	_model_root.scale = Vector3.ONE * 1.5
 	add_child(_model_root)
 	var entry: Dictionary = CharacterCast.PASSERSBY[look_index % CharacterCast.PASSERSBY.size()]
-	var model: Node = load(entry["model"]).instantiate()
+	var model: Node = CharacterCast.scene_for(entry["model"]).instantiate()
 	_model_root.add_child(model)
 	CharacterLook.apply(model, entry["look"])
 	anim = CharacterAnimator.new(model)

@@ -216,6 +216,6 @@ func _bust(body: Node) -> void:
 		func():
 			if not run_over:
 				await Cutscene.play("busted")
-			tree.change_scene_to_file("res://world/Jail3D.tscn")
+			SceneLoader.go("res://world/Jail3D.tscn", "SpawnCell")
 	)
 	queue_free()

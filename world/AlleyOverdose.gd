@@ -67,7 +67,7 @@ func _build_victim(who: String) -> void:
 	root.scale = Vector3.ONE * 1.5
 	root.rotation_degrees.y = 100.0
 	victim.add_child(root)
-	var model: Node = load(CharacterCast.model_for(who)).instantiate()
+	var model: Node = CharacterCast.scene_for(CharacterCast.model_for(who)).instantiate()
 	root.add_child(model)
 	CharacterCast.dress(model, who)
 	var anim := CharacterAnimator.new(model)

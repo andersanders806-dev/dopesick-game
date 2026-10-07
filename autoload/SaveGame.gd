@@ -108,7 +108,7 @@ func continue_run() -> bool:
 	# no store hit by Tasha just for having pressed Continue.
 	GameState._last_minute = -1
 	GameState._emit_clock()
-	get_tree().change_scene_to_file(data["scene"])
+	SceneLoader.go(data["scene"])
 	var tape: String = data.get("tape", "")
 	if tape != "" and GameState.has_walkman:
 		Walkman.play.call_deferred(tape)

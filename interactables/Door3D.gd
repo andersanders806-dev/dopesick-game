@@ -7,6 +7,7 @@ const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 
 func _ready() -> void:
 	add_to_group("interactable")
+	add_to_group("doors")
 
 func interact(player: Node) -> void:
 	if target_scene == "":
@@ -20,7 +21,7 @@ func interact(player: Node) -> void:
 		return
 	SFX.play("door")
 	GameState.pending_spawn = target_spawn
-	get_tree().change_scene_to_file(target_scene)
+	SceneLoader.go(target_scene, target_spawn)
 
 func _show_closed(player: Node, place: String) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")

@@ -46,6 +46,9 @@ func _frames(n: int) -> void:
 		await physics_frame
 
 func _load(path: String) -> Node:
+	# A door's fade still running would change the room again under us.
+	while root.get_node("SceneLoader").busy():
+		await process_frame
 	change_scene_to_file(path)
 	await _frames(10)
 	return current_scene
@@ -280,7 +283,7 @@ func _run() -> void:
 	await _section("Door: chase follows the player into the City")
 	var door := shop.get_node("DoorToCity")
 	door.interact(player)
-	await _frames(10)
+	await _transition()
 	_check(current_scene.name == "City3D", "Shop door leads to City3D")
 	var spawn := current_scene.get_node("SpawnFromShop") as Marker3D
 	_check(_player().global_position.distance_to(spawn.global_position) < 0.5, "player placed at SpawnFromShop")
@@ -372,7 +375,7 @@ func _run() -> void:
 
 	await _section("Dive Bar: sell to a patron")
 	current_scene.get_node("DoorToBar").interact(_player())
-	await _frames(10)
+	await _transition()
 	_check(current_scene.name == "DiveBar3D", "Bar door leads to DiveBar3D")
 	var patron := current_scene.get_node("Patron1")
 	_check(patron.model_root.get_child_count() == 1, "patron has exactly one model (%s)" % patron.npc_name)
@@ -432,9 +435,9 @@ func _run() -> void:
 		if p != patron:
 			waiting[p.npc_name] = [p.request_id, p.position]
 	bar.get_node("DoorToCity").interact(_player())
-	await _frames(10)
+	await _transition()
 	current_scene.get_node("DoorToBar").interact(_player())
-	await _frames(10)
+	await _transition()
 	var bar2 := current_scene
 	var still_there := 0
 	var newcomer: Node = null
@@ -453,21 +456,21 @@ func _run() -> void:
 	gs.sleep()
 	gs.clock = 17 * 60  # sleep wakes you at 08:00, before the bar opens
 	bar2.get_node("DoorToCity").interact(_player())
-	await _frames(10)
+	await _transition()
 	current_scene.get_node("DoorToBar").interact(_player())
-	await _frames(10)
+	await _transition()
 	var after_sleep: Array = current_scene.patrons.map(func(p): return "%s:%s" % [p.npc_name, p.request_id])
 	_check(before_sleep == after_sleep, "orders still stand after a night's sleep")
 	current_scene.get_node("DoorToCity").interact(_player())
-	await _frames(10)
+	await _transition()
 	current_scene.get_node("DoorToBar").interact(_player())
-	await _frames(10)
+	await _transition()
 
 	await _section("Busted: exactly one bust, then a jail cell")
 	current_scene.get_node("DoorToCity").interact(_player())
-	await _frames(10)
+	await _transition()
 	current_scene.get_node("DoorToShop").interact(_player())
-	await _frames(10)
+	await _transition()
 	var store := current_scene
 	gs.cash = 40
 	gs.steal_item("cigs")
@@ -500,7 +503,7 @@ func _run() -> void:
 		if current_scene != store:
 			break
 		clerk_saw = clerk_saw or clerk.can_see_player
-	await _frames(10)
+	await _transition()
 	gs.busted.disconnect(count_bust)
 	# Without this, "one bust" could pass just because nobody was looking.
 	_check(clerk_saw, "  (the clerk really did see the theft during the arrest)")
@@ -532,11 +535,11 @@ func _run() -> void:
 	jp.global_position = cell_spawn.global_position
 	_check(await _walk_until_nearest(exit_door, 900), "  can walk out of the open cell to the exit")
 	exit_door.interact(jp)
-	await _frames(10)
+	await _transition()
 	_check(current_scene.name == "City3D" and _player().global_position.distance_to(current_scene.get_node("SpawnFromJail").global_position) < 0.5,
 		"  the jail exit puts you on the street outside the police station")
 	current_scene.get_node("DoorToHome").interact(_player())
-	await _frames(10)
+	await _transition()
 
 	await _section("Apartment: furniture and sleep")
 	_check(current_scene.name == "Apartment3D", "Home door leads to Apartment3D")
@@ -784,6 +787,7 @@ func _run() -> void:
 	await _ambience_checks(gs)
 	await _cast_checks(gs)
 	await _world_art_checks(gs)
+	await _polish_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -806,10 +810,10 @@ func _day_night_checks(gs: Node) -> void:
 	gs.clock = 23 * 60 + 30
 	var city := await _load("res://world/City3D.tscn")
 	city.get_node("DoorToPharmacy").interact(_player())
-	await _frames(5)
+	await _transition()
 	_check(current_scene.name == "City3D", "  the pharmacy is locked at 23:30")
 	current_scene.get_node("DoorToShop").interact(_player())
-	await _frames(10)
+	await _transition()
 	_check(current_scene.name == "StoreConvenience3D", "  ...but the 24/7 shop lets you in")
 
 	gs.clock = 9 * 60
@@ -1070,12 +1074,12 @@ func _places_checks(gs: Node) -> void:
 	for pair in [["DoorToShelter", "Shelter3D"], ["DoorToBackyard", "Backyard3D"]]:
 		city = await _load("res://world/City3D.tscn")
 		city.get_node(pair[0]).interact(_player())
-		await _frames(10)
+		await _transition()
 		_check(current_scene.name == pair[1], "  %s leads to %s" % pair)
 	gs.clock = 12 * 60
 	city = await _load("res://world/City3D.tscn")
 	city.get_node("DoorToShelter").interact(_player())
-	await _frames(5)
+	await _transition()
 	_check(current_scene.name == "City3D", "  the shelter is shut through the day (12:00)")
 
 	# Shelter: a meal, once per sitting; the outreach desk.
@@ -1324,7 +1328,7 @@ func _menu_and_save_checks(gs: Node) -> void:
 	gs.start_run()
 	_check(gs.cash != 77, "  (a fresh run has other numbers)")
 	save.continue_run()
-	await _frames(8)
+	await _transition()
 	_check(gs.cash == 77 and gs.day == 4 and gs.tapes.has("reggae"), "  continue restores cash, day and tapes")
 	_check(current_scene.name == "City3D", "  ...in the same room")
 	_check(_player().global_position.distance_to(Vector3(3.0, 0, 1.0)) < 0.3, "  ...standing where you were")
@@ -1697,7 +1701,7 @@ func _headline_checks(gs: Node) -> void:
 	hl.roll(gs.day)
 	hl.forced = ""
 	root.get_node("SaveGame").continue_run()
-	await _frames(10)
+	await _transition()
 	_check(gs.headline == "payday", "  a saved run keeps its headline (%s)" % gs.headline)
 	root.get_node("SaveGame").delete()
 	hl.forced = "quiet"
@@ -2018,12 +2022,12 @@ func _rent_checks(gs: Node) -> void:
 	gs.clock = 14 * 60
 	var city := await _load("res://world/City3D.tscn")
 	city.get_node("DoorToHome").interact(_player())
-	await _frames(5)
+	await _transition()
 	_check(current_scene.name == "City3D", "  the lock's been changed")
 	_close_menus()
 	gs.cash = 80
 	city.get_node("DoorToHome")._pay_landlord(_player())
-	await _frames(10)
+	await _transition()
 	_check(current_scene.name == "Apartment3D" and gs.rent_stage == 0 and gs.cash == 15 and gs.rent_due_day == gs.day + 5, "  paying the landlord lets you back in")
 	var slot := current_scene.get_node("RentSlot")
 	gs.cash = 50
@@ -2096,7 +2100,7 @@ func _court_checks(gs: Node) -> void:
 	gs.warrant = true
 	var strikes_now: int = gs.strikes
 	city.get_node("StationDoor").to_cell()
-	await _frames(15)
+	await _transition()
 	_check(not gs.warrant and gs.strikes == strikes_now and gs.court_day == gs.day + 2 and current_scene.name == "Jail3D", "  turning yourself in: no strike, a new court date, a night in the cell")
 	_player().dialogue_active = false
 	gs.start_run()
@@ -2156,7 +2160,7 @@ func _batch1_save_checks(gs: Node) -> void:
 	_check(save.save(), "  saved")
 	gs.start_run()
 	save.continue_run()
-	await _frames(8)
+	await _transition()
 	_check(gs.belongings["ring"] == "pawned" and int(gs.pawn_tickets.get("ring", -1)) == 6 and gs.belongings["tv"] == "carried" and gs.has_item("tv"), "  belongings and tickets come back")
 	_check(gs.rent_stage == 1 and gs.rent_owed == 45 and gs.rent_due_day == 6, "  ...the final notice, not rolled on by loading")
 	_check(gs.court_day == 7 and gs.warrant and gs.tested_dirty() and gs.apartment_echo_seen, "  ...the court date, the warrant, and what's in your system")
@@ -2453,7 +2457,7 @@ func _batch2_save_checks(gs: Node) -> void:
 	_check(save.save(), "  saved")
 	gs.start_run()
 	save.continue_run()
-	await _frames(8)
+	await _transition()
 	_check(gs.test_strips == 2 and gs.dead_regulars == ["Quiet Kid"] and gs.vigil_day == 4 and gs.vigil_for == "Quiet Kid", "  strips, the dead, and the vigil come back")
 	_check(gs.od_event.get("state", "") == "down" and gs.od_event.get("who", "") == "Old Sailor" and absf(float(gs.od_event.get("left", 0.0)) - 42.0) < 1.0, "  ...someone still down, with the time they had left (%s)" % [gs.od_event])
 	_check(gs.booster_day == 5 and gs.booster_store == "liquor" and gs.booster_hit == ["pharmacy"] and gs.booster_cut_pending and not gs.booster_gone, "  ...and Tasha's day, not rerolled by loading (%s %s %s %s)" % [gs.booster_day, gs.booster_store, gs.booster_hit, gs.booster_cut_pending])
@@ -2735,7 +2739,7 @@ func _batch1_review_checks(gs: Node) -> void:
 	gs.set_wanted(true)
 	var strikes0: int = gs.strikes
 	city.find_child("StationDoor", true, false).to_cell()
-	await _frames(15)
+	await _transition()
 	_check(gs.strikes == strikes0, "  turning yourself in mid-chase: no strike for it (%d -> %d)" % [strikes0, gs.strikes])
 	_check(current_scene.name == "Jail3D" and not gs.wanted, "  turning yourself in mid-chase: the chase is over (wanted %s)" % gs.wanted)
 	_check(get_nodes_in_group("police").is_empty(), "  ...and no cop follows you into the cell (%d)" % get_nodes_in_group("police").size())
@@ -2775,7 +2779,7 @@ func _batch1_review_checks(gs: Node) -> void:
 	f.close()
 	gs.start_run()
 	save.continue_run()
-	await _frames(8)
+	await _transition()
 	_check(gs.rent_stage == 0 and gs.rent_due_day > gs.day, "  an old save: no instant final notice (stage %d, due day %d on day %d)" % [gs.rent_stage, gs.rent_due_day, gs.day])
 	save.delete()
 	# Ray: you choose what you give him.
@@ -3057,3 +3061,214 @@ func _world_art_checks(gs: Node) -> void:
 		_check(toy.is_empty() and tubes.size() > 0 and tubes.all(func(t): return String(t.scene_file_path).contains("mounted_fluorescent")) and blockers,
 			"  %s: steel shelving, real tube lights, same sight blockers (toys %d)" % [store, toy.size()])
 
+## Chapter 2: going through a door shouldn't freeze the game for seconds,
+## and the game should say where you are and what E does.
+func _polish_checks(gs: Node) -> void:
+	await _section("Polish: fast rooms, fades, prompts")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var piece := _kit_piece(city)
+	var mesh_id := piece.mesh.get_instance_id()
+	var dressing := func(c: Node) -> Array:
+		return ["FireEscapeHome", "AirCon", "Camera", "Shutter"].map(func(n): return c.get_node("Facades").find_child(n + "*", true, false).find_children("*", "MeshInstance3D", true, false)[0].mesh.get_instance_id())
+	var dress_ids: Array = dressing.call(city)
+	var Cast = load("res://npc/CharacterCast.gd")
+	var booster: String = Cast.model_for("booster")
+	var cast_id: int = Cast.scene_for(booster).get_instance_id()
+	piece = null
+	await _load("res://world/Apartment3D.tscn")
+	await _load("res://world/DiveBar3D.tscn")
+	var t0 := Time.get_ticks_msec()
+	city = await _load("res://world/City3D.tscn")
+	var reentry := Time.get_ticks_msec() - t0
+	var again := _kit_piece(city)
+	_check(again.mesh.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
+	_check(dressing.call(city) == dress_ids, "  ...and so are fire escapes, air-con units, cameras and shutters")
+	_check(Cast.scene_for(booster).get_instance_id() == cast_id
+		and Cast.scene_for(booster) is PackedScene, "  character models are loaded once per session")
+	print("  (City re-entry %d ms)" % reentry)
+	# Rooms stay loaded, materials and all: leaving in the rain mustn't
+	# leave the street wet for good.
+	root.get_node("SceneLoader")._scene("res://world/City3D.tscn")
+	gs.set_raining(true)
+	city = await _load("res://world/City3D.tscn")
+	await _load("res://world/Apartment3D.tscn")
+	city = await _load("res://world/City3D.tscn")
+	gs.set_raining(false)
+	await _frames(3)
+	var wet: Array = city.get_node("StreetLife")._wet_materials
+	_check(wet.size() > 0 and wet.all(func(m): return m.roughness > 0.5), "  the street dries off after rain, even across visits")
+	await _room_change_checks(gs)
+	await _loader_edge_checks(gs)
+	_step_down_checks()
+	await _prompt_checks(gs)
+
+## The first facade piece that came out of a Poly Haven kit (not a box or
+## quad the builder made itself).
+func _kit_piece(city: Node) -> MeshInstance3D:
+	for mi in city.get_node("Facades").find_children("*", "MeshInstance3D", true, false):
+		if not (mi.mesh is PrimitiveMesh):
+			return mi
+	return null
+
+## Interacts with a door and waits for the room change (fade and all).
+func _through(door: Node) -> void:
+	door.interact(_player())
+	await _transition()
+
+func _transition() -> void:
+	var loader := root.get_node("SceneLoader")
+	for i in 600:
+		await process_frame
+		if not loader.busy():
+			break
+	await _frames(10)
+
+func _room_change_checks(gs: Node) -> void:
+	var loader := root.get_node("SceneLoader")
+	# The street is the hub: it starts loading in the background as soon
+	# as you're anywhere, facade kits and all.
+	await _load("res://world/Apartment3D.tscn")
+	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM
+	for i in 600:
+		await _frames(1)
+		if warm.all(func(p): return loader.cached(p)):
+			break
+	_check(warm.all(func(p): return loader.cached(p)), "  the street warms up in the background from the first room")
+	var city := await _load("res://world/City3D.tscn")
+	var door := city.get_node("DoorToBar")
+	var target: String = door.target_scene
+	var spawn: String = door.target_spawn
+	var player := _player()
+	player.global_position = door.global_position + Vector3(0, 0, 2.5)
+	for i in 300:
+		await _frames(1)
+		if loader.cached(target):
+			break
+	_check(loader.cached(target), "  walking up to a door loads the room behind it")
+	door.interact(player)
+	_check(loader.busy(), "  doors go through the scene loader")
+	var longest := 0
+	var last := Time.get_ticks_msec()
+	var darkest := 0.0
+	for i in 600:
+		await process_frame
+		var now := Time.get_ticks_msec()
+		longest = maxi(longest, now - last)
+		last = now
+		darkest = maxf(darkest, loader.find_child("Fade", true, false).color.a)
+		if not loader.busy():
+			break
+	await _frames(30)
+	var fade: ColorRect = loader.find_child("Fade", true, false)
+	var card: Label = loader.find_child("ArrivalCard", true, false)
+	_check(current_scene.name == "DiveBar3D" and darkest > 0.99 and fade.color.a < 0.01,
+		"  the room fades to black and back in (darkest %.2f, now %.2f)" % [darkest, fade.color.a])
+	_check(longest < 500, "  no frame of the change froze for half a second (longest %d ms)" % longest)
+	_check(card.text.begins_with("THE DIVE BAR") and card.text.ends_with(gs.clock_text()) and card.modulate.a > 0.5,
+		"  an arrival card says where and when ('%s')" % card.text)
+	_check(_player().global_position.distance_to(current_scene.get_node(spawn).global_position) < 0.5,
+		"  the player arrives at the door's spawn point")
+
+func _step_down_checks() -> void:
+	var gfx := root.get_node("Graphics")
+	var feed := func(fps: float, windows: int) -> void:
+		for i in windows:
+			gfx.watch_high(fps, 0.5)
+	gfx._integrated = true
+	gfx._stepped_down = false
+	gfx.set_preset(gfx.Preset.HIGH)
+	feed.call(15.0, 9)
+	_check(gfx.preset == gfx.Preset.HIGH, "  4.5 s under 24 FPS on High: not yet")
+	feed.call(40.0, 1)
+	feed.call(15.0, 9)
+	_check(gfx.preset == gfx.Preset.HIGH, "  a good half-second starts the count over")
+	feed.call(15.0, 10)
+	_check(gfx.preset == gfx.Preset.MEDIUM and gfx._toast.text.contains("F3"),
+		"  5 s under 24 FPS on High, laptop graphics: down to Medium, and it says why ('%s')" % gfx._toast.text)
+	gfx.set_preset(gfx.Preset.HIGH)
+	feed.call(15.0, 40)
+	_check(gfx.preset == gfx.Preset.HIGH, "  pick High again and it stays High this session")
+	gfx._integrated = false
+	gfx._stepped_down = false
+	feed.call(15.0, 40)
+	_check(gfx.preset == gfx.Preset.HIGH, "  a real graphics card is left alone")
+	gfx.set_preset(gfx.Preset.MEDIUM)
+
+const PROMPT_ROOMS := ["Apartment3D", "Backyard3D", "City3D", "DiveBar3D", "Jail3D", "KartCenter3D", "MusicStore3D",
+	"Pawn3D", "Shelter3D", "StoreConvenience3D", "StoreElectronics3D", "StoreLiquor3D", "StorePharmacy3D", "StoreSupermarket3D"]
+
+func _prompt_checks(gs: Node) -> void:
+	var Prompts = load("res://ui/Prompts.gd")
+	gs.clock = 20 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_check(Prompts.text_for(city.get_node("DoorToBar")) == "Enter the Dive Bar", "  a door says where it goes ('%s')" % Prompts.text_for(city.get_node("DoorToBar")))
+	_check(Prompts.text_for(city.get_node("DoorToHome")) == "Go home", "  your own door says 'Go home'")
+	var pusher := get_first_node_in_group("pusher")
+	if pusher == null:
+		pusher = city.find_children("*", "Area3D", true, false).filter(func(n): return n.get_script() and n.get_script().resource_path.ends_with("Pusher3D.gd")).front()
+	_check(Prompts.text_for(pusher).begins_with("Talk to"), "  the dealer: '%s'" % Prompts.text_for(pusher))
+	# Walk up to the bar door: the prompt floats over it with the key.
+	var door := city.get_node("DoorToBar")
+	_player().global_position = door.global_position
+	await _frames(12)
+	var prompt: Label = get_first_node_in_group("hud").find_child("InteractPrompt", true, false)
+	_check(prompt != null and prompt.visible and prompt.text == "%s  Enter the Dive Bar" % gs.control_name("interact"),
+		"  standing at a door shows '%s'" % (prompt.text if prompt else "no prompt"))
+	_player().dialogue_active = true
+	await _frames(3)
+	_check(not prompt.visible, "  hidden while talking")
+	_player().dialogue_active = false
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	var patron: Node = bar.patrons[0]
+	_check(Prompts.text_for(patron).begins_with("Talk to ") and Prompts.text_for(bar.get_node("Bartender")) == "Talk to the bartender",
+		"  people: '%s', '%s'" % [Prompts.text_for(patron), Prompts.text_for(bar.get_node("Bartender"))])
+	var shop := await _load("res://world/StoreConvenience3D.tscn")
+	var item: Node = shop.find_children("*", "Area3D", true, false).filter(func(n): return "item_id" in n).front()
+	_check(Prompts.text_for(item) == "Steal %s" % gs.item_info(item.item_id)["name"], "  a shelf item: '%s'" % Prompts.text_for(item))
+	var home := await _load("res://world/Apartment3D.tscn")
+	_check(Prompts.text_for(home.get_node("Bed")) == "Sleep" and Prompts.text_for(home.get_node("Belonging_guitar")) == "Your guitar",
+		"  the bed and your things: '%s', '%s'" % [Prompts.text_for(home.get_node("Bed")), Prompts.text_for(home.get_node("Belonging_guitar"))])
+	# Everything you can use, in every room, says something.
+	var silent := []
+	for room in PROMPT_ROOMS:
+		var r := await _load("res://world/%s.tscn" % room)
+		for n in get_nodes_in_group("interactable"):
+			if n.has_method("interact") and (Prompts.text_for(n) == "" or Prompts.text_for(n) == n.name.capitalize()):
+				silent.append("%s/%s" % [room, n.name])
+	_check(silent.is_empty(), "  every interactable in every room has a prompt (silent: %s)" % [silent])
+
+## The review's edge cases for SceneLoader.
+func _loader_edge_checks(gs: Node) -> void:
+	var loader := root.get_node("SceneLoader")
+	var fade: ColorRect = loader.find_child("Fade", true, false)
+	var card: Label = loader.find_child("ArrivalCard", true, false)
+	var city := await _load("res://world/City3D.tscn")
+	loader.go("res://world/NoSuchRoom3D.tscn")
+	await _transition()
+	await _frames(30)
+	_check(current_scene == city and not paused and fade.color.a < 0.01 and not loader.busy(),
+		"  a room that won't load leaves you where you were, not in the dark")
+	# Through a door just as a bust lands: the cell wins.
+	city.get_node("DoorToBar").interact(_player())
+	loader.go("res://world/Jail3D.tscn", "SpawnCell")
+	for i in 3:
+		await _transition()
+	_check(current_scene.name == "Jail3D" and _player().global_position.distance_to(current_scene.get_node("SpawnCell").global_position) < 0.5,
+		"  a bust during a door's fade still ends in the cell (%s)" % current_scene.name)
+	# Under a cutscene (the last bust's "sent away"): no fade, no card over it.
+	await _load("res://world/City3D.tscn")
+	root.get_node("Cutscene")._playing = true
+	var darkest := 0.0
+	loader.go("res://world/Jail3D.tscn", "SpawnCell")
+	for i in 120:
+		await process_frame
+		darkest = maxf(darkest, fade.color.a)
+		if not loader.busy():
+			break
+	await _frames(10)
+	root.get_node("Cutscene")._playing = false
+	_check(current_scene.name == "Jail3D" and darkest < 0.01 and card.modulate.a < 0.01,
+		"  under a cutscene the room changes unseen (darkest %.2f, card %.2f)" % [darkest, card.modulate.a])

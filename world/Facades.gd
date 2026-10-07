@@ -16,6 +16,8 @@ const SHUTTER := "res://assets/polyhaven/rollershutter_window_01/rollershutter_w
 const ESCAPE := "res://assets/polyhaven/modular_fire_escape/modular_fire_escape.gltf"
 const AIRCON := "res://assets/polyhaven/exterior_aircon_unit/exterior_aircon_unit.gltf"
 const CAMERA := "res://assets/polyhaven/security_camera_02/security_camera_02.gltf"
+## What SceneLoader loads in the background ahead of the first street visit.
+const WARM := [APT, FACTORY, ESCAPE, AIRCON, CAMERA, SHUTTER]
 const STREET_Z := -4.5
 const FACE_Z := STREET_Z - 0.03
 const MODULE := 3.0
@@ -39,7 +41,9 @@ const KIT_PIECES := {
 		"band": "cornice02_standard_standard_01", "crown": "crown_standard_standard_01", "base": "base_standard_standard_01"},
 }
 
-var _meshes := {}
+## Kit meshes by piece name, kept for the session: re-reading the two kits
+## on every visit to the street was 1.5 s of the door freeze.
+static var _meshes := {}
 ## The kits' window glass is alpha-blended with a depth pre-pass -- an extra
 ## pass for every window on the street. From outside, dark glass with a
 ## sheen looks the same, opaque.
@@ -50,6 +54,15 @@ func _ready() -> void:
 		_build_front(f)
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
+
+## The fire escape, air-con, camera and shutter models, kept for the
+## session for the same reason (half a second a visit).
+static var _scenes := {}
+
+static func _scene(path: String) -> PackedScene:
+	if not _scenes.has(path):
+		_scenes[path] = load(path)
+	return _scenes[path]
 
 func _mesh(kit: String, piece: String) -> Mesh:
 	if not _meshes.has(kit):
@@ -141,7 +154,7 @@ func _dress(front: Node3D, f: Array) -> void:
 ## to the building: it starts above the signs (3.5 m) and stands out from
 ## the wall the way real ones do, over the sidewalk, never down to it.
 func _fire_escape(front: Node3D, node_name: String, x0: float, width: float, floors: int) -> void:
-	var m: Node3D = load(ESCAPE).instantiate()
+	var m: Node3D = _scene(ESCAPE).instantiate()
 	m.name = node_name
 	front.add_child(m)
 	var b := AABB()
@@ -157,7 +170,7 @@ func _fire_escape(front: Node3D, node_name: String, x0: float, width: float, flo
 ## Instances `path` centred on x, its bottom at y, flush against the wall
 ## and entirely behind STREET_Z.
 func _on_wall(front: Node3D, path: String, node_name: String, x: float, y: float) -> Node3D:
-	var m: Node3D = load(path).instantiate()
+	var m: Node3D = _scene(path).instantiate()
 	m.name = node_name
 	front.add_child(m)
 	var b := AABB()
@@ -241,7 +254,7 @@ func _storefront(front: Node3D, x0: float, width: float) -> void:
 			_bar(glass, frame_mat, Vector3(0.06, 1.66, 0.04), Vector3(cx + fx, 1.45, FACE_Z - 0.005))
 		_bar(glass, frame_mat, Vector3(pane_w + 0.06, 0.06, 0.04), Vector3(cx, 2.25, FACE_Z - 0.005))
 		_bar(glass, frame_mat, Vector3(pane_w + 0.06, 0.06, 0.04), Vector3(cx, 0.65, FACE_Z - 0.005))
-	var shutter: Node3D = load(SHUTTER).instantiate()
+	var shutter: Node3D = _scene(SHUTTER).instantiate()
 	shutter.name = "Shutter"
 	front.add_child(shutter)
 	# Only the plain shutter: the kit also ships a graffiti one.

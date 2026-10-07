@@ -202,6 +202,7 @@ func _adapt_resolution(delta: float) -> void:
 	if _frame_acc < 0.5:
 		return
 	var fps := _frame_count / _frame_acc
+	watch_high(fps, _frame_acc)
 	_frame_acc = 0.0
 	_frame_count = 0
 	var r: Array = SCALE_RANGE[preset]
@@ -214,6 +215,29 @@ func _adapt_resolution(delta: float) -> void:
 	if not is_equal_approx(next, render_scale):
 		render_scale = next
 		get_viewport().scaling_3d_scale = render_scale
+
+## High on laptop graphics can sit at 18 FPS -- walking feels like wading.
+## Five seconds of that and it drops to Medium, once a session, and says so;
+## F3 puts High back and it's left alone after that.
+const STEP_DOWN_FPS := 24.0
+const STEP_DOWN_TIME := 5.0
+var _integrated := false
+var _stepped_down := false
+var _slow_time := 0.0
+
+## Fed each half-second's average; true when it just stepped down.
+func watch_high(fps: float, window: float) -> bool:
+	if not _integrated or _stepped_down or not is_high() or get_tree().paused or SceneLoader.busy():
+		_slow_time = 0.0
+		return false
+	_slow_time = _slow_time + window if fps < STEP_DOWN_FPS else 0.0
+	if _slow_time < STEP_DOWN_TIME:
+		return false
+	_stepped_down = true
+	_slow_time = 0.0
+	set_preset(Preset.MEDIUM)
+	_show_toast("Graphics: Medium -- High was running under %d FPS. F3 to switch back." % STEP_DOWN_FPS, 5.0)
+	return true
 
 ## High or above: the presets with the full-fat room effects.
 func is_high() -> bool:
@@ -399,14 +423,15 @@ func _build_overlay() -> void:
 	_toast.modulate.a = 0.0
 	_overlay.add_child(_toast)
 
-func _show_toast(text: String) -> void:
+func _show_toast(text: String, time := 2.0) -> void:
 	_toast.text = text
-	_toast_timer = 2.0
+	_toast_timer = time
 
 func _load_settings() -> void:
 	# First launch starts on Medium everywhere: adaptive resolution keeps it
 	# smooth even on integrated graphics.
 	var integrated := RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU
+	_integrated = integrated
 	preset = Preset.MEDIUM
 	var cfg := ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) == OK:

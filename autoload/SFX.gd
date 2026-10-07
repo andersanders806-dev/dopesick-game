@@ -111,6 +111,9 @@ func _ready() -> void:
 	for i in range(POOL_SIZE):
 		var p := AudioStreamPlayer.new()
 		p.bus = "SFX"
+		# A door's sound plays on through the room change's fade, which
+		# pauses the tree.
+		p.process_mode = Node.PROCESS_MODE_ALWAYS
 		add_child(p)
 		_pool.append(p)
 	_music_a = AudioStreamPlayer.new()

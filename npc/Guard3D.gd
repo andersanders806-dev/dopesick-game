@@ -118,7 +118,7 @@ func _ready() -> void:
 func _build_body() -> void:
 	if watcher_only:
 		return
-	var model: Node = load(CharacterCast.model_for(role)).instantiate()
+	var model: Node = CharacterCast.scene_for(CharacterCast.model_for(role)).instantiate()
 	body.add_child(model)
 	CharacterCast.dress(model, role)
 

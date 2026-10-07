@@ -149,9 +149,15 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   Below High the moon drops its shadow after dark (faint, and ~3.5 ms on
   the street), and Low drops the glow pass (a fixed ~3.5 ms). An
   integrated GPU left on High or PS5 is moved to Medium once, with a toast
-  saying F3 puts it back. And if High still runs under 24 FPS for 5 s on
-  laptop graphics, it drops to Medium once a session, saying why; pick
-  High again with F3 and it stays. The colour grade -- a 3D LUT built in code (teal shadows, amber
+  saying F3 puts it back. And if High still runs under 45 FPS for 5 s on
+  laptop graphics (anything less judders on a 60 Hz screen when you walk),
+  it drops to Medium once a session, saying why; pick High again with F3
+  and it stays. **Medium on laptop graphics is lean**: no ambient
+  occlusion, only the near glow levels, flat-shaded facade bricks, one
+  lamp shadow, the sun's shadow in two cascades to 35 m (not four to
+  100 m: 5.8 ms on a UHD 620), FXAA, the lightest soft-shadow filter, and
+  resolution down to 60% when needed. Walking the street: 53-56 FPS by
+  night, ~50 by day, 58 in the bar (was ~40). The colour grade -- a 3D LUT built in code (teal shadows, amber
   highlights, an S-curve) plus saturation 1.18 -- applies at every preset.
   The withdrawal tint only appears once you're actually getting sick; it
   used to sit at ~20% green over everything.

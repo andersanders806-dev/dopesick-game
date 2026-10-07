@@ -50,7 +50,7 @@ MODELS = [
     # bar
     "bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
     # stores
-    "steel_frame_shelves_01", "mounted_fluorescent_lights", "worn_metal_rack",
+    "steel_frame_shelves_01", "mounted_fluorescent_lights",
 ]
 
 

@@ -38,4 +38,3 @@ WoodenTable_01: Wooden Table 01 by Ethan Place
 hanging_industrial_lamp: Hanging Industrial Lamp by Kuutti Siitonen
 steel_frame_shelves_01: Steel Frame Shelves 01 by James Ray Cock
 mounted_fluorescent_lights: Mounted Fluorescent Lights by Ulan Cabanilla
-worn_metal_rack: Worn Metal Rack by Luca B

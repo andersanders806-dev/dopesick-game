@@ -2956,7 +2956,7 @@ const WORLD_ART_MODELS := ["modular_urban_apartments_facade", "modular_factory_f
 	"street_lamp_01", "covered_car", "exterior_aircon_unit", "rollershutter_window_01", "security_camera_02",
 	"old_bed_frame", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
 	"bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
-	"steel_frame_shelves_01", "mounted_fluorescent_lights", "worn_metal_rack"]
+	"steel_frame_shelves_01", "mounted_fluorescent_lights"]
 
 func _world_art_checks(gs: Node) -> void:
 	await _section("World art: real places, same game")
@@ -3048,4 +3048,12 @@ func _world_art_checks(gs: Node) -> void:
 		"  ...wood, vinyl and felt that look like wood, vinyl and felt")
 	_check(bar.find_children("BackBarBottles*", "Node3D", true, false).size() > 0 and bar.get_node_or_null("PoolLamp/Model") != null, "  ...real bottles behind the bar and a lamp over the pool table")
 	_check(bar.get_node_or_null("PoolTable/PoolZone") != null and bar.get_node_or_null("Jukebox") != null, "  ...and the pool table and jukebox still play")
+	gs.clock = 14 * 60
+	for store in ["StoreConvenience3D", "StorePharmacy3D", "StoreSupermarket3D", "StoreLiquor3D", "StoreElectronics3D"]:
+		var room := await _load("res://world/%s.tscn" % store)
+		var toy := room.find_children("*", "Node3D", true, false).filter(func(n): return String(n.scene_file_path).contains("bookcaseOpen") or String(n.scene_file_path).contains("kitchenBar"))
+		var tubes := room.find_children("StripFixture*", "Node3D", false, false)
+		var blockers := room.find_children("Fixture*", "StaticBody3D", false, false).all(func(f): return f.find_children("*", "CollisionShape3D", false, false).size() > 0)
+		_check(toy.is_empty() and tubes.size() > 0 and tubes.all(func(t): return String(t.scene_file_path).contains("mounted_fluorescent")) and blockers,
+			"  %s: steel shelving, real tube lights, same sight blockers (toys %d)" % [store, toy.size()])
 

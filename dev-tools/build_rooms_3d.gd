@@ -751,7 +751,8 @@ func _store_shell(name: String, w: float, d: float, floor_tex: String, floor_uv:
 	_new_root(name, script_path)
 	_environment(Color(0.55, 0.6, 0.65), ambient_energy)
 	_room_shell(w, d, floor_tex, floor_uv)
-	var paint := _color_mat(wall_color, 0.85)
+	var paint := _tex_mat("pbr:plaster_painted", 1.0)
+	paint.albedo_color = wall_color
 	for wall in ["WallNorth", "WallSouth", "WallWest", "WallEast"]:
 		(_root.get_node(wall + "/Mesh") as MeshInstance3D).material_override = paint
 	((_root.get_node("Floor/Mesh") as MeshInstance3D).mesh.material as StandardMaterial3D).albedo_color = floor_tint
@@ -761,8 +762,13 @@ func _store_shell(name: String, w: float, d: float, floor_tex: String, floor_uv:
 			var x := -w / 2 + (ix + 0.5) * w / strips_x
 			var z := -d / 4 + iz * d / 2
 			_light(_root, "Strip%d_%d" % [ix, iz], Vector3(x, 2.3, z), light_color, strip_energy, 6.0, iz == 0)
-			_box_mesh(_root, "StripFixture%d_%d" % [ix, iz], Vector3(1.6, 0.05, 0.2), Vector3(x, 2.38, z), _color_mat(light_color, 0.5, 3.0))
+			# A real fluorescent tube fitting (Poly Haven, 0.91 m), stretched to
+			# the old 1.6 m strip.
+			var tube := _ph(_root, "StripFixture%d_%d" % [ix, iz], "mounted_fluorescent_lights", Vector3(x, 2.4, z), 1.0)
+			tube.scale = Vector3(1.6 / 0.91, 1.0, 1.0)
 	_sound(_root, "FluorescentHum", "fluorescent_hum_loop.wav", Vector3(0, 2.3, 0), -21.0, 6.0, 24.0)
+	# A camera up in the back corner, watching the aisles.
+	_ph(_root, "Camera", "security_camera_01", Vector3(w / 2 - 0.3, 2.25, -d / 2 + 0.3), 1.0, 225.0)
 	var door_z := d / 2 - 1.2
 	_door("DoorToCity", Vector3(-w / 2 + 0.45, 0, door_z), Vector3.RIGHT, "res://world/City3D.tscn", city_spawn)
 	_marker("SpawnFromCity", Vector3(-w / 2 + 1.2, 0, door_z))
@@ -784,8 +790,9 @@ func _counter(parent: Node, name: String, pos: Vector3, pieces: int) -> StaticBo
 	_add(parent, counter)
 	counter.position = pos
 	var piece_w := 0.43 * 2.5
-	for i in pieces:
-		_model(counter, "Piece%d" % i, "furniture/kitchenBar.glb", Vector3(i * piece_w, 0, 0), 2.5)
+	# A laminate-topped counter on a brushed steel front.
+	_box_mesh(counter, "Front", Vector3(pieces * piece_w, 0.98, 0.5), Vector3(pieces * piece_w / 2, 0.49, -0.26), _tex_mat("pbr:metal_brushed", 1.0))
+	_box_mesh(counter, "Top", Vector3(pieces * piece_w + 0.04, 0.05, 0.56), Vector3(pieces * piece_w / 2, 1.0, -0.26), _color_mat(Color(0.16, 0.16, 0.17), 0.35))
 	_collision(counter, _box_shape(Vector3(pieces * piece_w, 1.05, 0.53)), Vector3(pieces * piece_w / 2, 0.52, -0.26))
 	return counter
 
@@ -835,8 +842,7 @@ func _fixture_shelf(index: int, stock_colors: Array, stock: Array = []) -> Stati
 	var shelf := StaticBody3D.new()
 	shelf.name = "Fixture%d" % index
 	_add(_root, shelf)
-	_model(shelf, "Left", "furniture/bookcaseOpen.glb", Vector3(-1.0, 0, 0.31), 2.5)
-	_model(shelf, "Right", "furniture/bookcaseOpen.glb", Vector3(0.0, 0, 0.31), 2.5)
+	_steel_shelves(shelf)
 	for row in 3:
 		for k in 8:
 			var c: Color = stock_colors[(k + row) % stock_colors.size()]
@@ -848,15 +854,22 @@ func _fixture_shelf(index: int, stock_colors: Array, stock: Array = []) -> Stati
 	_instance(_root, "Item%d" % index, ItemScene)
 	return shelf
 
+## Two steel shelving units (Poly Haven, modelled 10x real size) side by
+## side: the 2 m x 2.14 m frame a store's shelf fixture stands in.
+func _steel_shelves(shelf: Node3D) -> void:
+	for side in [-0.5, 0.5]:
+		var unit := _ph(shelf, "Steel%s" % ("L" if side < 0 else "R"), "steel_frame_shelves_01", Vector3(side, 0, 0.0), 0.1)
+		unit.scale = Vector3(0.1 * 1.0 / 1.097, 0.1, 0.1 * 0.6 / 0.502)
+
 ## An open, waist-high refrigerated case (supermarket meat, deli): low, so
 ## it doesn't block anyone's view.
 func _fixture_cooler(index: int, stock: Array) -> StaticBody3D:
 	var cooler := StaticBody3D.new()
 	cooler.name = "Fixture%d" % index
 	_add(_root, cooler)
-	_box_mesh(cooler, "Base", Vector3(2.2, 0.75, 0.9), Vector3(0, 0.375, 0), _color_mat(Color(0.9, 0.9, 0.92), 0.4))
+	_box_mesh(cooler, "Base", Vector3(2.2, 0.75, 0.9), Vector3(0, 0.375, 0), _tex_mat("pbr:metal_brushed", 1.0))
 	_box_mesh(cooler, "Well", Vector3(2.0, 0.05, 0.7), Vector3(0, 0.76, 0), _color_mat(Color(0.2, 0.22, 0.25), 0.6))
-	_box_mesh(cooler, "Back", Vector3(2.2, 0.5, 0.1), Vector3(0, 1.0, -0.4), _color_mat(Color(0.9, 0.9, 0.92), 0.4))
+	_box_mesh(cooler, "Back", Vector3(2.2, 0.5, 0.1), Vector3(0, 1.0, -0.4), _tex_mat("pbr:metal_brushed", 1.0))
 	_box_mesh(cooler, "Glow", Vector3(2.0, 0.04, 0.04), Vector3(0, 1.22, -0.33), _color_mat(Color(0.75, 0.9, 1.0), 0.3, 3.0))
 	for k in 6:
 		_box_mesh(cooler, "Pack%d" % k, Vector3(0.25, 0.05, 0.18), Vector3(-0.8 + k * 0.32, 0.8, -0.1 + 0.15 * (k % 2)), _color_mat(Color(0.65, 0.12, 0.12) if k % 3 else Color(0.95, 0.75, 0.25), 0.6))
@@ -872,7 +885,7 @@ func _fixture_glass_case(index: int, glow: Color) -> StaticBody3D:
 	var case := StaticBody3D.new()
 	case.name = "Fixture%d" % index
 	_add(_root, case)
-	_box_mesh(case, "Base", Vector3(1.8, 0.55, 0.7), Vector3(0, 0.275, 0), _color_mat(Color(0.12, 0.12, 0.14), 0.4))
+	_box_mesh(case, "Base", Vector3(1.8, 0.55, 0.7), Vector3(0, 0.275, 0), _tex_mat("pbr:metal_worn", 1.0))
 	var glass := _color_mat(Color(0.7, 0.85, 0.95, 0.18), 0.05)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_box_mesh(case, "Glass", Vector3(1.8, 0.35, 0.7), Vector3(0, 0.73, 0), glass)
@@ -889,8 +902,7 @@ func _fixture_bottles(index: int) -> StaticBody3D:
 	var shelf := StaticBody3D.new()
 	shelf.name = "Fixture%d" % index
 	_add(_root, shelf)
-	_model(shelf, "Left", "furniture/bookcaseOpen.glb", Vector3(-1.0, 0, 0.31), 2.5)
-	_model(shelf, "Right", "furniture/bookcaseOpen.glb", Vector3(0.0, 0, 0.31), 2.5)
+	_steel_shelves(shelf)
 	var files := ["food/wine-red.glb", "food/soda-bottle.glb"]
 	for row in 3:
 		for k in 8:
@@ -903,7 +915,7 @@ func _fixture_bottles(index: int) -> StaticBody3D:
 # Corner shop -----------------------------------------------------------------
 
 func _build_store_convenience() -> Node3D:
-	_store_shell("StoreConvenience3D", 12.0, 8.0, "res://assets/env/floor_checkered.png", 0.5, "SpawnFromShop", Color(0.72, 0.78, 0.7))
+	_store_shell("StoreConvenience3D", 12.0, 8.0, "pbr:tiles_beige", 1.0, "SpawnFromShop", Color(0.72, 0.78, 0.7))
 	var colors := [Color(0.8, 0.2, 0.15), Color(0.95, 0.8, 0.2), Color(0.2, 0.45, 0.8), Color(0.3, 0.7, 0.3)]
 	for i in 5:
 		_fixture_shelf(i + 1, colors)
@@ -931,7 +943,7 @@ func _build_store_convenience() -> Node3D:
 # Pharmacy ---------------------------------------------------------------------
 
 func _build_store_pharmacy() -> Node3D:
-	_store_shell("StorePharmacy3D", 14.0, 9.0, ENV3D + "vinyl_tile.png", 0.5, "SpawnFromPharmacy", Color(0.92, 0.94, 0.95), 0.42, Color(0.95, 1.0, 1.0), 2.0)
+	_store_shell("StorePharmacy3D", 14.0, 9.0, "pbr:tiles_white", 1.0, "SpawnFromPharmacy", Color(0.92, 0.94, 0.95), 0.42, Color(0.95, 1.0, 1.0), 2.0)
 	var colors := [Color(0.95, 0.95, 0.95), Color(0.3, 0.55, 0.9), Color(0.85, 0.35, 0.5), Color(0.5, 0.8, 0.6)]
 	for i in 4:
 		_fixture_shelf(i + 1, colors)
@@ -981,7 +993,7 @@ func _build_store_pharmacy() -> Node3D:
 # Supermarket ------------------------------------------------------------------
 
 func _build_store_supermarket() -> Node3D:
-	_store_shell("StoreSupermarket3D", 18.0, 11.0, ENV3D + "vinyl_tile.png", 0.5, "SpawnFromSupermarket", Color(0.93, 0.9, 0.8), 0.38, Color(1.0, 1.0, 0.95), 1.8)
+	_store_shell("StoreSupermarket3D", 18.0, 11.0, "pbr:tiles_white", 1.0, "SpawnFromSupermarket", Color(0.93, 0.9, 0.8), 0.38, Color(1.0, 1.0, 0.95), 1.8)
 	var colors := [Color(0.95, 0.5, 0.05), Color(0.2, 0.4, 0.85), Color(0.9, 0.9, 0.9), Color(0.8, 0.15, 0.15), Color(0.95, 0.8, 0.25)]
 	# Long aisles: each aisle is two shelf fixtures end to end.
 	for i in 6:
@@ -1029,7 +1041,7 @@ func _build_store_supermarket() -> Node3D:
 # Liquor store -------------------------------------------------------------------
 
 func _build_store_liquor() -> Node3D:
-	_store_shell("StoreLiquor3D", 11.0, 8.0, ENV3D + "linoleum_worn.png", 0.8, "SpawnFromLiquor", Color(0.55, 0.42, 0.3), 0.3, Color(1.0, 0.9, 0.75), 1.5)
+	_store_shell("StoreLiquor3D", 11.0, 8.0, "pbr:tiles_beige", 1.0, "SpawnFromLiquor", Color(0.55, 0.42, 0.3), 0.3, Color(1.0, 0.9, 0.75), 1.5)
 	for i in 4:
 		_fixture_bottles(i + 1)
 	# The till by the door behind a scratched plexiglass screen, with pints

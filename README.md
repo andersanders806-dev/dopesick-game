@@ -15,10 +15,28 @@ patron asks for something and tells you which store has it. Steal it without
 a guard seeing, bring it back, get paid, and buy from the pusher in person at
 the dark end of the block. Get caught and you wake up in a jail cell.
 
-- **Art:** Kenney's CC0 Furniture, City, and Food kits (`assets/kenney/`)
-  for props and buildings, reusing the photoreal floor/wall textures from
-  the 2D pass as triplanar materials. *People* are Microsoft Rocketbox
-  avatars (`assets/rocketbox/`, MIT) -- see **Characters** below.
+- **Art:** real places, not a toy kit -- see **Real places** below. The
+  buildings are Poly Haven's CC0 modular facade kits, the props mostly Poly
+  Haven models (`assets/polyhaven/`), the surfaces ambientCG and Poly Haven
+  PBR materials (`assets/pbr/`); Kenney's CC0 kits are left for small
+  clutter and the traffic. *People* are Microsoft Rocketbox avatars
+  (`assets/rocketbox/`, MIT) -- see **Characters** below.
+- **Real places.** The street is a row of brick fronts built at load by
+  `world/Facades.gd` from the kits' 3 x 3 m modules (apartment blocks for
+  the shops, the factory kit for the tall fillers), with framed shop glass
+  lit from inside while a place is open and a roller shutter down while
+  it's closed; fire escapes, air-con units and cameras on the walls,
+  cast-iron street lamps, cars under tarps, worn asphalt with a faded
+  centre line, paving slabs and a curb. The apartment has an iron bed
+  frame, a worn sofa, real boxes and a metal bin; the Dive Bar a dark
+  varnished counter and back bar, real bottles, stools and pendants; the
+  stores steel shelving, tube fittings and tiled floors. Colliders, zones
+  and the navmesh didn't move. `dev-tools/fetch_polyhaven_models.py` and
+  `fetch_ambientcg.py` fetch the assets. Measured on a UHD 620 (GPU ms,
+  Medium, A/B against the old art): City 20.6 -> 23.0, Dive Bar 16.7 ->
+  16.7, supermarket 15.8 -> 16.3; Low unchanged. The fronts cast no
+  shadows (the lamps hang in front of them), use coarse LODs and opaque
+  window glass, and the mesh LOD threshold is 4 px below High.
 - **Characters: realistic people.** The whole cast -- you, the pusher,
   Tasha, the cops and guards, every clerk, the bartender, the Dive Bar
   regulars, Ray, the passers-by: 43 people -- are Microsoft Rocketbox

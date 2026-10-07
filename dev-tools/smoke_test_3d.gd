@@ -788,6 +788,7 @@ func _run() -> void:
 	await _cast_checks(gs)
 	await _world_art_checks(gs)
 	await _polish_checks(gs)
+	await _cutscene_video_checks()
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3272,3 +3273,20 @@ func _loader_edge_checks(gs: Node) -> void:
 	root.get_node("Cutscene")._playing = false
 	_check(current_scene.name == "Jail3D" and darkest < 0.01 and card.modulate.a < 0.01,
 		"  under a cutscene the room changes unseen (darkest %.2f, card %.2f)" % [darkest, card.modulate.a])
+
+## Cutscenes are real footage now: one clip each, three seconds at most.
+func _cutscene_video_checks() -> void:
+	await _section("Cutscenes: real footage, 3 s max")
+	var cut := root.get_node("Cutscene")
+	var missing := []
+	for id in cut.SCENES:
+		var path: String = cut.video_for(id)
+		if path == "" or not ResourceLoader.exists(path) or not (load(path) is VideoStream):
+			missing.append(id)
+	_check(missing.is_empty(), "  every cutscene has a clip (missing %s)" % [missing])
+	_check(cut.VIDEO_MAX <= 3.0, "  a cutscene lasts at most 3 s (%.1f)" % cut.VIDEO_MAX)
+	var long := []
+	for id in cut.SCENES:
+		if cut.VIDEOS[id]["text"].length() > 60:
+			long.append(id)
+	_check(long.is_empty(), "  every caption reads in 3 s (too long: %s)" % [long])

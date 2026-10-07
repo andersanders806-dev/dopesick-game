@@ -102,7 +102,29 @@ const SCENES := {
 	],
 }
 
+## Each cutscene as real footage: one graded clip (assets/cutscenes/video,
+## built by dev-tools/make_cutscene_video.py from Mixkit footage) and a line
+## short enough to read in the time. Three seconds, all in; the stills
+## above are the fallback when a clip is missing.
+const VIDEO_DIR := "res://assets/cutscenes/video/"
+const VIDEO_MAX := 3.0
+const VIDEO_FADE := 0.2
+const VIDEOS := {
+	"intro": {"text": "The sweats started before you woke up.", "sound": "groan"},
+	"busted": {"text": "The cuffs go on too tight.", "sound": "busted"},
+	"sent_away": {"text": "Three times now. Nobody looks surprised."},
+	"first_score": {"text": "He doesn't look at you. He looks at your hands."},
+	"released": {"text": "Your stuff is gone. The sickness isn't.", "sound": "door"},
+	"new_day": {"text": "Day %d.", "sound": "sleep"},
+	"temptation": {"text": "Down the block, he lifts a hand."},
+	"relapse": {"text": "It works. That's the worst part."},
+	"resisted": {"text": "You keep walking."},
+	"recovered": {"text": "You didn't know the room got this much light."},
+	"overdose": {"text": "Blue light on the ceiling. Too late."},
+}
+
 var _playing: bool = false
+var _started_at := 0
 var _skip_all: bool = false
 var _advance: bool = false
 var _was_paused: bool = false
@@ -114,6 +136,7 @@ var _vignette: ColorRect
 var _caption: Label
 var _hint: Label
 var _audio: AudioStreamPlayer
+var _video: VideoStreamPlayer
 
 func _ready() -> void:
 	layer = 95
@@ -132,6 +155,11 @@ func art_for(image: String) -> Texture2D:
 		return load(path)
 	return null
 
+## The clip for a cutscene, or "" if it hasn't been made.
+func video_for(scene_id: String) -> String:
+	var path := VIDEO_DIR + scene_id + ".ogv"
+	return path if VIDEOS.has(scene_id) and ResourceLoader.exists(path) else ""
+
 ## `args` fill in a caption's % placeholders (the day number on "new_day").
 func play(scene_id: String, args: Array = []) -> void:
 	if not SCENES.has(scene_id):
@@ -148,6 +176,7 @@ func play(scene_id: String, args: Array = []) -> void:
 	while _playing:
 		await finished
 	_playing = true
+	_started_at = Time.get_ticks_msec()
 	_skip_all = false
 	_was_paused = get_tree().paused
 	get_tree().paused = true
@@ -155,21 +184,47 @@ func play(scene_id: String, args: Array = []) -> void:
 
 	_root.visible = true
 	_root.modulate.a = 0.0
+	var video := video_for(scene_id)
 	var fade_in := create_tween()
-	fade_in.tween_property(_root, "modulate:a", 1.0, FADE)
+	fade_in.tween_property(_root, "modulate:a", 1.0, VIDEO_FADE if video != "" else FADE)
 
-	for panel in SCENES[scene_id]:
-		if _skip_all:
-			break
-		await _show_panel(panel, args)
+	if video != "":
+		await _play_video(scene_id, video, args)
+	else:
+		for panel in SCENES[scene_id]:
+			if _skip_all:
+				break
+			await _show_panel(panel, args)
 
 	var fade_out := create_tween()
-	fade_out.tween_property(_root, "modulate:a", 0.0, FADE)
+	fade_out.tween_property(_root, "modulate:a", 0.0, VIDEO_FADE if video != "" else FADE)
 	await fade_out.finished
+	_video.stop()
+	_video.visible = false
 	_root.visible = false
 	get_tree().paused = _was_paused
 	_playing = false
 	finished.emit()
+
+## The clip, full screen, with its line along the bottom; over in
+## VIDEO_MAX (fade out included) or at the first key press.
+func _play_video(scene_id: String, path: String, args: Array) -> void:
+	var info: Dictionary = VIDEOS[scene_id]
+	_art.visible = false
+	_fallback.visible = false
+	_video.stream = load(path)
+	_video.visible = true
+	_video.play()
+	_caption.text = info["text"] % args if info["text"].contains("%") else info["text"]
+	_caption.visible_characters = -1
+	_hint.modulate.a = 0.0
+	_advance = false
+	if info.has("sound"):
+		_play_sound(info["sound"])
+	# Timed from the moment the scene was asked for, fades included.
+	var end_at := _started_at + int((VIDEO_MAX - VIDEO_FADE - 0.15) * 1000.0)
+	while not _skip_all and not _advance and Time.get_ticks_msec() < end_at:
+		await get_tree().process_frame
 
 func _show_panel(panel: Dictionary, args: Array = []) -> void:
 	var tex := art_for(panel["image"])
@@ -331,6 +386,13 @@ void fragment() {
 	_art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_root.add_child(_art)
+
+	_video = VideoStreamPlayer.new()
+	_fill(_video)
+	_video.expand = true
+	_video.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_video.visible = false
+	_root.add_child(_video)
 
 	# Vignette and film grain over the art, matching the in-game grade.
 	_vignette = ColorRect.new()

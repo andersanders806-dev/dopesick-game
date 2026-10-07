@@ -18,11 +18,12 @@ const NAMES := {
 	"StoreSupermarket3D": "The supermarket",
 }
 
-## Loaded rooms, by path, kept for the session.
+## Loaded rooms (and the street's facade kits), by path, kept for the session.
 var _scenes := {}
 ## Paths with a background load in flight.
 var _loading := {}
 var _busy := false
+var _warmed := false
 var _scan := 0.0
 var _layer: CanvasLayer
 var _black: ColorRect
@@ -80,6 +81,13 @@ func _prefetch_near_doors() -> void:
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:
 		return
+	# The street is where every door leads: start on it, and on the facade
+	# kits it builds itself from, from the first room you're in.
+	if not _warmed:
+		_warmed = true
+		prefetch("res://world/City3D.tscn")
+		for path in preload("res://world/Facades.gd").WARM:
+			prefetch(path)
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene)

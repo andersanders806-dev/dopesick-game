@@ -158,10 +158,14 @@ the dark end of the block. Get caught and you wake up in a jail cell.
 - **Room changes fade instead of freezing** (`autoload/SceneLoader.gd`).
   Going through a door used to freeze the game for 3.6-5.3 s on a UHD 620:
   the street re-read both facade kits (1.5 s) and the extras' character
-  models (~1 s) on every visit. Those now stay loaded for the session
-  (`Facades.gd`, `CharacterCast.scene_for`), every room you've been in
-  stays loaded, and walking within 4 m of a door starts loading the room
-  behind it on a background thread. The change itself is a fade through
+  models (~1 s) and its fire escapes, cameras and shutters (0.6 s) on
+  every visit. Those now stay loaded for the session (`Facades.gd`,
+  `CharacterCast.scene_for`), every room you've been in stays loaded, the
+  street and its facade kits load on a background thread from the first
+  room you're in, and walking within 4 m of a door starts loading the room
+  behind it. Measured on the UHD 620 (longest frame, all of it behind the
+  black): first time onto the street 2.1 s (was 3.4-5.3), back onto it
+  0.5-0.6 s, into the bar or a store 0.2-0.3 s. The change itself is a fade through
   black (0.25 s out, 0.35 s in, the world holding still until you can see
   it), then a card under the HUD: "THE DIVE BAR · 20:14". Doors, arrests,
   the station door and Continue all go through it.

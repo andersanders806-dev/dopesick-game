@@ -3071,6 +3071,9 @@ func _polish_checks(gs: Node) -> void:
 	var city := await _load("res://world/City3D.tscn")
 	var piece := _kit_piece(city)
 	var mesh_id := piece.mesh.get_instance_id()
+	var dressing := func(c: Node) -> Array:
+		return ["FireEscapeHome", "AirCon", "Camera", "Shutter"].map(func(n): return c.get_node("Facades").find_child(n + "*", true, false).find_children("*", "MeshInstance3D", true, false)[0].mesh.get_instance_id())
+	var dress_ids: Array = dressing.call(city)
 	var Cast = load("res://npc/CharacterCast.gd")
 	var booster: String = Cast.model_for("booster")
 	var cast_id: int = Cast.scene_for(booster).get_instance_id()
@@ -3082,6 +3085,7 @@ func _polish_checks(gs: Node) -> void:
 	var reentry := Time.get_ticks_msec() - t0
 	var again := _kit_piece(city)
 	_check(again.mesh.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
+	_check(dressing.call(city) == dress_ids, "  ...and so are fire escapes, air-con units, cameras and shutters")
 	_check(Cast.scene_for(booster).get_instance_id() == cast_id
 		and Cast.scene_for(booster) is PackedScene, "  character models are loaded once per session")
 	print("  (City re-entry %d ms)" % reentry)
@@ -3123,14 +3127,23 @@ func _transition() -> void:
 
 func _room_change_checks(gs: Node) -> void:
 	var loader := root.get_node("SceneLoader")
+	# The street is the hub: it starts loading in the background as soon
+	# as you're anywhere, facade kits and all.
+	await _load("res://world/Apartment3D.tscn")
+	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM
+	for i in 600:
+		await _frames(1)
+		if warm.all(func(p): return loader.cached(p)):
+			break
+	_check(warm.all(func(p): return loader.cached(p)), "  the street warms up in the background from the first room")
 	var city := await _load("res://world/City3D.tscn")
 	var door := city.get_node("DoorToBar")
 	var target: String = door.target_scene
 	var spawn: String = door.target_spawn
 	var player := _player()
 	player.global_position = door.global_position + Vector3(0, 0, 2.5)
-	for i in 120:
-		await process_frame
+	for i in 300:
+		await _frames(1)
 		if loader.cached(target):
 			break
 	_check(loader.cached(target), "  walking up to a door loads the room behind it")

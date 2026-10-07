@@ -20,10 +20,14 @@ const NAMES := {
 
 ## Loaded rooms (and the street's facade kits), by path, kept for the session.
 var _scenes := {}
+## Paths whose background load failed: not asked for again.
+var _failed := {}
 ## Paths with a background load in flight.
 var _loading := {}
 var _busy := false
 var _warmed := false
+## [path, spawn] asked for while a change was running.
+var _next: Array = []
 var _scan := 0.0
 var _layer: CanvasLayer
 var _black: ColorRect
@@ -59,7 +63,7 @@ func cached(path: String) -> bool:
 
 ## Starts loading `path` in the background, unless it's loaded already.
 func prefetch(path: String) -> void:
-	if path == "" or _scenes.has(path) or _loading.has(path):
+	if path == "" or _scenes.has(path) or _loading.has(path) or _failed.has(path) or not ResourceLoader.exists(path):
 		return
 	if ResourceLoader.load_threaded_request(path) == OK:
 		_loading[path] = true
@@ -72,6 +76,7 @@ func _process(delta: float) -> void:
 			_loading.erase(path)
 		elif status != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			_loading.erase(path)
+			_failed[path] = true
 	_scan -= delta
 	if _scan <= 0.0 and not _busy:
 		_scan = 0.25
@@ -92,39 +97,68 @@ func _prefetch_near_doors() -> void:
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene)
 
-## The scene at `path`, waiting for (or doing) the load if it isn't in yet.
+## The scene at `path`, waiting for (or doing) the load if it isn't in yet;
+## null if it won't load.
 func _scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
 		var packed: PackedScene = null
 		if _loading.has(path):
 			_loading.erase(path)
-			packed = ResourceLoader.load_threaded_get(path)
+			packed = ResourceLoader.load_threaded_get(path) as PackedScene
+		if packed == null and ResourceLoader.exists(path):
+			packed = load(path) as PackedScene
 		if packed == null:
-			packed = load(path)
+			return null
 		_scenes[path] = packed
 	return _scenes[path]
 
-## Fades out, changes to the room at `path`, fades in and says where you are.
-func go(path: String) -> void:
+## Fades out, changes to the room at `path` (arriving at the marker named
+## `spawn`), fades in and says where you are. Asked again mid-change (a
+## bust as you go through a door), the later one goes next: the cell wins.
+## Under a cutscene the room changes unseen, with no fade or card on top.
+func go(path: String, spawn := "") -> void:
 	if _busy:
+		_next = [path, spawn]
 		return
 	_busy = true
 	var tree := get_tree()
 	var paused := tree.paused
+	var hidden := Cutscene.is_playing()
 	tree.paused = true
 	_card.modulate.a = 0.0
-	await _fade(1.0, FADE_OUT)
-	tree.change_scene_to_packed(_scene(path))
+	if not hidden:
+		await _fade(1.0, FADE_OUT)
+	var packed := _scene(path)
+	if packed == null:
+		push_error("SceneLoader: can't load %s" % path)
+		_black.color.a = 0.0
+		tree.paused = paused
+		_busy = false
+		_go_next()
+		return
+	if spawn != "":
+		GameState.pending_spawn = spawn
+	tree.change_scene_to_packed(packed)
 	await tree.scene_changed
 	# The first frame of a room compiles its shaders; let it pass in black.
 	await tree.process_frame
 	_card.text = "%s  ·  %s" % [NAMES.get(path.get_file().get_basename(), "").to_upper(), GameState.clock_text()]
 	# The room holds still until you can see it: a cop who followed you
 	# through the door doesn't get a head start in the dark.
-	await _fade(0.0, FADE_IN)
+	if not hidden:
+		await _fade(0.0, FADE_IN)
 	tree.paused = paused
 	_busy = false
-	_show_card()
+	if _next.is_empty() and not hidden:
+		_show_card()
+	_go_next()
+
+func _go_next() -> void:
+	if _next.is_empty():
+		return
+	var next: Array = _next
+	_next = []
+	go(next[0], next[1])
 
 func _fade(to: float, time: float) -> void:
 	var tw := create_tween()

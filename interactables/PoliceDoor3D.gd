@@ -57,4 +57,4 @@ func _cell_after(delay: float) -> void:
 	GameState.pending_spawn = "SpawnCell"
 	if delay > 0.0:
 		await tree.create_timer(delay).timeout
-	SceneLoader.go("res://world/Jail3D.tscn")
+	SceneLoader.go("res://world/Jail3D.tscn", "SpawnCell")

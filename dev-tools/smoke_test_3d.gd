@@ -3101,6 +3101,7 @@ func _polish_checks(gs: Node) -> void:
 	var wet: Array = city.get_node("StreetLife")._wet_materials
 	_check(wet.size() > 0 and wet.all(func(m): return m.roughness > 0.5), "  the street dries off after rain, even across visits")
 	await _room_change_checks(gs)
+	await _loader_edge_checks(gs)
 	_step_down_checks()
 	await _prompt_checks(gs)
 
@@ -3238,3 +3239,36 @@ func _prompt_checks(gs: Node) -> void:
 			if n.has_method("interact") and (Prompts.text_for(n) == "" or Prompts.text_for(n) == n.name.capitalize()):
 				silent.append("%s/%s" % [room, n.name])
 	_check(silent.is_empty(), "  every interactable in every room has a prompt (silent: %s)" % [silent])
+
+## The review's edge cases for SceneLoader.
+func _loader_edge_checks(gs: Node) -> void:
+	var loader := root.get_node("SceneLoader")
+	var fade: ColorRect = loader.find_child("Fade", true, false)
+	var card: Label = loader.find_child("ArrivalCard", true, false)
+	var city := await _load("res://world/City3D.tscn")
+	loader.go("res://world/NoSuchRoom3D.tscn")
+	await _transition()
+	await _frames(30)
+	_check(current_scene == city and not paused and fade.color.a < 0.01 and not loader.busy(),
+		"  a room that won't load leaves you where you were, not in the dark")
+	# Through a door just as a bust lands: the cell wins.
+	city.get_node("DoorToBar").interact(_player())
+	loader.go("res://world/Jail3D.tscn", "SpawnCell")
+	for i in 3:
+		await _transition()
+	_check(current_scene.name == "Jail3D" and _player().global_position.distance_to(current_scene.get_node("SpawnCell").global_position) < 0.5,
+		"  a bust during a door's fade still ends in the cell (%s)" % current_scene.name)
+	# Under a cutscene (the last bust's "sent away"): no fade, no card over it.
+	await _load("res://world/City3D.tscn")
+	root.get_node("Cutscene")._playing = true
+	var darkest := 0.0
+	loader.go("res://world/Jail3D.tscn", "SpawnCell")
+	for i in 120:
+		await process_frame
+		darkest = maxf(darkest, fade.color.a)
+		if not loader.busy():
+			break
+	await _frames(10)
+	root.get_node("Cutscene")._playing = false
+	_check(current_scene.name == "Jail3D" and darkest < 0.01 and card.modulate.a < 0.01,
+		"  under a cutscene the room changes unseen (darkest %.2f, card %.2f)" % [darkest, card.modulate.a])

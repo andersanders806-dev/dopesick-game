@@ -257,7 +257,11 @@ func _build_rain() -> void:
 			var mat2 := mi.get_active_material(0) as StandardMaterial3D
 			if mat2 and not _wet_materials.has(mat2):
 				_wet_materials.append(mat2)
-				mat2.set_meta("dry_roughness", mat2.roughness)
+				# Rooms stay loaded between visits (SceneLoader), so these
+				# can still be wet from the last one: the dry value is the
+				# first one ever seen.
+				if not mat2.has_meta("dry_roughness"):
+					mat2.set_meta("dry_roughness", mat2.roughness)
 
 func _on_weather_changed(raining: bool) -> void:
 	if _rain:

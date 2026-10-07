@@ -12,3 +12,17 @@ checker_tiles: Floor Tiles 06 (floor_tiles_06), 3 x 3 m, by Rob Tuytel
 cinder_block: Concrete Block Wall (concrete_block_wall), 2 x 2 m, by Charlotte Baglioni
 wood_panels: Wooden Panels (wooden_panels), 2.1 x 2.1 m, by Dimitrios Savva
 planks: Weathered Planks (weathered_planks), 2 x 2 m, by Dario Barresi, Dimitrios Savva
+
+Materials from ambientCG (https://ambientcg.com), CC0 1.0 -- public domain:
+road_worn: ambientCG Road009C
+sidewalk_slabs: ambientCG PavingStones128
+curb: ambientCG Concrete047A
+tiles_white: ambientCG Tiles141
+tiles_beige: ambientCG Tiles139
+plaster_painted: ambientCG PaintedPlaster017
+bricks_old: ambientCG Bricks097
+wood_dark: ambientCG Wood066
+leather_red: ambientCG Leather037
+felt: ambientCG Fabric030
+metal_worn: ambientCG Metal055A
+metal_brushed: ambientCG Metal032

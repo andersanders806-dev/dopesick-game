@@ -98,6 +98,10 @@ const PBR_SIZE := {
 	"concrete_floor": 3.0, "linoleum": 2.0, "linoleum_retro": 1.99,
 	"store_tiles": 2.2, "checker_tiles": 3.0, "cinder_block": 2.0,
 	"wood_panels": 2.1, "planks": 2.0,
+	# ambientCG (dev-tools/fetch_ambientcg.py)
+	"road_worn": 4.0, "sidewalk_slabs": 2.0, "curb": 2.0, "tiles_white": 1.0, "tiles_beige": 1.0,
+	"plaster_painted": 2.0, "bricks_old": 2.0, "wood_dark": 1.5, "leather_red": 1.0, "felt": 0.5,
+	"metal_worn": 1.0, "metal_brushed": 1.0,
 }
 ## The older albedo-only textures each map to the PBR set that replaces
 ## them, so existing _tex_mat() call sites upgrade without being rewritten.

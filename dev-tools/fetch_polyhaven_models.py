@@ -40,6 +40,16 @@ MODELS = [
     "rollershutter_door",  # 1.1k
     "plastic_monobloc_chair_01",  # 3.4k
     "metal_office_desk",   # 6.9k
+    # world art, chapter 1: street
+    "modular_urban_apartments_facade", "modular_factory_facade", "modular_fire_escape",
+    "street_lamp_01", "covered_car", "exterior_aircon_unit", "rollershutter_window_01",
+    "security_camera_02",
+    # apartment
+    "old_bed_frame", "WoodenChair_01", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
+    # bar
+    "bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
+    # stores
+    "steel_frame_shelves_01", "mounted_fluorescent_lights", "worn_metal_rack",
 ]
 
 

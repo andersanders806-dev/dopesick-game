@@ -783,6 +783,7 @@ func _run() -> void:
 	await _perf_checks(gs)
 	await _ambience_checks(gs)
 	await _cast_checks(gs)
+	await _world_art_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2948,3 +2949,23 @@ func _cast_checks(gs: Node) -> void:
 	Input.action_release("move_right")
 	_check(sick_walk == "walk_sick" and sick_idle == "idle_sick" and well_walk == "walk", "  sick, you shuffle and fidget; well, you walk (%s / %s / %s)" % [sick_walk, sick_idle, well_walk])
 	gs.start_run()
+
+const WORLD_ART_PBR := ["road_worn", "sidewalk_slabs", "curb", "tiles_white", "tiles_beige", "plaster_painted",
+	"bricks_old", "wood_dark", "leather_red", "felt", "metal_worn", "metal_brushed"]
+const WORLD_ART_MODELS := ["modular_urban_apartments_facade", "modular_factory_facade", "modular_fire_escape",
+	"street_lamp_01", "covered_car", "exterior_aircon_unit", "rollershutter_window_01", "security_camera_02",
+	"old_bed_frame", "WoodenChair_01", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
+	"bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
+	"steel_frame_shelves_01", "mounted_fluorescent_lights", "worn_metal_rack"]
+
+func _world_art_checks(gs: Node) -> void:
+	await _section("World art: real places, same game")
+	var missing := []
+	for s in WORLD_ART_PBR:
+		for m in ["_diff.jpg", "_nor.jpg", "_rough.jpg"]:
+			if not ResourceLoader.exists("res://assets/pbr/" + s + m):
+				missing.append(s + m)
+	for id in WORLD_ART_MODELS:
+		if not ResourceLoader.exists("res://assets/polyhaven/%s/%s.gltf" % [id, id]):
+			missing.append(id)
+	_check(missing.is_empty(), "  every material and model is on disk (%s)" % [missing])

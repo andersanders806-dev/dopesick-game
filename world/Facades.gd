@@ -52,6 +52,7 @@ var _window_glass: StandardMaterial3D
 func _ready() -> void:
 	for f in FRONTS:
 		_build_front(f)
+	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
 
@@ -63,6 +64,23 @@ static func _scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
 		_scenes[path] = load(path)
 	return _scenes[path]
+
+## Normal-mapped bricks, or flat (Graphics.lean(): laptop graphics on
+## Medium, where the bump costs 1.5 ms a frame for detail the street camera
+## hardly shows). On the kits' own materials, so every front follows.
+static var _detail := true
+
+static func set_detail(on: bool) -> void:
+	_detail = on
+	for kit in _meshes:
+		for mesh in _meshes[kit].values():
+			for i in mesh.get_surface_count():
+				var m := mesh.surface_get_material(i) as BaseMaterial3D
+				if m == null:
+					continue
+				if not m.has_meta("built_normal"):
+					m.set_meta("built_normal", m.normal_enabled)
+				m.normal_enabled = on and m.get_meta("built_normal")
 
 func _mesh(kit: String, piece: String) -> Mesh:
 	if not _meshes.has(kit):

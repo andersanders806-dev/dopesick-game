@@ -179,6 +179,7 @@ func set_preset(p: int) -> void:
 	_shadow_budget_t = 0.0
 	_save_settings()
 	_apply_viewport()
+	Facades.set_detail(not lean())
 	var scene := get_tree().current_scene
 	if scene:
 		for we in scene.find_children("*", "WorldEnvironment", true, false):
@@ -205,7 +206,7 @@ func _adapt_resolution(delta: float) -> void:
 	watch_high(fps, _frame_acc)
 	_frame_acc = 0.0
 	_frame_count = 0
-	var r: Array = SCALE_RANGE[preset]
+	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
 	var next := render_scale
 	if fps < TARGET_FPS - 8.0:
 		next -= 0.05
@@ -216,10 +217,11 @@ func _adapt_resolution(delta: float) -> void:
 		render_scale = next
 		get_viewport().scaling_3d_scale = render_scale
 
-## High on laptop graphics can sit at 18 FPS -- walking feels like wading.
-## Five seconds of that and it drops to Medium, once a session, and says so;
+## High on laptop graphics runs 18-41 FPS; on a 60 Hz screen anything
+## that can't hold ~45 judders when you walk. Five seconds of that and it
+## drops to Medium (lean, below: ~60 FPS), once a session, and says so;
 ## F3 puts High back and it's left alone after that.
-const STEP_DOWN_FPS := 24.0
+const STEP_DOWN_FPS := 45.0
 const STEP_DOWN_TIME := 5.0
 var _integrated := false
 var _stepped_down := false
@@ -239,6 +241,21 @@ func watch_high(fps: float, window: float) -> bool:
 	_show_toast("Graphics: Medium -- High was running under %d FPS. F3 to switch back." % STEP_DOWN_FPS, 5.0)
 	return true
 
+## Medium on laptop graphics: the profile that holds 60 FPS walking the
+## street at night on a UHD 620 (16.7 ms, from 24.4). No ambient occlusion
+## (-3.6 ms; from the street camera it's barely there), only the near glow
+## levels (neon still blooms), flat-shaded facade bricks (-1.5 ms), one
+## lamp shadow instead of two, a nearer sun shadow, FXAA for SMAA
+## (-1.3 ms), the lightest soft-shadow filter (-1.1 ms), and resolution
+## allowed down to 60%. Measured walking: street 53-56 FPS by night, ~50
+## by day, the bar 58 (was ~40 on the street).
+const SCALE_RANGE_LEAN := [0.6, 1.0]
+var _shadow_filter: int = RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
+const Facades := preload("res://world/Facades.gd")
+
+func lean() -> bool:
+	return _integrated and preset == Preset.MEDIUM
+
 ## High or above: the presets with the full-fat room effects.
 func is_high() -> bool:
 	return preset >= Preset.HIGH
@@ -257,7 +274,11 @@ func _apply_viewport() -> void:
 	vp.fsr_sharpness = 0.25 if ps5 else 0.35
 	vp.use_taa = high and not ps5
 	vp.msaa_3d = Viewport.MSAA_DISABLED
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 else Viewport.SCREEN_SPACE_AA_SMAA
+	# The project's soft-shadow filter (medium) everywhere but lean.
+	_shadow_filter = RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW if lean() else RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
+	RenderingServer.positional_soft_shadow_filter_set_quality(_shadow_filter)
+	RenderingServer.directional_soft_shadow_filter_set_quality(_shadow_filter)
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 else (Viewport.SCREEN_SPACE_AA_FXAA if lean() else Viewport.SCREEN_SPACE_AA_SMAA)
 	for n in get_tree().get_nodes_in_group("film_look"):
 		n.visible = high
 	render_scale = SCALE_START[preset]
@@ -308,7 +329,7 @@ func _apply_env(we: WorldEnvironment) -> void:
 	env.ssr_enabled = high and built["ssr"]
 	env.ssr_max_steps = 64 if preset == Preset.PS5 else 32
 	env.volumetric_fog_enabled = high and built["vol"]
-	env.ssao_enabled = preset != Preset.LOW and built["ssao"]
+	env.ssao_enabled = preset != Preset.LOW and built["ssao"] and not lean()
 	# Without volumetric fog the rooms lose their haze entirely; plain depth
 	# fog in the same murky colour brings most of it back for next to nothing.
 	if high:
@@ -324,7 +345,7 @@ func _apply_env(we: WorldEnvironment) -> void:
 	# Wide glow levels are the expensive ones. On a UHD 620 the glow pass
 	# itself is a fixed ~3.5 ms whatever the levels, so Low drops it.
 	for i in 4:
-		env.set_glow_level(3 + i, built["glow_levels"][i] if preset != Preset.LOW else false)
+		env.set_glow_level(3 + i, built["glow_levels"][i] if preset != Preset.LOW and not lean() else false)
 	env.glow_enabled = built.get("glow", env.glow_enabled) and preset != Preset.LOW
 	we.camera_attributes = we.get_meta("built_camera_attributes") if high else null
 	# The grade, at every preset.
@@ -334,13 +355,28 @@ func _apply_env(we: WorldEnvironment) -> void:
 	env.adjustment_color_correction = _lut
 
 func _apply_light(light: Light3D) -> void:
-	if not is_instance_valid(light) or light is DirectionalLight3D:
+	if not is_instance_valid(light):
+		return
+	if light is DirectionalLight3D:
+		_apply_sun(light)
 		return
 	if not light.has_meta("built_shadow"):
 		light.set_meta("built_shadow", light.shadow_enabled)
 	# Low: no point-light shadows at all. The budget picks which of the
 	# rest are on; until it runs, nothing new is.
 	light.shadow_enabled = light.get_meta("built_shadow") and preset == Preset.PS5
+
+## The sun (the City's "Moon" by day): four cascades out to 100 m cost
+## 5.8 ms on a UHD 620 for a camera that sees ~30 m. Lean: two out to 35 m
+## on a 2048 map (-2.7 ms).
+func _apply_sun(sun: DirectionalLight3D) -> void:
+	if not sun.has_meta("built_mode"):
+		sun.set_meta("built_mode", sun.directional_shadow_mode)
+		sun.set_meta("built_distance", sun.directional_shadow_max_distance)
+	var lean_sun := lean()
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if lean_sun else sun.get_meta("built_mode")
+	sun.directional_shadow_max_distance = 35.0 if lean_sun else sun.get_meta("built_distance")
+	RenderingServer.directional_shadow_atlas_set_size(2048 if lean_sun else 4096, true)
 
 ## The SHADOW_BUDGET lamps nearest the player get their shadows; the rest
 ## light without them.
@@ -362,7 +398,7 @@ func _apply_shadow_budget() -> void:
 	var lamps: Array = scene.find_children("*", "Light3D", true, false).filter(func(l): return not (l is DirectionalLight3D) and l.get_meta("built_shadow", false))
 	if lamps.is_empty():
 		return
-	var budget: int = SHADOW_BUDGET[preset]
+	var budget: int = 1 if lean() else SHADOW_BUDGET[preset]
 	if player and lamps.size() > budget:
 		var at := player.global_position
 		lamps.sort_custom(func(a, b): return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))

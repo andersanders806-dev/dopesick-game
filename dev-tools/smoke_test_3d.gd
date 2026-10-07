@@ -789,6 +789,7 @@ func _run() -> void:
 	await _world_art_checks(gs)
 	await _polish_checks(gs)
 	await _cutscene_video_checks()
+	await _lean_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3182,13 +3183,13 @@ func _step_down_checks() -> void:
 	gfx._stepped_down = false
 	gfx.set_preset(gfx.Preset.HIGH)
 	feed.call(15.0, 9)
-	_check(gfx.preset == gfx.Preset.HIGH, "  4.5 s under 24 FPS on High: not yet")
-	feed.call(40.0, 1)
+	_check(gfx.preset == gfx.Preset.HIGH, "  4.5 s too slow on High: not yet")
+	feed.call(60.0, 1)
 	feed.call(15.0, 9)
 	_check(gfx.preset == gfx.Preset.HIGH, "  a good half-second starts the count over")
 	feed.call(15.0, 10)
 	_check(gfx.preset == gfx.Preset.MEDIUM and gfx._toast.text.contains("F3"),
-		"  5 s under 24 FPS on High, laptop graphics: down to Medium, and it says why ('%s')" % gfx._toast.text)
+		"  5 s too slow on High, laptop graphics: down to Medium, and it says why ('%s')" % gfx._toast.text)
 	gfx.set_preset(gfx.Preset.HIGH)
 	feed.call(15.0, 40)
 	_check(gfx.preset == gfx.Preset.HIGH, "  pick High again and it stays High this session")
@@ -3290,3 +3291,31 @@ func _cutscene_video_checks() -> void:
 		if cut.VIDEOS[id]["text"].length() > 60:
 			long.append(id)
 	_check(long.is_empty(), "  every caption reads in 3 s (too long: %s)" % [long])
+
+## Laptop graphics on Medium: the lean profile that holds 60 FPS walking.
+func _lean_checks(gs: Node) -> void:
+	await _section("Smooth: Medium holds 60 on laptop graphics")
+	var gfx := root.get_node("Graphics")
+	gfx._integrated = true
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	gs.clock = 21 * 60
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(20)
+	var env: Environment = city.get_node("WorldEnvironment").environment
+	var kit_mat: BaseMaterial3D = _kit_piece(city).get_active_material(0)
+	var shadows: int = city.find_children("*", "OmniLight3D", true, false).filter(func(l): return l.shadow_enabled).size() \
+		+ city.find_children("*", "SpotLight3D", true, false).filter(func(l): return l.shadow_enabled).size()
+	_check(gfx.lean() and not env.ssao_enabled and env.glow_enabled and not env.get_glow_level(4) and not kit_mat.normal_enabled and shadows <= 1,
+		"  lean Medium: no AO, near glow only, flat facades, one lamp shadow (ssao %s, glow4 %s, normals %s, shadows %d)" % [env.ssao_enabled, env.get_glow_level(4), kit_mat.normal_enabled, shadows])
+	_check(gfx.SCALE_RANGE_LEAN[0] <= 0.6, "  and resolution may drop to 60% to hold it")
+	_check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "  FXAA instead of SMAA (-1.3 ms)")
+	_check(gfx._shadow_filter == RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW, "  cheaper soft-shadow filtering (-1.1 ms)")
+	var sun: DirectionalLight3D = city.get_node("Moon")
+	_check(sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS and sun.directional_shadow_max_distance <= 35.0,
+		"  the sun's shadow covers what the camera sees, not 100 m (%d splits mode, %.0f m)" % [sun.directional_shadow_mode, sun.directional_shadow_max_distance])
+	_check(gfx.STEP_DOWN_FPS >= 45.0, "  High on laptop graphics steps down below 45 FPS, not 24")
+	gfx._integrated = false
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	await _frames(20)
+	_check(not gfx.lean() and gfx._shadow_filter == RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM and env.ssao_enabled and kit_mat.normal_enabled and sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS,
+		"  a real graphics card keeps the full Medium")

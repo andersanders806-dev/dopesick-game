@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://c87pfs2jelc7j"
-path="res://.godot/imported/WoodenChair_01.gltf-74177f28e22ebbf05506fcd9ef4d2274.scn"
+uid="uid://umewi8ivfdu0"
+path="res://.godot/imported/cardboard_box_01.gltf-7acc87a93b3f3a8588c8c82e04ff7bb4.scn"
 
 [deps]
 
-source_file="res://assets/polyhaven/WoodenChair_01/WoodenChair_01.gltf"
-dest_files=["res://.godot/imported/WoodenChair_01.gltf-74177f28e22ebbf05506fcd9ef4d2274.scn"]
+source_file="res://assets/polyhaven/cardboard_box_01/cardboard_box_01.gltf"
+dest_files=["res://.godot/imported/cardboard_box_01.gltf-7acc87a93b3f3a8588c8c82e04ff7bb4.scn"]
 
 [params]
 

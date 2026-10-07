@@ -19,6 +19,8 @@ extends Node
 const KENNEY := "res://assets/kenney/"
 ## Matches world/StreetLife.gd's CAR_SCALE, so parked and passing cars agree.
 const KENNEY_CAR_SCALE := 1.6
+## Height of old_bed_frame's spring deck (the mattress sits on it).
+const BED_DECK_Y := 0.42
 const WALL_H := 2.4
 const LOW_WALL_H := 0.5
 
@@ -522,7 +524,8 @@ func _build_apartment() -> Node3D:
 	bulb.name = "BareBulb"
 	_add(_root, bulb)
 	bulb.position = Vector3(-0.4, 0, -0.2)
-	_cylinder(bulb, "Cord", 0.01, 0.5, Vector3(0, 2.15, 0), _color_mat(Color(0.05, 0.05, 0.05), 0.8))
+	_cylinder(bulb, "Cord", 0.006, 0.4, Vector3(0, 2.2, 0), _color_mat(Color(0.05, 0.05, 0.05), 0.8))
+	_ph(bulb, "Socket", "pull_chain_light_socket", Vector3(0, 2.0, 0))
 	var glass := SphereMesh.new()
 	glass.radius = 0.07
 	glass.height = 0.16
@@ -546,12 +549,15 @@ func _build_apartment() -> Node3D:
 	_add(_root, bed)
 	bed.position = Vector3(-4.3, 0, -2.4)
 	bed.rotation_degrees.y = 6.0
-	_box_mesh(bed, "Mattress", Vector3(1.15, 0.2, 2.0), Vector3(0, 0.1, 0), _tex_mat(ENV3D + "mattress_stained.png", 0.8, 0.95))
-	_model(bed, "Pillow", "furniture/pillow.glb", Vector3(-0.3, 0.2, -0.75), 2.5, -10.0)
+	# An old iron single bed (Poly Haven) with the stained mattress on it.
+	_ph(bed, "Frame", "old_bed_frame", Vector3.ZERO, 1.0, 180.0)
+	var deck := BED_DECK_Y
+	_box_mesh(bed, "Mattress", Vector3(0.86, 0.18, 1.92), Vector3(0, deck + 0.09, 0), _tex_mat(ENV3D + "mattress_stained.png", 0.8, 0.95))
+	_box_mesh(bed, "Pillow", Vector3(0.5, 0.11, 0.32), Vector3(-0.05, deck + 0.235, -0.72), _tex_mat(ENV3D + "mattress_stained.png", 1.2, 0.95)).rotation_degrees.y = -8.0
 	var blanket := _color_mat(Color(0.16, 0.2, 0.28), 1.0)
-	var b1 := _box_mesh(bed, "BlanketA", Vector3(0.9, 0.07, 0.7), Vector3(0.1, 0.23, 0.35), blanket)
+	var b1 := _box_mesh(bed, "BlanketA", Vector3(0.8, 0.07, 0.7), Vector3(0.05, deck + 0.21, 0.35), blanket)
 	b1.rotation_degrees = Vector3(0, 18, 4)
-	var b2 := _box_mesh(bed, "BlanketB", Vector3(0.6, 0.12, 0.45), Vector3(0.35, 0.18, 0.85), blanket)
+	var b2 := _box_mesh(bed, "BlanketB", Vector3(0.6, 0.12, 0.45), Vector3(0.3, deck + 0.24, 0.85), blanket)
 	b2.rotation_degrees = Vector3(8, -25, -6)
 	_blocker(bed, Vector3(1.15, 0.5, 2.0), Vector3(0, 0.25, 0))
 	_collision(bed, _box_shape(Vector3(1.9, 1.2, 2.8)), Vector3(0, 0.6, 0))
@@ -562,12 +568,8 @@ func _build_apartment() -> Node3D:
 	_add(_root, couch)
 	couch.position = Vector3(-4.5, 0, 1.4)
 	var upholstery := _tex_mat(ENV3D + "couch_worn.png", 1.2, 1.0)
-	_box_mesh(couch, "Base", Vector3(0.9, 0.35, 2.2), Vector3(0, 0.175, 0), upholstery)
-	_box_mesh(couch, "Back", Vector3(0.25, 0.55, 2.2), Vector3(-0.33, 0.62, 0), upholstery)
-	_box_mesh(couch, "ArmN", Vector3(0.9, 0.28, 0.2), Vector3(0, 0.49, -1.0), upholstery)
-	_box_mesh(couch, "ArmS", Vector3(0.9, 0.28, 0.2), Vector3(0, 0.49, 1.0), upholstery)
-	var cushion := _box_mesh(couch, "SaggingCushion", Vector3(0.62, 0.12, 0.85), Vector3(0.08, 0.38, -0.45), upholstery)
-	cushion.rotation_degrees = Vector3(-6, 0, 5)
+	# A worn three-seater (Poly Haven), its back to the west wall.
+	_ph(couch, "Model", "sofa_02", Vector3(0.05, 0, 0), 1.15, 90.0)
 	var fallen := _box_mesh(couch, "FallenCushion", Vector3(0.62, 0.12, 0.85), Vector3(0.95, 0.06, 0.5), upholstery)
 	fallen.rotation_degrees = Vector3(0, 35, 0)
 	_collision(couch, _box_shape(Vector3(0.9, 0.9, 2.2)), Vector3(0, 0.45, 0))
@@ -578,8 +580,8 @@ func _build_apartment() -> Node3D:
 	radio.name = "RadioCrate"
 	_add(_root, radio)
 	radio.position = Vector3(3.9, 0, -3.0)
-	_model(radio, "Crate", "furniture/cardboardBoxClosed.glb", Vector3(-0.26, 0, 0.26), 2.5)
-	_model(radio, "Radio", "furniture/radio.glb", Vector3(-0.3, 0.7, 0.1), 1.6, 12.0)
+	_ph(radio, "Crate", "cardboard_box_01", Vector3(0, 0.18 * 1.35, 0), 1.35)
+	_model(radio, "Radio", "furniture/radio.glb", Vector3(-0.15, 0.34 * 1.35, 0.1), 1.6, 12.0)
 	_collision(radio, _box_shape(Vector3(0.55, 0.7, 0.55)), Vector3(0, 0.35, 0))
 
 	# Old TV on a box by the east wall, facing into the room.
@@ -587,8 +589,8 @@ func _build_apartment() -> Node3D:
 	tv.name = "TV"
 	_add(_root, tv)
 	tv.position = Vector3(4.55, 0, 1.5)
-	_model(tv, "Box", "furniture/cardboardBoxClosed.glb", Vector3(0.26, 0, 0.26), 2.5, -90.0)
-	_ph(tv, "Set", "Television_01", Vector3(0.0, 0.7, 0.0), 1.0, -90.0)
+	_ph(tv, "Box", "cardboard_box_01", Vector3(0, 0.18 * 1.35, 0), 1.35, 90.0)
+	_ph(tv, "Set", "Television_01", Vector3(0.0, 0.34 * 1.35 + 0.1, 0.0), 1.0, -90.0)
 	_collision(tv, _box_shape(Vector3(0.6, 1.3, 0.85)), Vector3(0, 0.65, 0))
 	_light(tv, "Glow", Vector3(-0.6, 0.95, 0), Color(0.35, 0.55, 1.0), 1.4, 3.5)
 	_sound(tv, "Static", "tv_static_loop.wav", Vector3(-0.3, 0.95, 0), -22.0, 1.5, 10.0)
@@ -616,16 +618,16 @@ func _build_apartment() -> Node3D:
 	var chair := StaticBody3D.new()
 	chair.name = "ChairOverturned"
 	_add(_root, chair)
-	var chair_model := _model(chair, "Model", "furniture/chairDesk.glb", Vector3(0.35, 0.4, 0.4), 2.5)
+	var chair_model := _ph(chair, "Model", "plastic_monobloc_chair_01", Vector3(0.35, 0.4, 0.4), 1.0)
 	chair_model.rotation_degrees = Vector3(0, 30, 90)
 	_collision(chair, _box_shape(Vector3(0.8, 0.8, 0.8)), Vector3(0, 0.4, 0))
 
 	var boxes := StaticBody3D.new()
 	boxes.name = "BoxStack"
 	_add(_root, boxes)
-	_model(boxes, "Bottom", "furniture/cardboardBoxClosed.glb", Vector3(-0.26, 0, 0.26), 2.5)
-	_model(boxes, "Top", "furniture/cardboardBoxOpen.glb", Vector3(-0.2, 0.7, 0.28), 2.0, 15.0)
-	_model(boxes, "Side", "furniture/cardboardBoxClosed.glb", Vector3(0.3, 0, 0.3), 2.0, -20.0)
+	_ph(boxes, "Bottom", "cardboard_box_01", Vector3(0, 0.18 * 1.4, 0), 1.4)
+	_ph(boxes, "Top", "cardboard_box_01", Vector3(0.03, 0.34 * 1.4 + 0.18 * 1.2, 0.02), 1.2, 15.0)
+	_ph(boxes, "Side", "cardboard_box_01", Vector3(0.55, 0.18 * 1.2, 0.05), 1.2, -20.0)
 	_collision(boxes, _box_shape(Vector3(1.1, 1.2, 0.6)), Vector3(0.1, 0.6, 0))
 
 	_trash_pile("TrashA", 11)
@@ -642,12 +644,14 @@ func _build_apartment() -> Node3D:
 
 	# Fixed decor: overflowing trashcan, a knocked-over floor lamp, a punched
 	# hole in the drywall with crumbs below it, stains everywhere.
-	_model(_root, "Trashcan", "furniture/trashcan.glb", Vector3(2.7, 0, 3.0), 2.0)
+	_ph(_root, "Trashcan", "metal_trash_can", Vector3(2.7, 0.07, 3.0), 0.75)
 	_model(_root, "TrashcanBag", "food/bag.glb", Vector3(2.2, 0, 3.1), 0.9, 40.0)
 	var lamp := _model(_root, "LampKnockedOver", "furniture/lampRoundFloor.glb", Vector3(-2.4, 0.1, 3.0), 2.2)
 	lamp.rotation_degrees = Vector3(0, -20, 90)
 
 	_decal("HoleInWall", ENV3D + "drywall_hole.png", Vector3(0.4, 1.05, -3.5), 0.45, 0.4, "north")
+	# A stopped clock on the north wall.
+	_ph(_root, "WallClock", "wall_clock", Vector3(-2.6, 1.9, -3.5))
 	var crumbs := _color_mat(Color(0.82, 0.79, 0.72), 1.0)
 	for i in 4:
 		var crumb := _box_mesh(_root, "Drywall%d" % i, Vector3.ONE * (0.05 + 0.02 * i), Vector3(0.25 + 0.12 * i, 0.03, -3.3 + 0.05 * (i % 2)), crumbs)

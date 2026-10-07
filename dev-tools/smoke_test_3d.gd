@@ -2954,7 +2954,7 @@ const WORLD_ART_PBR := ["road_worn", "sidewalk_slabs", "curb", "tiles_white", "t
 	"bricks_old", "wood_dark", "leather_red", "felt", "metal_worn", "metal_brushed"]
 const WORLD_ART_MODELS := ["modular_urban_apartments_facade", "modular_factory_facade", "modular_fire_escape",
 	"street_lamp_01", "covered_car", "exterior_aircon_unit", "rollershutter_window_01", "security_camera_02",
-	"old_bed_frame", "WoodenChair_01", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
+	"old_bed_frame", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
 	"bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
 	"steel_frame_shelves_01", "mounted_fluorescent_lights", "worn_metal_rack"]
 
@@ -3018,4 +3018,22 @@ func _world_art_checks(gs: Node) -> void:
 	_check(road_tex.contains("road_worn") and walk_tex.contains("sidewalk_slabs") and city.get_node_or_null("Curb") != null,
 		"  worn asphalt, paving slabs and a curb underfoot (%s, %s)" % [road_tex.get_file(), walk_tex.get_file()])
 	_check(city.get_node("Facades").find_children("FireEscape*", "Node3D", true, false).size() >= 2, "  fire escapes on the apartment blocks")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var apt := await _load("res://world/Apartment3D.tscn")
+	var uses := func(node: Node, id: String) -> bool: return node.find_children("*", "Node3D", true, false).any(func(n): return String(n.scene_file_path).contains("/" + id + "/"))
+	_check(uses.call(apt.get_node("Bed"), "old_bed_frame") and uses.call(apt.get_node("Couch"), "sofa_02") and uses.call(apt.get_node("ChairOverturned"), "plastic_monobloc_chair_01"),
+		"  apartment: a real bed frame, sofa and chair")
+	_check(apt.get_node("Bed").get_node_or_null("Mattress") != null, "  ...the stained mattress still on the frame")
+	var toys: Array = apt.find_children("*", "Node3D", true, false).filter(func(n): return String(n.scene_file_path).contains("kenney/furniture"))
+	_check(toys.size() <= 2, "  ...and little left of the toy furniture (%s)" % [toys.map(func(n): return n.name)])
+	# A belonging that's away (pawned) still disappears with its new model
+	# (Review Focus 5). Carried ones go back home when you walk in.
+	gs.take_belonging("tv")
+	gs.inventory.erase("tv")
+	gs.pawn_belonging("tv")
+	apt = await _load("res://world/Apartment3D.tscn")
+	_check(not apt.get_node("TV").visible, "  a taken TV is gone from the room")
+	gs.start_run()
 

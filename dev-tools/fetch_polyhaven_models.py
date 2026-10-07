@@ -45,7 +45,8 @@ MODELS = [
     "street_lamp_01", "covered_car", "exterior_aircon_unit", "rollershutter_window_01",
     "security_camera_02",
     # apartment
-    "old_bed_frame", "WoodenChair_01", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
+    "old_bed_frame", "metal_trash_can", "pull_chain_light_socket", "wall_clock",
+    "cardboard_box_01",
     # bar
     "bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
     # stores

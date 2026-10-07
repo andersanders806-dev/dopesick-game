@@ -27,10 +27,10 @@ exterior_aircon_unit: Exterior Aircon Unit by Monsta3D
 rollershutter_window_01: Rollershutter Window 01 by MP
 security_camera_02: Security Camera 02 by Garrison Gager, Yann Kervran
 old_bed_frame: Old Bed Frame by Luca B
-WoodenChair_01: Wooden Chair 01 by Jake Mobley
 metal_trash_can: Metal Trash Can by GurJas Studios
 pull_chain_light_socket: Pull Chain Light Socket by Josh Dean
 wall_clock: Wall Clock by PierreB3D
+cardboard_box_01: Cardboard Box 01 by Rahul Chaudhary
 bar_chair_round_01: Bar Chair Round 01 by Dairon Sanchez
 metal_stool_01: Metal Stool 01 by Ulan Cabanilla
 wine_bottles_01: Wine Bottles 01 by Rico Cilliers, Jurita Burger

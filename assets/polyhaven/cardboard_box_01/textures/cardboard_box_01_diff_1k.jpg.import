@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cohdtx36wtme4"
-path="res://.godot/imported/WoodenChair_01_diff_1k.jpg-25fa1f556c0b9988b29281dd9708ff7c.ctex"
+uid="uid://eucd5rlxiruc"
+path="res://.godot/imported/cardboard_box_01_diff_1k.jpg-fbd000adb2456b3630513603c9b79ec4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/polyhaven/WoodenChair_01/textures/WoodenChair_01_diff_1k.jpg"
-dest_files=["res://.godot/imported/WoodenChair_01_diff_1k.jpg-25fa1f556c0b9988b29281dd9708ff7c.ctex"]
+source_file="res://assets/polyhaven/cardboard_box_01/textures/cardboard_box_01_diff_1k.jpg"
+dest_files=["res://.godot/imported/cardboard_box_01_diff_1k.jpg-fbd000adb2456b3630513603c9b79ec4.ctex"]
 
 [params]
 

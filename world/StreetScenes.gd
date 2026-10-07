@@ -55,6 +55,7 @@ func _ready() -> void:
 func _make(spec: Dictionary) -> Dictionary:
 	var zone := Area3D.new()
 	zone.name = spec["name"]
+	zone.set_meta("prompt", preload("res://ui/Prompts.gd").talk_to(spec["name"]))
 	zone.collision_layer = 4
 	zone.collision_mask = 0
 	zone.monitoring = false

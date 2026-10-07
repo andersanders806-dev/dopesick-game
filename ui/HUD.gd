@@ -66,6 +66,7 @@ const TEXT_LEFT_NO_PORTRAIT := 16.0
 func _ready() -> void:
 	add_to_group("hud")
 	_build_film_look()
+	add_child(preload("res://ui/InteractPrompt.gd").new())
 	GameState.cash_changed.connect(_update_cash)
 	GameState.craving_changed.connect(_update_craving)
 	GameState.inventory_changed.connect(_update_inventory)

@@ -98,6 +98,16 @@ static func entry(role: String) -> Dictionary:
 static func model_for(role: String) -> String:
 	return entry(role)["model"]
 
+## Character models stay loaded for the session: otherwise every room
+## change frees them with the old room and reads them off disk again (most
+## of a second for the street's extras).
+static var _scenes := {}
+
+static func scene_for(path: String) -> PackedScene:
+	if not _scenes.has(path):
+		_scenes[path] = load(path)
+	return _scenes[path]
+
 static func look_for(role: String) -> Dictionary:
 	return entry(role)["look"]
 
@@ -113,7 +123,7 @@ static func dress(model: Node, role: String) -> void:
 			if c.scene_file_path != "" and c.find_child("AnimationPlayer", true, false):
 				body = c
 				if c.scene_file_path != want:
-					var fresh: Node3D = load(want).instantiate()
+					var fresh: Node3D = scene_for(want).instantiate()
 					fresh.name = c.name
 					fresh.transform = (c as Node3D).transform
 					model.remove_child(c)

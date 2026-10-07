@@ -41,7 +41,7 @@ func _build() -> void:
 	# Side-on to the street, one eye on the door.
 	root.rotation_degrees.y = -70.0
 	npc.add_child(root)
-	var model: Node = load(CharacterCast.model_for("booster")).instantiate()
+	var model: Node = CharacterCast.scene_for(CharacterCast.model_for("booster")).instantiate()
 	root.add_child(model)
 	CharacterCast.dress(model, "booster")
 	var anim := CharacterAnimator.new(model)

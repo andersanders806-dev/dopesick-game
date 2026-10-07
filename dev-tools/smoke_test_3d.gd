@@ -784,6 +784,7 @@ func _run() -> void:
 	await _ambience_checks(gs)
 	await _cast_checks(gs)
 	await _world_art_checks(gs)
+	await _polish_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3057,3 +3058,35 @@ func _world_art_checks(gs: Node) -> void:
 		_check(toy.is_empty() and tubes.size() > 0 and tubes.all(func(t): return String(t.scene_file_path).contains("mounted_fluorescent")) and blockers,
 			"  %s: steel shelving, real tube lights, same sight blockers (toys %d)" % [store, toy.size()])
 
+## Chapter 2: going through a door shouldn't freeze the game for seconds,
+## and the game should say where you are and what E does.
+func _polish_checks(gs: Node) -> void:
+	await _section("Polish: fast rooms, fades, prompts")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var piece := _kit_piece(city)
+	var mesh_id := piece.mesh.get_instance_id()
+	var Cast = load("res://npc/CharacterCast.gd")
+	var booster: String = Cast.model_for("booster")
+	var cast_id: int = Cast.scene_for(booster).get_instance_id()
+	piece = null
+	await _load("res://world/Apartment3D.tscn")
+	await _load("res://world/DiveBar3D.tscn")
+	var t0 := Time.get_ticks_msec()
+	city = await _load("res://world/City3D.tscn")
+	var reentry := Time.get_ticks_msec() - t0
+	var again := _kit_piece(city)
+	_check(again.mesh.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
+	_check(Cast.scene_for(booster).get_instance_id() == cast_id
+		and Cast.scene_for(booster) is PackedScene, "  character models are loaded once per session")
+	print("  (City re-entry %d ms)" % reentry)
+
+## The first facade piece that came out of a Poly Haven kit (not a box or
+## quad the builder made itself).
+func _kit_piece(city: Node) -> MeshInstance3D:
+	for mi in city.get_node("Facades").find_children("*", "MeshInstance3D", true, false):
+		if not (mi.mesh is PrimitiveMesh):
+			return mi
+	return null

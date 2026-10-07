@@ -39,7 +39,9 @@ const KIT_PIECES := {
 		"band": "cornice02_standard_standard_01", "crown": "crown_standard_standard_01", "base": "base_standard_standard_01"},
 }
 
-var _meshes := {}
+## Kit meshes by piece name, kept for the session: re-reading the two kits
+## on every visit to the street was 1.5 s of the door freeze.
+static var _meshes := {}
 ## The kits' window glass is alpha-blended with a depth pre-pass -- an extra
 ## pass for every window on the street. From outside, dark glass with a
 ## sheen looks the same, opaque.

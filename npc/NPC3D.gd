@@ -148,7 +148,7 @@ func set_model(path: String) -> void:
 		path = CharacterCast.model_for(role)
 		model_path = path
 	if path != "":
-		var model: Node = load(path).instantiate()
+		var model: Node = CharacterCast.scene_for(path).instantiate()
 		model_root.add_child(model)
 		if role != "":
 			CharacterCast.dress(model, role)

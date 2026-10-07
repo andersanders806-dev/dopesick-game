@@ -76,11 +76,11 @@ func _make(spec: Dictionary) -> Dictionary:
 	# same clothes, on the block at the other end of their day.
 	var model: Node
 	if spec.has("role"):
-		model = load(CharacterCast.model_for(spec["role"])).instantiate()
+		model = CharacterCast.scene_for(CharacterCast.model_for(spec["role"])).instantiate()
 		root.add_child(model)
 		CharacterCast.dress(model, spec["role"])
 	else:
-		model = load(spec["model"]).instantiate()
+		model = CharacterCast.scene_for(spec["model"]).instantiate()
 		root.add_child(model)
 		CharacterLook.apply(model, spec["look"])
 	var anim := CharacterAnimator.new(model)

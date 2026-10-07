@@ -17,8 +17,8 @@ the dark end of the block. Get caught and you wake up in a jail cell.
 
 - **Art:** Kenney's CC0 Furniture, City, and Food kits (`assets/kenney/`)
   for props and buildings, reusing the photoreal floor/wall textures from
-  the 2D pass as triplanar materials. *People* are Quaternius' CC0 human
-  models (`assets/quaternius/characters/`) -- see **Characters** below.
+  the 2D pass as triplanar materials. *People* are Microsoft Rocketbox
+  avatars (`assets/rocketbox/`, MIT) -- see **Characters** below.
 - **Characters: realistic people.** The whole cast -- you, the pusher,
   Tasha, the cops and guards, every clerk, the bartender, the Dive Bar
   regulars, Ray, the passers-by: 43 people -- are Microsoft Rocketbox

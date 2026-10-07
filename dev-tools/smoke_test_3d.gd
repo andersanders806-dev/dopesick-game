@@ -3036,4 +3036,16 @@ func _world_art_checks(gs: Node) -> void:
 	apt = await _load("res://world/Apartment3D.tscn")
 	_check(not apt.get_node("TV").visible, "  a taken TV is gone from the room")
 	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 20 * 60
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	var stools := bar.find_children("Stool*", "Node3D", false, false)
+	_check(stools.size() == 5 and stools.all(func(s): return String(s.scene_file_path).contains("polyhaven")), "  bar: real stools (%d)" % stools.size())
+	var tex_of := func(mi: MeshInstance3D) -> String:
+		var m := (mi.material_override if mi.material_override else mi.mesh.surface_get_material(0)) as StandardMaterial3D
+		return String(m.albedo_texture.resource_path) if m and m.albedo_texture else ""
+	_check(tex_of.call(bar.get_node("BarCounter/WornTop")).contains("wood_dark") and tex_of.call(bar.get_node("BoothA/SeatN")).contains("leather_red") and tex_of.call(bar.get_node("PoolTable/Felt")).contains("felt"),
+		"  ...wood, vinyl and felt that look like wood, vinyl and felt")
+	_check(bar.find_children("BackBarBottles*", "Node3D", true, false).size() > 0 and bar.get_node_or_null("PoolLamp/Model") != null, "  ...real bottles behind the bar and a lamp over the pool table")
+	_check(bar.get_node_or_null("PoolTable/PoolZone") != null and bar.get_node_or_null("Jukebox") != null, "  ...and the pool table and jukebox still play")
 

@@ -1679,7 +1679,7 @@ func _booth(name: String, center_z: float) -> void:
 	booth.name = name
 	_add(_root, booth)
 	booth.position = Vector3(-BAR_W / 2 + 0.8, 0, center_z)
-	var vinyl := _tex_mat(ENV3D + "vinyl_red.png", 1.5, 0.35)
+	var vinyl := _tex_mat("pbr:leather_red", 1.0)
 	var formica := _color_mat(Color(0.55, 0.38, 0.22), 0.3)
 	var chrome := _color_mat(Color(0.7, 0.7, 0.72), 0.25)
 	chrome.metallic = 0.9
@@ -1690,7 +1690,7 @@ func _booth(name: String, center_z: float) -> void:
 	for side in [-1, 1]:
 		var z: float = side * 0.85
 		_box_mesh(booth, "Seat%s" % ("N" if side < 0 else "S"), Vector3(1.6, 0.18, 0.5), Vector3(0, 0.4, z), vinyl)
-		_box_mesh(booth, "SeatBase%s" % ("N" if side < 0 else "S"), Vector3(1.6, 0.32, 0.46), Vector3(0, 0.16, z), _color_mat(Color(0.2, 0.08, 0.06), 0.8))
+		_box_mesh(booth, "SeatBase%s" % ("N" if side < 0 else "S"), Vector3(1.6, 0.32, 0.46), Vector3(0, 0.16, z), _tex_mat("pbr:wood_dark", 1.0))
 		_box_mesh(booth, "Back%s" % ("N" if side < 0 else "S"), Vector3(1.6, 0.8, 0.16), Vector3(0, 0.85, z + side * 0.3), vinyl)
 	var patch := _box_mesh(booth, "DuctTape", Vector3(0.28, 0.01, 0.16), Vector3(0.35, 0.495, 0.9), tape)
 	patch.rotation_degrees.y = 25.0
@@ -1722,11 +1722,13 @@ func _build_dive_bar() -> Node3D:
 	var piece_w := 0.43 * 2.5
 	var start_x := -5.2
 	var count := 6
-	for i in count:
-		_model(counter, "Piece%d" % i, "furniture/kitchenBar.glb", Vector3(start_x + i * piece_w, 0, 0), 2.5)
-	_model(counter, "EndR", "furniture/kitchenBarEnd.glb", Vector3(start_x + count * piece_w, 0, 0), 2.5)
 	var counter_len := count * piece_w + 0.25
-	var worn_top := _color_mat(Color(0.3, 0.17, 0.08), 0.25)
+	var worn_top := _tex_mat("pbr:wood_dark", 1.0)
+	# The counter itself in dark varnished wood, panelled every bay.
+	_box_mesh(counter, "Front", Vector3(counter_len, 1.04, 0.56), Vector3(start_x + counter_len / 2, 0.52, -0.3), worn_top)
+	var seam := _color_mat(Color(0.08, 0.05, 0.03), 0.6)
+	for i in count + 1:
+		_box_mesh(counter, "Panel%d" % i, Vector3(0.04, 0.9, 0.01), Vector3(start_x + 0.12 + i * piece_w, 0.55, -0.015), seam)
 	_box_mesh(counter, "WornTop", Vector3(counter_len, 0.05, 0.62), Vector3(start_x + counter_len / 2, 1.07, -0.26), worn_top)
 	var brass := _color_mat(Color(0.75, 0.55, 0.25), 0.3)
 	brass.metallic = 0.9
@@ -1743,15 +1745,29 @@ func _build_dive_bar() -> Node3D:
 		for k in 5:
 			var pretzel := _box_mesh(bowl, "Pretzel%d" % k, Vector3(0.05, 0.02, 0.03), Vector3(-0.06 + k * 0.03, 0.04, 0.02 * (k % 2)), _color_mat(Color(0.55, 0.32, 0.12), 0.8))
 			pretzel.rotation_degrees.y = k * 40.0
-	_model(counter, "Till", "furniture/radio.glb", Vector3(0.1, 1.09, -0.55), 1.6, 180.0)
+	_ph(counter, "Till", "CashRegister_01", Vector3(0.3, 1.095, -0.4), 1.0, 180.0)
 
-	var bottle_files := ["food/wine-red.glb", "food/soda-bottle.glb"]
 	for i in 6:
 		var bx := -5.2 + i * 1.05
-		_model(_root, "BackBar%d" % (i + 1), "furniture/bookcaseOpen.glb", Vector3(bx, 0, -hd + 0.63), 2.5)
+		# Back bar shelving in the same dark wood.
+		var unit := Node3D.new()
+		unit.name = "BackBar%d" % (i + 1)
+		_add(_root, unit)
+		unit.position = Vector3(bx, 0, -hd)
+		for sy in [0.6, 1.1, 1.62]:
+			_box_mesh(unit, "Shelf%d" % int(sy * 10), Vector3(1.05, 0.04, 0.36), Vector3(0.525, sy - 0.02, 0.2), worn_top)
+		for ux in [0.02, 1.03]:
+			_box_mesh(unit, "Upright%d" % int(ux * 10), Vector3(0.04, 1.64, 0.36), Vector3(ux, 0.82, 0.2), worn_top)
+		_box_mesh(unit, "Base", Vector3(1.05, 0.12, 0.36), Vector3(0.525, 0.06, 0.2), worn_top)
+		# Real bottles (Poly Haven), two to a shelf: each is 29k triangles,
+		# and they read as bottles from across the room only when they're real.
 		for shelf_y in [0.62, 1.12]:
-			for j in 4:
-				_model(_root, "Bottle%d_%d_%d" % [i + 1, int(shelf_y * 10), j], bottle_files[(i + j) % 2], Vector3(bx + 0.18 + j * 0.2, shelf_y, -hd + 0.3), 0.42)
+			var group := Node3D.new()
+			group.name = "BackBarBottles%d_%d" % [i + 1, int(shelf_y * 10)]
+			_add(_root, group)
+			group.position = Vector3(bx, shelf_y, -hd + 0.3)
+			for j in 2:
+				_ph(group, "Bottle%d" % j, "wine_bottles_01", Vector3(0.3 + j * 0.38, 0, 0.02 * j), 1.0, j * 40.0)
 	var mirror := _color_mat(Color(0.55, 0.5, 0.45), 0.05)
 	mirror.metallic = 1.0
 	_box_mesh(_root, "BackBarMirror", Vector3(6.3, 1.0, 0.02), Vector3(-2.05, 1.55, -hd + 0.02), mirror)
@@ -1772,14 +1788,9 @@ func _build_dive_bar() -> Node3D:
 	_add(cash_card, cash_text)
 	cash_text.position = Vector3(0, 0, 0.015)
 
-	# Ripped vinyl stools, a couple patched with duct tape.
-	var tape := _color_mat(Color(0.62, 0.62, 0.6), 0.5)
-	tape.metallic = 0.4
+	# Round bar chairs and metal stools along the counter.
 	for i in 5:
-		var stool := _model(_root, "Stool%d" % (i + 1), "furniture/stoolBar.glb", Vector3(-4.7 + i * 1.2, 0, -1.8), 2.5, i * 23.0)
-		if i % 2 == 1:
-			var patch := _box_mesh(stool, "DuctTape", Vector3(0.08, 0.004, 0.05), Vector3(0.13, 0.445, -0.1), tape)
-			patch.rotation_degrees.y = 30.0
+		_ph(_root, "Stool%d" % (i + 1), "bar_chair_round_01" if i % 2 == 0 else "metal_stool_01", Vector3(-4.7 + i * 1.2, 0, -1.8), 1.0, i * 23.0)
 
 	var bartender := _instance(_root, "Bartender", NPCScene, Vector3(-2.0, 0, -3.45))
 	bartender.set("npc_name", "Bartender")
@@ -1807,12 +1818,14 @@ func _build_dive_bar() -> Node3D:
 	pool.position = Vector3(3.3, 0, 1.1)
 	# Walk up to the table to play for money (DiveBar3D.gd, ui/PoolGame.gd).
 	_zone(pool, "PoolZone", Vector3.ZERO, Vector3(3.2, 1.2, 2.2))
-	var wood := _color_mat(Color(0.28, 0.14, 0.06), 0.45)
+	var wood := _tex_mat("pbr:wood_dark", 1.0)
 	for lx in [-1.05, 1.05]:
 		for lz in [-0.5, 0.5]:
 			_box_mesh(pool, "Leg", Vector3(0.14, 0.62, 0.14), Vector3(lx, 0.31, lz), wood)
 	_box_mesh(pool, "Body", Vector3(2.5, 0.2, 1.4), Vector3(0, 0.7, 0), wood)
-	_box_mesh(pool, "Felt", Vector3(2.2, 0.03, 1.1), Vector3(0, 0.81, 0), _tex_mat(ENV3D + "felt_faded.png", 1.0, 1.0))
+	var felt := _tex_mat("pbr:felt", 1.0)
+	felt.albedo_color = Color(0.18, 0.42, 0.22)
+	_box_mesh(pool, "Felt", Vector3(2.2, 0.03, 1.1), Vector3(0, 0.81, 0), felt)
 	for rz in [-0.62, 0.62]:
 		_box_mesh(pool, "RailLong", Vector3(2.5, 0.08, 0.16), Vector3(0, 0.84, rz), wood)
 	for rx in [-1.17, 1.17]:
@@ -1842,12 +1855,9 @@ func _build_dive_bar() -> Node3D:
 	lamp.name = "PoolLamp"
 	_add(_root, lamp)
 	lamp.position = Vector3(3.3, 2.0, 1.1)
-	_box_mesh(lamp, "Shade", Vector3(1.3, 0.14, 0.42), Vector3.ZERO, _color_mat(Color(0.12, 0.08, 0.04), 0.6))
-	var panes := [Color(0.9, 0.55, 0.1), Color(0.7, 0.1, 0.08), Color(0.15, 0.5, 0.2), Color(0.9, 0.55, 0.1)]
-	for i in panes.size():
-		_box_mesh(lamp, "Glass%d" % i, Vector3(0.28, 0.1, 0.02), Vector3(-0.45 + i * 0.3, -0.02, 0.215), _color_mat(panes[i], 0.3, 2.5))
-	for cx in [-0.5, 0.5]:
-		_cylinder(lamp, "Chain", 0.008, 0.45, Vector3(cx, 0.3, 0), _color_mat(Color(0.3, 0.3, 0.3), 0.5))
+	# Two industrial pendants (Poly Haven) on their cords from the ceiling.
+	_ph(lamp, "Model", "hanging_industrial_lamp", Vector3(-0.6, 0.4, 0), 0.75)
+	_ph(lamp, "Model2", "hanging_industrial_lamp", Vector3(0.6, 0.4, 0), 0.75)
 	var pool_light := SpotLight3D.new()
 	pool_light.name = "Light"
 	pool_light.light_color = Color(1.0, 0.8, 0.5)
@@ -1867,7 +1877,7 @@ func _build_dive_bar() -> Node3D:
 		top.name = t[0]
 		_add(_root, top)
 		top.position = t[1]
-		_cylinder(top, "Top", 0.35, 0.05, Vector3(0, 1.0, 0), _color_mat(Color(0.5, 0.33, 0.18), 0.3))
+		_cylinder(top, "Top", 0.35, 0.05, Vector3(0, 1.0, 0), _tex_mat("pbr:wood_dark", 1.0))
 		_cylinder(top, "Post", 0.04, 1.0, Vector3(0, 0.5, 0), chrome)
 		_cylinder(top, "Foot", 0.22, 0.03, Vector3(0, 0.015, 0), chrome)
 		_model(top, "Glass", "food/soda-bottle.glb", Vector3(0.1, 1.03, 0.05), 0.4)

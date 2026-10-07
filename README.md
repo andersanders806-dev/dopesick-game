@@ -174,6 +174,14 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   the Dive Bar", "Square  Talk to Ray", "E  Steal a bottle of vodka",
   "Sleep", "Your guitar". Under the crosshair in first person; hidden in
   dialogue, menus and fades.
+- **Cutscenes are real footage, 3 s each** (`autoload/Cutscene.gd`,
+  `assets/cutscenes/video/`). The opening, the bust, being sent away, the
+  first score, release, each new day, temptation, relapse, walking past it,
+  recovery and the overdose are each one clip of graded real footage
+  (Mixkit, free licence, credits in the folder) with one line under it,
+  over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
+  rebuilds them. The painted stills are still the fallback and the
+  run-end backdrops.
 - **Every place sounds like itself.** A real CC0 field recording loops
   under each of the 14 rooms (`world/PlaceAmbience.gd`): distant
   late-night LA traffic on the street, bar chatter in the Dive Bar, a

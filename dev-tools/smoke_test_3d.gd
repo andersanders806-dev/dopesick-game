@@ -2983,11 +2983,12 @@ func _world_art_checks(gs: Node) -> void:
 		"DoorToElectronics", "DoorToKarts", "DoorToPawn", "DoorToMusic", "DoorToShelter", "StationDoor"]
 	_check(doors.all(func(d): return city.find_child(d, true, false) != null), "  every door is still there")
 	if fronts:
-		# Fronts sit behind the signs: nothing of a facade pokes in front of z = -4.5.
+		# Fronts sit behind the signs: nothing of a facade pokes in front of
+		# z = -4.5 at sign height or below (fire escapes stand out above it).
 		var poking := []
 		for mi in fronts.find_children("*", "MeshInstance3D", true, false):
 			var b: AABB = mi.global_transform * mi.get_aabb()
-			if b.end.z > -4.5 + 0.001:
+			if b.end.z > -4.5 + 0.001 and b.position.y < 3.45:
 				poking.append(mi.name)
 		_check(poking.is_empty(), "  fronts sit behind the signs and plates (%s)" % [poking.slice(0, 5)])
 	# Shutters by opening hours, right from load.
@@ -3002,4 +3003,19 @@ func _world_art_checks(gs: Node) -> void:
 	# Posters still land on a wall: each wall decal's box reaches the facade plane.
 	var short := city.find_children("*", "Decal", true, false).filter(func(d): return d.global_position.z > -4.8 and d.global_position.z - d.size.y / 2.0 > -4.5 - 0.02 and absf(d.global_rotation_degrees.x) > 45)
 	_check(short.is_empty(), "  posters and graffiti still reach the wall (%s)" % [short.map(func(d): return d.name)])
+	gs.clock = 14 * 60
+	city = await _load("res://world/City3D.tscn")
+	var lamps := city.find_children("Streetlight*", "StaticBody3D", false, false)
+	_check(lamps.size() > 0 and lamps.all(func(l): return l.get_node_or_null("Model") != null and l.get_node_or_null("Light") != null and l.get_node_or_null("Pole") == null),
+		"  street lamps are real lamps, same light (%d)" % lamps.size())
+	var cars := city.find_children("Car*", "StaticBody3D", false, false) + city.find_children("PoliceCruiser", "StaticBody3D", false, false)
+	_check(cars.size() > 0 and cars.all(func(c): return c.get_node_or_null("Body") == null and c.get_node_or_null("Model") != null and c.find_children("*", "CollisionShape3D", false, false).size() > 0),
+		"  parked cars are cars, not boxes, and still solid (%d)" % cars.size())
+	var road := city.get_node("Road") as MeshInstance3D
+	var walk := city.get_node("Sidewalk") as MeshInstance3D
+	var road_tex := String((road.mesh.material as StandardMaterial3D).albedo_texture.resource_path) if road.mesh.material else ""
+	var walk_tex := String((walk.mesh.material as StandardMaterial3D).albedo_texture.resource_path) if walk.mesh.material else ""
+	_check(road_tex.contains("road_worn") and walk_tex.contains("sidewalk_slabs") and city.get_node_or_null("Curb") != null,
+		"  worn asphalt, paving slabs and a curb underfoot (%s, %s)" % [road_tex.get_file(), walk_tex.get_file()])
+	_check(city.get_node("Facades").find_children("FireEscape*", "Node3D", true, false).size() >= 2, "  fire escapes on the apartment blocks")
 

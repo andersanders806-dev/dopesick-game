@@ -13,7 +13,7 @@ OUT = ROOT / "assets" / "pbr"
 UA = {"User-Agent": "dopesick-game-asset-fetch"}
 # set name in the game -> ambientCG asset id
 SETS = {
-    "road_worn": "Road009C", "sidewalk_slabs": "PavingStones128", "curb": "Concrete047A",
+    "road_worn": "Road013A", "sidewalk_slabs": "PavingStones128", "curb": "Concrete047A",
     "tiles_white": "Tiles141", "tiles_beige": "Tiles139", "plaster_painted": "PaintedPlaster017",
     "bricks_old": "Bricks097", "wood_dark": "Wood066", "leather_red": "Leather037",
     "felt": "Fabric030", "metal_worn": "Metal055A", "metal_brushed": "Metal032",

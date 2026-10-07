@@ -13,6 +13,9 @@ extends Node3D
 const APT := "res://assets/polyhaven/modular_urban_apartments_facade/modular_urban_apartments_facade.gltf"
 const FACTORY := "res://assets/polyhaven/modular_factory_facade/modular_factory_facade.gltf"
 const SHUTTER := "res://assets/polyhaven/rollershutter_window_01/rollershutter_window_01.gltf"
+const ESCAPE := "res://assets/polyhaven/modular_fire_escape/modular_fire_escape.gltf"
+const AIRCON := "res://assets/polyhaven/exterior_aircon_unit/exterior_aircon_unit.gltf"
+const CAMERA := "res://assets/polyhaven/security_camera_02/security_camera_02.gltf"
 const STREET_Z := -4.5
 const FACE_Z := STREET_Z - 0.03
 const MODULE := 3.0
@@ -37,6 +40,10 @@ const KIT_PIECES := {
 }
 
 var _meshes := {}
+## The kits' window glass is alpha-blended with a depth pre-pass -- an extra
+## pass for every window on the street. From outside, dark glass with a
+## sheen looks the same, opaque.
+var _window_glass: StandardMaterial3D
 
 func _ready() -> void:
 	for f in FRONTS:
@@ -59,11 +66,31 @@ func _mesh(kit: String, piece: String) -> Mesh:
 func _piece(parent: Node3D, kit: String, piece: String, x: float, y: float, sx := 1.0, inset := 0.0) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = _mesh(kit, piece)
+	# The street lamps hang in front of the walls, so a wall's shadow falls
+	# on itself: drawing every front into the lamps' shadow maps cost ~5 ms
+	# a frame on a UHD 620 for nothing you can see.
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The kit models every brick; from the street camera the import's coarser
+	# LODs look the same and cost a fraction.
+	mi.lod_bias = 0.25
+	if piece.begins_with("window_"):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i) as BaseMaterial3D
+			if m and m.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+				mi.set_surface_override_material(i, _glass())
 	parent.add_child(mi)
 	var b: AABB = mi.mesh.get_aabb()
 	mi.scale = Vector3(sx, 1.0, 1.0)
 	mi.position = Vector3(x - b.position.x * sx, y - b.position.y, FACE_Z - b.end.z - inset)
 	return mi
+
+func _glass() -> StandardMaterial3D:
+	if _window_glass == null:
+		_window_glass = StandardMaterial3D.new()
+		_window_glass.albedo_color = Color(0.05, 0.06, 0.08)
+		_window_glass.metallic = 0.7
+		_window_glass.roughness = 0.12
+	return _window_glass
 
 func _build_front(f: Array) -> void:
 	var front := Node3D.new()
@@ -76,9 +103,10 @@ func _build_front(f: Array) -> void:
 	var bays := maxi(1, ceili(width / MODULE - 0.2))
 	var sx := width / (bays * MODULE)
 	var bay_w := MODULE * sx
-	# Ground floor: plain wall behind the shop glass and the door.
+	# Ground floor: a flat wall in the same brick behind the shop glass and
+	# the door (the kit's plain wall module is 4,608 triangles of bricks).
+	_flat_wall(front, x0, width, MODULE, kit)
 	for i in bays:
-		_piece(front, kit, p["wall"], x0 + i * bay_w, 0.0, sx, 0.02)
 		_piece(front, kit, p["base"], x0 + i * bay_w, 0.0, sx)
 	# Upper floors: window bays, a band between floors, the crown on top.
 	var win: AABB = _mesh(kit, p["window"]).get_aabb()
@@ -94,6 +122,73 @@ func _build_front(f: Array) -> void:
 	front.set_meta("place", f[5])
 	if f[5] != "":
 		_storefront(front, x0, width)
+	_dress(front, f)
+
+## Fire escapes on the apartment blocks, an air-con unit hung under an upper
+## window, a camera over each shop door. Each is placed by its measured
+## bounds so its back sits on the wall and nothing pokes past street_z.
+func _dress(front: Node3D, f: Array) -> void:
+	var x0: float = f[1]
+	var width: float = f[2] - f[1]
+	if f[0] in ["Home", "Electronics"] and f[4] >= 3:
+		_fire_escape(front, "FireEscape" + f[0], x0, width, f[4])
+	if f[3] == "apt" and f[4] >= 2 and f[0] != "Home":
+		_on_wall(front, AIRCON, "AirCon", x0 + width * 0.75, MODULE + 0.35)
+	if f[5] != "" and f[5] != "bar":
+		_on_wall(front, CAMERA, "Camera", x0 + width / 2.0 + 0.9, 2.45)
+
+## A fire escape up the upper floors, scaled from the kit's showcase stack
+## to the building: it starts above the signs (3.5 m) and stands out from
+## the wall the way real ones do, over the sidewalk, never down to it.
+func _fire_escape(front: Node3D, node_name: String, x0: float, width: float, floors: int) -> void:
+	var m: Node3D = load(ESCAPE).instantiate()
+	m.name = node_name
+	front.add_child(m)
+	var b := AABB()
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		var mb: AABB = mi.transform * mi.get_aabb()
+		b = mb if b.size == Vector3.ZERO else b.merge(mb)
+	var bottom := 3.5
+	var top := floors * MODULE - 0.2
+	var s := Vector3(minf(1.0, (width - 0.6) / b.size.x), (top - bottom) / b.size.y, 0.6)
+	m.scale = s
+	m.position = Vector3(x0 + width / 2.0 - (b.position.x + b.size.x / 2.0) * s.x, bottom - b.position.y * s.y, FACE_Z - b.position.z * s.z)
+
+## Instances `path` centred on x, its bottom at y, flush against the wall
+## and entirely behind STREET_Z.
+func _on_wall(front: Node3D, path: String, node_name: String, x: float, y: float) -> Node3D:
+	var m: Node3D = load(path).instantiate()
+	m.name = node_name
+	front.add_child(m)
+	var b := AABB()
+	for mi in m.find_children("*", "MeshInstance3D", true, false):
+		var mb: AABB = mi.transform * mi.get_aabb()
+		b = mb if b.size == Vector3.ZERO else b.merge(mb)
+	# Models face +z (out of the wall) as authored; sit the back on the wall
+	# only if it fits in front of the facade, otherwise flush to street_z.
+	var z := STREET_Z - 0.01 - b.end.z
+	m.position = Vector3(x - (b.position.x + b.size.x / 2.0), y - b.position.y, z)
+	return m
+
+var _brick: Dictionary = {}
+
+## A flat wall panel textured like the kit's own brick (its wall module's
+## material), inset like the module was.
+func _flat_wall(front: Node3D, x0: float, width: float, height: float, kit: String) -> void:
+	if not _brick.has(kit):
+		_brick[kit] = _mesh(kit, KIT_PIECES[kit]["wall"]).surface_get_material(0)
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(width, height)
+	q.material = _brick[kit]
+	mi.mesh = q
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	front.add_child(mi)
+	mi.position = Vector3(x0 + width / 2.0, height / 2.0, FACE_Z - 0.02)
+	# The kit's UVs are 0-1 per 3 m module: keep the bricks their real size.
+	var mat := (q.material as StandardMaterial3D).duplicate() as StandardMaterial3D
+	mat.uv1_scale = Vector3(width / MODULE, height / MODULE, 1.0)
+	q.material = mat
 
 ## Shop glass either side of the door, a warm glow behind it while open,
 ## and a roller shutter over the whole front while closed.

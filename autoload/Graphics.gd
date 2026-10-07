@@ -252,6 +252,11 @@ func _apply_viewport() -> void:
 	RenderingServer.environment_set_volumetric_fog_filter_active(true)
 	RenderingServer.environment_glow_set_use_bicubic_upscale(ps5)
 	vp.positional_shadow_atlas_size = 8192 if ps5 else 4096
+	# How many pixels of error a mesh LOD may show before a finer one is
+	# drawn. The street fronts and Poly Haven props model every brick and
+	# bolt; from the camera ~11 m back a 4 px error doesn't show, and below
+	# High it buys back most of what the real buildings cost.
+	vp.mesh_lod_threshold = 1.0 if high else 4.0
 	if "anisotropic_filtering_level" in vp:
 		vp.set("anisotropic_filtering_level", Viewport.ANISOTROPY_16X if ps5 else Viewport.ANISOTROPY_4X)
 	var soft := RenderingServer.SHADOW_QUALITY_SOFT_ULTRA if ps5 else (RenderingServer.SHADOW_QUALITY_SOFT_HIGH if high else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if preset == Preset.MEDIUM else RenderingServer.SHADOW_QUALITY_HARD))

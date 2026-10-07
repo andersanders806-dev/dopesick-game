@@ -17,6 +17,8 @@ extends Node
 ##   InteractZone mask.
 
 const KENNEY := "res://assets/kenney/"
+## Matches world/StreetLife.gd's CAR_SCALE, so parked and passing cars agree.
+const KENNEY_CAR_SCALE := 1.6
 const WALL_H := 2.4
 const LOW_WALL_H := 0.5
 
@@ -99,7 +101,7 @@ const PBR_SIZE := {
 	"store_tiles": 2.2, "checker_tiles": 3.0, "cinder_block": 2.0,
 	"wood_panels": 2.1, "planks": 2.0,
 	# ambientCG (dev-tools/fetch_ambientcg.py)
-	"road_worn": 4.0, "sidewalk_slabs": 2.0, "curb": 2.0, "tiles_white": 1.0, "tiles_beige": 1.0,
+	"road_worn": 5.0, "sidewalk_slabs": 2.6, "curb": 2.0, "tiles_white": 1.0, "tiles_beige": 1.0,
 	"plaster_painted": 2.0, "bricks_old": 2.0, "wood_dark": 1.5, "leather_red": 1.0, "felt": 0.5,
 	"metal_worn": 1.0, "metal_brushed": 1.0,
 }
@@ -1976,8 +1978,9 @@ func _streetlight(name: String, x: float, z: float, index: int) -> void:
 	sl.name = name
 	_add(_root, sl)
 	sl.position = Vector3(x, 0, z)
-	_cylinder(sl, "Pole", 0.07, 3.4, Vector3(0, 1.7, 0), _color_mat(Color(0.12, 0.12, 0.13), 0.6))
-	_box_mesh(sl, "Head", Vector3(0.5, 0.12, 0.25), Vector3(0, 3.4, -0.1), _color_mat(Color(1.0, 0.7, 0.3), 0.5, 5.0))
+	# Poly Haven's street lamp (3.87 m), scaled to the old 3.4 m so the light
+	# below still sits in its head.
+	_ph(sl, "Model", "street_lamp_01", Vector3.ZERO, 3.4 / 3.87, 180.0)
 	var cyl := CylinderShape3D.new()
 	cyl.radius = 0.15
 	cyl.height = 3.4
@@ -1986,22 +1989,32 @@ func _streetlight(name: String, x: float, z: float, index: int) -> void:
 	var buzz := _sound(sl, "Buzz", "bulb_buzz_loop.wav", Vector3(0, 3.2, 0), -28.0, 1.5, 8.0)
 	buzz.pitch_scale = 0.88 + 0.04 * index  # detuned so neighbouring lamps don't phase
 
-## A parked car built from boxes; its "Body" joins the car_bodies group so
-## City3D.gd can give each a random paint colour.
-func _car(name: String, pos: Vector3, facing_left := false) -> void:
+## A parked car: Poly Haven's covered car (realistic, under a tarp), or a
+## Kenney car in muted paint -- realistic CC0 cars with open downloads
+## don't exist. The collision box is the old one's.
+func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan") -> void:
 	var car := StaticBody3D.new()
 	car.name = name
 	_add(_root, car)
 	car.position = pos
 	if facing_left:
 		car.rotation_degrees.y = 180.0
-	var body := _box_mesh(car, "Body", Vector3(3.8, 0.7, 1.7), Vector3(0, 0.55, 0), _color_mat(Color(0.5, 0.1, 0.1), 0.35))
-	body.add_to_group("car_bodies", true)
-	_box_mesh(car, "Cabin", Vector3(2.0, 0.55, 1.5), Vector3(-0.2, 1.15, 0), _color_mat(Color(0.08, 0.1, 0.12), 0.1))
-	for wx in [-1.2, 1.2]:
-		for wz in [-0.8, 0.8]:
-			_box_mesh(car, "Wheel", Vector3(0.6, 0.6, 0.2), Vector3(wx, 0.3, wz), _color_mat(Color(0.03, 0.03, 0.03), 0.9))
-	_box_mesh(car, "Headlights", Vector3(0.05, 0.12, 1.3), Vector3(1.91, 0.65, 0), _color_mat(Color(1.0, 0.95, 0.8), 0.3, 2.0))
+	if kind == "covered":
+		_ph(car, "Model", "covered_car", Vector3.ZERO, 1.0, 90.0)
+	else:
+		var m := _model(car, "Model", "cars/%s.glb" % kind, Vector3(0, 0.3 * KENNEY_CAR_SCALE, 0), KENNEY_CAR_SCALE, 90.0)
+		if kind != "police":
+			var paint: Color = [Color(0.22, 0.24, 0.27), Color(0.32, 0.29, 0.25), Color(0.18, 0.2, 0.17)][name.length() % 3]
+			for mi in m.find_children("*", "MeshInstance3D", true, false):
+				var base := (mi as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
+				if base == null:
+					continue
+				var muted := base.duplicate() as StandardMaterial3D
+				# The paint is in Kenney's palette texture, so a tint can only
+				# darken and grey it, not repaint it.
+				muted.albedo_color = muted.albedo_color * paint * 2.0
+				muted.roughness = maxf(muted.roughness, 0.55)
+				(mi as MeshInstance3D).set_surface_override_material(0, muted)
 	_collision(car, _box_shape(Vector3(3.8, 1.4, 1.7)), Vector3(0, 0.7, 0))
 
 func _build_city() -> Node3D:
@@ -2012,8 +2025,17 @@ func _build_city() -> Node3D:
 	var d := 9.0
 	var street_z := -4.5
 	_solid(_root, "Floor", Vector3(w, 0.1, d), Vector3(0, -0.05, 0), null, 16)
-	_box_mesh(_root, "Sidewalk", Vector3(w, 0.1, 3.0), Vector3(0, -0.04, street_z + 1.5), _tex_mat("res://assets/env/sidewalk_tile.png", 0.5, 0.9))
-	_box_mesh(_root, "Road", Vector3(w, 0.1, d - 3.0), Vector3(0, -0.05, street_z + 3.0 + (d - 3.0) / 2), _tex_mat("res://assets/env/road_tile.png", 0.25, 0.8))
+	# Worn slabs, darkened: the paving texture is light grey new stone.
+	var slabs := _tex_mat("pbr:sidewalk_slabs", 1.0)
+	slabs.albedo_color = Color(0.58, 0.56, 0.53)
+	_box_mesh(_root, "Sidewalk", Vector3(w, 0.1, 3.0), Vector3(0, -0.04, street_z + 1.5), slabs)
+	_box_mesh(_root, "Road", Vector3(w, 0.1, d - 3.0), Vector3(0, -0.05, street_z + 3.0 + (d - 3.0) / 2), _tex_mat("pbr:road_worn", 1.0))
+	# A faded yellow centre line, dashed along the street.
+	var line_mat := _color_mat(Color(0.62, 0.5, 0.14), 0.8)
+	var road_mid := street_z + 3.0 + (d - 3.0) / 2
+	for i in int(w / 3.0):
+		_box_mesh(_root, "LaneDash%d" % i, Vector3(1.4, 0.005, 0.1), Vector3(-w / 2 + 1.5 + i * 3.0, 0.002, road_mid), line_mat)
+	_box_mesh(_root, "Curb", Vector3(w, 0.14, 0.25), Vector3(0, 0.03, street_z + 3.0), _tex_mat("pbr:curb", 1.0))
 
 	var moon := DirectionalLight3D.new()
 	moon.name = "Moon"
@@ -2104,13 +2126,7 @@ func _build_city() -> Node3D:
 			_door(f["door"], Vector3(x, 0, street_z + 0.45), Vector3.BACK, f["scene"], "SpawnFromCity")
 		_marker(f["spawn"], Vector3(x, 0, street_z + 1.5))
 	# A police cruiser parked out front of the station.
-	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6))
-	var cruiser := _root.get_node("PoliceCruiser") as Node3D
-	var cruiser_body := cruiser.get_node("Body") as MeshInstance3D
-	cruiser_body.remove_from_group("car_bodies")
-	cruiser_body.mesh.material = _color_mat(Color(0.9, 0.9, 0.92), 0.3)
-	_box_mesh(cruiser, "Lightbar", Vector3(0.3, 0.1, 1.2), Vector3(-0.2, 1.48, 0), _color_mat(Color(0.2, 0.3, 1.0), 0.3, 2.0))
-	_box_mesh(cruiser, "Stripe", Vector3(3.82, 0.15, 1.72), Vector3(0, 0.55, 0), _color_mat(Color(0.1, 0.15, 0.4), 0.3))
+	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6), false, "police")
 
 	# A low filler building in the gap by the station (the one at -14 is the
 	# kart track now), and the two alleys at x = 14 and x = 21: the
@@ -2140,9 +2156,9 @@ func _build_city() -> Node3D:
 	for i in light_xs.size():
 		_streetlight("Streetlight%d" % (i + 1), light_xs[i], street_z + 2.7, i)
 
-	_car("CarA", Vector3(-12.0, 0, 2.6))
-	_car("CarB", Vector3(5.5, 0, 2.6))
-	_car("CarC", Vector3(20.0, 0, 2.8), true)
+	_car("CarA", Vector3(-12.0, 0, 2.6), false, "covered")
+	_car("CarB", Vector3(5.5, 0, 2.6), false, "sedan")
+	_car("CarC", Vector3(20.0, 0, 2.8), true, "covered")
 
 	var hydrant := StaticBody3D.new()
 	hydrant.name = "Hydrant"

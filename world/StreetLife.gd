@@ -90,6 +90,20 @@ func _update_traffic(delta: float) -> void:
 			_cars.erase(car)
 			car.queue_free()
 
+## Kenney's cars are toy-bright; on this street they're older, dirtier and
+## mostly grey. (Realistic CC0 cars with open downloads don't exist.)
+func _mute_paint(model: Node) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var base := (mi as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
+		if base == null:
+			continue
+		var muted := base.duplicate() as StandardMaterial3D
+		# The paint is in Kenney's palette texture: a grey multiply darkens
+		# and dulls it.
+		muted.albedo_color = muted.albedo_color * Color(0.55, 0.55, 0.58)
+		muted.roughness = maxf(muted.roughness, 0.55)
+		(mi as MeshInstance3D).set_surface_override_material(0, muted)
+
 func _spawn_car(x: float) -> void:
 	var car := Node3D.new()
 	car.name = "TrafficCar"
@@ -97,6 +111,7 @@ func _spawn_car(x: float) -> void:
 	model.scale = Vector3.ONE * CAR_SCALE
 	model.position.y = 0.3 * CAR_SCALE
 	model.rotation_degrees.y = 90.0
+	_mute_paint(model)
 	car.add_child(model)
 	add_child(car)
 	car.position = Vector3(x, 0, LANE_Z)

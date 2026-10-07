@@ -2061,10 +2061,8 @@ func _build_city() -> Node3D:
 	]
 	for f in fronts:
 		var x: float = f["x"]
-		var bscale: float = f.get("scale", 5.0)
-		_model(_root, f["name"] + "Building", f["file"], Vector3(x, 0, f.get("z", street_z - 0.5 * bscale - 0.05)), bscale)
-		if f["name"] not in ["Home", "Police"]:
-			_model(_root, f["name"] + "Awning", "city/detail-awning.glb", Vector3(x, 2.0, street_z - 0.4), 5.0)
+		# The buildings themselves are world/Facades.gd's, built at load from
+		# Poly Haven's facade kits; this lays out only what's on the street.
 		var sign := Label3D.new()
 		sign.name = f["name"] + "Sign"
 		sign.text = f["sign"]
@@ -2117,10 +2115,8 @@ func _build_city() -> Node3D:
 	# A low filler building in the gap by the station (the one at -14 is the
 	# kart track now), and the two alleys at x = 14 and x = 21: the
 	# pusher's stash and his hiding spot.
-	for gx in [-21.0]:
-		_model(_root, "Filler%d" % int(gx), "city/low-detail-building-a.glb" if int(gx) % 2 == 0 else "city/low-detail-building-b.glb", Vector3(gx, 0, street_z - 1.45), 5.0)
-	_model(_root, "FillerWestEnd", "city/building-e.glb", Vector3(-30.5, 0, street_z - 2.6), 5.0)
-	_model(_root, "FillerEastEnd", "city/building-c.glb", Vector3(30.5, 0, street_z - 2.8), 5.0)
+	# (The filler blocks -- behind the backyard gate, and at each end of the
+	# block -- are world/Facades.gd's too.)
 	for ax in [14.0, 21.0]:
 		_box_mesh(_root, "Alley%d" % int(ax), Vector3(2.2, 0.1, 5.0), Vector3(ax, -0.04, street_z - 2.5), _tex_mat("res://assets/env/road_tile.png", 0.3, 0.9))
 		_box_mesh(_root, "AlleyFence%d" % int(ax), Vector3(2.2, 2.2, 0.08), Vector3(ax, 1.1, street_z - 5.0), _color_mat(Color(0.25, 0.25, 0.27), 0.6))

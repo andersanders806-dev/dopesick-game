@@ -89,6 +89,9 @@ func _ready() -> void:
 		if m:
 			life.steam_points.append(m.position + Vector3(0, 0.1, 0))
 	add_child(life)
+	var facades: Node3D = preload("res://world/Facades.gd").new()
+	facades.name = "Facades"
+	add_child(facades)
 	var dressing: Node3D = preload("res://world/StreetDressing.gd").new()
 	dressing.name = "StreetDressing"
 	add_child(dressing)

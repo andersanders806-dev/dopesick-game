@@ -2969,3 +2969,37 @@ func _world_art_checks(gs: Node) -> void:
 		if not ResourceLoader.exists("res://assets/polyhaven/%s/%s.gltf" % [id, id]):
 			missing.append(id)
 	_check(missing.is_empty(), "  every material and model is on disk (%s)" % [missing])
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var kenney := city.find_children("*", "Node3D", false, false).filter(func(n): return String(n.scene_file_path).contains("kenney/city"))
+	_check(kenney.is_empty(), "  no Kenney toy buildings left on the street (%s)" % [kenney.map(func(n): return n.name)])
+	var fronts: Node = city.get_node_or_null("Facades")
+	var names := ["Police", "Home", "Pharmacy", "Bar", "Shop", "Liquor", "Supermarket", "Electronics", "Karts", "Pawn", "Music", "Shelter"]
+	_check(fronts != null and names.all(func(n): return fronts.get_node_or_null("Front" + n) != null), "  every building has a real front")
+	# Gameplay stays: doors and the station door where they were.
+	var doors := ["DoorToHome", "DoorToPharmacy", "DoorToBar", "DoorToShop", "DoorToLiquor", "DoorToSupermarket",
+		"DoorToElectronics", "DoorToKarts", "DoorToPawn", "DoorToMusic", "DoorToShelter", "StationDoor"]
+	_check(doors.all(func(d): return city.find_child(d, true, false) != null), "  every door is still there")
+	if fronts:
+		# Fronts sit behind the signs: nothing of a facade pokes in front of z = -4.5.
+		var poking := []
+		for mi in fronts.find_children("*", "MeshInstance3D", true, false):
+			var b: AABB = mi.global_transform * mi.get_aabb()
+			if b.end.z > -4.5 + 0.001:
+				poking.append(mi.name)
+		_check(poking.is_empty(), "  fronts sit behind the signs and plates (%s)" % [poking.slice(0, 5)])
+	# Shutters by opening hours, right from load.
+	gs.clock = 3 * 60
+	city = await _load("res://world/City3D.tscn")
+	var ph: Node = city.get_node_or_null("Facades/FrontPharmacy")
+	_check(ph != null and ph.get_node("Shutter").visible and not ph.get_node("Glow").visible, "  a closed shop has its shutter down on load (state on load)")
+	gs.clock = 14 * 60
+	gs.advance_clock(1)
+	await _frames(2)
+	_check(ph != null and not ph.get_node("Shutter").visible and ph.get_node("Glow").visible, "  ...and up, lit, when it opens")
+	# Posters still land on a wall: each wall decal's box reaches the facade plane.
+	var short := city.find_children("*", "Decal", true, false).filter(func(d): return d.global_position.z > -4.8 and d.global_position.z - d.size.y / 2.0 > -4.5 - 0.02 and absf(d.global_rotation_degrees.x) > 45)
+	_check(short.is_empty(), "  posters and graffiti still reach the wall (%s)" % [short.map(func(d): return d.name)])
+

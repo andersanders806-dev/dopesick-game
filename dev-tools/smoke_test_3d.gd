@@ -790,6 +790,7 @@ func _run() -> void:
 	await _polish_checks(gs)
 	await _cutscene_video_checks()
 	await _lean_checks(gs)
+	await _one_load_at_a_time_checks()
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3319,3 +3320,21 @@ func _lean_checks(gs: Node) -> void:
 	await _frames(20)
 	_check(not gfx.lean() and gfx._shadow_filter == RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM and env.ssao_enabled and kit_mat.normal_enabled and sun.directional_shadow_mode == DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS,
 		"  a real graphics card keeps the full Medium")
+
+## Background loads fight the game for the CPU: several at once (the street
+## has doors every few metres) made the first seconds there stutter.
+func _one_load_at_a_time_checks() -> void:
+	var loader := root.get_node("SceneLoader")
+	var most := 0
+	for path in ["res://world/StoreLiquor3D.tscn", "res://world/StorePharmacy3D.tscn", "res://world/Pawn3D.tscn"]:
+		loader._scenes.erase(path)
+		loader.prefetch(path)
+		most = maxi(most, loader._loading.size())
+	var done := false
+	for i in 900:
+		await _frames(1)
+		most = maxi(most, loader._loading.size())
+		if loader.cached("res://world/StoreLiquor3D.tscn") and loader.cached("res://world/StorePharmacy3D.tscn") and loader.cached("res://world/Pawn3D.tscn"):
+			done = true
+			break
+	_check(most <= 1 and done, "  rooms load in the background one at a time, and all get there (most at once %d)" % most)

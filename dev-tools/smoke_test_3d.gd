@@ -792,6 +792,7 @@ func _run() -> void:
 	await _lean_checks(gs)
 	await _low_checks(gs)
 	_scaler_checks()
+	await _darknet_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3236,13 +3237,24 @@ func _prompt_checks(gs: Node) -> void:
 	var home := await _load("res://world/Apartment3D.tscn")
 	_check(Prompts.text_for(home.get_node("Bed")) == "Sleep" and Prompts.text_for(home.get_node("Belonging_guitar")) == "Your guitar",
 		"  the bed and your things: '%s', '%s'" % [Prompts.text_for(home.get_node("Bed")), Prompts.text_for(home.get_node("Belonging_guitar"))])
+	# Zones named after what they are keep their words even when Godot has
+	# to rename one (two bottles at the same spot), and the people the
+	# street spawns by name say who they are.
+	city = await _load("res://world/City3D.tscn")
+	var jobs := root.get_node("Jobs")
+	var b1: Node = jobs._zone(city, "Bottle77", Vector3(1, 0, -2), func(_z, _p): pass)
+	var b2: Node = jobs._zone(city, "Bottle77", Vector3(1, 0, -2), func(_z, _p): pass)
+	_check(Prompts.text_for(b1) == "Pick up the bottle" and Prompts.text_for(b2) == "Pick up the bottle", "  two bottles in one spot both say 'Pick up the bottle' ('%s')" % Prompts.text_for(b2))
+	var alley: Node = city.find_child("AlleyOverdose", true, false)
+	alley._build_victim("Quiet Kid")
+	_check(Prompts.text_for(alley.victim) == "Help them", "  someone down in the alley: '%s'" % Prompts.text_for(alley.victim))
 	# Everything you can use, in every room, says something.
 	var silent := []
 	for room in PROMPT_ROOMS:
 		var r := await _load("res://world/%s.tscn" % room)
 		for n in get_nodes_in_group("interactable"):
 			if n.has_method("interact") and (Prompts.text_for(n) == "" or Prompts.text_for(n) == n.name.capitalize()):
-				silent.append("%s/%s" % [room, n.name])
+				silent.append("%s/%s (%s)" % [room, n.name, n.get_script().resource_path.get_file() if n.get_script() else "-"])
 	_check(silent.is_empty(), "  every interactable in every room has a prompt (silent: %s)" % [silent])
 
 ## The review's edge cases for SceneLoader.
@@ -3380,3 +3392,61 @@ func _scaler_checks() -> void:
 	_check(gfx.next_scale(s, 40.0, 0.0) < s, "  no GPU timing: falls back to the frame rate")
 	gfx._integrated = false
 	gfx.set_preset(gfx.Preset.MEDIUM)
+
+## The laptop at home: a darknet market. Cheaper than the corner and fewer
+## fakes, but you wait a day, and some vendors take your money and vanish,
+## and some packages get opened by the post office.
+func _darknet_checks(gs: Node) -> void:
+	await _section("Silk Lane: ordering from the laptop at home")
+	var Darknet = load("res://world/Darknet.gd")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var home := await _load("res://world/Apartment3D.tscn")
+	var laptop: Node = home.get_node_or_null("Laptop")
+	_check(laptop != null and laptop.is_in_group("interactable") and load("res://ui/Prompts.gd").text_for(laptop) == "Use the laptop",
+		"  a laptop at home says 'Use the laptop'")
+	_check(SaveGame_has_field("parcel"), "  an order in the post is saved with the run")
+	var street: int = gs.price_of("heroin")
+	var price: int = Darknet.price("heroin")
+	_check(price < street, "  cheaper than the corner ($%d vs $%d)" % [price, street])
+	gs.cash = 100
+	_check(Darknet.order("heroin", "ok"), "  ordering works")
+	_check(gs.cash == 100 - price and not gs.parcel.is_empty() and gs.parcel["day"] == gs.day + 1, "  paid, and it ships for tomorrow")
+	_check(not Darknet.order("heroin", "ok"), "  one order at a time")
+	_check(home.get_node_or_null("Package") == null, "  nothing on the mat today")
+	# Next morning.
+	gs.day += 1
+	gs.clock = 10 * 60
+	home = await _load("res://world/Apartment3D.tscn")
+	var box: Node = home.get_node_or_null("Package")
+	_check(box != null and load("res://ui/Prompts.gd").text_for(box) == "Open the package", "  next morning there's a package inside the door")
+	gs.craving = 10.0
+	var outcome: String = Darknet.open_package(box, false)
+	_check(gs.parcel.is_empty() and outcome in ["relief", "precipitated", "overdose", "saved"] and gs.craving > 10.0 or outcome != "relief",
+		"  opening it, you take what came (%s, craving %.0f)" % [outcome, gs.craving])
+	await _frames(2)
+	_check(home.get_node_or_null("Package") == null or home.get_node("Package").is_queued_for_deletion(), "  ...and the box is gone")
+	# The vendor who took the money and ran.
+	gs.cash = 100
+	Darknet.order("oxy", "scam")
+	gs.day += 1
+	gs.clock = 9 * 60 + 59
+	gs._last_minute = 9 * 60 + 59
+	gs.clock = 10 * 60
+	gs._emit_clock()
+	home = await _load("res://world/Apartment3D.tscn")
+	_check(home.get_node_or_null("Package") == null and gs.parcel.get("fate", "") == "scam", "  an exit scam: no package")
+	_check(Darknet.laptop_text().contains("gone") and gs.parcel.is_empty(), "  the laptop tells you the vendor's gone, and the order's done with")
+	# Opened at the post office.
+	gs.warrant = false
+	Darknet.order("meth", "seized")
+	gs.day += 1
+	gs._last_minute = 9 * 60 + 30
+	gs.clock = 10 * 60
+	gs._emit_clock()
+	_check(gs.warrant and gs.parcel.is_empty(), "  a package seized in the post: there's a warrant out")
+	gs.warrant = false
+
+func SaveGame_has_field(f: String) -> bool:
+	return f in root.get_node("SaveGame").FIELDS

@@ -24,6 +24,7 @@ func _ready() -> void:
 func _build() -> void:
 	npc = Area3D.new()
 	npc.name = "Tasha"
+	npc.set_meta("prompt", preload("res://ui/Prompts.gd").talk_to("Tasha"))
 	npc.collision_layer = 4
 	npc.collision_mask = 0
 	npc.monitoring = false

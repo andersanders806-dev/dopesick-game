@@ -75,6 +75,7 @@ func _snap(room: Node3D, p: Vector3) -> Vector3:
 func _zone(room: Node3D, zname: String, pos: Vector3, action: Callable, marker := false) -> Area3D:
 	var zone := Area3D.new()
 	zone.name = zname
+	zone.set_meta("kind", zname)
 	zone.collision_layer = 4
 	zone.collision_mask = 0
 	zone.monitoring = false

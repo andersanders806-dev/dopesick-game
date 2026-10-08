@@ -22,7 +22,9 @@ const NAMES := {
 var _scenes := {}
 ## Paths whose background load failed: not asked for again.
 var _failed := {}
-## Paths with a background load in flight.
+## Paths waiting their turn to load in the background.
+var _queue: Array = []
+## The path with a background load in flight (one at most).
 var _loading := {}
 var _busy := false
 var _warmed := false
@@ -62,11 +64,29 @@ func cached(path: String) -> bool:
 	return _scenes.has(path)
 
 ## Starts loading `path` in the background, unless it's loaded already.
-func prefetch(path: String) -> void:
+## One at a time, through a queue: the street has a door every few metres,
+## and nine rooms loading at once on arrival fought the game for the CPU
+## (12 ms of physics a frame for the first seconds, instead of 2). `soon`
+## (the door you're walking up to) goes to the front.
+func prefetch(path: String, soon := false) -> void:
 	if path == "" or _scenes.has(path) or _loading.has(path) or _failed.has(path) or not ResourceLoader.exists(path):
 		return
-	if ResourceLoader.load_threaded_request(path) == OK:
-		_loading[path] = true
+	if soon:
+		_queue.erase(path)
+		_queue.push_front(path)
+	elif not _queue.has(path):
+		_queue.append(path)
+	_start_next()
+
+func _start_next() -> void:
+	while _loading.is_empty() and not _queue.is_empty():
+		var path: String = _queue.pop_front()
+		if _scenes.has(path):
+			continue
+		if ResourceLoader.load_threaded_request(path) == OK:
+			_loading[path] = true
+		else:
+			_failed[path] = true
 
 func _process(delta: float) -> void:
 	for path in _loading.keys():
@@ -77,6 +97,7 @@ func _process(delta: float) -> void:
 		elif status != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			_loading.erase(path)
 			_failed[path] = true
+	_start_next()
 	_scan -= delta
 	if _scan <= 0.0 and not _busy:
 		_scan = 0.25
@@ -95,13 +116,14 @@ func _prefetch_near_doors() -> void:
 			prefetch(path)
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
-			prefetch(door.target_scene)
+			prefetch(door.target_scene, true)
 
 ## The scene at `path`, waiting for (or doing) the load if it isn't in yet;
 ## null if it won't load.
 func _scene(path: String) -> PackedScene:
 	if not _scenes.has(path):
 		var packed: PackedScene = null
+		_queue.erase(path)
 		if _loading.has(path):
 			_loading.erase(path)
 			packed = ResourceLoader.load_threaded_get(path) as PackedScene

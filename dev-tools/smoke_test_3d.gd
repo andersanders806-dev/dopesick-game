@@ -790,6 +790,8 @@ func _run() -> void:
 	await _polish_checks(gs)
 	await _cutscene_video_checks()
 	await _lean_checks(gs)
+	await _low_checks(gs)
+	_scaler_checks()
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3338,3 +3340,43 @@ func _one_load_at_a_time_checks() -> void:
 			done = true
 			break
 	_check(most <= 1 and done, "  rooms load in the background one at a time, and all get there (most at once %d)" % most)
+
+## Low on laptop graphics, and the HUD's screen pass when you're well.
+func _low_checks(gs: Node) -> void:
+	await _section("Smooth: Low and the HUD pass")
+	var gfx := root.get_node("Graphics")
+	gfx._integrated = true
+	gfx.set_preset(gfx.Preset.LOW)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_piece(city).get_active_material(0).normal_enabled,
+		"  Low on laptop graphics is lean too: FXAA, flat facades")
+	var post: ColorRect = get_first_node_in_group("hud").get_node("PostFX")
+	gs.craving = 100.0
+	gs.craving_changed.emit(gs.craving)
+	await _frames(2)
+	var lite: bool = not String((post.material as ShaderMaterial).shader.code).contains("hint_screen_texture")
+	_check(lite, "  well: vignette and grain without copying the screen")
+	gs.craving = 0.0
+	gs.craving_changed.emit(gs.craving)
+	await _frames(2)
+	_check(gs.sickness() > 0.0 and String((post.material as ShaderMaterial).shader.code).contains("hint_screen_texture"),
+		"  sick: the full swimming, doubled, drained screen")
+	gs.craving = 100.0
+	gs.craving_changed.emit(gs.craving)
+	gfx._integrated = false
+	gfx.set_preset(gfx.Preset.MEDIUM)
+
+## Resolution follows the GPU's frame time, so it settles under 60 FPS's
+## 16.7 ms instead of creeping up whenever vsync shows 58.
+func _scaler_checks() -> void:
+	var gfx := root.get_node("Graphics")
+	gfx._integrated = true
+	gfx.set_preset(gfx.Preset.LOW)
+	var s: float = 0.8
+	_check(gfx.next_scale(s, 58.0, 16.2) < s, "  GPU over budget (16.2 ms at 58 FPS): resolution comes down")
+	_check(is_equal_approx(gfx.next_scale(s, 60.0, 14.0), s), "  14 ms: stays put")
+	_check(gfx.next_scale(s, 60.0, 11.0) > s, "  11 ms: room to sharpen, goes up")
+	_check(gfx.next_scale(s, 40.0, 0.0) < s, "  no GPU timing: falls back to the frame rate")
+	gfx._integrated = false
+	gfx.set_preset(gfx.Preset.MEDIUM)

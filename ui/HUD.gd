@@ -285,7 +285,20 @@ func _update_craving(craving: float) -> void:
 	# Only once you're actually getting sick -- it used to sit at ~20% green
 	# over everything at a normal craving, which muddied every colour.
 	withdrawal_tint.color.a = GameState.sickness() * 0.3
-	($PostFX.material as ShaderMaterial).set_shader_parameter("sickness", GameState.sickness())
+	_set_post_fx(GameState.sickness())
+
+## Well, the PostFX is only a vignette and grain: the lite shader draws
+## them over the frame without copying the screen (~3.5 ms on a UHD 620).
+## Getting sick swaps in the full one.
+const POST_FULL := preload("res://assets/fx/postfx.gdshader")
+const POST_LITE := preload("res://assets/fx/postfx_lite.gdshader")
+
+func _set_post_fx(sick: float) -> void:
+	var mat := $PostFX.material as ShaderMaterial
+	var want: Shader = POST_FULL if sick > 0.0 else POST_LITE
+	if mat.shader != want:
+		mat.shader = want
+	mat.set_shader_parameter("sickness", sick)
 
 func _update_inventory() -> void:
 	for child in inventory_icons.get_children():

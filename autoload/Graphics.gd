@@ -88,6 +88,7 @@ func _ready() -> void:
 	_apply_fullscreen()
 	_build_overlay()
 	get_tree().node_added.connect(_on_node_added)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_apply_viewport()
 	if _migrated:
 		_save_settings()
@@ -200,22 +201,42 @@ func _on_node_added(node: Node) -> void:
 func _adapt_resolution(delta: float) -> void:
 	_frame_acc += delta
 	_frame_count += 1
+	_gpu_acc += RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
 	if _frame_acc < 0.5:
 		return
 	var fps := _frame_count / _frame_acc
+	var gpu := _gpu_acc / _frame_count
 	watch_high(fps, _frame_acc)
 	_frame_acc = 0.0
 	_frame_count = 0
-	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
-	var next := render_scale
-	if fps < TARGET_FPS - 8.0:
-		next -= 0.05
-	elif fps >= TARGET_FPS:
-		next += 0.02
-	next = clampf(next, r[0], r[1])
+	_gpu_acc = 0.0
+	var next := next_scale(render_scale, fps, gpu)
 	if not is_equal_approx(next, render_scale):
 		render_scale = next
 		get_viewport().scaling_3d_scale = render_scale
+
+## Vsync caps the frame rate at 60, so the rate alone can't say whether
+## there's room: it read 58 and sharpened, then dipped and blurred, never
+## settling. The GPU's own frame time can: over 15.5 ms (no margin under
+## 60 FPS's 16.7) comes down a step, under 12 goes up, slowly. Without a
+## timing (0), the old frame-rate rule.
+const GPU_HIGH_MS := 15.5
+const GPU_LOW_MS := 12.0
+var _gpu_acc := 0.0
+
+func next_scale(current: float, fps: float, gpu_ms: float) -> float:
+	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
+	var next := current
+	if gpu_ms > 0.0:
+		if gpu_ms > GPU_HIGH_MS:
+			next -= 0.05
+		elif gpu_ms < GPU_LOW_MS:
+			next += 0.02
+	elif fps < TARGET_FPS - 8.0:
+		next -= 0.05
+	elif fps >= TARGET_FPS:
+		next += 0.02
+	return clampf(next, r[0], r[1])
 
 ## High on laptop graphics runs 18-41 FPS; on a 60 Hz screen anything
 ## that can't hold ~45 judders when you walk. Five seconds of that and it
@@ -241,7 +262,7 @@ func watch_high(fps: float, window: float) -> bool:
 	_show_toast("Graphics: Medium -- High was running under %d FPS. F3 to switch back." % STEP_DOWN_FPS, 5.0)
 	return true
 
-## Medium on laptop graphics: the profile that holds 60 FPS walking the
+## Medium (and Low) on laptop graphics: the profile that holds 60 FPS walking the
 ## street at night on a UHD 620 (16.7 ms, from 24.4). No ambient occlusion
 ## (-3.6 ms; from the street camera it's barely there), only the near glow
 ## levels (neon still blooms), flat-shaded facade bricks (-1.5 ms), one
@@ -254,7 +275,7 @@ var _shadow_filter: int = RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
 const Facades := preload("res://world/Facades.gd")
 
 func lean() -> bool:
-	return _integrated and preset == Preset.MEDIUM
+	return _integrated and preset <= Preset.MEDIUM
 
 ## High or above: the presets with the full-fat room effects.
 func is_high() -> bool:
@@ -398,7 +419,7 @@ func _apply_shadow_budget() -> void:
 	var lamps: Array = scene.find_children("*", "Light3D", true, false).filter(func(l): return not (l is DirectionalLight3D) and l.get_meta("built_shadow", false))
 	if lamps.is_empty():
 		return
-	var budget: int = 1 if lean() else SHADOW_BUDGET[preset]
+	var budget: int = mini(1, SHADOW_BUDGET[preset]) if lean() else SHADOW_BUDGET[preset]
 	if player and lamps.size() > budget:
 		var at := player.global_position
 		lamps.sort_custom(func(a, b): return a.global_position.distance_squared_to(at) < b.global_position.distance_squared_to(at))

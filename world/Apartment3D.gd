@@ -26,6 +26,7 @@ func _ready() -> void:
 	var back := GameState.return_belongings_home()
 	GameState._reconcile_belongings()
 	refresh_belongings()
+	preload("res://world/Darknet.gd").furnish(self)
 	super._ready()
 	if GameState.intro_pending:
 		GameState.intro_pending = false

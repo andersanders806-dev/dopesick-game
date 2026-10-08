@@ -26,7 +26,7 @@ const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "str
 	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary",
 	"headline", "headline_day", "sabotage_day", "rep", "store_heat",
 	"belongings", "pawn_tickets", "apartment_echo_seen", "rent_due_day", "rent_stage", "rent_owed",
-	"court_day", "probation_days", "warrant", "last_street_use",
+	"court_day", "probation_days", "warrant", "parcel", "last_street_use",
 	"test_strips", "od_event", "dead_regulars", "vigil_day", "vigil_for", "events_rolled_day",
 	"booster_day", "booster_gone", "booster_store", "booster_hit", "booster_team", "booster_cut_pending"]
 

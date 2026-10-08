@@ -296,6 +296,8 @@ var court_day: int = -1
 ## Days still to check in on, earliest first.
 var probation_days: Array = []
 var warrant: bool = false
+## An order off the laptop at home (world/Darknet.gd), until it's played out.
+var parcel: Dictionary = {}
 ## now_minutes() of the last dose off the street.
 var last_street_use: float = -99999.0
 signal legal_changed
@@ -392,6 +394,7 @@ func start_run() -> void:
 	court_day = -1
 	probation_days.clear()
 	warrant = false
+	parcel = {}
 	last_street_use = -99999.0
 	test_strips = 0
 	last_risk = 0.0
@@ -483,6 +486,7 @@ func _emit_clock() -> void:
 			_roll_weather()
 			_check_legal_deadlines()
 			_booster_hour()
+			preload("res://world/Darknet.gd").hourly()
 		_last_minute = minute
 		clock_changed.emit(minute)
 

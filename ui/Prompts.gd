@@ -14,7 +14,7 @@ const ZONES := {
 	"CounterZone": "Talk at the counter", "ServingCounter": "Get a meal", "Cot": "Sleep",
 	"Noticeboard": "Read the noticeboard", "BottleMachine": "Return bottles",
 	"Bottle": "Pick up the bottle", "FlyerSpot": "Put up a flyer", "DockAsk": "Ask about work",
-	"DockTruck": "Unload the truck", "DockPallet": "Stack the box",
+	"DockTruck": "Unload the truck", "DockPallet": "Stack the box", "Victim": "Help them",
 }
 ## Who's called by what they do, not a name: "Talk to the clerk".
 const ROLES := ["Bartender", "Cashier", "Clerk", "Officer", "Security", "Shopkeeper", "Pharmacist",
@@ -53,7 +53,8 @@ static func text_for(node: Node) -> String:
 			return "Talk to the pusher"
 	if "npc_name" in node:
 		return talk_to(str(node.npc_name))
-	var name := String(node.name)
+	# The name it was given, before Godot had to make it unique.
+	var name := String(node.get_meta("kind", node.name))
 	for key in ZONES:
 		if name.begins_with(key):
 			return ZONES[key]

@@ -188,6 +188,14 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Silk Lane: a darknet market on the laptop at home** (`world/Darknet.gd`).
+  A laptop on a crate by the couch: heroin, oxy, fentanyl, pins, bars,
+  bupe, meth and test strips, ~25% under street price plus a $2 fee, paid
+  up front, in a plain envelope inside your door the next morning. Half
+  the street's fakes (vendors live on reviews), but 10% of vendors take the
+  money and vanish (the order page is a 404), and 5% of packages get opened
+  at the post office -- a warrant, home or not. One order at a time; it's
+  saved with the run. Test strips work on the package like on the street.
 - **Every place sounds like itself.** A real CC0 field recording loops
   under each of the 14 rooms (`world/PlaceAmbience.gd`): distant
   late-night LA traffic on the street, bar chatter in the Dive Bar, a

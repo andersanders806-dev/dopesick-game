@@ -1,0 +1,159 @@
+{
+  "asset": {
+    "generator": "Khronos glTF Blender I/O v3.3.32",
+    "version": "2.0"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "tire_pump"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "tire_pump",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 1
+        },
+        "metallicRoughnessTexture": {
+          "index": 2
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Cube.016",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "tire_pump_nor_gl",
+      "uri": "textures/tire_pump_nor_gl_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "tire_pump_diff",
+      "uri": "textures/tire_pump_diff_1k.jpg"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "name": "tire_pump_metal-tire_pump_rough",
+      "uri": "textures/tire_pump_arm_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 4827,
+      "max": [
+        0.12744751572608948,
+        0.5795950889587402,
+        0.04125527665019035
+      ],
+      "min": [
+        -0.12744753062725067,
+        0.00006573921564267948,
+        -0.0597226545214653
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 4827,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 4827,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 19716,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 57924,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 57924,
+      "byteOffset": 57924,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 38616,
+      "byteOffset": 115848,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 39432,
+      "byteOffset": 154464,
+      "target": 34963
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 193896,
+      "uri": "tire_pump.bin"
+    }
+  ]
+}

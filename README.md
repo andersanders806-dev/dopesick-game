@@ -188,6 +188,16 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **World art II** (`dev-tools/build_rooms_3d.gd`): the jail, pawnshop,
+  shelter, Tape Deck, kart track and backyard get the chapter-1 treatment --
+  real CC0 Poly Haven models (filing cabinet, laptop and clipboard at
+  booking; ukuleles, TVs, a boombox, camcorder and watches in the pawnshop;
+  pews, painted tables, bed-frame cots and a chalkboard at St. Jude's;
+  tape decks, crates and an armchair at Tape Deck; a tool chest, jerrycans,
+  rims and a hand truck at the track; cement, cans, a utility box and a lamp
+  over the gate out back) and PBR concrete and cinder block. Every door,
+  zone, spawn and collider is where it was: dev-tools/gameplay_snapshot.gd
+  recorded them and the smoke test checks.
 - **Silk Lane: a darknet market on the laptop at home** (`world/Darknet.gd`).
   A laptop on a crate by the couch: heroin, oxy, fentanyl, pins, bars,
   bupe, meth and test strips, ~25% under street price plus a $2 fee, paid

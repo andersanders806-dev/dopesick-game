@@ -1181,7 +1181,7 @@ func _build_shelter() -> Node3D:
 	for k in 4:
 		_box_mesh(counter, "SteamTray%d" % k, Vector3(0.7, 0.12, 0.4), Vector3(0.6 + k * 1.05, 1.1, -0.26), steel)
 		_box_mesh(counter, "Food%d" % k, Vector3(0.62, 0.02, 0.32), Vector3(0.6 + k * 1.05, 1.16, -0.26), _color_mat([Color(0.55, 0.3, 0.12), Color(0.85, 0.75, 0.4), Color(0.4, 0.5, 0.2), Color(0.7, 0.45, 0.25)][k], 0.6))
-	_cylinder(counter, "CoffeeUrn", 0.16, 0.55, Vector3(5.1, 1.33, -0.26), steel)
+	_ph(counter, "CoffeeUrn", "vintage_electric_kettle", Vector3(5.1, 1.03, -0.26), 1.3, 180.0)
 	_box_mesh(counter, "Trays", Vector3(0.4, 0.2, 0.3), Vector3(-0.1, 1.15, -0.26), _color_mat(Color(0.35, 0.45, 0.6), 0.5))
 	_person("Volunteer", Vector3(0.2, 0, -3.65), "volunteer",
 		"\"Grab a tray, hon.\"\n\"There's more coffee in the back if that runs out.\"\n\"You look cold. Sit near the radiator.\"")
@@ -1192,9 +1192,13 @@ func _build_shelter() -> Node3D:
 	var bench_mat := _color_mat(Color(0.3, 0.3, 0.33), 0.5)
 	for t in 2:
 		var tz := -0.4 + t * 2.2
-		_solid(_root, "Table%d" % t, Vector3(3.6, 0.75, 0.9), Vector3(-2.2, 0.375, tz), table_mat)
+		_solid(_root, "Table%d" % t, Vector3(3.6, 0.75, 0.9), Vector3(-2.2, 0.375, tz), null)
+		for half in 2:
+			_ph(_root, "TableModel%d_%d" % [t, half], "painted_wooden_table", Vector3(-3.1 + half * 1.8, 0, tz), 0.75)
 		for side in [-1.0, 1.0]:
-			_solid(_root, "Bench%d_%d" % [t, int(side)], Vector3(3.6, 0.44, 0.35), Vector3(-2.2, 0.22, tz + side * 0.72), bench_mat)
+			_solid(_root, "Bench%d_%d" % [t, int(side)], Vector3(3.6, 0.44, 0.35), Vector3(-2.2, 0.22, tz + side * 0.72), null)
+			for k in 3:
+				_ph(_root, "BenchModel%d_%d_%d" % [t, int(side), k], "painted_wooden_bench", Vector3(-3.4 + k * 1.2, 0, tz + side * 0.78), 1.0, 0.0 if side > 0 else 180.0)
 	_person("Carl", Vector3(-3.3, 0, -1.1), "shelter_diner_a", "\"...\"\n\"Don't touch my tray.\"\n\"Chili's good tonight. Better than Tuesday.\"", 0.0, "sit")
 	_person("Dee", Vector3(-1.4, 0, 2.5), "shelter_diner_b", "\"They'll kick us out at ten, you know. Every morning.\"\n\"Watch your shoes if you sleep here. I mean it.\"", 180.0, "sit")
 	_person("Marcus", Vector3(-1.0, 0, -1.1), "shelter_diner_c", "\"The lady at the desk is all right. She doesn't preach.\"\n\"Six months clean, once. Then I wasn't.\"", 0.0, "sit")
@@ -1205,9 +1209,9 @@ func _build_shelter() -> Node3D:
 		cot.name = "CotFrame%d" % (c + 1)
 		_add(_root, cot)
 		cot.position = Vector3(4.6, 0, -2.6 + c * 1.15)
-		_box_mesh(cot, "Frame", Vector3(1.9, 0.35, 0.75), Vector3(0, 0.175, 0), _color_mat(Color(0.35, 0.4, 0.3), 0.6))
-		_box_mesh(cot, "Blanket", Vector3(1.4, 0.06, 0.72), Vector3(0.2, 0.38, 0), _color_mat([Color(0.5, 0.2, 0.2), Color(0.25, 0.3, 0.45), Color(0.4, 0.38, 0.3)][c], 1.0))
-		_box_mesh(cot, "Pillow", Vector3(0.35, 0.08, 0.6), Vector3(-0.72, 0.4, 0), _color_mat(Color(0.85, 0.85, 0.8), 1.0))
+		_ph(cot, "Frame", "old_bed_frame", Vector3.ZERO, 0.9, 90.0)
+		_box_mesh(cot, "Blanket", Vector3(1.4, 0.06, 0.7), Vector3(0.2, 0.47, 0), _color_mat([Color(0.5, 0.2, 0.2), Color(0.25, 0.3, 0.45), Color(0.4, 0.38, 0.3)][c], 1.0))
+		_box_mesh(cot, "Pillow", Vector3(0.35, 0.08, 0.6), Vector3(-0.62, 0.49, 0), _color_mat(Color(0.85, 0.85, 0.8), 1.0))
 		_blocker(cot, Vector3(1.9, 0.4, 0.75), Vector3(0, 0.2, 0))
 		_zone(cot, "Cot%d" % (c + 1), Vector3.ZERO, Vector3(2.1, 1.2, 1.0))
 
@@ -1220,6 +1224,11 @@ func _build_shelter() -> Node3D:
 	_label(_root, "NaloxoneSign", "FREE NALOXONE\nNO QUESTIONS ASKED", Vector3(5.97, 1.6, 2.9), -90.0, Color(0.8, 0.15, 0.1), 30)
 	_person("Outreach", Vector3(3.2, 0, 3.55), "outreach_worker", "", 180.0, "idle", "res://npc/Outreach3D.gd")
 
+	# The noticeboard (Jobs.gd's zone) is a chalkboard by the door; the hall
+	# a stack of crates of donations.
+	_ph(_root, "NoticeboardModel", "standing_chalkboard_01", Vector3(-4.6, 0, 2.0), 1.0, 90.0)
+	_ph(_root, "Donations0", "plastic_crate_02", Vector3(-5.6, 0, -2.9), 1.0)
+	_ph(_root, "Donations1", "plastic_crate_02", Vector3(-5.6, 0.25, -2.9), 1.0, 12.0)
 	_sound(_root, "Murmur", "bar_murmur_loop.wav", Vector3(-2.2, 1.0, 0.8), -24.0, 4.0, 18.0)
 	_player_and_hud(Vector3(-4.8, 0, 2.8))
 	return _root
@@ -1237,21 +1246,30 @@ func _build_pawn() -> Node3D:
 	_person("Pawnbroker", Vector3(-0.1, 0, -2.0), "pawnbroker", "", 0.0, "idle", "res://npc/PawnBroker3D.gd")
 	# Guitars on the north wall, a stack of TVs, a watch case, the signs.
 	for g in 4:
-		var gx := -3.4 + g * 0.8
-		_box_mesh(_root, "GuitarBody%d" % g, Vector3(0.38, 0.5, 0.08), Vector3(gx, 1.35, -3.44), _color_mat([Color(0.6, 0.2, 0.1), Color(0.1, 0.1, 0.1), Color(0.75, 0.55, 0.3), Color(0.2, 0.3, 0.6)][g], 0.3))
-		_box_mesh(_root, "GuitarNeck%d" % g, Vector3(0.06, 0.6, 0.04), Vector3(gx, 1.9, -3.44), _color_mat(Color(0.35, 0.22, 0.12), 0.5))
+		_ph(_root, "Guitar%d" % g, "Ukulele_01", Vector3(-3.4 + g * 0.8, 1.05, -3.46), 1.35, [0.0, 4.0, -3.0, 2.0][g])
 	for t in 3:
-		_box_mesh(_root, "PawnTV%d" % t, Vector3(0.8, 0.5, 0.45), Vector3(3.8, 0.25 + t * 0.52, -2.8), _color_mat(Color(0.06, 0.06, 0.07), 0.3))
+		_ph(_root, "PawnTV%d" % t, "television_02", Vector3(3.8, t * 0.66, -2.8), 1.6, [0.0, -6.0, 4.0][t])
 	_solid(_root, "WatchCase", Vector3(1.6, 0.9, 0.6), Vector3(3.4, 0.45, 1.2), _color_mat(Color(0.15, 0.12, 0.1), 0.4))
 	var glass := _color_mat(Color(0.8, 0.9, 1.0, 0.25), 0.05)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_box_mesh(_root, "WatchGlass", Vector3(1.6, 0.25, 0.6), Vector3(3.4, 1.02, 1.2), glass)
-	for w in 5:
-		_box_mesh(_root, "Watch%d" % w, Vector3(0.1, 0.02, 0.12), Vector3(2.8 + w * 0.3, 0.92, 1.2), _color_mat(Color(0.9, 0.75, 0.3), 0.2, 0.6))
+	_ph(_root, "Watch0", "digital_wrist_watch", Vector3(2.85, 0.9, 1.2), 1.0, 80.0)
+	_ph(_root, "Watch1", "digital_wrist_watch", Vector3(3.15, 0.9, 1.25), 1.0, 100.0)
+	_ph(_root, "Camcorder", "vintage_video_camera", Vector3(3.5, 0.9, 1.2), 1.2, 30.0)
+	_ph(_root, "Walkman", "portable_cassette_player", Vector3(3.9, 0.96, 1.2), 1.0, -20.0)
+	# Display shelves down the west side: a boombox, a drill, a suitcase, a
+	# bat -- what people bring in when the rent's due.
+	_solid(_root, "DisplayShelves", Vector3(0.4, 1.55, 1.1), Vector3(-4.25, 0.775, -1.2), null)
+	_ph(_root, "DisplayShelvesModel", "wooden_display_shelves_01", Vector3(-4.25, 0, -1.2), 1.0)
+	_ph(_root, "Drill", "Drill_01", Vector3(-4.25, 1.06, -1.45), 1.0, 90.0)
+	_ph(_root, "Boombox", "boombox", Vector3(4.15, 0, -0.4), 0.8, -90.0)
+	_ph(_root, "Suitcase", "vintage_suitcase", Vector3(-4.1, 0, 0.6), 0.6, 90.0)
+	var bat := _ph(_root, "Bat", "baseball_bat", Vector3(4.2, 0.45, 2.9), 1.0)
+	bat.rotation_degrees.z = 14.0
 	_label(_root, "GoldNeon", "WE BUY GOLD", Vector3(1.5, 2.15, -3.47), 0.0, Color(1.0, 0.75, 0.1), 56, true)
 	_label(_root, "IdSign", "NO ID  NO SALE (MOSTLY)", Vector3(-2.0, 2.15, -3.47), 0.0, Color(0.9, 0.9, 0.85), 26)
-	_box_mesh(_root, "Camera", Vector3(0.2, 0.15, 0.25), Vector3(-4.2, 2.2, -3.2), _color_mat(Color(0.85, 0.85, 0.85), 0.4))
-	_box_mesh(_root, "CameraLed", Vector3(0.03, 0.03, 0.03), Vector3(-4.12, 2.2, -3.07), _color_mat(Color(1.0, 0.1, 0.1), 0.3, 4.0))
+	_ph(_root, "Camera", "security_camera_01", Vector3(-4.2, 2.2, -3.3), 1.0, 30.0)
+	_ph(counter, "Register", "CashRegister_01", Vector3(3.4, 1.05, -0.3), 0.6, 180.0)
 	_player_and_hud(Vector3(-3.3, 0, 2.3))
 	return _root
 
@@ -1348,6 +1366,18 @@ func _build_kart_center() -> Node3D:
 	gold.metallic = 0.9
 	for t in 4:
 		_cylinder(_root, "Trophy%d" % t, 0.07 + t % 2 * 0.02, 0.22 + t % 2 * 0.1, Vector3(3.0 + t * 0.4, 1.75 + t % 2 * 0.05, -3.8), gold)
+	# A workbench corner: tool chest, a jerrycan or two, rims, the pump, the
+	# hand truck the karts come in on, and shop lamps over the desk.
+	_solid(_root, "ToolChest", Vector3(0.7, 0.65, 0.42), Vector3(5.5, 0.325, -3.5), null)
+	_ph(_root, "ToolChestModel", "metal_tool_chest", Vector3(5.5, 0, -3.5), 1.0)
+	_ph(_root, "Jerrycan0", "metal_jerrycan", Vector3(4.8, 0, -3.65), 1.0, 10.0)
+	_ph(_root, "Jerrycan1", "metal_jerrycan", Vector3(4.4, 0, -3.65), 1.0, -15.0)
+	_ph(_root, "Rim0", "rusted_wheel_rim_01", Vector3(-5.75, 0.2, -1.6), 1.0, 90.0)
+	_ph(_root, "Rim1", "rusted_wheel_rim_01", Vector3(-5.75, 0.2, -1.1), 1.0, 80.0)
+	_ph(_root, "TirePump", "tire_pump", Vector3(-5.6, 0, -0.4), 1.0, 30.0)
+	_ph(_root, "HandTruck", "hand_truck", Vector3(3.9, 0, 3.55), 1.0, -30.0)
+	for k in 2:
+		_ph(_root, "ShopLamp%d" % k, "hanging_industrial_lamp", Vector3(-1.0 + k * 2.4, 2.45, -1.6), 1.0)
 	_room_tone("city_ambience_loop.wav", -26.0)
 	_player_and_hud(Vector3(-4.6, 0, 2.6))
 	return _root
@@ -1363,6 +1393,9 @@ func _build_music_store() -> Node3D:
 	# The counter by the door, a listening booth, crates of records, posters.
 	var counter := _front_counter("Counter", 2.0, 2.6, 3)
 	_ph(counter, "Register", "CashRegister_01", Vector3(0.6, 1.05, -0.3), 0.65, 180.0)
+	_ph(counter, "DemoDeck", "cassette_player", Vector3(1.6, 1.03, -0.3), 1.2, 180.0)
+	_ph(counter, "Boombox", "boombox", Vector3(2.6, 1.03, -0.3), 0.6, 170.0)
+	_ph(counter, "Walkman", "portable_cassette_player", Vector3(1.15, 1.09, -0.15), 1.0, 160.0)
 	_guard("Clerk", Vector3(3.6, 0, 3.4), -120.0, 8.0, 55.0, 120.0, 0.45, "Clerk",
 		"\"You looking for anything specific or just vibing?\"\n\"That one's a classic. Don't let anyone tell you different.\"\n\"Tapes are coming back. Any day now.\"\n\"I see you. Hands where I can see them in the dub section.\"",
 		"", "clerk_music")
@@ -1375,7 +1408,11 @@ func _build_music_store() -> Node3D:
 	_box_mesh(booth, "Window", Vector3(0.8, 0.6, 0.02), Vector3(0, 1.4, 0.56), _color_mat(Color(1.0, 0.4, 0.8), 0.2, 1.5))
 	_collision(booth, _box_shape(Vector3(1.4, 2.1, 1.1)), Vector3(0, 1.05, 0))
 	for k in 3:
-		_solid(_root, "RecordCrate%d" % k, Vector3(0.8, 0.5, 0.5), Vector3(-4.6, 0.25, -3.3 + k * 0.7), _color_mat(Color(0.5, 0.35, 0.2), 0.8))
+		_solid(_root, "RecordCrate%d" % k, Vector3(0.8, 0.5, 0.5), Vector3(-4.6, 0.25, -3.3 + k * 0.7), null)
+		_ph(_root, "RecordCrateModel%d" % k, "wooden_crate_01", Vector3(-4.6, 0, -3.3 + k * 0.7), 1.0, k * 3.0)
+	_ph(_root, "BoothChair", "GreenChair_01", Vector3(3.3, 0, -3.1), 1.0, 200.0)
+	_solid(_root, "BackRack", Vector3(0.6, 1.9, 0.92), Vector3(-5.15, 0.95, 0.4), null)
+	_ph(_root, "BackRackModel", "worn_metal_rack", Vector3(-5.15, 0, 0.4), 1.0, 90.0)
 	var poster_colors := [Color(0.9, 0.2, 0.3), Color(0.2, 0.8, 0.7), Color(0.95, 0.8, 0.2), Color(0.5, 0.3, 0.9)]
 	for k in 4:
 		_box_mesh(_root, "Poster%d" % k, Vector3(0.6, 0.85, 0.02), Vector3(-4.2 + k * 1.4, 1.6, -3.97), _color_mat(poster_colors[k], 0.7, 0.4))
@@ -1398,7 +1435,7 @@ func _build_music_store() -> Node3D:
 
 func _build_backyard() -> Node3D:
 	_new_root("Backyard3D", "res://world/Backyard3D.gd")
-	_environment(Color(0.35, 0.4, 0.55), 0.32, true)
+	_environment(Color(0.35, 0.4, 0.55), 0.42, true)
 	var w := 16.0
 	var d := 10.0
 	_room_shell(w, d, "pbr:asphalt", 0.5)
@@ -1425,14 +1462,20 @@ func _build_backyard() -> Node3D:
 		_collision(pallet, _box_shape(Vector3(1.1, 0.85, 1.1)), Vector3(0, 0.425, 0))
 		pallet.set_meta("item_offset", Vector3(0, 0.9, 0.35))
 		_instance(_root, "Item%d" % (i + 1), ItemScene, pallet.position + Vector3(0, 0.9, 0.35))
-	_solid(_root, "DeliveryTruck", Vector3(2.3, 2.6, 4.6), Vector3(5.6, 1.3, -2.2), _color_mat(Color(0.85, 0.85, 0.82), 0.4))
+	var truck_paint := _pbr_mat("metal_worn").duplicate() as StandardMaterial3D
+	truck_paint.albedo_color = Color(0.92, 0.92, 0.88)
+	_solid(_root, "DeliveryTruck", Vector3(2.3, 2.6, 4.6), Vector3(5.6, 1.3, -2.2), truck_paint)
 	_guard("Driver", Vector3(4.0, 0, -0.8), 215.0, 6.0, 50.0, 140.0, 0.35, "Driver",
 		"\"Help you?\"\n\"This ain't a shortcut, pal.\"\n\"I just drive the truck. I don't get paid to count it.\"", "", "stocker_supermarket")
 
 	# Dumpsters: one to dig through, one to hide behind against the west wall.
-	_solid(_root, "DumpsterA", Vector3(2.0, 1.2, 1.0), Vector3(-4.5, 0.6, -d / 2 + 0.6), _color_mat(Color(0.12, 0.28, 0.16), 0.7))
+	var green := _pbr_mat("metal_worn").duplicate() as StandardMaterial3D
+	green.albedo_color = Color(0.3, 0.55, 0.35)
+	var blue := _pbr_mat("metal_worn").duplicate() as StandardMaterial3D
+	blue.albedo_color = Color(0.35, 0.4, 0.7)
+	_solid(_root, "DumpsterA", Vector3(2.0, 1.2, 1.0), Vector3(-4.5, 0.6, -d / 2 + 0.6), green)
 	_zone(_root, "Dumpster", Vector3(-4.5, 0, -d / 2 + 1.5), Vector3(2.2, 1.4, 0.9))
-	_solid(_root, "DumpsterB", Vector3(1.0, 1.2, 2.0), Vector3(-6.2, 0.6, 0.0), _color_mat(Color(0.2, 0.22, 0.45), 0.7))
+	_solid(_root, "DumpsterB", Vector3(1.0, 1.2, 2.0), Vector3(-6.2, 0.6, 0.0), blue)
 	_zone(_root, "HideSpot", Vector3(-7.35, 0, 0.0), Vector3(1.1, 1.4, 1.6))
 
 	# Somebody's bed: a stained mattress under a tarp strung off the fence.
@@ -1452,6 +1495,16 @@ func _build_backyard() -> Node3D:
 	_ph(_root, "PropaneTank", "propane_tank", Vector3(4.6, 0, -4.3), 1.0)
 	_ph(_root, "Crate", "plastic_crate_01", Vector3(-3.4, 0, 3.9), 1.2, 20.0)
 	_ph(_root, "YardLight", "security_light", Vector3(-7.9, 2.3, 3.0), 1.0, 90.0)
+	_light(_root, "YardLamp", Vector3(-7.4, 2.2, 3.0), Color(0.85, 0.9, 1.0), 1.2, 6.5, false)
+	# The street's light spilling in over the gate, so the way in isn't black.
+	_ph(_root, "GateLight", "security_light", Vector3(w / 2 - 0.1, 2.5, gate_z - 1.2), 1.0, -90.0)
+	_light(_root, "GateLamp", Vector3(w / 2 - 0.8, 2.4, gate_z - 1.2), Color(1.0, 0.85, 0.65), 1.4, 7.0, false)
+	_ph(_root, "UtilityBox", "utility_box_02", Vector3(-7.75, 0, -3.6), 1.0, 90.0)
+	_ph(_root, "Cement0", "cement_bag", Vector3(3.2, 0, 4.4), 1.0, 80.0)
+	_ph(_root, "Cement1", "cement_bag", Vector3(3.3, 0.18, 4.35), 1.0, 95.0)
+	_ph(_root, "Crate2", "wooden_crate_02", Vector3(6.9, 0, 3.6), 1.0, 0.0)
+	for k in 3:
+		_ph(_root, "Can%d" % k, "can_rusted", Vector3(-2.6 + k * 0.4, 0, 3.1 - k * 0.25), 1.0, k * 40.0)
 	_light(_root, "FireLight", Vector3(-1.8, 1.3, 2.4), Color(1.0, 0.5, 0.2), 2.2, 6.0)
 	_light(_root, "DockLamp", Vector3(1.5, 2.3, -d / 2 + 1.0), Color(0.9, 0.95, 1.0), 1.8, 7.0)
 	_label(_root, "Graffiti1", "NO LOITERING", Vector3(-7.97, 1.4, -2.5), 90.0, Color(0.9, 0.9, 0.9), 40)
@@ -1482,8 +1535,10 @@ func _build_jail() -> Node3D:
 	_environment(Color(0.6, 0.62, 0.6), 0.3)
 	var w := 13.0
 	var d := 8.0
-	_room_shell(w, d, ENV3D + "concrete_floor.png", 0.4)
-	var block := _tex_mat(ENV3D + "cinder_block_beige.png", 0.6, 0.55)
+	_room_shell(w, d, "pbr:concrete_floor", 0.4)
+	# Painted and repainted cinder block, in the inoffensively offensive beige.
+	var block := _pbr_mat("cinder_block").duplicate() as StandardMaterial3D
+	block.albedo_color = Color(0.86, 0.8, 0.66)
 	for wall in ["WallNorth", "WallSouth", "WallWest", "WallEast"]:
 		(_root.get_node(wall + "/Mesh") as MeshInstance3D).material_override = block
 	var steel := _color_mat(Color(0.62, 0.64, 0.66), 0.35)
@@ -1527,7 +1582,7 @@ func _build_jail() -> Node3D:
 	bench.set_script(InteractableScript)
 	_add(_root, bench)
 	bench.position = Vector3(-4.6, 0, -hd + 0.45)
-	var concrete := _color_mat(Color(0.7, 0.67, 0.6), 0.9)
+	var concrete := _pbr_mat("concrete_floor")
 	_box_mesh(bench, "Shelf", Vector3(2.6, 0.45, 0.7), Vector3(0, 0.225, 0), concrete)
 	_box_mesh(bench, "Mattress", Vector3(1.9, 0.08, 0.62), Vector3(-0.2, 0.49, 0), _color_mat(Color(0.15, 0.3, 0.6), 0.2))
 	_blocker(bench, Vector3(2.6, 0.5, 0.7), Vector3(0, 0.25, 0))
@@ -1576,9 +1631,7 @@ func _build_jail() -> Node3D:
 	_box_mesh(intercom, "Button", Vector3(0.02, 0.05, 0.05), Vector3(-0.02, 1.3, 0), _color_mat(Color(0.8, 0.1, 0.1), 0.4, 1.5))
 	_label(intercom, "Label", "PRESS FOR\nMEDICAL ATTENTION", Vector3(-0.03, 1.6, 0), -90.0, Color(0.15, 0.15, 0.15), 18)
 	_collision(intercom, _box_shape(Vector3(1.0, 1.6, 0.9)), Vector3(-0.4, 0.8, 0))
-	var cage := _box_mesh(_root, "CagedLight", Vector3(0.6, 0.1, 0.3), Vector3(-4.4, 2.35, -1.9), _color_mat(Color(0.95, 1.0, 0.9), 0.4, 2.5))
-	for b in 4:
-		_box_mesh(cage, "Cage%d" % b, Vector3(0.02, 0.12, 0.34), Vector3(-0.27 + b * 0.18, -0.02, 0), steel)
+	_ph(_root, "CagedLight", "industrial_wall_lamp", Vector3(-4.4, 2.0, -hd + 0.01), 1.0)
 	_light(_root, "CellLight", Vector3(-4.4, 2.2, -1.9), Color(0.92, 1.0, 0.88), 1.6, 5.5)
 	var cctv_mesh := SphereMesh.new()
 	cctv_mesh.radius = 0.12
@@ -1595,7 +1648,14 @@ func _build_jail() -> Node3D:
 
 	# --- Booking area, east of the cell.
 	var desk := _counter(_root, "BookingDesk", Vector3(1.0, 0, -2.4), 5)
-	_model(desk, "Computer", "furniture/televisionVintage.glb", Vector3(2.2, 1.05, -0.45), 1.3, 180.0)
+	_ph(desk, "Computer", "classic_laptop", Vector3(2.2, 1.03, -0.3), 0.6, 180.0)
+	_ph(desk, "Clipboard", "clipboard", Vector3(0.9, 1.03, -0.25), 1.0, 15.0)
+	_ph(desk, "FirstAid", "medical_box", Vector3(4.6, 1.03, -0.3), 0.8, -10.0)
+	_ph(_root, "DeskChair", "SchoolChair_01", Vector3(3.1, 0, -3.1), 1.0, 160.0)
+	# A filing cabinet against the back wall, and the alarm by the way out.
+	_solid(_root, "FilingCabinet", Vector3(1.1, 1.85, 0.45), Vector3(-0.1, 0.925, -hd + 0.25), null)
+	_ph(_root, "FilingCabinetModel", "drawer_cabinet", Vector3(-0.1, 0, -hd + 0.27), 1.0)
+	_ph(_root, "FireAlarm", "fire_alarm", Vector3(5.4, 1.55, -hd + 0.01), 1.4)
 	_label(_root, "BookingSign", "BOOKING", Vector3(3.6, 2.1, -hd + 0.03), 0.0, Color(0.1, 0.15, 0.3), 72)
 	var jailer := _instance(_root, "Jailer", NPCScene, Vector3(3.6, 0, -3.3))
 	jailer.set("npc_name", "Booking Officer")
@@ -1608,7 +1668,7 @@ func _build_jail() -> Node3D:
 		_box_mesh(chart, "Line%d" % mark, Vector3(1.0, 0.015, 0.01), Vector3(0, -0.8 + mark * 0.4, 0.015), _color_mat(Color(0.1, 0.1, 0.1), 0.8))
 		_label(chart, "Mark%d" % mark, str(4 + mark) + "'", Vector3(-0.42, -0.74 + mark * 0.4, 0.02), 0.0, Color(0.1, 0.1, 0.1), 24)
 	# Bagged property on a shelf behind the desk.
-	_model(_root, "PropertyShelf", "furniture/bookcaseOpenLow.glb", Vector3(5.2, 0, -hd + 0.63), 2.5)
+	_ph(_root, "PropertyShelf", "worn_metal_rack", Vector3(5.7, 0, -hd + 0.33), 1.0)
 	for k in 4:
 		_box_mesh(_root, "PropertyBag%d" % k, Vector3(0.22, 0.3, 0.15), Vector3(5.35 + k * 0.23, 0.55, -hd + 0.35), _color_mat(Color(0.85, 0.85, 0.8, 0.7), 0.3))
 	_light(_root, "BookingLight", Vector3(2.5, 2.3, -1.0), Color(0.95, 1.0, 0.9), 1.8, 7.0)

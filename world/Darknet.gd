@@ -95,30 +95,13 @@ static func furnish(room: Node3D) -> void:
 	room.add_child(crate)
 	crate.position = LAPTOP_POS + Vector3(0, 0.21, 0)
 	var laptop := _zone(room, "Laptop", LAPTOP_POS, 0.42)
-	var base := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(0.34, 0.02, 0.24)
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color(0.08, 0.08, 0.09)
-	dark.metallic = 0.4
-	dark.roughness = 0.5
-	bm.material = dark
-	base.mesh = bm
-	laptop.add_child(base)
-	base.position = Vector3(0, 0.43, 0.02)
-	var screen := MeshInstance3D.new()
-	var sm := BoxMesh.new()
-	sm.size = Vector3(0.34, 0.22, 0.012)
-	var glow := StandardMaterial3D.new()
-	glow.albedo_color = Color(0.05, 0.12, 0.08)
-	glow.emission_enabled = true
-	glow.emission = Color(0.25, 0.85, 0.5)
-	glow.emission_energy_multiplier = 1.4
-	sm.material = glow
-	screen.mesh = sm
-	laptop.add_child(screen)
-	screen.position = Vector3(0, 0.54, -0.1)
-	screen.rotation_degrees.x = -15.0
+	# Poly Haven's classic laptop (CC0), open on the crate, screen to the couch.
+	var model: Node3D = load("res://assets/polyhaven/classic_laptop/classic_laptop.gltf").instantiate()
+	model.name = "Model"
+	laptop.add_child(model)
+	model.position = Vector3(0, 0.42, 0)
+	model.scale = Vector3.ONE * 0.6
+	model.rotation_degrees.y = -90.0
 	var light := OmniLight3D.new()
 	light.light_color = Color(0.4, 1.0, 0.6)
 	light.light_energy = 0.35

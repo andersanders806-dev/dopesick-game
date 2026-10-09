@@ -794,6 +794,8 @@ func _run() -> void:
 	_scaler_checks()
 	await _darknet_checks(gs)
 	await _world_art_2_checks()
+	await _story_checks(gs)
+	await _story_review_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3493,3 +3495,155 @@ func _world_art_2_checks() -> void:
 		_check(models >= WORLD_ART_2_MIN_MODELS, "  %s: real models, not toy boxes (%d)" % [r, models])
 		room.free()
 		await process_frame
+
+## The story: Mia, Ray and Dana across the week (autoload/Story.gd).
+func _hour(gs: Node, d: int, h: int) -> void:
+	gs.day = d
+	gs._last_minute = h * 60 - 1
+	gs.clock = h * 60
+	gs._emit_clock()
+
+func _story_checks(gs: Node) -> void:
+	await _section("Story: Mia, Ray and Dana")
+	var story := root.get_node("Story")
+	gs.start_run()
+	gs.clock_running = false
+	_check("story" in root.get_node("SaveGame").FIELDS, "  the story is saved with the run")
+	_hour(gs, 1, 10)
+	_check(story.messages().any(func(m): return m["from"] == "Mia" and m["text"].contains("birthday")), "  day 1: Mia texts about Mom's birthday")
+	_check("Messages" in load("res://ui/Notebook.gd").PAGES, "  the notebook has a Messages page")
+	# Ray, day 2: wants out. Help him and he lives.
+	_hour(gs, 2, 12)
+	_check(story.ray_wants_out(), "  day 2: Ray says he wants to stop")
+	gs.naloxone = 1
+	story.help_ray("naloxone")
+	_check(story.state()["ray"] == "helped" and gs.naloxone == 0, "  giving him your naloxone: he's helped")
+	_hour(gs, 4, 9)
+	_check(gs.od_event.get("who", "") != "Ray", "  ...and he isn't the one in the alley on day 4")
+	# Mia's visit, day 3 evening, at home.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 3, 19)
+	var home := await _load("res://world/Apartment3D.tscn")
+	_check(home.get_node_or_null("Mia") != null, "  day 3 evening: Mia's at your door")
+	var cash0: int = gs.cash
+	story.mia_choice("promise")
+	_check(story.state()["mia"] == "close" and story.state()["mia_promise"] and gs.cash == cash0 + 20, "  promising to see Dana: $20 and she believes you")
+	# The ring.
+	gs.start_run()
+	gs.clock_running = false
+	gs.belongings["ring"] = "sold"
+	_hour(gs, 3, 19)
+	await _load("res://world/Apartment3D.tscn")
+	_check(story.mia_opening().contains("ring"), "  she notices Mom's ring is gone")
+	story.mia_choice("steal")
+	_check(story.state()["mia"] == "blocked", "  stealing from her bag: she blocks you")
+	var before: int = story.messages().size()
+	_hour(gs, 5, 9)
+	_check(story.messages().size() == before, "  ...and the texts stop")
+	# Ray, left alone, is the one in the alley on day 4.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 4, 9)
+	_check(gs.od_event.get("who", "") == "Ray" and gs.od_event.get("state", "") == "pending", "  nobody helped Ray: day 4, he's the one down in the alley")
+	gs.od_event["state"] = "down"
+	gs.resolve_overdose("pockets")
+	_check(story.state()["ray"] == "dead", "  ...and if he dies, he's gone")
+	var city := await _load("res://world/City3D.tscn")
+	_check(city.find_child("Ray", true, false) == null, "  ...gone from the street too")
+	# Dana: book, miss twice, lose the bed.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 2, 14)
+	story.book_dana()
+	_check(story.state()["dana"] == "booked" and story.appointment_text().contains("17"), "  Dana books you in: tomorrow, 17 to 20")
+	_hour(gs, 3, 21)
+	_check(story.state()["dana_missed"] == 1 and story.state()["dana"] == "booked", "  miss it: one strike, a new time")
+	_hour(gs, 4, 21)
+	_check(story.state()["dana"] == "lost", "  miss it twice: the bed goes to someone else")
+	_check(not story.can_start_program(), "  ...and the program's full")
+	# Keep it, and you're in.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 2, 14)
+	story.book_dana()
+	_hour(gs, 3, 17)
+	_check(story.keep_appointment() and story.state()["dana"] == "in" and story.can_start_program(), "  turn up at 17: the bed's yours")
+	# Endings.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 4, 9)
+	_check(story.ending_line("overdose").contains("Mia"), "  overdose, Mia still around: she's the one who finds you")
+	story.state()["mia"] = "blocked"
+	_check(story.ending_line("overdose").contains("Nobody"), "  ...blocked: nobody finds you")
+	# Alone: Mia gone, Ray dead, the bed lost.
+	var ended := [""]
+	var grab := func(s): ended[0] = s.get("cause", "")
+	gs.run_ended.connect(grab)
+	story.state()["ray"] = "dead"
+	story.state()["dana"] = "lost"
+	_hour(gs, 5, 10)
+	gs.run_ended.disconnect(grab)
+	_check(ended[0] == "alone", "  nobody left -- the 'alone' ending (%s)" % ended[0])
+	var end_screen = load("res://ui/RunEndScreen.gd").new()
+	end_screen._summary = {"cause": "alone"}
+	_check(end_screen._cutscene_id() != "sent_away" and end_screen.heading_for("alone")[0] == "ALONE", "  the run-end screen knows 'alone'")
+	end_screen.free()
+	gs.start_run()
+	gs.clock = 14 * 60
+	var shelter := await _load("res://world/Shelter3D.tscn")
+	var dana: Node = shelter.find_child("Outreach", true, false)
+	_check(dana != null and dana.npc_name == "Dana", "  the outreach worker is Dana")
+	gs.start_run()
+
+## From the story review: the holes a player would fall through.
+func _story_review_checks(gs: Node) -> void:
+	await _section("Story: review fixes")
+	var story := root.get_node("Story")
+	# Dana's hours are hours St. Jude's is open.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 2, 18)
+	story.book_dana()
+	_hour(gs, 3, story.DANA_HOURS[0])
+	_check(gs.is_open("shelter") and story.appointment_open(), "  the appointment is while St. Jude's is open")
+	# Helping Ray on day 4 calls off his night in the alley.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 4, 9)
+	story.help_ray("dana")
+	_check(gs.od_event.get("who", "") != "Ray", "  helped on day 4 morning: he isn't down that night")
+	# Saved (by someone else calling it in), then a new day: he stays saved.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 4, 9)
+	gs.od_event["state"] = "down"
+	gs.resolve_overdose("payphone")
+	gs.od_event = {}
+	_check(story.state()["ray"] == "saved", "  Ray saved stays saved after the night's cleared")
+	# A late load doesn't plant a day-4 overdose on day 6.
+	gs.start_run()
+	gs.clock_running = false
+	gs.od_event = {"day": 6, "minute": 21 * 60, "who": "Big Eddie", "state": "pending", "left": 90.0}
+	_hour(gs, 6, 10)
+	_check(gs.od_event.get("who", "") == "Big Eddie", "  loading on day 6 keeps that night's own overdose")
+	# One Ray at a time.
+	gs.start_run()
+	gs.clock_running = false
+	gs.od_event = {"day": 4, "minute": 20 * 60, "who": "Ray", "state": "down", "left": 90.0}
+	gs.day = 4
+	var city := await _load("res://world/City3D.tscn")
+	var sitting: Node = city.find_child("Ray", true, false)
+	_check(sitting == null or not sitting.visible, "  while Ray's down in the alley he isn't also sitting on the sidewalk")
+	gs.od_event = {}
+	# Mia in the room doesn't 'wait outside'.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 3, 20)
+	await _load("res://world/Apartment3D.tscn")
+	_hour(gs, 3, 23)
+	_check(story.state()["mia"] == "close", "  Mia standing in your room isn't 'waiting outside the door'")
+	# Promising Mia books Dana.
+	story.mia_choice("promise")
+	_check(story.state()["dana"] == "booked", "  promising Mia books you in with Dana")
+	gs.start_run()

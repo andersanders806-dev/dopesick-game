@@ -298,6 +298,8 @@ var probation_days: Array = []
 var warrant: bool = false
 ## An order off the laptop at home (world/Darknet.gd), until it's played out.
 var parcel: Dictionary = {}
+## Mia, Ray and Dana's week (autoload/Story.gd).
+var story: Dictionary = {}
 ## now_minutes() of the last dose off the street.
 var last_street_use: float = -99999.0
 signal legal_changed
@@ -395,6 +397,7 @@ func start_run() -> void:
 	probation_days.clear()
 	warrant = false
 	parcel = {}
+	story = {}
 	last_street_use = -99999.0
 	test_strips = 0
 	last_risk = 0.0
@@ -487,6 +490,9 @@ func _emit_clock() -> void:
 			_check_legal_deadlines()
 			_booster_hour()
 			preload("res://world/Darknet.gd").hourly()
+			var st := get_node_or_null("/root/Story")
+			if st:
+				st.hourly()
 		_last_minute = minute
 		clock_changed.emit(minute)
 
@@ -855,6 +861,9 @@ func resolve_overdose(choice: String) -> String:
 				outcome = "dead"
 				_regular_died(who, false)
 	od_event["state"] = outcome
+	# Ray's night (autoload/Story.gd): remembered past the night's own record.
+	if who == "Ray" and outcome == "saved":
+		story["ray"] = "saved"
 	overdose_changed.emit()
 	return outcome
 
@@ -1423,6 +1432,7 @@ func end_run(cause := "busted") -> void:
 	match cause:
 		"overdose": log_event("Went over, alone. Nobody had naloxone.", "overdose_floor")
 		"recovered": log_event("Five clean days. Got out.", "recovered_street")
+		"alone": log_event("Nobody left.", "relapse")
 		_: log_event("Sent away.", "sent_away_bus")
 	var days_survived := day
 	# Getting out is worth more than anything else a run can do.

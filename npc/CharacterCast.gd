@@ -41,6 +41,7 @@ const CAST := {
 	"collector": {"model": DIR + "Business_Male_04.glb", "look": {}},
 	"volunteer": {"model": DIR + "Female_Adult_02.glb", "look": {}},
 	"outreach_worker": {"model": DIR + "Female_Adult_14.glb", "look": {}},
+	"mia": {"model": DIR + "Female_Adult_01.glb", "look": {}},
 	"shelter_diner_a": {"model": DIR + "Male_Adult_05.glb", "look": {}},
 	"shelter_diner_b": {"model": DIR + "Female_Adult_09.glb", "look": {}},
 	"shelter_diner_c": {"model": DIR + "Male_Adult_04.glb", "look": {}},

@@ -188,6 +188,22 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **The story: Mia, Ray and Dana** (`autoload/Story.gd`). Three people
+  across the week, woven, and darker for it. **Mia**, your younger sister,
+  texts (a buzz, and the notebook's new Messages page): Mom's birthday on
+  Sunday; a counsellor at St. Jude's. Day 3 evening she's at your door
+  with groceries -- promise to see Dana (she leaves you $20), send her away,
+  or go through her bag. If Mom's ring is gone she notices. Push her far
+  enough and she blocks your number. **Ray**, by the alley, went to school
+  with you; from day 2 he wants out. Give him your naloxone, a test strip,
+  or Dana's name, and he lives; leave him, and on day 4 he's the one down
+  in the alley -- naloxone or the payphone, or his name on the wall.
+  **Dana** at St. Jude's (the outreach worker) has one bed: ask, turn up
+  the next evening 17-20, and the program's yours. Miss twice and it's gone --
+  to Ray, if he was still waiting. The endings say who was there: Mia
+  finds you, or nobody does; Mia (and Ray, in a clean shirt) outside the
+  clinic, or nobody; and lose all three and that's **ALONE**, an ending of
+  its own.
 - **World art II** (`dev-tools/build_rooms_3d.gd`): the jail, pawnshop,
   shelter, Tape Deck, kart track and backyard get the chapter-1 treatment --
   real CC0 Poly Haven models (filing cabinet, laptop and clipboard at

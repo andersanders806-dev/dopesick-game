@@ -472,8 +472,13 @@ func _build_overlay() -> void:
 	_fps_label.add_theme_constant_override("outline_size", 4)
 	_fps_label.visible = show_fps
 	_overlay.add_child(_fps_label)
+	# Centred under the day's headline, wrapped: phone messages are a
+	# sentence or two.
 	_toast = Label.new()
-	_toast.position = Vector2(560, 90)
+	_toast.position = Vector2(290, 140)
+	_toast.size = Vector2(700, 0)
+	_toast.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast.add_theme_font_size_override("font_size", 18)
 	_toast.add_theme_color_override("font_outline_color", Color.BLACK)
 	_toast.add_theme_constant_override("outline_size", 6)

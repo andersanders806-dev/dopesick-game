@@ -44,6 +44,7 @@ const CAST := {
 	"Driver": {"id": 156, "rate": 1.0, "pitch": 0.97},
 	"Volunteer": {"id": 708, "rate": 1.0, "pitch": 1.0},
 	"Outreach": {"id": 108, "rate": 1.0, "pitch": 1.0},
+	"Dana": {"id": 108, "rate": 1.0, "pitch": 1.0},
 	"Pawnbroker": {"id": 660, "rate": 1.1, "pitch": 0.96},
 	"Carl": {"id": 84, "rate": 1.1, "pitch": 0.97},
 	"Dee": {"id": 588, "rate": 1.05, "pitch": 1.0},

@@ -5,7 +5,7 @@ extends CanvasLayer
 ## J, Esc or a click outside the page puts it away; Tab or the tabs across
 ## the top turn the page.
 
-const PAGES := ["Orders", "Hours", "Map", "Notes"]
+const PAGES := ["Orders", "Hours", "Map", "Notes", "Messages"]
 const INK := Color(0.12, 0.14, 0.3)
 const INK_FADED := Color(0.3, 0.32, 0.45)
 const RED_INK := Color(0.62, 0.12, 0.12)
@@ -104,6 +104,7 @@ func _draw() -> void:
 		1: _draw_hours(c, font)
 		2: _draw_map(c, font)
 		3: _draw_notes(c, font)
+		4: _draw_messages(c, font)
 	c.draw_string(font, Vector2(PAGE.position.x + 20, PAGE.end.y + 26), ("Touchpad / Circle: put it away     L1 / R1: turn the page" if GameState.using_pad else "J / Esc: put it away     Tab or arrows: turn the page"), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.8, 0.78, 0.72))
 
 func _line(c: Control, font: Font, row: int, text: String, col := INK, indent := 0.0, size := 17) -> void:
@@ -231,6 +232,20 @@ func _draw_notes(c: Control, font: Font) -> void:
 		_line(c, font, top + 2 + i, "Day %d, %s" % [e["day"], e["clock"]], INK_FADED, 0.0, 14)
 		_line(c, font, top + 2 + i, e["text"], INK, 140.0, 16)
 
+## Your phone: Mia's texts, St. Jude's, newest at the bottom.
+func _draw_messages(c: Control, font: Font) -> void:
+	_line(c, font, 0, "Messages", INK, 0.0, 22)
+	var msgs: Array = Story.messages()
+	var row := 2
+	if Story.state()["mia"] == "blocked":
+		_line(c, font, 1, "Mia has blocked your number.", RED_INK, 0.0, 15)
+	if msgs.is_empty():
+		_line(c, font, row, "No messages.", INK_FADED)
+	for m in msgs.slice(maxi(0, msgs.size() - 7)):
+		_line(c, font, row, "%s -- day %d, %s" % [m["from"], m["day"], m["clock"]], INK_FADED, 0.0, 14)
+		_line(c, font, row + 1, m["text"], INK, 20.0, 15)
+		row += 2
+
 ## Dates and debts, for the top of the notes page: [text, urgent].
 func _obligations() -> Array:
 	var out := []
@@ -240,6 +255,8 @@ func _obligations() -> Array:
 		out.append(["Court: day %d, 9-12 at the station" % GameState.court_day, true])
 	if not GameState.probation_days.is_empty():
 		out.append(["Probation: check in days %s" % ", ".join(GameState.probation_days.map(func(d): return str(int(d)))), true])
+	if Story.appointment_text() != "":
+		out.append([Story.appointment_text(), Story.state()["dana"] == "booked"])
 	var rent_when: String = "LOCKED OUT" if GameState.locked_out() else "due day %d" % GameState.rent_due_day
 	out.append(["Rent: $%d %s" % [GameState.rent_amount(), rent_when], GameState.rent_stage > 0])
 	for id in GameState.pawn_tickets:

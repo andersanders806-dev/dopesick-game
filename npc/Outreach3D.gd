@@ -15,6 +15,7 @@ const TALK := [
 
 func _ready() -> void:
 	fences_items = false
+	npc_name = "Dana"
 	super._ready()
 
 func interact(player: Node) -> void:
@@ -23,12 +24,25 @@ func interact(player: Node) -> void:
 		return
 	player.dialogue_active = true
 	SFX.play("blip")
-	var program := "Your clinic dose  (program: %d/%d clean days)" % [GameState.treatment_streak, GameState.RECOVERY_DAYS] if GameState.in_treatment else "Ask about treatment (start the program)"
+	# The program needs Dana's bed (autoload/Story.gd): book it, keep the
+	# appointment, and it's yours; miss two and it's gone.
+	var program := "Your clinic dose  (program: %d/%d clean days)" % [GameState.treatment_streak, GameState.RECOVERY_DAYS]
+	var bed: String = Story.state()["dana"]
+	if not GameState.in_treatment:
+		match bed:
+			"none":
+				program = "Ask about a bed in the program"
+			"booked":
+				program = "Your appointment (start the program)" if Story.appointment_open() else Story.appointment_text()
+			"lost":
+				program = "The program (full -- six-week wait)"
+			_:
+				program = "Start the program"
 	var options := ["Take a naloxone kit", program, "Take test strips", "Just talk"]
 	var disabled := []
 	if not GameState.daily_available("shelter_naloxone"):
 		disabled.append(0)
-	if not GameState.daily_available("shelter_bupe"):
+	if not GameState.daily_available("shelter_bupe") or (not GameState.in_treatment and (bed == "lost" or (bed == "booked" and not Story.appointment_open()))):
 		disabled.append(1)
 	if not GameState.daily_available("shelter_strips"):
 		disabled.append(2)
@@ -47,6 +61,12 @@ func _on_choice(i: int, player: Node, hud: Node) -> void:
 			GameState.inventory_changed.emit()
 			hud.show_dialogue(npc_name, "She presses a kit into your hand. \"Nasal spray. Tilt the head back, one spray, call it in. It's free, take one every day if you want.\"")
 		1:
+			if not GameState.in_treatment and Story.state()["dana"] == "none":
+				Story.book_dana()
+				hud.show_dialogue(npc_name, "She pulls a binder over. \"I've got one bed. One. It's yours if you're here tomorrow evening, five to eight -- sober enough to sign your name. Miss it and I give it to the next person on the list. There's always a next person.\"")
+				return
+			if not GameState.in_treatment and Story.state()["dana"] == "booked":
+				Story.keep_appointment()
 			var since := GameState.run_time - float(GameState.last_dose_at.get(Drugs.OPIOID, -9999.0))
 			if since < Drugs.PRECIPITATED_WINDOW:
 				hud.show_dialogue(npc_name, "She looks at your eyes. \"You've used recently. If I give you this now it'll knock the rest off the receptors and make you sicker than you've ever been. Come back when you're in withdrawal.\"")

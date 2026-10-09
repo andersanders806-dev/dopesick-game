@@ -27,6 +27,7 @@ func _ready() -> void:
 	GameState._reconcile_belongings()
 	refresh_belongings()
 	preload("res://world/Darknet.gd").furnish(self)
+	Story.furnish_apartment(self)
 	super._ready()
 	if GameState.intro_pending:
 		GameState.intro_pending = false

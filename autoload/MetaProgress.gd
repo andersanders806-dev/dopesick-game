@@ -77,6 +77,13 @@ var levels: Dictionary = {}
 ## Lifetime stats, for the run-summary screen.
 var runs_completed: int = 0
 var best_day: int = 0
+## How the last run ended, and who was left: the next one remembers it
+## (Mia's voicemail, Ray's name on the wall, your guitar in the pawnshop).
+var last_run: Dictionary = {}
+
+func remember_run(summary: Dictionary) -> void:
+	last_run = summary
+	save_progress()
 
 func _ready() -> void:
 	load_progress()
@@ -90,6 +97,7 @@ func load_progress() -> void:
 	know_how = cfg.get_value("meta", "know_how", 0)
 	runs_completed = cfg.get_value("meta", "runs_completed", 0)
 	best_day = cfg.get_value("meta", "best_day", 0)
+	last_run = cfg.get_value("meta", "last_run", {})
 	var saved: Dictionary = cfg.get_value("meta", "levels", {})
 	# Only keep ids that still exist, so removing an upgrade can't break a
 	# save made before it was removed.
@@ -106,6 +114,7 @@ func save_progress() -> void:
 	cfg.set_value("meta", "know_how", know_how)
 	cfg.set_value("meta", "runs_completed", runs_completed)
 	cfg.set_value("meta", "best_day", best_day)
+	cfg.set_value("meta", "last_run", last_run)
 	cfg.set_value("meta", "levels", levels)
 	cfg.save(SAVE_PATH)
 

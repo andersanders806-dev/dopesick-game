@@ -31,7 +31,7 @@ func interact(player: Node) -> void:
 	var items: Array = GameState.inventory.duplicate()
 	var tickets: Array = GameState.pawn_tickets.keys()
 	if items.is_empty() and tickets.is_empty():
-		hud.show_dialogue(npc_name, "He doesn't look up from his newspaper. \"You got something to sell, put it on the counter. Otherwise I'm busy.\"")
+		hud.show_dialogue(npc_name, greeting())
 		return
 	var options: Array = items.map(func(id): return "Sell %s -- $%d" % [GameState.item_name_for(id), offer_for(id)])
 	var disabled := []
@@ -72,3 +72,10 @@ func _sell(id: String, player: Node, hud: Node) -> void:
 		GameState.pawn_belonging(id)
 	SFX.play("cash")
 	hud.show_dialogue(npc_name, "He turns %s over under the lamp, writes something in a ledger, and counts out $%d. \"Pleasure.\"" % [GameState.item_name_for(id), price])
+
+## Nothing to sell: the newspaper, or -- if your guitar ended last run on
+## his wall -- that.
+static func greeting() -> String:
+	if MetaProgress.last_run.get("guitar", "home") not in ["home", "carried"]:
+		return "He nods at the wall without looking up. \"Your guitar's still there from last time. Nobody wants a guitar with a cracked neck.\""
+	return "He doesn't look up from his newspaper. \"You got something to sell, put it on the counter. Otherwise I'm busy.\""

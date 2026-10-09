@@ -79,6 +79,9 @@ func hourly() -> void:
 		return
 	var d := GameState.day
 	var h := GameState.hour()
+	var last: Dictionary = MetaProgress.last_run
+	if not last.is_empty() and h >= 8 and _once("voicemail"):
+		send("Voicemail", voicemail(last))
 	if d >= 1 and h >= 10 and _once("mia_1"):
 		send("Mia", "Mom's birthday is Sunday. Are you coming? Please say yes.")
 	if d >= 2 and h >= 9 and _once("mia_2"):
@@ -120,6 +123,22 @@ func _mia_node() -> Node:
 	if not _in_apartment():
 		return null
 	return get_tree().current_scene.get_node_or_null("Mia")
+
+## The message waiting on the first morning, from the run before.
+static func voicemail(last: Dictionary) -> String:
+	var text := ""
+	match last.get("cause", ""):
+		"overdose":
+			text = "Mia, 2:14 AM: \"I had the dream again. The one where I find you. Call me back. Please.\""
+		"recovered":
+			text = "Mia: \"Just checking in. I'm proud of you. Don't make me stop.\""
+		"alone":
+			text = "An unknown number. Nobody speaks. A TV somewhere, and then the line goes dead."
+		_:
+			text = "Mia: \"The court sent another letter with your name on it. I opened it. I'm sorry.\""
+	if last.get("ray", "") == "dead":
+		text += " (Someone's spray-painted Ray's name on the alley wall.)"
+	return text
 
 # --- Mia -----------------------------------------------------------------------
 

@@ -14,7 +14,7 @@ const ZONES := {
 	"CounterZone": "Talk at the counter", "ServingCounter": "Get a meal", "Cot": "Sleep",
 	"Noticeboard": "Read the noticeboard", "BottleMachine": "Return bottles",
 	"Bottle": "Pick up the bottle", "FlyerSpot": "Put up a flyer", "DockAsk": "Ask about work",
-	"DockTruck": "Unload the truck", "DockPallet": "Stack the box", "Victim": "Help them",
+	"DockTruck": "Unload the truck", "DockPallet": "Stack the box", "Victim": "Help them", "HelpWanted": "Ask about the dishwasher job",
 }
 ## Who's called by what they do, not a name: "Talk to the clerk".
 const ROLES := ["Bartender", "Cashier", "Clerk", "Officer", "Security", "Shopkeeper", "Pharmacist",

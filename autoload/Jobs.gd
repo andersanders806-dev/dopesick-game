@@ -8,6 +8,11 @@ extends Node
 ## - Bottles and cans: a few turn up in the gutter every day. The machine
 ##   inside the supermarket's door pays $1 for every three.
 ##
+## - Dishwasher at the Dive Bar (the help-wanted sign by the kitchen): a
+##   real job with a shift, 17-21 every day. Clock in by 18:00 and the
+##   evening goes by over the sink, $25. Miss two, or turn up dopesick, and
+##   you're done there.
+##
 ## Everything here is added to rooms as they load (decorate(), called by
 ## WorldRoot3D once the navmesh is baked, so every zone lands on a spot
 ## you can actually walk to).
@@ -24,6 +29,14 @@ const FLYERS := 5
 const BOTTLES_PER_DOLLAR := 3
 const BOTTLES_PER_DAY := 5
 const CARRY_SPEED := 0.8
+const SHIFT := [17, 21]
+const SHIFT_PAY := 25
+## Clock in by this hour, or it's a no-show.
+const SHIFT_LATE := 18
+## How sick is too sick to stand at the sink.
+const SHIFT_SICK := 0.5
+## Four hours over the sink wears the last dose down like any four hours.
+const SHIFT_CRAVING_PER_MINUTE := 0.1
 
 ## Run state, saved with the run: {kind, left} for the job in hand, bottles
 ## in your pockets, and which gutter spots are still to be picked today.
@@ -31,6 +44,7 @@ var job: Dictionary = {}
 var bottles: int = 0
 var bottle_day: int = -1
 var bottle_spots: Array = []
+var shift: Dictionary = {}
 
 func _ready() -> void:
 	GameState.run_ended.connect(func(_s): reset())
@@ -40,6 +54,7 @@ func reset() -> void:
 	bottles = 0
 	bottle_day = -1
 	bottle_spots = []
+	shift = {"hired": false, "missed": 0, "fired": false, "worked_day": -1, "hired_day": -1, "checked_day": -1}
 
 func carrying_box() -> bool:
 	return job.get("kind", "") == "dock" and job.get("holding", false)
@@ -57,6 +72,10 @@ func decorate(room: Node3D) -> void:
 				_zone(room, "DockAsk", Vector3(3.4, 0, -0.4), _on_dock_ask)
 				_zone(room, "DockTruck", Vector3(3.9, 0, -2.3), _on_dock_truck)
 				_zone(room, "DockPallet", Vector3(1.3, 0, -2.4), _on_dock_pallet)
+		"DiveBar3D":
+			var sign := _zone(room, "HelpWanted", Vector3(6.2, 0, -3.6), _on_help_wanted, true)
+			if shift.get("hired", false) and not shift.get("fired", false):
+				sign.set_meta("prompt", "Clock in for your shift")
 		"Shelter3D":
 			_zone(room, "Noticeboard", Vector3(-4.1, 0, 2.0), _on_board, true)
 		"StoreSupermarket3D":
@@ -245,3 +264,73 @@ func _on_machine(_zone: Area3D, _player: Node) -> void:
 	bottles -= dollars * BOTTLES_PER_DOLLAR
 	_pay(dollars, "Returned bottles")
 	_say("Clunk, clunk, clunk. The machine spits out a slip; the cashier swaps it for $%d without a word." % dollars)
+
+# --- The dishwasher --------------------------------------------------------
+
+func hire() -> void:
+	if shift.is_empty():
+		reset()
+	if shift["fired"]:
+		return
+	shift["hired"] = true
+	shift["hired_day"] = GameState.day
+	GameState.log_event("Got the dishwasher job at the Dive Bar. 17-21, every day.")
+
+## Starts the shift if it's time: the evening passes at the sink and pays.
+## False (and why, in the log) if it isn't, or you're too sick to stand.
+func clock_in() -> bool:
+	if shift.is_empty() or not shift["hired"] or shift["fired"] or int(shift["worked_day"]) == GameState.day:
+		return false
+	var h := GameState.hour()
+	if h < SHIFT[0] or h >= SHIFT_LATE:
+		return false
+	shift["worked_day"] = GameState.day
+	if GameState.sickness() > SHIFT_SICK:
+		_miss("Threw up in the sink. They sent me home.")
+		return false
+	var minutes: float = SHIFT[1] * 60 - GameState.clock
+	GameState.craving = maxf(0.0, GameState.craving - minutes * SHIFT_CRAVING_PER_MINUTE)
+	GameState.craving_changed.emit(GameState.craving)
+	GameState.advance_clock(minutes)
+	GameState.cash_earned += SHIFT_PAY
+	_pay(SHIFT_PAY, "A shift at the sink")
+	return true
+
+## Hourly (GameState): no clock-in by SHIFT_LATE on a working day is a
+## no-show.
+func hourly() -> void:
+	if shift.is_empty() or not shift["hired"] or shift["fired"]:
+		return
+	var d := GameState.day
+	if GameState.hour() < SHIFT_LATE or int(shift["checked_day"]) == d or d <= int(shift["hired_day"]):
+		return
+	shift["checked_day"] = d
+	if int(shift["worked_day"]) != d:
+		_miss("Didn't show up for the shift.")
+
+func _miss(why: String) -> void:
+	shift["missed"] += 1
+	GameState.log_event(why)
+	if shift["missed"] >= 2:
+		shift["fired"] = true
+		Story.send("Dive Bar", "Don't bother coming in. We found somebody.")
+	else:
+		Story.send("Dive Bar", "Where were you? One more and you're done.")
+
+func _on_help_wanted(zone: Area3D, _player: Node) -> void:
+	if shift.is_empty():
+		reset()
+	if shift["fired"]:
+		_say("The sign's still up. Somebody's crossed out the hours and written: NOT YOU.")
+		return
+	if not shift["hired"]:
+		hire()
+		zone.set_meta("prompt", "Clock in for your shift")
+		_say("The bartender looks you up and down. \"Dishes. Five to nine, every night. Twenty-five bucks, cash. Show up straight or don't show up.\"", "Bartender")
+		return
+	if clock_in():
+		_say("Four hours of other people's glasses. Your hands are raw and pink. Twenty-five dollars, folded, from the till.", "")
+	elif int(shift["worked_day"]) == GameState.day:
+		_say("\"You already did tonight. Go home.\"", "Bartender")
+	else:
+		_say("\"Shift's five to nine. Be here by six.\"", "Bartender")

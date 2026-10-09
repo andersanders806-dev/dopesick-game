@@ -796,6 +796,7 @@ func _run() -> void:
 	await _world_art_2_checks()
 	await _story_checks(gs)
 	await _story_review_checks(gs)
+	await _gameplay3_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3646,4 +3647,73 @@ func _story_review_checks(gs: Node) -> void:
 	# Promising Mia books Dana.
 	story.mia_choice("promise")
 	_check(story.state()["dana"] == "booked", "  promising Mia books you in with Dana")
+	gs.start_run()
+
+## #3 gameplay: a dishwashing shift, your own Silk Lane shop, and runs
+## that remember the last one.
+func _gameplay3_checks(gs: Node) -> void:
+	await _section("Gameplay: shifts, a shop, and the last run")
+	var jobs := root.get_node("Jobs")
+	var Darknet = load("res://world/Darknet.gd")
+	var meta := root.get_node("MetaProgress")
+	# The dishwasher job.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 1, 16)
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	await _frames(5)
+	var sign: Node = bar.get_node_or_null("HelpWanted")
+	_check(sign != null and load("res://ui/Prompts.gd").text_for(sign) == "Ask about the dishwasher job", "  a help-wanted sign by the kitchen in the Dive Bar")
+	jobs.hire()
+	_check(jobs.shift["hired"], "  hired")
+	gs.craving = 90.0
+	_hour(gs, 1, 17)
+	var cash0: int = gs.cash
+	_check(jobs.clock_in() and gs.hour() == jobs.SHIFT[1] and gs.cash == cash0 + jobs.SHIFT_PAY, "  clock in at 17: the shift passes and pays $%d (now %02d:00)" % [jobs.SHIFT_PAY, gs.hour()])
+	_check(not jobs.clock_in(), "  one shift a day")
+	_hour(gs, 2, 19)
+	_check(jobs.shift["missed"] == 1, "  no-show the next day: a strike")
+	_hour(gs, 3, 19)
+	_check(jobs.shift["fired"], "  two no-shows: fired")
+	gs.start_run()
+	gs.clock_running = false
+	jobs.reset()
+	jobs.hire()
+	gs.craving = 0.0
+	_hour(gs, 1, 17)
+	var cash1: int = gs.cash
+	_check(not jobs.clock_in() and gs.cash == cash1 and jobs.shift["missed"] == 1, "  turning up dopesick: sent home, no pay, a strike")
+	jobs.reset()
+	# Your own shop.
+	gs.start_run()
+	gs.clock_running = false
+	gs.cash = 200
+	_hour(gs, 1, 14)
+	_check(Darknet.vendor_order("ok"), "  ordering a wholesale lot")
+	_check(gs.cash == 200 - Darknet.WHOLESALE_PRICE, "  ...$%d up front" % Darknet.WHOLESALE_PRICE)
+	_hour(gs, 2, 9)
+	_hour(gs, 2, 10)
+	var v: Dictionary = gs.vendor
+	_check(v.get("sold", 0) >= 2 and v.get("stock", 0) == Darknet.WHOLESALE_UNITS - v.get("sold", 0) and gs.cash > 200 - Darknet.WHOLESALE_PRICE, "  next morning it's in, and some sells (%d sold, %d left)" % [v.get("sold", 0), v.get("stock", 0)])
+	_check(float(v.get("heat", 0.0)) > 0.0, "  every sale leaves a trace")
+	gs.warrant = false
+	Darknet.raid_check(1.0)
+	_check(gs.warrant and gs.vendor.get("stock", 0) == 0, "  traced: a warrant, and the stock's gone")
+	gs.warrant = false
+	_check("vendor" in root.get_node("SaveGame").FIELDS, "  the shop is saved with the run")
+	# The last run, remembered.
+	gs.start_run()
+	gs.clock_running = false
+	root.get_node("Story").state()["ray"] = "dead"
+	gs.belongings["guitar"] = "pawned"
+	gs.end_run("overdose")
+	_check(meta.last_run.get("cause", "") == "overdose" and meta.last_run.get("ray", "") == "dead" and meta.last_run.get("guitar", "") == "pawned", "  the run's end is remembered (%s)" % [meta.last_run])
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 1, 8)
+	_check(root.get_node("Story").messages().any(func(m): return m["from"] == "Voicemail"), "  next run: a voicemail from Mia that remembers")
+	var city := await _load("res://world/City3D.tscn")
+	_check(city.find_child("RipRay", true, false) != null, "  'RIP RAY' still on the alley wall")
+	_check(load("res://npc/PawnBroker3D.gd").greeting().contains("guitar"), "  the pawnbroker still has your guitar")
+	meta.last_run = {}
 	gs.start_run()

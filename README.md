@@ -188,6 +188,18 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **A job, a shop, and the last run** (#3). **Dishwasher at the Dive
+  Bar** (`autoload/Jobs.gd`): the help-wanted sign by the kitchen; 17-21
+  every day, clock in by 18:00 and the evening passes at the sink for $25
+  (and four hours off your last dose). Two no-shows, or turning up
+  dopesick, and you're fired. **Your own Silk Lane shop**
+  (`world/Darknet.gd`): a vendor page on the laptop -- a wholesale lot,
+  $80 for 10, in the next morning (10% are opened at the sorting office);
+  2-4 ship every morning at $14 each, and every sale is heat: each day
+  heat x 0.35 is the chance someone follows the coin -- a warrant, and the
+  stock gone. **Runs remember** (`MetaProgress.last_run`): a voicemail on
+  the first morning that knows how the last run ended, "RIP RAY" on the
+  alley wall if he died, and the pawnbroker still has your guitar.
 - **The story: Mia, Ray and Dana** (`autoload/Story.gd`). Three people
   across the week, woven, and darker for it. **Mia**, your younger sister,
   texts (a buzz, and the notebook's new Messages page): Mom's birthday on

@@ -65,6 +65,90 @@ static func hourly() -> void:
 	if arrived() and GameState.parcel["fate"] == "seized":
 		GameState.parcel = {}
 		GameState._issue_warrant("The post office opened a package with your name on it.")
+	_vendor_hourly()
+
+# --- Your own shop ---------------------------------------------------------------
+#
+# GameState.vendor: {"stock", "sold", "earned", "heat", "incoming_day",
+# "incoming_fate", "sale_day"}. Buy a wholesale lot; it comes the next
+# morning; every morning a few units sell. Every sale is a trail in the
+# coin, and heat * RAID_SCALE is the chance each day that someone follows it.
+
+const WHOLESALE_PRICE := 80
+const WHOLESALE_UNITS := 10
+const UNIT_PRICE := 14
+const SALES_PER_DAY := Vector2i(2, 4)
+const HEAT_PER_UNIT := 0.04
+const RAID_SCALE := 0.35
+const WHOLESALE_SEIZE := 0.1
+const SALE_HOUR := 9
+
+static func vendor_order(fate := "") -> bool:
+	var v: Dictionary = GameState.vendor
+	if int(v.get("incoming_day", -1)) >= 0 or not GameState.spend_cash(WHOLESALE_PRICE):
+		return false
+	if fate == "":
+		fate = "seized" if randf() < WHOLESALE_SEIZE else "ok"
+	v["incoming_day"] = GameState.day + 1
+	v["incoming_fate"] = fate
+	GameState.vendor = v
+	GameState.log_event("Bought a wholesale lot to sell on Silk Lane. $%d." % WHOLESALE_PRICE)
+	return true
+
+static func _vendor_hourly() -> void:
+	var v: Dictionary = GameState.vendor
+	if v.is_empty():
+		return
+	var d := GameState.day
+	var h := GameState.hour()
+	var due := int(v.get("incoming_day", -1))
+	if due >= 0 and (d > due or (d == due and h >= SALE_HOUR)):
+		v["incoming_day"] = -1
+		if v.get("incoming_fate", "ok") == "seized":
+			GameState._issue_warrant("The wholesale lot was opened at the sorting office.")
+		else:
+			v["stock"] = int(v.get("stock", 0)) + WHOLESALE_UNITS
+			GameState.log_event("The lot came in. %d listed on Silk Lane." % int(v["stock"]))
+	if h >= SALE_HOUR and int(v.get("sale_day", -1)) != d:
+		v["sale_day"] = d
+		var stock := int(v.get("stock", 0))
+		if stock > 0:
+			var n := mini(stock, randi_range(SALES_PER_DAY.x, SALES_PER_DAY.y))
+			v["stock"] = stock - n
+			v["sold"] = int(v.get("sold", 0)) + n
+			v["earned"] = int(v.get("earned", 0)) + n * UNIT_PRICE
+			v["heat"] = float(v.get("heat", 0.0)) + n * HEAT_PER_UNIT
+			GameState.cash += n * UNIT_PRICE
+			GameState.cash_earned += n * UNIT_PRICE
+			GameState.cash_changed.emit(GameState.cash)
+			GameState.log_event("Shipped %d off Silk Lane overnight. $%d in coin." % [n, n * UNIT_PRICE])
+			raid_check()
+		else:
+			v["heat"] = float(v.get("heat", 0.0)) * 0.7
+	GameState.vendor = v
+
+## Did someone follow the coin? `chance` overrides the heat (the smoke test).
+static func raid_check(chance := -1.0) -> bool:
+	var v: Dictionary = GameState.vendor
+	var p: float = chance if chance >= 0.0 else float(v.get("heat", 0.0)) * RAID_SCALE
+	if randf() >= p:
+		return false
+	v["stock"] = 0
+	v["heat"] = 0.0
+	v["incoming_day"] = -1
+	GameState.vendor = v
+	GameState._issue_warrant("They traced the coin back to your shop.")
+	return true
+
+static func vendor_text() -> String:
+	var v: Dictionary = GameState.vendor
+	var text := "Your shop: %d listed, %d sold, $%d earned." % [int(v.get("stock", 0)), int(v.get("sold", 0)), int(v.get("earned", 0))]
+	if int(v.get("incoming_day", -1)) >= 0:
+		text += " A lot's on its way."
+	var heat := float(v.get("heat", 0.0))
+	if heat > 0.3:
+		text += " Someone left a one-star review: 'cop?'"
+	return text
 
 ## What the laptop screen says before the listings, if anything -- and an
 ## exit scam, once seen, closes the order.
@@ -153,10 +237,7 @@ static func _zone(room: Node3D, zname: String, pos: Vector3, lift: float) -> Are
 
 static func open_laptop(player: Node) -> void:
 	var status := laptop_text()
-	if not GameState.parcel.is_empty():
-		_say(player, SITE, status)
-		return
-	var ids: Array = LISTED + ["strips"]
+	var ids: Array = [] if not GameState.parcel.is_empty() else LISTED + ["strips"]
 	var options := []
 	var disabled := []
 	for i in ids.size():
@@ -164,13 +245,31 @@ static func open_laptop(player: Node) -> void:
 		options.append("%s  --  $%d" % [name_for(id), price(id)])
 		if GameState.cash < price(id):
 			disabled.append(i)
+	options.append("Your vendor page (sell your own)")
 	var text := (status + "\n\n" if status != "" else "") + "The neighbour's wifi, a browser that takes a minute to load anything. Prices in coin, shown in dollars. Pay now, it comes tomorrow morning. You have $%d." % GameState.cash
 	player.dialogue_active = true
 	var menu: CanvasLayer = ChoiceMenu.new()
 	player.get_tree().root.add_child(menu)
-	menu.chosen.connect(func(i: int): _confirm(player, ids[i]))
+	menu.chosen.connect(func(i: int):
+		if i >= ids.size():
+			_vendor_page(player)
+		else:
+			_confirm(player, ids[i]))
 	menu.cancelled.connect(func(): _done(player))
 	menu.open(SITE, text, options, disabled)
+
+static func _vendor_page(player: Node) -> void:
+	var menu: CanvasLayer = ChoiceMenu.new()
+	player.get_tree().root.add_child(menu)
+	var disabled := [] if GameState.cash >= WHOLESALE_PRICE and int(GameState.vendor.get("incoming_day", -1)) < 0 else [0]
+	menu.chosen.connect(func(_i: int):
+		if vendor_order():
+			SFX.play("cash", -8.0, 1.2)
+			_say(player, SITE, "A wholesale lot, ten units, $%d. It comes tomorrow morning. Then you're a vendor." % WHOLESALE_PRICE)
+		else:
+			_done(player))
+	menu.cancelled.connect(func(): _done(player))
+	menu.open(SITE, vendor_text() + "\n\nBuy wholesale, list it, ship it from your kitchen. Every sale is a trail in the coin.", ["Buy a wholesale lot -- $%d (%d units)" % [WHOLESALE_PRICE, WHOLESALE_UNITS]], disabled)
 
 static func _confirm(player: Node, id: String) -> void:
 	var menu: CanvasLayer = ChoiceMenu.new()

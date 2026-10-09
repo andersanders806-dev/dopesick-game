@@ -300,6 +300,8 @@ var warrant: bool = false
 var parcel: Dictionary = {}
 ## Mia, Ray and Dana's week (autoload/Story.gd).
 var story: Dictionary = {}
+## Your own Silk Lane shop (world/Darknet.gd): stock, heat, a lot on its way.
+var vendor: Dictionary = {}
 ## now_minutes() of the last dose off the street.
 var last_street_use: float = -99999.0
 signal legal_changed
@@ -398,6 +400,7 @@ func start_run() -> void:
 	warrant = false
 	parcel = {}
 	story = {}
+	vendor = {}
 	last_street_use = -99999.0
 	test_strips = 0
 	last_risk = 0.0
@@ -493,6 +496,9 @@ func _emit_clock() -> void:
 			var st := get_node_or_null("/root/Story")
 			if st:
 				st.hourly()
+			var jb := get_node_or_null("/root/Jobs")
+			if jb:
+				jb.hourly()
 		_last_minute = minute
 		clock_changed.emit(minute)
 
@@ -1435,6 +1441,10 @@ func end_run(cause := "busted") -> void:
 		"alone": log_event("Nobody left.", "relapse")
 		_: log_event("Sent away.", "sent_away_bus")
 	var days_survived := day
+	# The next run remembers this one (MetaProgress, autoload/Story.gd).
+	var st := get_node_or_null("/root/Story")
+	MetaProgress.remember_run({"cause": cause, "day": day, "ray": st.state()["ray"] if st else "",
+		"mia": st.state()["mia"] if st else "", "guitar": belongings.get("guitar", "home")})
 	# Getting out is worth more than anything else a run can do.
 	var earned := MetaProgress.award_for_run(days_survived + (15 if cause == "recovered" else 0), orders_delivered, cash_earned)
 	run_ended.emit({

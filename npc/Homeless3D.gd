@@ -17,6 +17,10 @@ var _shouted_this_chase: bool = false
 var _bubble: Label3D
 
 func _ready() -> void:
+	# Day 4's alley, if nobody helped him: his name on the wall, not here.
+	if Story.state()["ray"] == "dead":
+		queue_free()
+		return
 	fences_items = false
 	super._ready()
 	set_pose("sit")
@@ -24,6 +28,14 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	# One Ray at a time: while he's down in the alley, he isn't here.
+	var down: bool = GameState.od_event.get("who", "") == "Ray" and GameState.od_event.get("state", "") == "down"
+	if visible == down:
+		visible = not down
+		if down:
+			remove_from_group("interactable")
+		else:
+			add_to_group("interactable")
 	_watch_chase()
 
 func interact(player: Node) -> void:
@@ -33,7 +45,7 @@ func interact(player: Node) -> void:
 	player.dialogue_active = true
 	SFX.play("blip")
 	var greeting := "\"Hey, friend.\" He shifts on his cardboard." if GameState.homeless_trust > 0 else "He looks up from under his hood. \"Spare anything? Anything at all.\""
-	var options := ["Give him $%d" % GIFT_CASH, "Give him something you're carrying", "Ask what he's seen"]
+	var options := ["Give him $%d" % GIFT_CASH, "Give him something you're carrying", "Ask what he's seen", "\"Ray. How are you, really?\""]
 	var disabled := []
 	if GameState.cash < GIFT_CASH:
 		disabled.append(0)
@@ -64,6 +76,30 @@ func _on_choice(i: int, player: Node, hud: Node) -> void:
 			menu.open(npc_name, "\"What've you got?\"", items.map(func(id): return GameState.item_name_for(id)))
 		2:
 			hud.show_dialogue(npc_name, _tip())
+		3:
+			_really(player, hud)
+
+## The story (autoload/Story.gd): you went to school together, and from
+## day 2 he wants out. Your naloxone, a test strip, or Dana's name.
+func _really(player: Node, hud: Node) -> void:
+	if not Story.ray_wants_out():
+		hud.show_dialogue(npc_name, Story.ray_line() if Story.state()["ray"] != "using" else "\"Same as yesterday, friend. Same as tomorrow.\"")
+		return
+	Story.state()["ray"] = "asked"
+	var menu: CanvasLayer = ChoiceMenu.new()
+	get_tree().root.add_child(menu)
+	var hows := ["naloxone", "strips", "dana"]
+	var disabled := []
+	if GameState.naloxone <= 0:
+		disabled.append(0)
+	if GameState.test_strips <= 0:
+		disabled.append(1)
+	menu.chosen.connect(func(k: int):
+		Story.help_ray(hows[k])
+		player.dialogue_active = true
+		hud.show_dialogue(npc_name, ["He turns the kit over. \"Nobody's ever given me one of these.\" He puts it inside his jacket, close.", "\"One line means fentanyl. Yeah, I know.\" He tucks it in his sock. \"Thanks. For real.\"", "\"Dana. St. Jude's.\" He says it twice so he'll remember. \"Okay. Tomorrow. If I'm still here tomorrow.\""][k]))
+	menu.cancelled.connect(func(): player.dialogue_active = false)
+	menu.open(npc_name, Story.ray_line(), ["Give him your naloxone", "Give him a test strip", "Tell him about Dana at St. Jude's"], disabled)
 
 func _give(item: String, hud: Node) -> void:
 	if not GameState.inventory.has(item):

@@ -67,9 +67,10 @@ func _build_victim(who: String) -> void:
 	root.scale = Vector3.ONE * 1.5
 	root.rotation_degrees.y = 100.0
 	victim.add_child(root)
-	var model: Node = CharacterCast.scene_for(CharacterCast.model_for(who)).instantiate()
+	var role := "homeless" if who == "Ray" else who
+	var model: Node = CharacterCast.scene_for(CharacterCast.model_for(role)).instantiate()
 	root.add_child(model)
-	CharacterCast.dress(model, who)
+	CharacterCast.dress(model, role)
 	var anim := CharacterAnimator.new(model)
 	if anim.has_clip("collapse"):
 		anim.set_rest_clip("collapse")

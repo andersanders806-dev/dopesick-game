@@ -29,7 +29,20 @@ func _cutscene_id() -> String:
 			return "overdose"
 		"recovered":
 			return "recovered"
+		"alone":
+			return "relapse"
 	return "sent_away"
+
+## [title, colour, subtitle] for an ending.
+func heading_for(cause: String) -> Array:
+	match cause:
+		"recovered":
+			return ["YOU GOT OUT", Color(0.55, 0.85, 0.6), "Five days in the program, clean. Not cured -- out. This is what the other endings were keeping from you."]
+		"overdose":
+			return ["YOU WENT OVER", Color(0.80, 0.30, 0.55), "Nobody had naloxone. This is how most runs really end."]
+		"alone":
+			return ["ALONE", Color(0.55, 0.6, 0.75), "Your sister, your oldest friend, your one bed. All of it, gone, one day at a time."]
+	return ["PICKED UP AGAIN", Color(0.85, 0.25, 0.22), "That's %d strikes. You're going away for a while." % _summary.get("strikes", 0)]
 
 func _build() -> void:
 	layer = 100
@@ -70,19 +83,12 @@ func _build() -> void:
 	root.add_theme_constant_override("separation", 6)
 	margin.add_child(root)
 
-	# There are two ways to lose, and they should not read the same.
-	if _summary.get("cause", "busted") == "recovered":
-		root.add_child(_heading("YOU GOT OUT", 30, Color(0.55, 0.85, 0.6)))
-		root.add_child(_heading("Five days in the program, clean. Not cured -- out. This is what the other endings were keeping from you.",
-			14, Color(0.62, 0.60, 0.56)))
-	elif _summary.get("cause", "busted") == "overdose":
-		root.add_child(_heading("YOU WENT OVER", 30, Color(0.80, 0.30, 0.55)))
-		root.add_child(_heading("Nobody had naloxone. This is how most runs really end.",
-			14, Color(0.62, 0.60, 0.56)))
-	else:
-		root.add_child(_heading("PICKED UP AGAIN", 30, Color(0.85, 0.25, 0.22)))
-		root.add_child(_heading("That's %d strikes. You're going away for a while." % _summary.get("strikes", 0),
-			14, Color(0.62, 0.60, 0.56)))
+	# Each ending reads differently, and says who was there (Story.gd).
+	var cause: String = _summary.get("cause", "busted")
+	var head: Array = heading_for(cause)
+	root.add_child(_heading(head[0], 30, head[1]))
+	root.add_child(_heading(head[2], 14, Color(0.62, 0.60, 0.56)))
+	root.add_child(_heading(Story.ending_line(cause), 15, Color(0.85, 0.82, 0.74)))
 	root.add_child(_spacer(6))
 
 	# Two columns: the run told back on the left (GameState.diary), the

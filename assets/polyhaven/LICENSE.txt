@@ -38,3 +38,39 @@ WoodenTable_01: Wooden Table 01 by Ethan Place
 hanging_industrial_lamp: Hanging Industrial Lamp by Kuutti Siitonen
 steel_frame_shelves_01: Steel Frame Shelves 01 by James Ray Cock
 mounted_fluorescent_lights: Mounted Fluorescent Lights by Ulan Cabanilla
+drawer_cabinet: Drawer Cabinet by Ulan Cabanilla
+fire_alarm: Fire Alarm by Slinc
+medical_box: Medical Box by Ulan Cabanilla
+clipboard: Clipboard by ProgrammerOnCoffee
+SchoolChair_01: School Chair 01 by Ethan Place
+industrial_wall_lamp: Industrial Wall Lamp by Kuutti Siitonen
+television_02: Television 02 by Benny Weimer
+Ukulele_01: Ukulele 01 by Joseph Burgan
+boombox: Boombox by Thomas Paul Mouilleron
+portable_cassette_player: Portable Cassette Player by Mateusz Sadek
+vintage_video_camera: Vintage Video Camera by James Ray Cock, Jenelle van Heerden
+digital_wrist_watch: Digital Wrist Watch by Adrian C
+wooden_display_shelves_01: Wooden Display Shelves 01 by James Ray Cock
+baseball_bat: Baseball Bat by Enrique Martín
+Drill_01: Drill 01 by Fernando Quinn
+vintage_suitcase: Vintage Suitcase by Maximilian Schuster
+painted_wooden_table: Painted Wooden Table by Kirill Sannikov
+painted_wooden_bench: Painted Wooden Bench by Kirill Sannikov
+standing_chalkboard_01: Standing Chalkboard 01 by ParzivalCG
+vintage_electric_kettle: Vintage Electric Kettle by SV Garip
+plastic_crate_02: Plastic Crate 02 by Fabi_G
+cassette_player: Cassette Player by Oday Abuzaeed
+worn_metal_rack: Worn Metal Rack by Luca B
+wooden_crate_01: Wooden Crate 01 by James Ray Cock
+GreenChair_01: Green Chair 01 by Kirill Sannikov
+metal_tool_chest: Metal Tool Chest by Yann Kervran, John Hutcheson
+metal_jerrycan: Metal Jerrycan by Sean Buckley
+rusted_wheel_rim_01: Rusted Wheel Rim 01 by John Hutcheson
+hand_truck: Hand Truck by Mutanzom3D
+tire_pump: Tire Pump by Garrison Gager
+modular_chainlink_fence: Modular Chainlink Fence by James Ray Cock, Amal Kumar
+utility_box_02: Utility Box 02 by James Ray Cock
+cement_bag: Cement Bag by PierreB3D
+can_rusted: Can Rusted by Rahul Chaudhary
+wooden_crate_02: Wooden Crate 02 by James Ray Cock, Jurita Burger
+classic_laptop: Classic Laptop by Arrangemonk

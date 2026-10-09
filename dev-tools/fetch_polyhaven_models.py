@@ -51,6 +51,22 @@ MODELS = [
     "bar_chair_round_01", "metal_stool_01", "wine_bottles_01", "WoodenTable_01", "hanging_industrial_lamp",
     # stores
     "steel_frame_shelves_01", "mounted_fluorescent_lights",
+    # world art II: jail
+    "drawer_cabinet", "fire_alarm", "medical_box", "clipboard", "SchoolChair_01", "industrial_wall_lamp",
+    # pawnshop
+    "television_02", "Ukulele_01", "boombox", "portable_cassette_player", "vintage_video_camera",
+    "digital_wrist_watch", "wooden_display_shelves_01", "baseball_bat", "Drill_01", "vintage_suitcase",
+    # shelter
+    "painted_wooden_table", "painted_wooden_bench", "standing_chalkboard_01", "vintage_electric_kettle",
+    "plastic_crate_02",
+    # Tape Deck
+    "cassette_player", "worn_metal_rack", "wooden_crate_01", "GreenChair_01",
+    # kart track
+    "metal_tool_chest", "metal_jerrycan", "rusted_wheel_rim_01", "hand_truck", "tire_pump",
+    # backyard
+    "modular_chainlink_fence", "utility_box_02", "cement_bag", "can_rusted", "wooden_crate_02",
+    # the laptop at home (Silk Lane)
+    "classic_laptop",
 ]
 
 

@@ -793,6 +793,7 @@ func _run() -> void:
 	await _low_checks(gs)
 	_scaler_checks()
 	await _darknet_checks(gs)
+	await _world_art_2_checks()
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3406,6 +3407,7 @@ func _darknet_checks(gs: Node) -> void:
 	var laptop: Node = home.get_node_or_null("Laptop")
 	_check(laptop != null and laptop.is_in_group("interactable") and load("res://ui/Prompts.gd").text_for(laptop) == "Use the laptop",
 		"  a laptop at home says 'Use the laptop'")
+	_check(laptop.find_children("*", "Node3D", true, false).any(func(n): return String(n.scene_file_path).contains("classic_laptop")), "  ...and it's a real laptop, not two boxes")
 	_check(SaveGame_has_field("parcel"), "  an order in the post is saved with the run")
 	var street: int = gs.price_of("heroin")
 	var price: int = Darknet.price("heroin")
@@ -3450,3 +3452,44 @@ func _darknet_checks(gs: Node) -> void:
 
 func SaveGame_has_field(f: String) -> bool:
 	return f in root.get_node("SaveGame").FIELDS
+
+## The second world-art pass: jail, pawnshop, shelter, Tape Deck, kart
+## track, backyard. Real models in, toy boxes out -- and nothing the game
+## touches moved (dev-tools/world_art2_baseline.json, gameplay_snapshot.gd).
+const WORLD_ART_2_MIN_MODELS := 6
+
+## Same position and shape, to the centimetre.
+func _same_place(a: Dictionary, b: Dictionary) -> bool:
+	for key in ["pos", "shape"]:
+		var x: Array = a.get(key, [])
+		var y: Array = b.get(key, [])
+		if x.size() != y.size():
+			return false
+		for i in x.size():
+			if absf(float(x[i]) - float(y[i])) > 0.011:
+				return false
+	return true
+func _world_art_2_checks() -> void:
+	await _section("World art II: the rest of the block")
+	var Snap = load("res://dev-tools/gameplay_snapshot.gd")
+	var base: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://dev-tools/world_art2_baseline.json"))
+	# As recorded: a quiet morning, so the backyard has its delivery.
+	var gs := _gs()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 7 * 60
+	root.get_node("Headlines").forced = "quiet"
+	root.get_node("Headlines").roll(gs.day)
+	for r in base:
+		var room: Node = load("res://world/%s.tscn" % r).instantiate()
+		root.add_child(room)
+		var now: Dictionary = Snap.snapshot(room)
+		var moved := []
+		for k in base[r]:
+			if not now.has(k) or not _same_place(now[k], base[r][k]):
+				moved.append("%s %s->%s" % [k, base[r][k], now.get(k, "gone")])
+		var models: int = room.find_children("*", "Node3D", true, false).filter(func(n): return String(n.scene_file_path).contains("assets/polyhaven")).size()
+		_check(moved.is_empty(), "  %s: every door, zone, spawn and collider where it was (moved %s)" % [r, moved.slice(0, 4)])
+		_check(models >= WORLD_ART_2_MIN_MODELS, "  %s: real models, not toy boxes (%d)" % [r, models])
+		room.free()
+		await process_frame

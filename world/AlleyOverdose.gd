@@ -21,6 +21,17 @@ func _ready() -> void:
 	refresh()
 	if Headlines.is_today("vigil") and GameState.vigil_for != "":
 		_build_vigil()
+	# The last run's Ray, still on the wall.
+	if MetaProgress.last_run.get("ray", "") == "dead":
+		var tag := Label3D.new()
+		tag.name = "RipRay"
+		tag.text = "RIP RAY"
+		tag.font_size = 72
+		tag.pixel_size = 0.006
+		tag.modulate = Color(0.85, 0.15, 0.2)
+		tag.outline_size = 0
+		add_child(tag)
+		tag.position = SPOT + Vector3(-1.2, 1.5, -1.85)
 
 func _process(delta: float) -> void:
 	if GameState.od_event.get("state", "") == "down":

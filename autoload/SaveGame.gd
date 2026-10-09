@@ -26,7 +26,7 @@ const FIELDS := ["cash", "inventory", "craving", "day", "clock", "raining", "str
 	"scored_this_run", "resp_load", "in_treatment", "treatment_streak", "clinic_today", "used_today", "diary",
 	"headline", "headline_day", "sabotage_day", "rep", "store_heat",
 	"belongings", "pawn_tickets", "apartment_echo_seen", "rent_due_day", "rent_stage", "rent_owed",
-	"court_day", "probation_days", "warrant", "parcel", "story", "last_street_use",
+	"court_day", "probation_days", "warrant", "parcel", "story", "vendor", "last_street_use",
 	"test_strips", "od_event", "dead_regulars", "vigil_day", "vigil_for", "events_rolled_day",
 	"booster_day", "booster_gone", "booster_store", "booster_hit", "booster_team", "booster_cut_pending"]
 
@@ -49,7 +49,7 @@ func save() -> bool:
 		"saved_at": Time.get_datetime_string_from_system()}
 	for f in FIELDS:
 		data[f] = GameState.get(f)
-	data["jobs"] = {"job": Jobs.job, "bottles": Jobs.bottles, "bottle_day": Jobs.bottle_day, "bottle_spots": Jobs.bottle_spots}
+	data["jobs"] = {"job": Jobs.job, "bottles": Jobs.bottles, "bottle_day": Jobs.bottle_day, "bottle_spots": Jobs.bottle_spots, "shift": Jobs.shift}
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player:
 		var p := player.global_position
@@ -96,6 +96,8 @@ func continue_run() -> bool:
 	Jobs.bottles = int(j.get("bottles", 0))
 	Jobs.bottle_day = int(j.get("bottle_day", -1))
 	Jobs.bottle_spots = j.get("bottle_spots", [])
+	if j.has("shift"):
+		Jobs.shift = j["shift"]
 	var pos = data.get("position")
 	pending_position = Vector3(pos[0], pos[1], pos[2]) if pos is Array and pos.size() == 3 else null
 	GameState.cash_changed.emit(GameState.cash)

@@ -799,6 +799,7 @@ func _run() -> void:
 	await _gameplay3_checks(gs)
 	await _sound4_checks(gs)
 	await _menus5_checks(gs)
+	await _anim6_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3810,4 +3811,39 @@ func _menus5_checks(gs: Node) -> void:
 	_check(title.find_children("*", "Button", true, false).any(func(b): return b.text == "Credits"), "  the title screen has Credits")
 	_check(title.find_children("*", "Label", true, false).any(func(l): return l.text.contains("Last time")), "  ...and remembers how the last run ended")
 	root.get_node("MetaProgress").last_run = {}
+	gs.start_run()
+
+## #6 animation: feet that match the ground, a crowd that isn't in step,
+## heads that turn to you, and a player who moves like they're high.
+func _anim6_checks(gs: Node) -> void:
+	await _section("Animation")
+	var Anim = load("res://npc/CharacterAnimator.gd")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(10)
+	var peds: Array = get_nodes_in_group("pedestrians")
+	var walker: Node = peds[0]
+	var ap: AnimationPlayer = walker.anim._player
+	_check(absf(ap.speed_scale - walker.speed / Anim.WALK_NATURAL) < 0.05, "  a passerby's steps match their pace (%.2f for %.2f m/s)" % [ap.speed_scale, walker.speed])
+	var idle_a = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
+	var idle_b = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
+	_check(not is_equal_approx(idle_a._player.current_animation_position, idle_b._player.current_animation_position) or not is_equal_approx(idle_a._idle_rate, idle_b._idle_rate), "  two people standing about aren't breathing in step")
+	# Heads turn.
+	var ray: Node = city.find_child("Ray", true, false)
+	var look: Node = ray.find_children("*", "LookAtModifier3D", true, false).front() if ray else null
+	_check(look != null, "  Ray's head can turn to you")
+	_player().global_position = ray.global_position + Vector3(1.5, 0, 0.8)
+	await _frames(30)
+	_check(look.influence > 0.3, "  ...and does when you're close (%.2f)" % look.influence)
+	_player().global_position = ray.global_position + Vector3(12, 0, 0)
+	await _frames(60)
+	_check(look.influence < 0.1, "  ...and lets you go when you walk off (%.2f)" % look.influence)
+	# High.
+	var p := _player()
+	_check(not p.is_high(), "  not high to begin with")
+	gs.craving = 20.0
+	gs.take_drug("heroin")
+	_check(p.is_high(), "  after a dose: high, and moving like it")
 	gs.start_run()

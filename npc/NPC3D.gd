@@ -155,6 +155,7 @@ func set_model(path: String) -> void:
 		CharacterLook.tint_clothes(model, clothes_tint)
 		anim = CharacterAnimator.new(model)
 		anim.set_rest_clip(pose)
+		preload("res://npc/HeadTurn.gd").attach(model)
 
 func set_pose(new_pose: String) -> void:
 	pose = new_pose

@@ -68,6 +68,7 @@ func _ready() -> void:
 	_model_root.add_child(model)
 	CharacterLook.apply(model, entry["look"])
 	anim = CharacterAnimator.new(model)
+	preload("res://npc/HeadTurn.gd").attach(model)
 	_model_root.rotation.y = atan2(direction, 0.0)
 
 func _physics_process(delta: float) -> void:

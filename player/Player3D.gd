@@ -261,7 +261,15 @@ func _physics_process(delta: float) -> void:
 	var sick_clips: bool = sick and anim.has_clip("walk_sick")
 	if not hiding:
 		anim.set_clips("walk_sick" if sick_clips else "walk", "idle_sick" if sick and anim.has_clip("idle_sick") else "idle")
-	var anim_speed := (SICK_SPEED_MULT if sick and not sick_clips else 1.0) * clampf(moved / maxf(speed, 0.01), 0.35, 1.0)
+	# Feet planted: the stride plays at the rate the pace needs (it used to
+	# run at 1.0 whatever the speed, the feet sliding under you), slowed
+	# while you're high -- heavy, a half-beat behind.
+	var clip := "sprint" if _sprinting else ("walk_sick" if sick_clips else "walk")
+	var anim_speed := anim.stride_rate(clip, moved) if moved > 0.1 else 1.0
+	if sick and not sick_clips:
+		anim_speed *= SICK_SPEED_MULT
+	if is_high():
+		anim_speed *= HIGH_ANIM_MULT
 	if _sprinting:
 		anim.play("sprint", anim_speed)
 	else:
@@ -354,6 +362,14 @@ func set_hiding(value: bool) -> void:
 ## True while actually running, for the guards' suspicion check.
 func is_sprinting() -> bool:
 	return _sprinting
+
+## High: a dose of an opioid in the last HIGH_SECONDS (real), and not sick.
+const HIGH_SECONDS := 150.0
+const HIGH_ANIM_MULT := 0.8
+
+func is_high() -> bool:
+	var since := GameState.run_time - float(GameState.last_dose_at.get(Drugs.OPIOID, -99999.0))
+	return since < HIGH_SECONDS and GameState.sickness() < 0.3
 
 func is_busy() -> bool:
 	return _busy_timer > 0.0

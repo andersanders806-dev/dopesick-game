@@ -800,6 +800,7 @@ func _run() -> void:
 	await _sound4_checks(gs)
 	await _menus5_checks(gs)
 	await _anim6_checks(gs)
+	await _atmosphere7_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3847,3 +3848,67 @@ func _anim6_checks(gs: Node) -> void:
 	gs.take_drug("heroin")
 	_check(p.is_high(), "  after a dose: high, and moving like it")
 	gs.start_run()
+
+## #7 weather and atmosphere (world/Atmosphere.gd): morning fog, puddles,
+## and the block at night -- sirens far off, a couple fighting on a corner.
+func _atmosphere7_checks(gs: Node) -> void:
+	await _section("Atmosphere: fog, puddles, the block at night")
+	gs.start_run()
+	gs.clock_running = false
+	gs.set_raining(false)
+	gs.clock = 12 * 60
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	var atmo: Node = city.get_node_or_null("Atmosphere")
+	_check(atmo != null, "  the street has its atmosphere")
+	var env: Environment = city.get_node("WorldEnvironment").environment
+	_dry_emit(gs, city)
+	await _frames(2)
+	var noon_fog := env.fog_density
+	gs.clock = 6 * 60 + 30
+	_dry_emit(gs, city)
+	await _frames(2)
+	_check(env.fog_density > noon_fog + 0.01, "  early morning: fog (%.3f vs %.3f at noon)" % [env.fog_density, noon_fog])
+	gs.clock = 12 * 60
+	_dry_emit(gs, city)
+	await _frames(2)
+	_check(absf(env.fog_density - noon_fog) < 0.002, "  ...burned off by noon")
+	# Puddles. (Jumping the clock rolls the weather: pin it dry.)
+	gs.set_raining(false)
+	atmo.advance_wet(atmo.DRY_MINUTES * 2.0)
+	_check(atmo.puddles_shown() == 0, "  dry: no puddles (%d, wet %.2f, raining %s)" % [atmo.puddles_shown(), atmo._wet, gs.raining])
+	gs.set_raining(true)
+	atmo.advance_wet(60.0)
+	_check(atmo.puddles_shown() >= 6, "  an hour of rain: puddles (%d)" % atmo.puddles_shown())
+	gs.set_raining(false)
+	atmo.advance_wet(240.0)
+	_check(atmo.puddles_shown() == 0, "  four dry hours later: gone")
+	# Night.
+	gs.clock = 14 * 60
+	_dry_emit(gs, city)
+	await _frames(2)
+	_check(not atmo.night() and city.find_child("Argument", true, false) == null, "  afternoon: no fight on the corner")
+	gs.clock = 23 * 60
+	_dry_emit(gs, city)
+	await _frames(5)
+	var fight: Node = city.find_child("Argument", true, false)
+	_check(atmo.night() and fight != null and fight.find_children("*", "Skeleton3D", true, false).size() == 2, "  23:00: two people fighting on the corner")
+	await _frames(10)
+	_check(fight.find_children("*", "Label3D", true, false).any(func(l): return l.visible and l.text != ""), "  ...and you can read what they're shouting")
+	_check(atmo.distant_siren() != null, "  a siren somewhere a few streets over")
+	gs.clock = 14 * 60
+	_dry_emit(gs, city)
+	await _frames(5)
+	_check(city.find_child("Argument", true, false) == null or city.find_child("Argument", true, false).is_queued_for_deletion(), "  by day they're gone")
+
+## Jumping the clock rolls the weather; a check about fog or the night
+## mustn't depend on it. Emit, and if it started raining, stop it and let
+## the street recompute.
+func _dry_emit(gs: Node, city: Node) -> void:
+	gs._emit_clock()
+	if gs.raining:
+		gs.set_raining(false)
+		city._apply_daylight()
+		var atmo: Node = city.get_node_or_null("Atmosphere")
+		if atmo:
+			atmo._apply_fog()

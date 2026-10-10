@@ -188,6 +188,12 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Weather & atmosphere** (#7, `world/Atmosphere.gd`): morning fog from
+  first light, thickest 6:30-7:30, burned off by ten. Puddles gather while
+  it rains (soft, noise-edged, glossy blobs on the sidewalk and road, the
+  deepest first) and dry out over a couple of hours. The block at night
+  (21-04): a siren passing a few streets over every minute or two, and a
+  couple fighting in a shop doorway, their lines in speech bubbles.
 - **Animation** (#6): strides play at the rate the pace needs, so feet
   stay planted (`CharacterAnimator.stride_rate`; walk ~2.0 m/s and sprint
   ~5.6 m/s at speed 1, measured from the feet) -- passersby used to

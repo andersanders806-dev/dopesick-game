@@ -10,3 +10,11 @@ friendly_trap.ogg   "Friendly Trap" by Of Far Different Nature -- CC-BY 4.0
                     (mixed with "Emotional piano loop" by extenz, CC0, and
                     "Singularity (calm)" by vitalezzz, CC0)
                     https://opengameart.org/content/friendly-trap-of-far-different-nature-extenz-vitalezzz
+
+shelter_piano.ogg   "Emotional Piano" (solo) by Centurion_of_war -- CC0
+                    https://opengameart.org/content/emotional-piano-0
+withdrawal_drone.ogg "When the Shadows Gather" by Tsorthan Grove -- CC0
+                    https://opengameart.org/content/when-the-shadows-gather
+jail_home.ogg       "I Want to go Home" by Eldritch Grim -- CC0
+                    https://opengameart.org/content/i-want-to-go-home
+(All three loudness-normalised and given short fades so they loop cleanly.)

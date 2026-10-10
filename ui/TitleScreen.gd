@@ -59,6 +59,8 @@ void fragment() {
 	add_child(col)
 	col.add_child(_label("DOPE SICK", 84, Color(0.93, 0.35, 0.55)))
 	col.add_child(_label("A run lasts as long as you do.", 17, Color(0.78, 0.75, 0.68)))
+	if not MetaProgress.last_run.is_empty():
+		col.add_child(_label(_last_time(MetaProgress.last_run), 13, Color(0.62, 0.55, 0.6)))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 40)
 	col.add_child(gap)
@@ -75,6 +77,7 @@ void fragment() {
 	if first == null:
 		first = new_run
 	_button("Settings", _on_settings)
+	_button("Credits", _on_credits)
 	_button("Quit", func(): get_tree().quit())
 	first.grab_focus.call_deferred()
 
@@ -173,6 +176,50 @@ func _on_settings() -> void:
 	s.closed.connect(func():
 		_buttons.visible = true
 		(_buttons.get_child(0) as Control).grab_focus())
+
+static func _last_time(last: Dictionary) -> String:
+	var d := int(last.get("day", 0))
+	match last.get("cause", ""):
+		"overdose":
+			return "Last time: you went over on day %d." % d
+		"recovered":
+			return "Last time: you got out."
+		"alone":
+			return "Last time: by day %d there was no one left." % d
+	return "Last time: picked up for the last time on day %d." % d
+
+const CREDITS := """Made with Godot 4.
+
+People: Microsoft Rocketbox avatars (MIT).
+Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits and sounds (CC0).
+Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.
+Music: OpenGameArt -- omfgdude, Nostromo, Of Far Different Nature (CC-BY), Tsorthan Grove,
+Centurion_of_war, Eldritch Grim (CC0). Room tone: CC0 field recordings.
+Full lists sit beside the files: assets/*/CREDITS*, LICENSE*.
+
+If you or someone you love is using: carry naloxone, don't use alone, and
+there are people whose whole job is to help. Find one."""
+
+func _on_credits() -> void:
+	_buttons.visible = false
+	var panel := PanelContainer.new()
+	panel.position = Vector2(80, 330)
+	panel.custom_minimum_size = Vector2(760, 0)
+	add_child(panel)
+	var box := VBoxContainer.new()
+	panel.add_child(box)
+	var text := _label(CREDITS, 13, Color(0.82, 0.8, 0.75))
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.custom_minimum_size = Vector2(740, 0)
+	box.add_child(text)
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(func():
+		panel.queue_free()
+		_buttons.visible = true
+		(_buttons.get_child(0) as Control).grab_focus())
+	box.add_child(back)
+	back.grab_focus.call_deferred()
 
 func _fade_out() -> void:
 	create_tween().tween_property(_music, "volume_db", -40.0, 0.5)

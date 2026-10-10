@@ -87,6 +87,33 @@ func open() -> void:
 		row.add_child(pct)
 		col.add_child(row)
 
+	col.add_child(_label("Controls", 15, Color(0.75, 0.72, 0.65)))
+	var srow := HBoxContainer.new()
+	var sname := _label("Look speed", 14, Color(0.84, 0.82, 0.78))
+	sname.custom_minimum_size = Vector2(110, 0)
+	srow.add_child(sname)
+	var sens := HSlider.new()
+	sens.name = "LookSensitivity"
+	sens.min_value = 0.3
+	sens.max_value = 2.5
+	sens.step = 0.05
+	sens.value = Graphics.look_sensitivity
+	sens.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sens.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var sval := _label("%.2fx" % sens.value, 12, Color(0.6, 0.58, 0.54))
+	sval.custom_minimum_size = Vector2(44, 0)
+	sens.value_changed.connect(func(v: float):
+		Graphics.set_look_sensitivity(v)
+		sval.text = "%.2fx" % v)
+	srow.add_child(sens)
+	srow.add_child(sval)
+	col.add_child(srow)
+	var inv := _check("Invert look up/down", Graphics.invert_look, Graphics.set_invert_look)
+	inv.name = "InvertLook"
+	col.add_child(inv)
+	var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options", 12, Color(0.6, 0.58, 0.54))
+	col.add_child(keys)
+
 	var back := Button.new()
 	back.text = "Back"
 	back.custom_minimum_size = Vector2(0, 34)

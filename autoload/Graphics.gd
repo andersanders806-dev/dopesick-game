@@ -65,6 +65,10 @@ var fullscreen: bool = false
 ## Through your own eyes, or the camera up over the room. Asked on New run,
 ## and switchable from Settings.
 var first_person: bool = false
+## First-person look: a multiplier on mouse and stick speed, and up/down
+## inverted for those who fly planes.
+var look_sensitivity: float = 1.0
+var invert_look: bool = false
 signal view_changed(first_person: bool)
 var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
 var _bus_base_db := {}
@@ -158,6 +162,14 @@ func set_first_person(on: bool) -> void:
 	first_person = on
 	_save_settings()
 	view_changed.emit(on)
+
+func set_look_sensitivity(v: float) -> void:
+	look_sensitivity = clampf(v, 0.3, 2.5)
+	_save_settings()
+
+func set_invert_look(on: bool) -> void:
+	invert_look = on
+	_save_settings()
 
 func set_fullscreen(on: bool) -> void:
 	fullscreen = on
@@ -507,6 +519,8 @@ func _load_settings() -> void:
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))
 		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
 		first_person = bool(cfg.get_value("controls", "first_person", false))
+		look_sensitivity = clampf(float(cfg.get_value("controls", "look_sensitivity", 1.0)), 0.3, 2.5)
+		invert_look = bool(cfg.get_value("controls", "invert_look", false))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
@@ -521,4 +535,6 @@ func _save_settings() -> void:
 		cfg.set_value("audio", bus, volumes[bus])
 	cfg.set_value("graphics", "show_fps", show_fps)
 	cfg.set_value("controls", "first_person", first_person)
+	cfg.set_value("controls", "look_sensitivity", look_sensitivity)
+	cfg.set_value("controls", "invert_look", invert_look)
 	cfg.save(SETTINGS_PATH)

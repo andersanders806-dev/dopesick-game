@@ -798,6 +798,7 @@ func _run() -> void:
 	await _story_review_checks(gs)
 	await _gameplay3_checks(gs)
 	await _sound4_checks(gs)
+	await _menus5_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -1907,8 +1908,10 @@ func _sick_world_checks(gs: Node) -> void:
 	_check(hud._graded_env.adjustment_saturation < well_sat * 0.5, "  sick, the colour drains out (saturation %.2f -> %.2f)" % [well_sat, hud._graded_env.adjustment_saturation])
 	_check(life._flicker.size() > well_signs, "  ...and the neon starts to stutter (%d signs -> %d)" % [well_signs, life._flicker.size()])
 	var book = load("res://ui/Notebook.gd").new()
-	var name: String = "a bottle of good whiskey"
-	_check(book._misread(name) != name, "  ...and your notes swim (\"%s\")" % book._misread(name))
+	# Random by design (seeded off the clock): over a few lines, at least
+	# one swims.
+	var lines := ["a bottle of good whiskey", "a carton of cigarettes", "the electronics store", "a pair of wireless headphones"]
+	_check(lines.any(func(t): return book._misread(t) != t), "  ...and your notes swim (\"%s\")" % book._misread(lines[0]))
 	book.free()
 	var npc = load("res://npc/NPC3D.gd").new()
 	var reacted := 0
@@ -3757,3 +3760,54 @@ func _sound4_checks(gs: Node) -> void:
 	_check(not sfx._rain_indoor.playing, "  ...but not as a second rain outside")
 	gs.set_raining(false)
 	_check(sfx.ROOM_SURFACE.get("Pawn3D", "") == "wood", "  wooden steps on the pawnshop floor")
+
+## #5 menus and HUD: controls in settings, what's next on the HUD, unread
+## messages, and a title screen that remembers and credits.
+func _menus5_checks(gs: Node) -> void:
+	await _section("Menus & HUD")
+	var gfx := root.get_node("Graphics")
+	var story := root.get_node("Story")
+	# Controls.
+	var menu = load("res://ui/SettingsMenu.gd").new()
+	root.add_child(menu)
+	menu.open()
+	await _frames(2)
+	var sliders: Array = menu.find_children("*", "HSlider", true, false)
+	var checks: Array = menu.find_children("*", "CheckButton", true, false)
+	_check(menu.find_child("LookSensitivity", true, false) is HSlider and menu.find_child("InvertLook", true, false) is CheckButton, "  settings: look sensitivity and invert look")
+	_check(menu.find_children("*", "Label", true, false).any(func(l): return l.text.contains("Interact")), "  settings: the controls are listed")
+	menu.queue_free()
+	gfx.set_look_sensitivity(1.5)
+	gfx.set_invert_look(true)
+	_check(is_equal_approx(gfx.look_sensitivity, 1.5) and gfx.invert_look, "  sensitivity and invert stick")
+	gfx.set_look_sensitivity(1.0)
+	gfx.set_invert_look(false)
+	# Next up and unread.
+	gs.start_run()
+	gs.clock_running = false
+	_hour(gs, 2, 14)
+	story.book_dana()
+	gs.day = 3
+	_check(gs.status_line().size() > 0 and gs.status_line()[0].contains("Dana"), "  the HUD's next-up line: Dana today (%s)" % [gs.status_line()])
+	var home := await _load("res://world/Apartment3D.tscn")
+	await _frames(2)
+	var before: int = story.unread()
+	story.send("Mia", "test")
+	await _frames(2)
+	var badge: Label = get_first_node_in_group("hud").find_child("UnreadLabel", true, false)
+	_check(story.unread() == before + 1 and badge != null and badge.visible, "  a new message shows a badge on the HUD")
+	var nb = load("res://ui/Notebook.gd").new()
+	root.add_child(nb)
+	nb.open(4)
+	await _frames(2)
+	_check(story.unread() == 0 and not badge.visible, "  reading Messages clears it")
+	nb._close()
+	await _frames(2)
+	# Title screen.
+	root.get_node("MetaProgress").last_run = {"cause": "overdose", "day": 4}
+	var title := await _load("res://ui/TitleScreen.tscn")
+	await _frames(5)
+	_check(title.find_children("*", "Button", true, false).any(func(b): return b.text == "Credits"), "  the title screen has Credits")
+	_check(title.find_children("*", "Label", true, false).any(func(l): return l.text.contains("Last time")), "  ...and remembers how the last run ended")
+	root.get_node("MetaProgress").last_run = {}
+	gs.start_run()

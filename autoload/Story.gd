@@ -1,4 +1,6 @@
 extends Node
+
+signal messages_changed
 ## The week's story: three people, woven.
 ##
 ## Mia, your younger sister, texts and calls (a phone buzz and the
@@ -33,7 +35,7 @@ const DEFAULTS := {
 	"mia": "close", "mia_promise": false, "mia_visited": false,
 	"ray": "using",
 	"dana": "none", "dana_day": -1, "dana_missed": 0,
-	"ended": false,
+	"ended": false, "unread": 0,
 }
 
 ## The story so far, defaults filled in, and caught up with what the rest
@@ -52,6 +54,13 @@ func state() -> Dictionary:
 func messages() -> Array:
 	return state()["msgs"]
 
+func unread() -> int:
+	return int(state()["unread"])
+
+func mark_read() -> void:
+	state()["unread"] = 0
+	messages_changed.emit()
+
 # --- The phone ---------------------------------------------------------------
 
 func send(from: String, text: String) -> void:
@@ -59,6 +68,8 @@ func send(from: String, text: String) -> void:
 	if from == "Mia" and s["mia"] == "blocked":
 		return
 	s["msgs"].append({"day": GameState.day, "clock": GameState.clock_text(), "from": from, "text": text})
+	s["unread"] = int(s["unread"]) + 1
+	messages_changed.emit()
 	GameState.log_event("%s: \"%s\"" % [from, text])
 	if is_inside_tree():
 		SFX.play("blip", -6.0, 1.3)

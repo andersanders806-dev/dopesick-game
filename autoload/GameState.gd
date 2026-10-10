@@ -791,6 +791,12 @@ func status_line() -> Array:
 		return ["Final notice: $%d rent by midnight" % rent_owed, true]
 	if day == rent_due_day:
 		return ["Rent $%d due tonight" % RENT, false]
+	var st := get_node_or_null("/root/Story")
+	if st and st.state()["dana"] == "booked" and int(st.state()["dana_day"]) == day:
+		return ["Dana at St. Jude's, 17-20 today", false]
+	var jb := get_node_or_null("/root/Jobs")
+	if jb and jb.shift.get("hired", false) and not jb.shift.get("fired", false) and int(jb.shift.get("worked_day", -1)) != day and hour() < jb.SHIFT_LATE:
+		return ["Shift at the Dive Bar, 17-21 (in by 18)", false]
 	return []
 
 # --- Bad batch ------------------------------------------------------------

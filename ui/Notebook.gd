@@ -234,6 +234,8 @@ func _draw_notes(c: Control, font: Font) -> void:
 
 ## Your phone: Mia's texts, St. Jude's, newest at the bottom.
 func _draw_messages(c: Control, font: Font) -> void:
+	if Story.unread() > 0:
+		Story.mark_read.call_deferred()
 	_line(c, font, 0, "Messages", INK, 0.0, 22)
 	var msgs: Array = Story.messages()
 	var row := 2

@@ -187,7 +187,8 @@ func _physics_process(delta: float) -> void:
 		# The right stick looks round, as the mouse does.
 		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
 		if look.length() > 0.0 and not dialogue_active:
-			set_look(_look_yaw - look.x * LOOK_SPEED * delta, _look_pitch - look.y * LOOK_SPEED * delta)
+			var k := LOOK_SPEED * Graphics.look_sensitivity * delta
+			set_look(_look_yaw - look.x * k, _look_pitch - look.y * k * (-1.0 if Graphics.invert_look else 1.0))
 	else:
 		# The right stick pulls the camera in and out, as the wheel does.
 		var zoom := Input.get_axis("look_up", "look_down")
@@ -288,7 +289,8 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _first_person:
-		set_look(_look_yaw - event.relative.x * MOUSE_SENS, _look_pitch - event.relative.y * MOUSE_SENS)
+		var m := MOUSE_SENS * Graphics.look_sensitivity
+		set_look(_look_yaw - event.relative.x * m, _look_pitch - event.relative.y * m * (-1.0 if Graphics.invert_look else 1.0))
 		return
 	if event is InputEventJoypadButton and event.is_action_pressed("sprint"):
 		_sprint_latched = true

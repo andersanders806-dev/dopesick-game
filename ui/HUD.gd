@@ -81,6 +81,7 @@ func _ready() -> void:
 	_build_debt()
 	GameState.debt_changed.connect(_on_debt_changed)
 	_build_status()
+	_build_unread()
 	GameState.rent_changed.connect(_update_status)
 	GameState.legal_changed.connect(_update_status)
 	GameState.clock_changed.connect(_on_clock_changed)
@@ -220,6 +221,30 @@ func _on_clock_changed(_minute: int) -> void:
 	_update_clock()
 	_update_debt()
 	_update_status()
+
+## New messages on your phone, under the clock, until you read them
+## (J, Messages).
+var unread_label: Label
+
+func _build_unread() -> void:
+	unread_label = Label.new()
+	unread_label.name = "UnreadLabel"
+	unread_label.add_theme_font_size_override("font_size", 12)
+	unread_label.add_theme_color_override("font_color", Color(0.55, 0.85, 1.0))
+	unread_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	unread_label.add_theme_constant_override("outline_size", 4)
+	unread_label.offset_left = 160.0
+	unread_label.offset_top = 33.0
+	unread_label.offset_right = 360.0
+	unread_label.offset_bottom = 48.0
+	$TopBar.add_child(unread_label)
+	Story.messages_changed.connect(_update_unread)
+	_update_unread()
+
+func _update_unread() -> void:
+	var n: int = Story.unread()
+	unread_label.visible = n > 0
+	unread_label.text = "%d new message%s  (%s)" % [n, "" if n == 1 else "s", GameState.control_name("notebook")]
 
 func _build_status() -> void:
 	status_label = Label.new()

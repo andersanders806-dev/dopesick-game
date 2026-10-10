@@ -188,6 +188,12 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Menus & HUD** (#5): Settings gets a Controls section -- look speed,
+  invert look up/down (both saved), and the keys and pad buttons listed.
+  The HUD's line under the clock now also says when you're due at Dana's
+  or at the bar, and new phone messages show a "2 new messages (J)" badge
+  until you read them. The title screen remembers how your last run ended
+  and has Credits (with a word about naloxone).
 - **Sound** (#4, `autoload/SFX.gd`): St. Jude's gets a solo piano and the
   jail its own sad loop (CC0, credits in `assets/music/CREDITS.txt`).
   Deep in withdrawal (sickness 0.6+) the music gives way to a dark drone,

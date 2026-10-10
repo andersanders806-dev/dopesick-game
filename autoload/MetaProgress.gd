@@ -81,6 +81,67 @@ var best_day: int = 0
 ## (Mia's voicemail, Ray's name on the wall, your guitar in the pawnshop).
 var last_run: Dictionary = {}
 
+## Achievements, across runs: id -> [name, what it takes].
+const ACHIEVEMENTS := {
+	"first_morning": ["First Morning", "Live to see day 2."],
+	"a_week": ["A Week", "Make it to day 7."],
+	"clean_record": ["Clean Record", "Reach day 4 without a single strike."],
+	"got_out": ["Got Out", "Five clean days in Dana's program."],
+	"saved_a_life": ["Saved a Life", "Bring someone back with naloxone."],
+	"ray_made_it": ["Ray Made It", "End a run with Ray alive and getting help."],
+	"kept_word": ["Kept Your Word", "Turn up for Dana's appointment."],
+	"honest_work": ["Honest Work", "Work three shifts at the sink in one run."],
+	"vendor": ["Vendor", "Sell ten units off Silk Lane."],
+	"moms_ring": ["Mom's Ring", "End a run with Mom's ring still at home."],
+	"tested": ["Tested", "Test what you bought, and throw the fentanyl away."],
+	"alone": ["Alone", "Lose Mia, Ray and the bed."],
+}
+const HISTORY_KEEP := 20
+## id -> the run number it came in.
+var achievements: Dictionary = {}
+## The last HISTORY_KEEP runs, oldest first: {cause, day, cash, doses}.
+var history: Array = []
+## What this run unlocked, for its end screen.
+var unlocked_this_run: Array = []
+
+func unlock(id: String) -> bool:
+	if not ACHIEVEMENTS.has(id) or achievements.has(id):
+		return false
+	achievements[id] = runs_completed + 1
+	unlocked_this_run.append(id)
+	save_progress()
+	if is_inside_tree() and has_node("/root/Graphics"):
+		get_node("/root/Graphics")._show_toast("Achievement: %s -- %s" % ACHIEVEMENTS[id], 5.0)
+	return true
+
+func new_run() -> void:
+	unlocked_this_run = []
+
+## Hourly: the ones the calendar gives you.
+func check_day(day: int, strikes: int) -> void:
+	if day >= 2:
+		unlock("first_morning")
+	if day >= 7:
+		unlock("a_week")
+	if day >= 4 and strikes == 0:
+		unlock("clean_record")
+
+func record_run(entry: Dictionary) -> void:
+	history.append(entry)
+	while history.size() > HISTORY_KEEP:
+		history.pop_front()
+	save_progress()
+
+static func ending_words(cause: String, day: int) -> String:
+	match cause:
+		"recovered":
+			return "Got out on day %d" % day
+		"overdose":
+			return "Went over on day %d" % day
+		"alone":
+			return "Alone by day %d" % day
+	return "Sent away on day %d" % day
+
 func remember_run(summary: Dictionary) -> void:
 	last_run = summary
 	save_progress()
@@ -98,6 +159,8 @@ func load_progress() -> void:
 	runs_completed = cfg.get_value("meta", "runs_completed", 0)
 	best_day = cfg.get_value("meta", "best_day", 0)
 	last_run = cfg.get_value("meta", "last_run", {})
+	achievements = cfg.get_value("meta", "achievements", {})
+	history = cfg.get_value("meta", "history", [])
 	var saved: Dictionary = cfg.get_value("meta", "levels", {})
 	# Only keep ids that still exist, so removing an upgrade can't break a
 	# save made before it was removed.
@@ -115,6 +178,8 @@ func save_progress() -> void:
 	cfg.set_value("meta", "runs_completed", runs_completed)
 	cfg.set_value("meta", "best_day", best_day)
 	cfg.set_value("meta", "last_run", last_run)
+	cfg.set_value("meta", "achievements", achievements)
+	cfg.set_value("meta", "history", history)
 	cfg.set_value("meta", "levels", levels)
 	cfg.save(SAVE_PATH)
 

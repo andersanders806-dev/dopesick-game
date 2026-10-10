@@ -188,6 +188,14 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Animation** (#6): strides play at the rate the pace needs, so feet
+  stay planted (`CharacterAnimator.stride_rate`; walk ~2.0 m/s and sprint
+  ~5.6 m/s at speed 1, measured from the feet) -- passersby used to
+  shuffle at 1.5x and the player's feet slid at half. Everyone idles at
+  their own rate from their own point, so a crowd isn't breathing in step.
+  People turn their heads to follow you within 3.5 m (`npc/HeadTurn.gd`, a
+  LookAtModifier3D eased in and out). High, you move heavier, a half-beat
+  behind.
 - **Menus & HUD** (#5): Settings gets a Controls section -- look speed,
   invert look up/down (both saved), and the keys and pad buttons listed.
   The HUD's line under the clock now also says when you're due at Dana's

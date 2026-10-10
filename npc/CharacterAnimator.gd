@@ -13,7 +13,14 @@ extends RefCounted
 ## "HumanArmature|Female_Walk", and so on, with the prefix differing by sex).
 ## Without this every NPC script would need to know which body it was wearing.
 
-const BLEND_TIME := 0.15
+const BLEND_TIME := 0.2
+## Ground speed (m/s, at the cast's 1.5 scale) each locomotion clip covers at
+## playback speed 1, measured from the feet: update() plays them at the
+## rate that keeps the feet planted instead of sliding.
+const WALK_NATURAL := 2.0
+const SPRINT_NATURAL := 5.6
+const SHUFFLE_NATURAL := 1.0
+const STRIDE_LIMITS := Vector2(0.4, 1.8)
 const MOVING_THRESHOLD := 0.1
 const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"]
 const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"]
@@ -53,6 +60,9 @@ var _one_shot := ""
 var _rest_clip := "idle"
 ## Logical clip name -> the real clip on this model, or "" if it has none.
 var _resolved := {}
+## Everyone's idle runs at their own rate, from their own point in it, so a
+## room of people standing about isn't breathing in step.
+var _idle_rate: float = randf_range(0.88, 1.12)
 
 ## `moving_clip` is what plays while moving ("walk", or "sprint" for police).
 func _init(model: Node, moving_clip := "walk") -> void:
@@ -69,7 +79,10 @@ func _init(model: Node, moving_clip := "walk") -> void:
 		if real != "":
 			_player.get_animation(real).loop_mode = Animation.LOOP_LINEAR
 	_player.animation_finished.connect(_on_animation_finished)
-	play("idle")
+	play("idle", _idle_rate)
+	var idle: String = _resolved.get("idle", "")
+	if idle != "":
+		_player.seek(randf() * _player.get_animation(idle).length, true)
 
 ## Finds the real clip on this model for a logical name. Exact matches win
 ## over suffix matches so a model that genuinely has "walk" never picks up
@@ -87,13 +100,24 @@ func _resolve(logical: String) -> String:
 
 ## Picks idle vs. moving from horizontal speed. `anim_speed` scales playback,
 ## e.g. a slower shuffle when the player is in withdrawal.
-func update(horizontal_speed: float, anim_speed := 1.0) -> void:
+## `anim_speed` < 0: worked out from the pace (feet planted) when moving,
+## the person's own idle rate when not.
+func update(horizontal_speed: float, anim_speed := -1.0) -> void:
 	if _one_shot != "":
 		return
 	if horizontal_speed > MOVING_THRESHOLD:
-		play(_moving_clip, anim_speed)
+		play(_moving_clip, anim_speed if anim_speed >= 0.0 else stride_rate(_moving_clip, horizontal_speed))
 	else:
-		play(_rest_clip)
+		play(_rest_clip, anim_speed if anim_speed >= 0.0 else _idle_rate)
+
+func stride_rate(clip: String, ground_speed: float) -> float:
+	var natural := WALK_NATURAL
+	match clip:
+		"sprint":
+			natural = SPRINT_NATURAL
+		"walk_sick":
+			natural = SHUFFLE_NATURAL
+	return clampf(ground_speed / natural, STRIDE_LIMITS.x, STRIDE_LIMITS.y)
 
 ## What the character does when not moving: "idle" (standing) by default,
 ## or e.g. "sit" for a patron in a booth. Takes effect immediately.

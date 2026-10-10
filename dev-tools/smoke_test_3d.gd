@@ -797,6 +797,7 @@ func _run() -> void:
 	await _story_checks(gs)
 	await _story_review_checks(gs)
 	await _gameplay3_checks(gs)
+	await _sound4_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3717,3 +3718,42 @@ func _gameplay3_checks(gs: Node) -> void:
 	_check(load("res://npc/PawnBroker3D.gd").greeting().contains("guitar"), "  the pawnbroker still has your guitar")
 	meta.last_run = {}
 	gs.start_run()
+
+## #4 sound: music where it was silent, a drone and a muffle for the
+## sickness, rain heard through the walls, wood underfoot at the pawnshop.
+func _sound4_checks(gs: Node) -> void:
+	await _section("Sound: music, the muffle, rain through the walls")
+	var sfx := root.get_node("SFX")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 19 * 60
+	gs.craving = 90.0
+	gs.set_raining(false)
+	await _load("res://world/Shelter3D.tscn")
+	await _frames(5)
+	_check(sfx._music_track == "shelter", "  St. Jude's has its own piano (%s)" % sfx._music_track)
+	await _load("res://world/Jail3D.tscn")
+	await _frames(5)
+	_check(sfx._music_track == "jail", "  the jail has its own music (%s)" % sfx._music_track)
+	await _load("res://world/City3D.tscn")
+	await _frames(5)
+	var well_cut: float = sfx.muffle_cutoff()
+	gs.craving = 0.0
+	gs.craving_changed.emit(gs.craving)
+	await _frames(5)
+	_check(sfx._music_track == "sick", "  deep in withdrawal the music gives way to a drone (%s)" % sfx._music_track)
+	_check(sfx._muffles.size() == 2 and sfx._muffles.all(func(f): return f.cutoff_hz < 3000.0), "  the muffle is on the music and room-tone buses")
+	_check(sfx.muffle_cutoff() < 3000.0 and well_cut > 15000.0, "  ...and everything goes muffled (%.0f Hz, well %.0f Hz)" % [sfx.muffle_cutoff(), well_cut])
+	gs.craving = 90.0
+	gs.craving_changed.emit(gs.craving)
+	await _frames(5)
+	_check(sfx._music_track != "sick", "  well again: the drone lets go")
+	gs.set_raining(true)
+	await _load("res://world/Apartment3D.tscn")
+	await _frames(5)
+	_check(sfx._rain_indoor.playing, "  raining out: you hear it through the walls at home")
+	await _load("res://world/City3D.tscn")
+	await _frames(5)
+	_check(not sfx._rain_indoor.playing, "  ...but not as a second rain outside")
+	gs.set_raining(false)
+	_check(sfx.ROOM_SURFACE.get("Pawn3D", "") == "wood", "  wooden steps on the pawnshop floor")

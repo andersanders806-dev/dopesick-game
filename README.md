@@ -188,6 +188,13 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Sound** (#4, `autoload/SFX.gd`): St. Jude's gets a solo piano and the
+  jail its own sad loop (CC0, credits in `assets/music/CREDITS.txt`).
+  Deep in withdrawal (sickness 0.6+) the music gives way to a dark drone,
+  and music and room tone go muffled -- a low-pass sliding from 20 kHz to
+  1.2 kHz with the sickness, like wet cotton in your ears. Raining outside
+  and you're in: you hear it through the walls, low and dull. Wooden
+  steps on the pawnshop floor.
 - **A job, a shop, and the last run** (#3). **Dishwasher at the Dive
   Bar** (`autoload/Jobs.gd`): the help-wanted sign by the kitchen; 17-21
   every day, clock in by 18:00 and the evening passes at the sink for $25

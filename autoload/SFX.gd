@@ -51,7 +51,7 @@ const FOOTSTEPS := {
 const FOOTSTEP_GAIN_DB := -6.0
 ## Which floor each room has. Anything not listed (City, stores, Jail) is
 ## concrete, asphalt, or tile, which all read as a hard "concrete" step.
-const ROOM_SURFACE := {"Apartment3D": "wood", "DiveBar3D": "wood"}
+const ROOM_SURFACE := {"Apartment3D": "wood", "DiveBar3D": "wood", "Pawn3D": "wood"}
 
 ## Withdrawal hallucinations: deep in the sickness you start hearing things
 ## -- a siren a few streets over, the lookout's whistle, footsteps behind
@@ -99,8 +99,21 @@ const MUSIC := {
 	"city_night": preload("res://assets/music/friendly_trap.ogg"),
 	"apartment": preload("res://assets/music/lofi_hiphop.ogg"),
 	"chase": preload("res://assets/music/downtempo_chase.ogg"),
+	"shelter": preload("res://assets/music/shelter_piano.ogg"),
+	"jail": preload("res://assets/music/jail_home.ogg"),
+	"sick": preload("res://assets/music/withdrawal_drone.ogg"),
 }
-const MUSIC_VOLUME_DB := {"city_day": -14.0, "city_night": -12.0, "apartment": -22.0, "chase": -7.0}
+const MUSIC_VOLUME_DB := {"city_day": -14.0, "city_night": -12.0, "apartment": -22.0, "chase": -7.0,
+	"shelter": -15.0, "jail": -16.0, "sick": -11.0}
+## Deep enough in withdrawal and the drone takes over from whatever's
+## playing (a chase still wins).
+const SICK_MUSIC_AT := 0.6
+## The muffle: music and room tone lose their top end as the sickness
+## deepens, as if your head's full of wet cotton. Cutoff at well and at
+## its worst.
+const MUFFLE_HZ := Vector2(20000.0, 1200.0)
+var _muffles: Array = []
+var _rain_indoor: AudioStreamPlayer
 const MUSIC_FADE := 1.5
 var _music_a: AudioStreamPlayer
 var _music_b: AudioStreamPlayer
@@ -139,6 +152,13 @@ func _ready() -> void:
 	GameState.wanted_changed.connect(_on_wanted_changed)
 	GameState.craving_changed.connect(_on_craving_changed)
 	GameState.busted.connect(func(): play("busted"))
+	GameState.weather_changed.connect(func(_r): _update_indoor_rain())
+	_rain_indoor = AudioStreamPlayer.new()
+	_rain_indoor.stream = preload("res://assets/sfx/rain_loop.wav")
+	_rain_indoor.bus = "Ambience"
+	_rain_indoor.volume_db = -21.0
+	_rain_indoor.pitch_scale = 0.72
+	add_child(_rain_indoor)
 	GameState.clock_changed.connect(func(_m): if _music_track.begins_with("city"): _update_music())
 
 func _process(delta: float) -> void:
@@ -245,6 +265,7 @@ func _setup_buses() -> void:
 		var limiter := AudioEffectHardLimiter.new()
 		limiter.ceiling_db = -0.5
 		AudioServer.add_bus_effect(master, limiter)
+	_ensure_muffles.call_deferred()
 	for bus in ["Music", "SFX", "Voice", "Ambience", "Walkman"]:
 		if AudioServer.get_bus_index(bus) >= 0:
 			continue
@@ -304,6 +325,7 @@ func _enter_room(room: Node) -> void:
 		reverb.wet = a[2] * (0.6 if bus == "Voice" else 1.0)
 		reverb.dry = 1.0
 	_update_music()
+	_update_indoor_rain()
 
 func _update_music() -> void:
 	var scene := get_tree().current_scene
@@ -314,6 +336,12 @@ func _update_music() -> void:
 		track = ""
 	elif GameState.wanted:
 		track = "chase"
+	elif GameState.sickness() >= SICK_MUSIC_AT:
+		track = "sick"
+	elif room == "Shelter3D":
+		track = "shelter"
+	elif room == "Jail3D":
+		track = "jail"
 	elif room == "City3D" or room == "Backyard3D":
 		track = "city_day" if GameState.daylight() > 0.5 else "city_night"
 	elif room == "Apartment3D":
@@ -346,7 +374,46 @@ func _on_wanted_changed(is_wanted: bool) -> void:
 	else:
 		_siren_player.stop()
 
+func _ensure_muffles() -> void:
+	_muffles.clear()
+	for bus in ["Music", "Ambience"]:
+		var i := AudioServer.get_bus_index(bus)
+		if i < 0:
+			continue
+		var found: AudioEffectLowPassFilter = null
+		for k in AudioServer.get_bus_effect_count(i):
+			if AudioServer.get_bus_effect(i, k) is AudioEffectLowPassFilter:
+				found = AudioServer.get_bus_effect(i, k)
+		if found == null:
+			found = AudioEffectLowPassFilter.new()
+			AudioServer.add_bus_effect(i, found)
+		_muffles.append(found)
+	_apply_muffle()
+
+func muffle_cutoff() -> float:
+	return lerpf(MUFFLE_HZ.x, MUFFLE_HZ.y, pow(GameState.sickness(), 1.3))
+
+func _apply_muffle() -> void:
+	var hz := muffle_cutoff()
+	for f in _muffles:
+		f.cutoff_hz = hz
+
+## Raining out and you're indoors: the rain through the walls, low and dull.
+func _update_indoor_rain() -> void:
+	if _rain_indoor == null:
+		return
+	var scene := get_tree().current_scene
+	var room := String(scene.name) if scene else ""
+	var want: bool = GameState.raining and room != "" and room not in ["City3D", "Backyard3D"] and scene is Node3D
+	if want and not _rain_indoor.playing:
+		_rain_indoor.play()
+	elif not want and _rain_indoor.playing:
+		_rain_indoor.stop()
+
 func _on_craving_changed(craving: float) -> void:
+	_apply_muffle()
+	if (_music_track == "sick") != (GameState.sickness() >= SICK_MUSIC_AT):
+		_update_music()
 	var should_play := craving <= LOW_CRAVING_THRESHOLD
 	if should_play and not _heartbeat_player.playing:
 		_heartbeat_player.play()

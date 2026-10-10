@@ -318,6 +318,8 @@ func _ask(player: Node, text: String, options: Array) -> int:
 
 func _consume(_player: Node, drug: String, contaminated: bool, action: String) -> String:
 	if action == "toss":
+		if drug == "fentanyl" or contaminated:
+			MetaProgress.unlock("tested")
 		GameState.log_event("Tested it, and threw it away.")
 		return "tossed"
 	var risk := GameState.CONTAMINATED_RISK if contaminated else 1.0

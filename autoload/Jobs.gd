@@ -294,6 +294,9 @@ func clock_in() -> bool:
 	GameState.advance_clock(minutes)
 	GameState.cash_earned += SHIFT_PAY
 	_pay(SHIFT_PAY, "A shift at the sink")
+	shift["worked_total"] = int(shift.get("worked_total", 0)) + 1
+	if shift["worked_total"] >= 3:
+		MetaProgress.unlock("honest_work")
 	return true
 
 ## Hourly (GameState): no clock-in by SHIFT_LATE on a working day is a

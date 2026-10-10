@@ -89,6 +89,9 @@ func _build() -> void:
 	root.add_child(_heading(head[0], 30, head[1]))
 	root.add_child(_heading(head[2], 14, Color(0.62, 0.60, 0.56)))
 	root.add_child(_heading(Story.ending_line(cause), 15, Color(0.85, 0.82, 0.74)))
+	if not MetaProgress.unlocked_this_run.is_empty():
+		var names: Array = MetaProgress.unlocked_this_run.map(func(id): return MetaProgress.ACHIEVEMENTS[id][0])
+		root.add_child(_heading("Unlocked: " + ", ".join(names), 13, Color(0.9, 0.78, 0.4)))
 	root.add_child(_spacer(6))
 
 	# Two columns: the run told back on the left (GameState.diary), the

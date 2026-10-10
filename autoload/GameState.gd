@@ -347,6 +347,7 @@ func _ready() -> void:
 ## Wipes the per-run state and applies whatever the meta upgrades grant at
 ## the start of a run. Called once at boot and again after each run ends.
 func start_run() -> void:
+	MetaProgress.new_run()
 	cash = MetaProgress.starting_cash()
 	inventory.clear()
 	craving = 45.0
@@ -493,6 +494,7 @@ func _emit_clock() -> void:
 			_check_legal_deadlines()
 			_booster_hour()
 			preload("res://world/Darknet.gd").hourly()
+			MetaProgress.check_day(day, strikes)
 			var st := get_node_or_null("/root/Story")
 			if st:
 				st.hourly()
@@ -852,6 +854,7 @@ func resolve_overdose(choice: String) -> String:
 	var outcome := "saved"
 	match choice:
 		"naloxone":
+			MetaProgress.unlock("saved_a_life")
 			naloxone -= 1
 			inventory_changed.emit()
 			change_rep(who, 3)
@@ -1451,6 +1454,16 @@ func end_run(cause := "busted") -> void:
 	var st := get_node_or_null("/root/Story")
 	MetaProgress.remember_run({"cause": cause, "day": day, "ray": st.state()["ray"] if st else "",
 		"mia": st.state()["mia"] if st else "", "guitar": belongings.get("guitar", "home")})
+	MetaProgress.record_run({"cause": cause, "day": day, "cash": cash_earned, "doses": doses_taken})
+	match cause:
+		"recovered":
+			MetaProgress.unlock("got_out")
+		"alone":
+			MetaProgress.unlock("alone")
+	if belongings.get("ring", "home") == "home":
+		MetaProgress.unlock("moms_ring")
+	if st and st.state()["ray"] in ["helped", "saved", "sober"]:
+		MetaProgress.unlock("ray_made_it")
 	# Getting out is worth more than anything else a run can do.
 	var earned := MetaProgress.award_for_run(days_survived + (15 if cause == "recovered" else 0), orders_delivered, cash_earned)
 	run_ended.emit({

@@ -116,6 +116,8 @@ static func _vendor_hourly() -> void:
 			var n := mini(stock, randi_range(SALES_PER_DAY.x, SALES_PER_DAY.y))
 			v["stock"] = stock - n
 			v["sold"] = int(v.get("sold", 0)) + n
+			if v["sold"] >= 10:
+				MetaProgress.unlock("vendor")
 			v["earned"] = int(v.get("earned", 0)) + n * UNIT_PRICE
 			v["heat"] = float(v.get("heat", 0.0)) + n * HEAT_PER_UNIT
 			GameState.cash += n * UNIT_PRICE
@@ -312,6 +314,8 @@ static func _open_with_menus(box: Node, player: Node) -> void:
 		if is_instance_valid(box):
 			box.queue_free()
 		if action == "toss":
+			if p["drug"] == "fentanyl" or p["contaminated"]:
+				MetaProgress.unlock("tested")
 			GameState.log_event("Tested the package, and threw it away.")
 			_say(player, "", "You flush it. The envelope goes in the trash.")
 			return

@@ -188,6 +188,13 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Achievements & record** (#8, `MetaProgress`): every run goes in the
+  record (the last 20: how it ended, which day, money made, doses), and
+  twelve achievements carry across runs -- First Morning, A Week, Clean
+  Record, Got Out, Saved a Life, Ray Made It, Kept Your Word, Honest Work,
+  Vendor, Mom's Ring, Tested, Alone -- with a toast when one lands. The
+  run-end screen says what this run unlocked; the title screen's Record
+  shows the runs and all twelve.
 - **Weather & atmosphere** (#7, `world/Atmosphere.gd`): morning fog from
   first light, thickest 6:30-7:30, burned off by ten. Puddles gather while
   it rains (soft, noise-edged, glossy blobs on the sidewalk and road, the

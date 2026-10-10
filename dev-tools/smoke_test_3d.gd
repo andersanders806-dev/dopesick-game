@@ -801,6 +801,7 @@ func _run() -> void:
 	await _menus5_checks(gs)
 	await _anim6_checks(gs)
 	await _atmosphere7_checks(gs)
+	await _achievements8_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3912,3 +3913,43 @@ func _dry_emit(gs: Node, city: Node) -> void:
 		var atmo: Node = city.get_node_or_null("Atmosphere")
 		if atmo:
 			atmo._apply_fog()
+
+## #8 achievements and stats: a record of every run, achievements across
+## runs, and a Record page.
+func _achievements8_checks(gs: Node) -> void:
+	await _section("Achievements & record")
+	var meta := root.get_node("MetaProgress")
+	meta.achievements = {}
+	meta.history = []
+	gs.start_run()
+	gs.clock_running = false
+	_check(meta.ACHIEVEMENTS.size() >= 12, "  a dozen achievements (%d)" % meta.ACHIEVEMENTS.size())
+	_hour(gs, 2, 9)
+	_check(meta.achievements.has("first_morning"), "  day 2: First Morning")
+	# Saving a life.
+	gs.naloxone = 1
+	gs.od_event = {"day": gs.day, "minute": 0, "who": "Big Eddie", "state": "down", "left": 90.0}
+	gs.resolve_overdose("naloxone")
+	_check(meta.achievements.has("saved_a_life"), "  naloxone in the alley: Saved a Life")
+	_check(meta.unlocked_this_run.has("saved_a_life"), "  ...noted for this run's end screen")
+	var count: int = meta.achievements.size()
+	meta.unlock("saved_a_life")
+	_check(meta.achievements.size() == count, "  an achievement unlocks once")
+	# The run ends: history and the ending's own achievements.
+	gs.end_run("recovered")
+	_check(meta.history.size() == 1 and meta.history[0]["cause"] == "recovered" and int(meta.history[0]["day"]) == 2, "  the run goes in the record (%s)" % [meta.history])
+	_check(meta.achievements.has("got_out") and meta.achievements.has("moms_ring"), "  getting out, ring still at home: Got Out, Mom's Ring")
+	gs.start_run()
+	_check(meta.unlocked_this_run.is_empty(), "  a new run starts a fresh list")
+	# The title screen's Record.
+	var title := await _load("res://ui/TitleScreen.tscn")
+	await _frames(5)
+	var rec: Button = title.find_children("*", "Button", true, false).filter(func(b): return b.text == "Record").front()
+	_check(rec != null, "  the title screen has a Record")
+	rec.pressed.emit()
+	await _frames(3)
+	var texts: Array = title.find_children("*", "Label", true, false).map(func(l): return l.text)
+	_check(texts.any(func(t): return t.contains("Saved a Life")) and texts.any(func(t): return t.contains("Got out on day 2")), "  ...listing runs and achievements")
+	meta.achievements = {}
+	meta.history = []
+	gs.start_run()

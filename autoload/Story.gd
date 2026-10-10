@@ -312,6 +312,7 @@ func keep_appointment() -> bool:
 	if not appointment_open():
 		return false
 	state()["dana"] = "in"
+	MetaProgress.unlock("kept_word")
 	GameState.log_event("Kept the appointment with Dana. The bed's mine.")
 	return true
 

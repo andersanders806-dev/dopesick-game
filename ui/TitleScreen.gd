@@ -77,6 +77,7 @@ void fragment() {
 	if first == null:
 		first = new_run
 	_button("Settings", _on_settings)
+	_button("Record", _on_record)
 	_button("Credits", _on_credits)
 	_button("Quit", func(): get_tree().quit())
 	first.grab_focus.call_deferred()
@@ -199,6 +200,45 @@ Full lists sit beside the files: assets/*/CREDITS*, LICENSE*.
 
 If you or someone you love is using: carry naloxone, don't use alone, and
 there are people whose whole job is to help. Find one."""
+
+func _on_record() -> void:
+	_buttons.visible = false
+	var panel := PanelContainer.new()
+	panel.position = Vector2(80, 300)
+	panel.custom_minimum_size = Vector2(1000, 0)
+	add_child(panel)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 30)
+	var box := VBoxContainer.new()
+	panel.add_child(box)
+	box.add_child(cols)
+	var runs := "Runs: %d    Best: day %d\n\n" % [MetaProgress.runs_completed, MetaProgress.best_day]
+	var past: Array = MetaProgress.history.duplicate()
+	past.reverse()
+	if past.is_empty():
+		runs += "No runs yet."
+	for i in mini(past.size(), 10):
+		var r: Dictionary = past[i]
+		runs += "%s   ($%d, %d doses)\n" % [MetaProgress.ending_words(r["cause"], int(r["day"])), int(r.get("cash", 0)), int(r.get("doses", 0))]
+	var left := _label(runs, 13, Color(0.82, 0.8, 0.75))
+	left.custom_minimum_size = Vector2(380, 0)
+	left.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	cols.add_child(left)
+	var got := "Achievements  %d / %d\n\n" % [MetaProgress.achievements.size(), MetaProgress.ACHIEVEMENTS.size()]
+	for id in MetaProgress.ACHIEVEMENTS:
+		var a: Array = MetaProgress.ACHIEVEMENTS[id]
+		got += ("[x] %s -- %s\n" if MetaProgress.achievements.has(id) else "[  ] %s -- %s\n") % a
+	var right := _label(got, 13, Color(0.85, 0.78, 0.5))
+	right.custom_minimum_size = Vector2(560, 0)
+	cols.add_child(right)
+	var back := Button.new()
+	back.text = "Back"
+	back.pressed.connect(func():
+		panel.queue_free()
+		_buttons.visible = true
+		(_buttons.get_child(0) as Control).grab_focus())
+	box.add_child(back)
+	back.grab_focus.call_deferred()
 
 func _on_credits() -> void:
 	_buttons.visible = false

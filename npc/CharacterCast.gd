@@ -96,6 +96,22 @@ static func entry(role: String) -> Dictionary:
 		return HOMELESS
 	return CAST["player"]
 
+## Every model the cast wears, once each: SceneLoader loads them in the
+## background from the first room (they were most of the first street
+## visit's freeze).
+static func all_models() -> Array:
+	var out: Array = []
+	for table in [CAST, PATRONS]:
+		for k in table:
+			if not out.has(table[k]["model"]):
+				out.append(table[k]["model"])
+	for e in PASSERSBY:
+		if not out.has(e["model"]):
+			out.append(e["model"])
+	if not out.has(HOMELESS["model"]):
+		out.append(HOMELESS["model"])
+	return out
+
 static func model_for(role: String) -> String:
 	return entry(role)["model"]
 

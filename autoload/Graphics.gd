@@ -125,6 +125,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_save_settings()
 
 func _process(delta: float) -> void:
+	_perf_log(delta)
 	_update_mouse_mode()
 	_adapt_resolution(delta)
 	_shadow_budget_t -= delta
@@ -533,6 +534,55 @@ func _build_overlay() -> void:
 	_toast.add_theme_constant_override("outline_size", 6)
 	_toast.modulate.a = 0.0
 	_overlay.add_child(_toast)
+
+## A record of how the game actually runs on the player's machine, so a
+## "it still lags" can be read back: every hitch (> 34 ms) with where you
+## were and what was going on, and a summary every 10 s. user://perf.log,
+## started fresh each launch; never in tests.
+const PERF_LOG := "user://perf.log"
+const PERF_HITCH_MS := 34.0
+var _perf_file: FileAccess
+var _perf_t := 0.0
+var _perf_frames := 0
+var _perf_slow := 0
+var _perf_worst := 0.0
+var _perf_session := 0.0
+
+func _perf_log(delta: float) -> void:
+	if Engine.get_meta("sandbox", false) or DisplayServer.get_name() == "headless":
+		return
+	if _perf_file == null:
+		_perf_file = FileAccess.open(PERF_LOG, FileAccess.WRITE)
+		if _perf_file == null:
+			return
+		_perf_file.store_line("Dope Sick perf log -- %s -- %s, GPU %s (%s)" % [Time.get_datetime_string_from_system(), OS.get_name(),
+			RenderingServer.get_video_adapter_name(), "integrated" if _integrated else "discrete"])
+	_perf_session += delta
+	var ms := delta * 1000.0
+	_perf_frames += 1
+	_perf_worst = maxf(_perf_worst, ms)
+	if ms > 25.0:
+		_perf_slow += 1
+	var scene := get_tree().current_scene
+	var where := String(scene.name) if scene else "-"
+	if ms > PERF_HITCH_MS:
+		var player := get_tree().get_first_node_in_group("player") as Node3D
+		var moving := ""
+		if player and "velocity" in player:
+			moving = " moving %.1f" % Vector2(player.velocity.x, player.velocity.z).length()
+		_perf_file.store_line("%7.1fs HITCH %5.0f ms  %s%s  gpu %.1f  loading %s  paused %s" % [_perf_session, ms, where, moving,
+			RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid()),
+			str(not get_node("/root/SceneLoader")._loading.is_empty()) if has_node("/root/SceneLoader") else "?", get_tree().paused])
+	_perf_t += delta
+	if _perf_t >= 10.0:
+		_perf_file.store_line("%7.1fs  %s  %.0f fps  slow(>25ms) %d/%d  worst %.0f ms  preset %s  scale %.2f  window %s  vsync %d  max_fps %d" % [_perf_session, where,
+			_perf_frames / _perf_t, _perf_slow, _perf_frames, _perf_worst, PRESET_NAMES[preset], render_scale,
+			DisplayServer.window_get_size(), DisplayServer.window_get_vsync_mode(), Engine.max_fps])
+		_perf_file.flush()
+		_perf_t = 0.0
+		_perf_frames = 0
+		_perf_slow = 0
+		_perf_worst = 0.0
 
 func _draw_graph() -> void:
 	var g := _graph

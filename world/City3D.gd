@@ -89,6 +89,7 @@ func _ready() -> void:
 		if m:
 			life.steam_points.append(m.position + Vector3(0, 0.1, 0))
 	add_child(life)
+	_warm_looks()
 	var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
 	atmosphere.name = "Atmosphere"
 	add_child(atmosphere)
@@ -197,6 +198,35 @@ func _update_pedestrians(delta: float) -> void:
 	_pedestrian_timer = randf_range(PEDESTRIAN_SPAWN_GAP.x, PEDESTRIAN_SPAWN_GAP.y)
 	if get_tree().get_nodes_in_group("pedestrians").size() < _pedestrian_target():
 		_spawn_pedestrian()
+
+## Every passerby look, drawn once on arrival -- under the street, where the
+## camera's frustum still takes them in but the pavement hides them, and
+## behind SceneLoader's fade anyway -- then freed. The first of each look to
+## walk on used to cost 42 ms (materials and skins set up mid-walk).
+var looks_warmed := 0
+const CharacterCast := preload("res://npc/CharacterCast.gd")
+const CharacterLook := preload("res://npc/CharacterLook.gd")
+
+func _warm_looks() -> void:
+	var holder := Node3D.new()
+	holder.name = "LookWarmup"
+	add_child(holder)
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var at: Vector3 = player.global_position if player else Vector3.ZERO
+	for i in CharacterCast.PASSERSBY.size():
+		var entry: Dictionary = CharacterCast.PASSERSBY[i]
+		var root3 := Node3D.new()
+		root3.scale = Vector3.ONE * 1.5
+		holder.add_child(root3)
+		root3.global_position = at + Vector3(-3.0 + i * 0.6, -4.0, 0)
+		var model: Node = CharacterCast.scene_for(entry["model"]).instantiate()
+		root3.add_child(model)
+		CharacterLook.apply(model, entry["look"])
+		looks_warmed += 1
+	for i in 3:
+		await get_tree().process_frame
+	if is_instance_valid(holder):
+		holder.queue_free()
 
 ## `at_x` NAN means walk in from whichever end the lane starts at.
 func _spawn_pedestrian(at_x := NAN) -> void:

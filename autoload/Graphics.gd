@@ -68,6 +68,18 @@ var first_person: bool = false
 ## First-person look: a multiplier on mouse and stick speed, and up/down
 ## inverted for those who fly planes.
 var look_sensitivity: float = 1.0
+## Laptop mode: a steady 30 FPS cap -- even frames beat 45-55 that wobble,
+## and the fan and battery thank you.
+var laptop_mode: bool = false
+## Mailbox vsync: the screen takes the newest finished frame instead of
+## queueing them -- no tearing, less delay, and on the UHD 620 under
+## Wayland 1-2 missed refreshes per 10 s of walking against 4-8 with plain
+## vsync. Falls back to plain vsync where the driver can't.
+const VSYNC := DisplayServer.VSYNC_MAILBOX
+## The last FRAME_LOG frame times (ms), for the F4 graph.
+const FRAME_LOG := 120
+var frame_times: Array = []
+var _graph: Control
 var invert_look: bool = false
 signal view_changed(first_person: bool)
 var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
@@ -92,6 +104,8 @@ func _ready() -> void:
 	_apply_fullscreen()
 	_build_overlay()
 	get_tree().node_added.connect(_on_node_added)
+	if DisplayServer.get_name() != "headless":
+		DisplayServer.window_set_vsync_mode(VSYNC)
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_apply_viewport()
 	if _migrated:
@@ -107,6 +121,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_F4:
 			show_fps = not show_fps
 			_fps_label.visible = show_fps
+			_graph.visible = show_fps
 			_save_settings()
 
 func _process(delta: float) -> void:
@@ -116,6 +131,11 @@ func _process(delta: float) -> void:
 	if _shadow_budget_t <= 0.0:
 		_shadow_budget_t = SHADOW_BUDGET_INTERVAL
 		_apply_shadow_budget()
+	frame_times.append(delta * 1000.0)
+	if frame_times.size() > FRAME_LOG:
+		frame_times.pop_front()
+	if show_fps:
+		_graph.queue_redraw()
 	if show_fps:
 		_fps_label.text = "%d FPS  (%s, %d%%)" % [Engine.get_frames_per_second(), PRESET_NAMES[preset], roundi(render_scale * 100.0)]
 	if _toast_timer > 0.0:
@@ -163,6 +183,11 @@ func set_first_person(on: bool) -> void:
 	_save_settings()
 	view_changed.emit(on)
 
+func set_laptop_mode(on: bool) -> void:
+	laptop_mode = on
+	Engine.max_fps = 30 if on else 0
+	_save_settings()
+
 func set_look_sensitivity(v: float) -> void:
 	look_sensitivity = clampf(v, 0.3, 2.5)
 	_save_settings()
@@ -178,6 +203,8 @@ func set_fullscreen(on: bool) -> void:
 
 func set_show_fps(on: bool) -> void:
 	show_fps = on
+	if _graph:
+		_graph.visible = on
 	if _fps_label:
 		_fps_label.visible = on
 	_save_settings()
@@ -484,6 +511,16 @@ func _build_overlay() -> void:
 	_fps_label.add_theme_constant_override("outline_size", 4)
 	_fps_label.visible = show_fps
 	_overlay.add_child(_fps_label)
+	# F4's hitch meter: the last two seconds of frame times, a line at 60 and
+	# at 30 FPS, spikes in red, and the worst one written out.
+	_graph = Control.new()
+	_graph.name = "FrameGraph"
+	_graph.position = Vector2(1030, 600)
+	_graph.size = Vector2(240, 80)
+	_graph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_graph.visible = show_fps
+	_graph.draw.connect(_draw_graph)
+	_overlay.add_child(_graph)
 	# Centred under the day's headline, wrapped: phone messages are a
 	# sentence or two.
 	_toast = Label.new()
@@ -496,6 +533,22 @@ func _build_overlay() -> void:
 	_toast.add_theme_constant_override("outline_size", 6)
 	_toast.modulate.a = 0.0
 	_overlay.add_child(_toast)
+
+func _draw_graph() -> void:
+	var g := _graph
+	g.draw_rect(Rect2(Vector2.ZERO, g.size), Color(0, 0, 0, 0.55))
+	var ms_to_y := func(ms: float) -> float: return g.size.y - clampf(ms / 50.0, 0.0, 1.0) * g.size.y
+	for ref in [16.7, 33.3]:
+		g.draw_line(Vector2(0, ms_to_y.call(ref)), Vector2(g.size.x, ms_to_y.call(ref)), Color(1, 1, 1, 0.25))
+	var n := frame_times.size()
+	var worst := 0.0
+	for i in n:
+		var ms: float = frame_times[i]
+		worst = maxf(worst, ms)
+		var x := g.size.x * float(i) / FRAME_LOG
+		var col := Color(0.4, 0.9, 0.5) if ms < 20.0 else (Color(1.0, 0.8, 0.3) if ms < 34.0 else Color(1.0, 0.25, 0.2))
+		g.draw_line(Vector2(x, g.size.y), Vector2(x, ms_to_y.call(ms)), col, 2.0)
+	g.draw_string(ThemeDB.fallback_font, Vector2(6, 14), "worst %.0f ms" % worst, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.85))
 
 func _show_toast(text: String, time := 2.0) -> void:
 	_toast.text = text
@@ -520,6 +573,8 @@ func _load_settings() -> void:
 		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
 		first_person = bool(cfg.get_value("controls", "first_person", false))
 		look_sensitivity = clampf(float(cfg.get_value("controls", "look_sensitivity", 1.0)), 0.3, 2.5)
+		laptop_mode = bool(cfg.get_value("graphics", "laptop_mode", false))
+		Engine.max_fps = 30 if laptop_mode else 0
 		invert_look = bool(cfg.get_value("controls", "invert_look", false))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
@@ -536,5 +591,6 @@ func _save_settings() -> void:
 	cfg.set_value("graphics", "show_fps", show_fps)
 	cfg.set_value("controls", "first_person", first_person)
 	cfg.set_value("controls", "look_sensitivity", look_sensitivity)
+	cfg.set_value("graphics", "laptop_mode", laptop_mode)
 	cfg.set_value("controls", "invert_look", invert_look)
 	cfg.save(SETTINGS_PATH)

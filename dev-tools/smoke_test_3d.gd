@@ -802,6 +802,7 @@ func _run() -> void:
 	await _anim6_checks(gs)
 	await _atmosphere7_checks(gs)
 	await _achievements8_checks(gs)
+	await _smooth_quick_checks(gs)
 	await _one_load_at_a_time_checks()
 	gs.start_run()
 
@@ -3953,3 +3954,57 @@ func _achievements8_checks(gs: Node) -> void:
 	meta.achievements = {}
 	meta.history = []
 	gs.start_run()
+
+## Smooth: warm the shaders on the title screen, a hitch meter on F4, and a
+## steady-30 laptop mode.
+func _smooth_quick_checks(gs: Node) -> void:
+	await _section("Smooth: people preloaded, hitch meter, laptop mode")
+	var gfx := root.get_node("Graphics")
+	# The street's people load in the background from the first room, like
+	# the street itself: they were most of the first visit's freeze.
+	var loader := root.get_node("SceneLoader")
+	var Cast = load("res://npc/CharacterCast.gd")
+	_check(Cast.all_models().size() >= 20, "  every character model, listed (%d)" % Cast.all_models().size())
+	gs.start_run()
+	await _load("res://world/Apartment3D.tscn")
+	loader._warmed = false
+	var want: Array = Cast.all_models()
+	for i in 3000:
+		await _frames(1)
+		if want.all(func(p): return loader.cached(p)):
+			break
+	_check(want.all(func(p): return loader.cached(p)), "  ...and loaded in the background from the first room (%d of %d)" % [want.filter(func(p): return loader.cached(p)).size(), want.size()])
+	# Responsive: the camera stays close, you're up to speed fast, and the
+	# screen isn't three frames behind.
+	var P = load("res://player/Player3D.gd")
+	_check(P.ACCEL >= 40.0 and P.DECEL >= 45.0, "  up to speed in a tenth of a second (accel %.0f)" % P.ACCEL)
+	_check(P.CAM_FOLLOW >= 14.0, "  the camera keeps up (follow %.0f)" % P.CAM_FOLLOW)
+	_check(int(ProjectSettings.get_setting("rendering/rendering_device/vsync/swapchain_image_count", 3)) == 2, "  two frames in the swapchain, not three")
+	_check(gfx.VSYNC == DisplayServer.VSYNC_MAILBOX, "  mailbox vsync: the newest frame, no tearing, fewer missed refreshes")
+	# Every passerby look drawn once while the street loads (under the
+	# street, behind the fade), so the first of each walking on doesn't
+	# hitch (42 ms each, measured).
+	gs.start_run()
+	var city := await _load("res://world/City3D.tscn")
+	_check(city.get("looks_warmed") != null and int(city.looks_warmed) == load("res://npc/CharacterCast.gd").PASSERSBY.size(), "  every passerby look is warmed on arrival (%s)" % [city.get("looks_warmed")])
+	await _frames(10)
+	_check(city.find_child("LookWarmup", true, false) == null, "  ...and the warm-up is gone after")
+	# Hitch meter.
+	gfx.set_show_fps(true)
+	for i in 30:
+		await process_frame
+	var graph: Node = gfx.find_child("FrameGraph", true, false)
+	_check(graph != null and graph.visible and gfx.frame_times.size() >= 20, "  F4 shows a frame-time graph (%d frames)" % gfx.frame_times.size())
+	gfx.set_show_fps(false)
+	_check(not graph.visible, "  ...and hides it")
+	# Laptop mode.
+	gfx.set_laptop_mode(true)
+	_check(Engine.max_fps == 30 and gfx.laptop_mode, "  laptop mode: a steady 30")
+	gfx.set_laptop_mode(false)
+	_check(Engine.max_fps == 0, "  ...off again: as fast as it goes")
+	var menu = load("res://ui/SettingsMenu.gd").new()
+	root.add_child(menu)
+	menu.open()
+	await _frames(2)
+	_check(menu.find_child("LaptopMode", true, false) is CheckButton, "  laptop mode is in Settings")
+	menu.queue_free()

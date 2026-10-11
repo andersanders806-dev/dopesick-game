@@ -188,6 +188,16 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   over in three seconds; any key skips. `dev-tools/make_cutscene_video.py`
   rebuilds them. The painted stills are still the fallback and the
   run-end backdrops.
+- **Smoother moving** (measured walking the street on a UHD 620, Low):
+  mailbox vsync (the newest frame, no queue: 1-2 missed refreshes per
+  10 s instead of 4-8, and less delay), a 2-image swapchain, up to speed
+  in a tenth of a second (was a fifth) with the camera following twice as
+  tight, every passerby look drawn once on arrival (the first of each used
+  to cost a 42 ms hitch; now 0.9 ms), and every character model loaded in
+  the background from the first room. F4 now shows a frame-time graph with
+  the worst frame; Settings has a **laptop mode** (a steady 30 FPS). A
+  shader warm-up on the title screen was tried and dropped: it kept the
+  title busy 13 s and the first street visit froze just as long.
 - **Achievements & record** (#8, `MetaProgress`): every run goes in the
   record (the last 20: how it ended, which day, money made, doses), and
   twelve achievements carry across runs -- First Morning, A Week, Clean

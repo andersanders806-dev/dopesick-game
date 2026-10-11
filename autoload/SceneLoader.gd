@@ -114,6 +114,8 @@ func _prefetch_near_doors() -> void:
 		prefetch("res://world/City3D.tscn")
 		for path in preload("res://world/Facades.gd").WARM:
 			prefetch(path)
+		for path in preload("res://npc/CharacterCast.gd").all_models():
+			prefetch(path)
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene, true)

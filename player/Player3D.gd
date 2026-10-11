@@ -14,10 +14,10 @@ const SICK_THRESHOLD := 20.0
 ## Limping for a few hours after the collector's been at you.
 const HURT_SPEED_MULT := 0.75
 const TURN_SPEED := 10.0
-## Getting up to speed and pulling up: about a fifth of a second either
-## way, so starts and stops ease instead of snapping.
-const ACCEL := 24.0
-const DECEL := 30.0
+## Getting up to speed and pulling up: about a tenth of a second -- eased,
+## but quick enough that moving answers the stick (a fifth felt laggy).
+const ACCEL := 42.0
+const DECEL := 50.0
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
@@ -66,7 +66,7 @@ var _camera_base: Transform3D
 ## the old rig zoomed in on small rooms and pinned itself to the walls,
 ## which made rooms jump in scale and left you walking off-centre. The
 ## scroll wheel moves it in and out.
-const CAM_FOLLOW := 8.0
+const CAM_FOLLOW := 15.0
 ## Of the scene file's 9 m-high rig: close enough to read faces and hands.
 const CAM_ZOOM := 0.75
 const CAM_USER_ZOOM := Vector2(0.7, 1.4)

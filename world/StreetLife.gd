@@ -12,7 +12,10 @@ extends Node3D
 ## Added by City3D.gd (and Backyard3D.gd for the rain). Everything here is
 ## cheap enough for the Low preset: no shadows, small particle counts.
 
-const CARS := ["sedan", "taxi", "van", "suv", "hatchback-sports", "delivery", "police", "garbage-truck"]
+## Kenney Car Kit (CC0). The box truck and garbage truck went: a head
+## taller than the rest, they filled the screen passing under the camera.
+## The kit's sports sedan and luxury SUV took their places.
+const CARS := ["sedan", "taxi", "van", "suv", "hatchback-sports", "sedan-sports", "police", "suv-luxury"]
 const CAR_SCALE := 1.6
 const LANE_Z := 0.35
 const LANE_SPEED := Vector2(7.0, 10.0)

@@ -142,9 +142,11 @@ func _physics_process(delta: float) -> void:
 	_update_suspicion(player, delta)
 
 	if not watcher_only:
-		# The cone's 0 deg points +X, the model's forward is -Z, hence the
-		# 90 deg offset.
-		var want := deg_to_rad(-facing_deg - 90.0)
+		# The cone's 0 deg points +X and the characters (CharacterCast) face
+		# +Z, hence the 90 deg offset. It was -90 for Kenney's models, which
+		# faced -Z -- kept after the cast changed, it turned every guard and
+		# the beat cop round, so he walked the block backwards.
+		var want := deg_to_rad(90.0 - facing_deg)
 		body.rotation.y = lerp_angle(body.rotation.y, want, min(1.0, TURN_SPEED * delta))
 
 	_redraw_cone(facing_deg)

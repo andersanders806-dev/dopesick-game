@@ -71,11 +71,13 @@ var look_sensitivity: float = 1.0
 ## Laptop mode: a steady 30 FPS cap -- even frames beat 45-55 that wobble,
 ## and the fan and battery thank you.
 var laptop_mode: bool = false
-## Mailbox vsync: the screen takes the newest finished frame instead of
-## queueing them -- no tearing, less delay, and on the UHD 620 under
-## Wayland 1-2 missed refreshes per 10 s of walking against 4-8 with plain
-## vsync. Falls back to plain vsync where the driver can't.
-const VSYNC := DisplayServer.VSYNC_MAILBOX
+## Plain vsync: one frame per refresh, so on a 59.82 Hz panel the game runs
+## at exactly 59.82 and every frame carries one physics step. Mailbox (tried
+## before) let frames run unpaced -- uncapped it ran the UHD 620 flat out
+## (515 FPS on the title), and capped at a whole 60 it drifted against the
+## panel: in jitter_probe.gd 1 in 8 frames took zero or two physics steps,
+## which is the stutter you see walking. Plain vsync: 1 in 40.
+const VSYNC := DisplayServer.VSYNC_ENABLED
 ## The last FRAME_LOG frame times (ms), for the F4 graph.
 const FRAME_LOG := 120
 var frame_times: Array = []
@@ -190,19 +192,9 @@ func set_laptop_mode(on: bool) -> void:
 	Engine.max_fps = fps_cap()
 	_save_settings()
 
-## Mailbox vsync shows the newest frame but doesn't stop the game drawing
-## more: uncapped, the title screen ran at 515 FPS on the UHD 620 (perf.log),
-## and a GPU kept flat out heats up and throttles -- the stutter comes back
-## mid-walk. So the frame rate is held at the screen's refresh (30 in
-## laptop mode).
+## The frame-rate cap: none but vsync's own, or a steady 30 in laptop mode.
 func fps_cap() -> int:
-	if laptop_mode:
-		return 30
-	return refresh_cap(DisplayServer.screen_get_refresh_rate() if DisplayServer.get_name() != "headless" else -1.0)
-
-## 59.94 Hz -> 60; a screen that won't say -> 60.
-static func refresh_cap(hz: float) -> int:
-	return int(round(hz)) if hz > 1.0 else 60
+	return 30 if laptop_mode else 0
 
 func set_look_sensitivity(v: float) -> void:
 	look_sensitivity = clampf(v, 0.3, 2.5)

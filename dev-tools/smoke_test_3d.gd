@@ -692,9 +692,8 @@ func _run() -> void:
 	# combination precipitates withdrawal, which is covered separately below.
 	gs.start_run()
 	gs.craving = 10.0
-	# A dose rolls its overdose risk; pin the dice so this checks the relief.
-	seed(20261013)
-	gs.take_drug("heroin")
+	# A dose rolls its overdose risk; take it at zero risk so this checks the relief.
+	gs.take_drug("heroin", 1.0, 0.0)
 	var after_heroin: float = gs.craving
 	var heroin_decay: float = gs.current_craving_decay()
 	gs.start_run()
@@ -1044,6 +1043,10 @@ func _street_checks(gs: Node) -> void:
 	var cop := city.get_tree().get_first_node_in_group("patrol") as Node3D
 	cop.heading = 1.0
 	await _frames(60)
+	# The characters face +Z; the guard code was written for Kenney's, which
+	# faced -Z, so the beat cop walked the block backwards.
+	var cop_fwd: Vector3 = (cop.get_node("Body") as Node3D).global_transform.basis.z
+	_check(cop_fwd.dot(Vector3.RIGHT) > 0.5, "  the beat cop faces the way he walks (forward %s)" % str(cop_fwd.snapped(Vector3.ONE * 0.01)))
 	_check(pusher.state in [pusher.State.TO_HIDE, pusher.State.HIDDEN], "  the pusher melts away when the beat cop comes near")
 	cop.remove_from_group("patrol")
 	cop.queue_free()
@@ -3765,9 +3768,10 @@ func _gameplay3_checks(gs: Node) -> void:
 	_check(gs.cash == 200 - Darknet.WHOLESALE_PRICE, "  ...$%d up front" % Darknet.WHOLESALE_PRICE)
 	_hour(gs, 2, 9)
 	# Each day's sales roll a small chance of a raid (heat * RAID_SCALE, ~4%
-	# here) that empties the shop; pin the dice so this checks the sale.
-	seed(20261013)
+	# here) that empties the shop; switch it off so this checks the sale.
+	Darknet.raid_chance = 0.0
 	_hour(gs, 2, 10)
+	Darknet.raid_chance = -1.0
 	var v: Dictionary = gs.vendor
 	_check(v.get("sold", 0) >= 2 and v.get("stock", 0) == Darknet.WHOLESALE_UNITS - v.get("sold", 0) and gs.cash > 200 - Darknet.WHOLESALE_PRICE, "  next morning it's in, and some sells (%d sold, %d left)" % [v.get("sold", 0), v.get("stock", 0)])
 	_check(float(v.get("heat", 0.0)) > 0.0, "  every sale leaves a trace")
@@ -4047,7 +4051,7 @@ func _smooth_quick_checks(gs: Node) -> void:
 	_check(P.ACCEL >= 40.0 and P.DECEL >= 45.0, "  up to speed in a tenth of a second (accel %.0f)" % P.ACCEL)
 	_check(P.CAM_FOLLOW >= 14.0, "  the camera keeps up (follow %.0f)" % P.CAM_FOLLOW)
 	_check(int(ProjectSettings.get_setting("rendering/rendering_device/vsync/swapchain_image_count", 3)) == 2, "  two frames in the swapchain, not three")
-	_check(gfx.VSYNC == DisplayServer.VSYNC_MAILBOX, "  mailbox vsync: the newest frame, no tearing, fewer missed refreshes")
+	_check(gfx.VSYNC == DisplayServer.VSYNC_ENABLED, "  plain vsync: one frame per refresh, one physics step per frame")
 	# Every passerby look drawn once while the street loads (under the
 	# street, behind the fade), so the first of each walking on doesn't
 	# hitch (42 ms each, measured).
@@ -4071,8 +4075,7 @@ func _smooth_quick_checks(gs: Node) -> void:
 	# Mailbox vsync doesn't cap anything: the title screen ran at 515 FPS on
 	# the UHD 620, heating it into throttling. Off, it's held at the screen's
 	# refresh (60 where there's no screen to ask).
-	_check(Engine.max_fps == gfx.fps_cap() and gfx.fps_cap() == 60, "  ...off again: held at the screen's refresh, not flat out (%d)" % Engine.max_fps)
-	_check(gfx.refresh_cap(144.0) == 144 and gfx.refresh_cap(59.94) == 60 and gfx.refresh_cap(-1.0) == 60, "  the cap follows the monitor (144 Hz, 59.94 Hz, unknown)")
+	_check(Engine.max_fps == 0, "  ...off again: vsync holds it to the screen's own refresh, exactly (%d)" % Engine.max_fps)
 	var menu = load("res://ui/SettingsMenu.gd").new()
 	root.add_child(menu)
 	menu.open()

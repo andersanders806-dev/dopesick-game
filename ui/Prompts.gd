@@ -9,7 +9,7 @@ const SceneLoader := preload("res://autoload/SceneLoader.gd")
 const ZONES := {
 	"RentSlot": "Pay the rent", "AlleyHide": "Hide", "DumpsterHide": "Hide", "HideSpot": "Hide",
 	"Dumpster": "Search the dumpster", "Mattress": "Lie down", "PoolZone": "Play pool",
-	"DartsZone": "Play darts", "CellDoorKnock": "Knock on the door", "Bench": "Lie down",
+	"DartsZone": "Play darts", "SlotZone": "Play the slot machine", "CellDoorKnock": "Knock on the door", "Bench": "Lie down",
 	"Intercom": "Press the intercom", "KartDesk": "Talk at the desk", "PartsBox": "Search the parts box",
 	"CounterZone": "Talk at the counter", "ServingCounter": "Get a meal", "Cot": "Sleep",
 	"Noticeboard": "Read the noticeboard", "BottleMachine": "Return bottles",

@@ -553,6 +553,19 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   it while it lasts. Real board proportions and scoring (trebles, doubles,
   bull). Three opponents, $5 to $20. Pool and darts both pause the day and
   the craving while you play, and both open on a one-time how-to.
+- **Slot machine.** The Lucky Devil stands against the Dive Bar's east
+  wall (`ui/SlotMachine.gd`, cabinet built in `world/DiveBar3D.gd`): three
+  reels, one payline, $1/$2/$5 a pull. Drag the red knob down or press
+  Space; reels brake left to right, and when the first two match the third
+  keeps turning with a rising tone. Every stop is a straight random pick off
+  fixed 22-stop strips, so it's honest -- and still keeps ~9% (`rtp()`
+  ~0.91; three sevens pay 150x and unlock the "Seven Seven Seven"
+  achievement). A tally shows what you've fed it tonight, the machine
+  comments on losing streaks, and each pull costs 1.5 game minutes when you
+  walk away. It plays its little tune to the empty room now and then.
+  Marquee font Bungee and LED digits DSEG7 (both OFL, `assets/fonts/`);
+  reel, lever and bell sounds synthesized by `dev-tools/gen_slot_sfx.py`;
+  coin rattle from Kenney's Casino Audio (CC0, `assets/sfx/kenney_casino/`).
 - **Pool opponents that play their level.** Weaker regulars don't always
   see the easiest shot, wobble more on aim and pace, and sometimes just
   fluff one; the Shark still barely misses.

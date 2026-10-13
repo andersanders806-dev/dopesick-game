@@ -1476,6 +1476,36 @@ func _survival_checks(gs: Node) -> void:
 	for c in root.get_children():
 		if c is CanvasLayer and String(c.get_script().resource_path if c.get_script() else "").ends_with("RunEndScreen.gd"):
 			c.free()
+	# Survival days (autoload/Headlines.gd).
+	var hl := root.get_node("Headlines")
+	gs.start_run()
+	gs.clock_running = false
+	hl.forced = "cold_snap"
+	hl.roll(gs.day)
+	gs.clock = 13 * 60
+	sv.warmth = 80.0
+	sv.tick(60.0, true)
+	_check(sv.warmth < 80.0 - 5.0, "  cold snap: the cold bites outside even at midday (%.0f)" % sv.warmth)
+	gs.clock = 23 * 60
+	sv.warmth = 80.0
+	sv.tick(60.0, true)
+	var snap_night: float = 80.0 - sv.warmth
+	hl.forced = "quiet"
+	hl.roll(gs.day)
+	sv.warmth = 80.0
+	sv.tick(60.0, true)
+	_check(snap_night > (80.0 - sv.warmth) * 1.5, "  ...and harder at night than a normal night (-%.0f vs -%.0f)" % [snap_night, 80.0 - sv.warmth])
+	hl.forced = "food_bank"
+	hl.roll(gs.day)
+	gs.clock = 13 * 60
+	_check(gs.is_open("shelter") and gs.meal_service() >= 0, "  food bank day: the shelter kitchen serves at 1 pm")
+	hl.forced = "sweep"
+	hl.roll(gs.day)
+	gs.clock = 23 * 60
+	_check(not hl.can_sleep_rough(), "  police sweep: no sleeping rough tonight")
+	hl.forced = "quiet"
+	hl.roll(gs.day)
+	_check(hl.can_sleep_rough(), "  ...any other night you can")
 	# And the title has no Continue.
 	var title = load("res://ui/TitleScreen.tscn").instantiate()
 	root.add_child(title)

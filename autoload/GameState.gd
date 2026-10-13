@@ -544,6 +544,9 @@ func is_open(place: String) -> bool:
 	var hl := _headlines()
 	if hl and hl.closed_today(place):
 		return false
+	# Food bank day: St. Jude's keeps its doors open through the day.
+	if hl and place == "shelter" and hl.food_bank_today():
+		return true
 	var hours: Array = OPENING_HOURS.get(place, [0, 24])
 	if hl and hl.opens_early(place) >= 0:
 		hours = [hl.opens_early(place), hours[1]]
@@ -572,6 +575,9 @@ func daily_available(what: String, take := false) -> bool:
 
 ## Which meal service is on right now (0 breakfast, 1 dinner), or -1.
 func meal_service() -> int:
+	var hl := _headlines()
+	if hl and hl.food_bank_today() and hours_contain([7, 20], hour()):
+		return 0 if hour() < 14 else 1
 	for i in MEAL_HOURS.size():
 		if hours_contain(MEAL_HOURS[i], hour()):
 			return i

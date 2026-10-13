@@ -13,6 +13,11 @@ extends Node
 ## - Dry spell: the pusher's short. Less to choose from, and it costs more.
 ## - Speedway Cup: the kart track opens early and the podium pays triple.
 ## - Track shut: the day after someone walks off with a carburetor.
+## - Cold snap: the cold bites outside even by day, and twice as hard at
+##   night (autoload/Survival.gd).
+## - Food bank: the shelter's kitchen serves all day, plates piled higher.
+## - Police sweep: rough sleepers moved on -- no backyard mattress, and the
+##   shelter's cots are full. A real bed, or no sleep.
 ## - Quiet: nothing in particular. Day one is always quiet.
 ##
 ## The state lives in GameState (headline, headline_day) so it saves with
@@ -39,6 +44,12 @@ const EVENTS := {
 		"text": "Banners over the KARTS door: SPEEDWAY CUP TONIGHT. Open from noon, triple prize money for the podium."},
 	"bad_batch": {"weight": 2, "title": "Bad batch",
 		"text": "Something bad's going round. Two people went over on the next block last night. Outreach is handing out test strips."},
+	"cold_snap": {"weight": 2, "title": "Cold snap",
+		"text": "Frost on the windshields at noon. The radio says it gets worse tonight. Anyone sleeping out had better have somewhere to go."},
+	"food_bank": {"weight": 2, "title": "Food bank",
+		"text": "A food bank truck's parked at St. Jude's. The kitchen's serving all day, seven till eight, and nobody's counting plates."},
+	"sweep": {"weight": 2, "title": "Police sweep",
+		"text": "Cops moving people on since dawn: tents, doorways, the lot out back. The shelter's cots filled by noon. Tonight you need a real bed."},
 	# The day after someone dies in the alley (forced, like the track).
 	"vigil": {"weight": 0, "title": "Vigil",
 		"text": "Candles at the mouth of the alley, and a name in marker on the wall. The corner's quiet today."},
@@ -102,6 +113,21 @@ func text() -> String:
 	return EVENTS[today()]["text"]
 
 # --- What it changes ---------------------------------------------------------
+
+## Survival days: how much colder it is outside (Survival.tick).
+func cold_mult() -> float:
+	return 2.0 if is_today("cold_snap") else 1.0
+
+## Cold even in daylight, per hour outside (Survival.tick).
+func day_cold() -> float:
+	return 12.0 if is_today("cold_snap") else 0.0
+
+## The backyard mattress and the shelter cots, unless there's a sweep on.
+func can_sleep_rough() -> bool:
+	return not is_today("sweep")
+
+func food_bank_today() -> bool:
+	return is_today("food_bank")
 
 ## On every shop clerk's suspicion.
 func alertness_mult() -> float:

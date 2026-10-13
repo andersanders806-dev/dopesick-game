@@ -46,7 +46,7 @@ func _meal(hud: Node) -> void:
 	GameState.craving_changed.emit(GameState.craving)
 	GameState.hurt_until = -1.0
 	# A real meal, and a warm room to eat it in.
-	Survival.eat(SHELTER_MEAL)
+	Survival.eat(SHELTER_MEAL * (1.4 if Headlines.food_bank_today() else 1.0))
 	Survival.warm(20.0)
 	SFX.play("blip")
 	var dish: String = ["oatmeal and a boiled egg", "toast and weak coffee"][randi() % 2] if service == 0 else ["chili and cornbread", "chicken soup and a roll", "spaghetti and a slice of white bread"][randi() % 3]
@@ -55,6 +55,9 @@ func _meal(hud: Node) -> void:
 func _cot(hud: Node) -> void:
 	if GameState.wanted:
 		hud.show_dialogue("", "Not with the cops out looking. They check here.")
+		return
+	if not Headlines.can_sleep_rough():
+		hud.show_dialogue("Volunteer", "\"Every cot went by noon, hon -- the sweep. I'm sorry. Try somewhere with a door.\"")
 		return
 	if not GameState.hours_contain(COT_HOURS, GameState.hour()):
 		hud.show_dialogue("Volunteer", "\"Beds are for the night, hon. Lights out at eight.\"")

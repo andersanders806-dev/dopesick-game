@@ -84,6 +84,9 @@ func _rough_sleep(hud: Node) -> void:
 	if GameState.hour() >= 9.0 and GameState.hour() < 19.0:
 		hud.show_dialogue("", "In broad daylight, in the delivery lot? Somebody'd call it in.")
 		return
+	if not Headlines.can_sleep_rough():
+		hud.show_dialogue("", "The mattress is gone -- slashed and tossed in the dumpster. There's a sweep on. Not here, not tonight.")
+		return
 	SFX.play("sleep")
 	var robbed := ""
 	if GameState.cash > 0 and randf() < ROUGH_SLEEP_ROB_CHANCE:

@@ -102,7 +102,10 @@ func tick(minutes: float, is_outside := outside()) -> void:
 	hunger = maxf(0.0, hunger - HUNGER_PER_H * h)
 	rest = maxf(0.0, rest - REST_PER_H * h)
 	if is_outside:
+		var hl := get_node_or_null("/root/Headlines")
 		var cold := (COLD_NIGHT_PER_H if night() else 0.0) + (COLD_RAIN_PER_H if GameState.raining else 0.0)
+		if hl:
+			cold = cold * hl.cold_mult() + hl.day_cold()
 		if cold > 0.0:
 			warmth = maxf(0.0, warmth - cold * (COAT_FACTOR if wearing_coat() else 1.0) * h)
 		elif warmth < WARM_DAY_CAP:

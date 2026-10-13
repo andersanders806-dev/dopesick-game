@@ -192,9 +192,15 @@ func set_laptop_mode(on: bool) -> void:
 	Engine.max_fps = fps_cap()
 	_save_settings()
 
-## The frame-rate cap: none but vsync's own, or a steady 30 in laptop mode.
+## The frame-rate cap: none but vsync's own. Laptop mode used to lock 30,
+## but on a 59.82 Hz panel a 30 cap came out uneven (every frame 'slow' in
+## perf.log) and walking looked choppy; it holds resolution down instead.
 func fps_cap() -> int:
-	return 30 if laptop_mode else 0
+	return 0
+
+## Laptop mode's ceiling on the render scale: the GPU's power and heat go
+## with the pixels, and FSR keeps the picture together.
+const LAPTOP_MAX_SCALE := 0.75
 
 func set_look_sensitivity(v: float) -> void:
 	look_sensitivity = clampf(v, 0.3, 2.5)
@@ -290,7 +296,7 @@ func next_scale(current: float, fps: float, gpu_ms: float) -> float:
 		next -= 0.05
 	elif fps >= TARGET_FPS:
 		next += 0.02
-	return clampf(next, r[0], r[1])
+	return clampf(next, r[0], minf(r[1], LAPTOP_MAX_SCALE) if laptop_mode else r[1])
 
 ## High on laptop graphics runs 18-41 FPS; on a 60 Hz screen anything
 ## that can't hold ~45 judders when you walk. Five seconds of that and it

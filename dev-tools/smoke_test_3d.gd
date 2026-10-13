@@ -26,6 +26,18 @@ func _initialize() -> void:
 	# The checks jump the clock days at a time; the body would starve on the
 	# way. Survival's own checks switch it back on.
 	root.get_node("Survival").enabled = false
+	# The checks start from a fresh profile, whatever the player's own save
+	# and settings hold (bought upgrades, laptop mode...): nothing is saved
+	# back in sandbox mode.
+	gfx.laptop_mode = false
+	var meta := root.get_node("MetaProgress")
+	meta.know_how = 0
+	meta.levels = {}
+	meta.runs_completed = 0
+	meta.best_day = 0
+	meta.last_run = {}
+	meta.achievements = {}
+	meta.history = []
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
@@ -4172,8 +4184,29 @@ func _smooth_quick_checks(gs: Node) -> void:
 	_check(not graph.visible, "  ...and hides it")
 	# Laptop mode.
 	gfx.set_laptop_mode(true)
-	_check(Engine.max_fps == 30 and gfx.laptop_mode, "  laptop mode: a steady 30")
+	# A 30 cap on a 59.82 Hz panel came out uneven (every frame 'slow' in
+	# perf.log) and walking looked choppy: laptop mode keeps the full frame
+	# rate and saves the GPU with resolution instead.
+	_check(Engine.max_fps == 0 and gfx.laptop_mode, "  laptop mode: never a frame-rate cap")
+	_check(gfx.next_scale(0.95, 60.0, 5.0) <= gfx.LAPTOP_MAX_SCALE, "  ...it holds the resolution down instead (<= %.0f%%)" % (gfx.LAPTOP_MAX_SCALE * 100.0))
 	gfx.set_laptop_mode(false)
+	# First person: the camera is drawn every frame from the player's
+	# interpolated position and the latest mouse look, not stepped on the
+	# physics tick (Godot's jitter/stutter guide, 'first-person cameras').
+	gs.start_run()
+	await _load("res://world/City3D.tscn")
+	var pl := _player()
+	gfx.set_first_person(true)
+	await _frames(2)
+	var mount := pl.get_node("CameraMount") as Node3D
+	_check(mount.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF, "  first person: the camera isn't physics-interpolated")
+	pl.set_look(1.0, 0.2)
+	pl._process(0.016)
+	_check(is_equal_approx(mount.rotation.y, 1.0) and is_equal_approx(mount.rotation.x, 0.2), "  ...and turns with the mouse the same frame, not on the next physics tick")
+	_check(mount.global_position.distance_to(pl.get_global_transform_interpolated().origin + Vector3(0, pl.EYE_HEIGHT, 0)) < 0.01, "  ...from where the body is drawn")
+	gfx.set_first_person(false)
+	await _frames(2)
+	_check(mount.physics_interpolation_mode != Node.PHYSICS_INTERPOLATION_MODE_OFF, "  third person: interpolated as before")
 	# Mailbox vsync doesn't cap anything: the title screen ran at 515 FPS on
 	# the UHD 620, heating it into throttling. Off, it's held at the screen's
 	# refresh (60 where there's no screen to ask).

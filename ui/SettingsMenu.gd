@@ -59,7 +59,7 @@ func open() -> void:
 	col.add_child(_note)
 	col.add_child(_check("Fullscreen", Graphics.fullscreen, Graphics.set_fullscreen))
 	col.add_child(_check("Show frame rate  (F4)", Graphics.show_fps, Graphics.set_show_fps))
-	var laptop := _check("Laptop mode  (steady 30 FPS)", Graphics.laptop_mode, Graphics.set_laptop_mode)
+	var laptop := _check("Laptop mode  (cooler, lower resolution)", Graphics.laptop_mode, Graphics.set_laptop_mode)
 	laptop.name = "LaptopMode"
 	col.add_child(laptop)
 	col.add_child(_check("First person view", Graphics.first_person, Graphics.set_first_person))

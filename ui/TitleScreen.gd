@@ -1,8 +1,7 @@
 extends Control
 ## The title screen, and the game's main scene: a cutscene still drifting
-## behind the name, a punk tape playing, and Continue / New run / Settings /
-## Quit. Continue is there when a run is saved (SaveGame) and says where you
-## left it.
+## behind the name, a punk tape playing, and New run / Settings / Record /
+## Quit. There's no Continue: every start is a fresh run.
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
@@ -68,14 +67,9 @@ void fragment() {
 	_buttons = VBoxContainer.new()
 	_buttons.add_theme_constant_override("separation", 8)
 	col.add_child(_buttons)
-	var first: Button = null
-	if SaveGame.has_save():
-		first = _button("Continue", _on_continue)
-		var where := _label(SaveGame.summary(), 13, Color(0.6, 0.58, 0.54))
-		_buttons.add_child(where)
-	var new_run := _button("New run", _on_new_run)
-	if first == null:
-		first = new_run
+	# No Continue: it's a survival run, and every start is a fresh one --
+	# you die, you start over.
+	var first := _button("New run", _on_new_run)
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)
@@ -132,10 +126,6 @@ func _label(text: String, size: int, color: Color) -> Label:
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	l.add_theme_constant_override("shadow_offset_y", 2)
 	return l
-
-func _on_continue() -> void:
-	_fade_out()
-	SaveGame.continue_run()
 
 ## New run asks how you want to see it first: through your own eyes, or
 ## the camera up over the room. Back (Esc / circle) returns to the menu.

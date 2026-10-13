@@ -553,6 +553,18 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   it while it lasts. Real board proportions and scoring (trebles, doubles,
   bull). Three opponents, $5 to $20. Pool and darts both pause the day and
   the craving while you play, and both open on a one-time how-to.
+- **Survival** (`autoload/Survival.gd`, after The Long Dark's Condition,
+  Project Zomboid's bleeding and Don't Starve's hunger). One health bar
+  fed by four needs that run down with game time: hunger (a day from
+  full), warmth (bleeds away outside at night and in the rain, slower in
+  your winter coat unless you've pawned it; any room warms you), rest
+  (~20 h; any bed, cot or mattress) and bleeding (the collector's beating
+  opens you up; bandages close it). Empty needs drain health; fed, warm
+  and rested it comes back. Health at 0 is death: "YOU DIED", and why.
+  Food: the shelter's plates, the backyard dumpster, and a vending machine
+  by the apartment door (`world/VendingMachine3D.gd`: chips, a sandwich,
+  hot coffee, bandages). There's no Continue on the title: every start is
+  a fresh run.
 - **Slot machine.** The Lucky Devil stands against the Dive Bar's east
   wall (`ui/SlotMachine.gd`, cabinet built in `world/DiveBar3D.gd`): three
   reels, one payline, $1/$2/$5 a pull. Drag the red knob down or press

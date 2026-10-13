@@ -11,6 +11,7 @@ extends "res://world/WorldRoot3D.gd"
 ##   dose of buprenorphine: the treatment path, if you want it.
 
 const MEAL_CRAVING := 6.0
+const SHELTER_MEAL := 55.0
 const COT_THEFT_CHANCE := 0.3
 ## Lights-out: the cots are only for sleeping at night.
 const COT_HOURS := [20, 8]
@@ -44,6 +45,9 @@ func _meal(hud: Node) -> void:
 	GameState.craving = minf(100.0, GameState.craving + MEAL_CRAVING)
 	GameState.craving_changed.emit(GameState.craving)
 	GameState.hurt_until = -1.0
+	# A real meal, and a warm room to eat it in.
+	Survival.eat(SHELTER_MEAL)
+	Survival.warm(20.0)
 	SFX.play("blip")
 	var dish: String = ["oatmeal and a boiled egg", "toast and weak coffee"][randi() % 2] if service == 0 else ["chili and cornbread", "chicken soup and a roll", "spaghetti and a slice of white bread"][randi() % 3]
 	hud.show_dialogue("Volunteer", "A plastic tray: %s. You eat it at a long table without looking up. It stays down, and you feel a little more like a person." % dish)

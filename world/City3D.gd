@@ -51,7 +51,16 @@ var _night := {}
 var _night_lights: Array = []
 var _street_lamp_heads: Array[MeshInstance3D] = []
 
+const VendingScript := preload("res://world/VendingMachine3D.gd")
+## Against the wall between the police station and the apartment door.
+const VENDING_POS := Vector3(-19.25, 0.0, -3.95)
+
 func _ready() -> void:
+	# Before the navmesh bake, so people walk round it.
+	var vending := StaticBody3D.new()
+	vending.set_script(VendingScript)
+	add_child(vending)
+	vending.position = VENDING_POS
 	super._ready()
 	# The Environment is a sub-resource of the cached PackedScene; blending a
 	# shared copy would leak today's daylight into the next visit's "night"

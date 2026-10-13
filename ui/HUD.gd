@@ -78,6 +78,7 @@ func _ready() -> void:
 	GameState.treatment_changed.connect(_on_day_or_strikes_changed)
 	GameState.run_ended.connect(_show_run_end)
 	_build_clock()
+	_build_survival()
 	_build_debt()
 	GameState.debt_changed.connect(_on_debt_changed)
 	_build_status()
@@ -94,6 +95,88 @@ func _ready() -> void:
 	busted_overlay.visible = false
 	_build_headline()
 	Headlines.headline_changed.connect(_on_headline_changed)
+
+# --- The body (autoload/Survival.gd) ------------------------------------------
+## Under the cash and craving: health as a full bar, then food, warmth and
+## rest as three short ones, and what's wrong right now in red.
+const SURVIVAL_H := 52.0
+const NEED_COLORS := [Color(0.85, 0.6, 0.25), Color(0.4, 0.7, 0.95), Color(0.65, 0.55, 0.9)]
+var survival_panel: Panel
+var health_fill: ColorRect
+var need_fills: Array = []
+var survival_warn: Label
+
+func _build_survival() -> void:
+	survival_panel = Panel.new()
+	survival_panel.name = "SurvivalBg"
+	survival_panel.offset_left = 8.0
+	survival_panel.offset_top = 68.0
+	survival_panel.offset_right = 158.0
+	survival_panel.offset_bottom = 68.0 + SURVIVAL_H - 4.0
+	survival_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	survival_panel.add_theme_stylebox_override("panel", $TopBar/StatsBg.get_theme_stylebox("panel"))
+	$TopBar.add_child(survival_panel)
+	_small_label(survival_panel, "HEALTH", Vector2(10, 3))
+	var hb := _bar(survival_panel, Vector2(7, 15), 136.0, 7.0)
+	health_fill = hb
+	var names := ["FOOD", "WARM", "REST"]
+	for i in 3:
+		var x := 10.0 + i * 46.0
+		_small_label(survival_panel, names[i], Vector2(x, 25))
+		var f := _bar(survival_panel, Vector2(x - 3, 36), 42.0, 5.0)
+		f.color = NEED_COLORS[i]
+		need_fills.append(f)
+	survival_warn = Label.new()
+	survival_warn.name = "SurvivalWarn"
+	survival_warn.add_theme_font_size_override("font_size", 11)
+	survival_warn.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3))
+	survival_warn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	survival_warn.add_theme_constant_override("outline_size", 4)
+	survival_warn.position = Vector2(164, 74)
+	$TopBar.add_child(survival_warn)
+	Survival.changed.connect(_update_survival)
+	_update_survival()
+
+func _small_label(parent: Control, text: String, at: Vector2) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 9)
+	l.add_theme_color_override("font_color", Color(0.55, 0.5, 0.45))
+	l.position = at
+	parent.add_child(l)
+
+## A bordered bar like the craving one; returns the fill.
+func _bar(parent: Control, at: Vector2, w: float, h: float) -> ColorRect:
+	var border := ColorRect.new()
+	border.color = Color(0.4, 0.32, 0.15, 0.6)
+	border.position = at
+	border.size = Vector2(w, h + 4.0)
+	parent.add_child(border)
+	var bg := ColorRect.new()
+	bg.color = Color(0.12, 0.12, 0.12)
+	bg.position = at + Vector2(2, 2)
+	bg.size = Vector2(w - 4.0, h)
+	parent.add_child(bg)
+	var fill := ColorRect.new()
+	fill.position = at + Vector2(3, 3)
+	fill.size = Vector2(w - 6.0, h - 2.0)
+	fill.set_meta("full", w - 6.0)
+	parent.add_child(fill)
+	return fill
+
+func _update_survival() -> void:
+	if health_fill == null:
+		return
+	var hp := Survival.health / Survival.MAX
+	health_fill.size.x = float(health_fill.get_meta("full")) * hp
+	health_fill.color = Color(0.8, 0.15, 0.15) if hp < 0.3 else Color(0.75, 0.25, 0.22).lerp(Color(0.45, 0.7, 0.35), hp)
+	var vals := [Survival.hunger, Survival.warmth, Survival.rest]
+	for i in 3:
+		var f: ColorRect = need_fills[i]
+		f.size.x = float(f.get_meta("full")) * vals[i] / Survival.MAX
+		var low: bool = vals[i] < Survival.LOW
+		f.color = Color(0.9, 0.25, 0.2) if low and int(Time.get_ticks_msec() / 400) % 2 == 0 else NEED_COLORS[i]
+	survival_warn.text = "  ".join(Survival.warnings())
 
 # --- Word on the block ------------------------------------------------------
 ## Today's headline (autoload/Headlines.gd), once a day: a strip under the
@@ -261,7 +344,7 @@ func _update_status() -> void:
 	var s: Array = GameState.status_line()
 	status_label.visible = not s.is_empty()
 	# Under the debt line when there is one, in its place when there isn't.
-	status_label.offset_top = 86.0 if debt_label.visible else 70.0
+	status_label.offset_top = (86.0 if debt_label.visible else 70.0) + SURVIVAL_H
 	status_label.offset_bottom = status_label.offset_top + 16.0
 	if s.is_empty():
 		return
@@ -275,9 +358,9 @@ func _build_debt() -> void:
 	debt_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	debt_label.add_theme_constant_override("outline_size", 4)
 	debt_label.offset_left = 12.0
-	debt_label.offset_top = 70.0
+	debt_label.offset_top = 70.0 + SURVIVAL_H
 	debt_label.offset_right = 300.0
-	debt_label.offset_bottom = 86.0
+	debt_label.offset_bottom = 86.0 + SURVIVAL_H
 	$TopBar.add_child(debt_label)
 	_update_debt()
 

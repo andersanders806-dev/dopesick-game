@@ -23,6 +23,9 @@ func _initialize() -> void:
 	# A quiet day every day unless a check asks for something else.
 	root.get_node("Headlines").forced = "quiet"
 	root.get_node("Headlines").roll(root.get_node("GameState").day)
+	# The checks jump the clock days at a time; the body would starve on the
+	# way. Survival's own checks switch it back on.
+	root.get_node("Survival").enabled = false
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
@@ -769,6 +772,7 @@ func _run() -> void:
 	await _pool_checks(gs)
 	await _darts_checks(gs)
 	await _slot_checks(gs)
+	await _survival_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1389,6 +1393,86 @@ func _slot_checks(gs: Node) -> void:
 	_check(not _player().dialogue_active, "  you can walk away from it")
 	_check(absf(gs.clock - (t0 + 2 * Slots.MINUTES_PER_SPIN)) < 0.01, "  and the pulls took time (%.1f min)" % (gs.clock - t0))
 	_check(gs.is_processing(), "  the clock runs again once you're up")
+	gs.start_run()
+
+func _survival_checks(gs: Node) -> void:
+	await _section("Survival: health, hunger, cold, rest, bleeding -- and death")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 12 * 60
+	gs.raining = false
+	_check(sv.health == sv.MAX and sv.hunger > 50.0 and not sv.bleeding and not sv.dead, "  a run starts healthy and fed")
+	# Ten hours indoors at noon: hungrier, tireder, warm.
+	var h0: float = sv.hunger
+	var r0: float = sv.rest
+	sv.tick(600.0, false)
+	_check(is_equal_approx(sv.hunger, h0 - 40.0) and is_equal_approx(sv.rest, r0 - 50.0) and sv.warmth == sv.MAX,
+		"  ten hours: hunger and rest run down, a room keeps you warm (%.0f, %.0f, %.0f)" % [sv.hunger, sv.rest, sv.warmth])
+	# A night outside.
+	gs.clock = 23 * 60
+	sv.warmth = 80.0
+	gs.belongings["coat"] = "pawned"
+	sv.tick(120.0, true)
+	var no_coat: float = 80.0 - sv.warmth
+	sv.warmth = 80.0
+	gs.belongings["coat"] = "home"
+	sv.tick(120.0, true)
+	var coat: float = 80.0 - sv.warmth
+	_check(no_coat > 20.0 and coat < no_coat * 0.7, "  a night outside chills you, slower in your coat (-%.0f vs -%.0f in two hours)" % [no_coat, coat])
+	# Sleep fills rest.
+	sv.rest = 10.0
+	gs.sleep()
+	_check(sv.rest == sv.MAX, "  a night's sleep and you're rested")
+	# A beating bleeds; bandages close it.
+	gs.debt = 50
+	gs.cash = 0
+	var hp: float = sv.health
+	gs.collect_debt()
+	_check(sv.bleeding and sv.health < hp, "  the collector's beating hurts and opens you up (%.0f -> %.0f)" % [hp, sv.health])
+	var hp2: float = sv.health
+	gs.clock = 12 * 60
+	sv.tick(60.0, false)
+	_check(sv.health < hp2, "  bleeding costs health by the hour")
+	_check(sv.warnings().has("BLEEDING"), "  ...and the HUD says so")
+	# The vending machine on the block.
+	gs.debt = 0
+	var city := await _load("res://world/City3D.tscn")
+	var vm := city.get_node_or_null("VendingMachine")
+	_check(vm != null and vm.find_child("VendingZone", true, false) != null, "  a vending machine on the block")
+	gs.cash = 12
+	sv.hunger = 20.0
+	_check(vm.buy(1) and gs.cash == 7 and sv.hunger == 70.0, "  a sandwich: $5, and fed ($%d, hunger %.0f)" % [gs.cash, sv.hunger])
+	_check(vm.buy(3) and not sv.bleeding, "  bandages stop the bleeding")
+	gs.cash = 1
+	_check(not vm.buy(1) and gs.cash == 1, "  no money, no sandwich")
+	var hud := get_first_node_in_group("hud")
+	_check(hud.get_node_or_null("TopBar/SurvivalBg") != null, "  the HUD shows health, food, warmth and rest")
+	# Starving to death ends the run.
+	var ended := []
+	gs.run_ended.connect(func(s): ended.append(s), CONNECT_ONE_SHOT)
+	sv.hunger = 0.0
+	sv.health = 10.0
+	sv.tick(240.0, false)
+	_check(sv.dead and ended.size() == 1 and ended[0]["cause"] == "health" and sv.last_cause == "starved",
+		"  health at 0: you die, and the run says why (%s)" % sv.last_cause)
+	var End = load("res://ui/RunEndScreen.gd")
+	_check(End.new().heading_for("health")[0] == "YOU DIED", "  'YOU DIED'")
+	await _frames(3)
+	for c in root.get_children():
+		if c is CanvasLayer and String(c.get_script().resource_path if c.get_script() else "").ends_with("RunEndScreen.gd"):
+			c.free()
+	# And the title has no Continue.
+	var title = load("res://ui/TitleScreen.tscn").instantiate()
+	root.add_child(title)
+	await _frames(2)
+	var labels: Array = title.find_children("*", "Button", true, false).map(func(b): return b.text)
+	_check(not labels.has("Continue") and labels.has("New run"), "  every start is a fresh run: no Continue (%s)" % ", ".join(labels))
+	title.queue_free()
+	await _frames(2)
+	sv.enabled = false
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:
@@ -2907,9 +2991,11 @@ func _aa_checks(gs: Node) -> void:
 	var gfx := root.get_node("Graphics")
 	var before: int = gfx.preset
 	var vp := root.get_viewport()
-	for p in [gfx.Preset.LOW, gfx.Preset.MEDIUM]:
-		gfx.set_preset(p)
-		_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "  %s: SMAA, not FXAA" % gfx.PRESET_NAMES[p])
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "  Medium: SMAA, not FXAA")
+	# Low drops the pass: 1.3 ms on the street, and FSR already softens.
+	gfx.set_preset(gfx.Preset.LOW)
+	_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "  Low: no AA pass at all")
 	gfx.set_preset(gfx.Preset.HIGH)
 	# On an integrated GPU FSR 2 from ~59% crawls at 20-25 FPS; FSR 1 from
 	# 77% with TAA and SMAA measured faster and smoother on a UHD 620.
@@ -3454,8 +3540,8 @@ func _low_checks(gs: Node) -> void:
 	gfx.set_preset(gfx.Preset.LOW)
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(5)
-	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_piece(city).get_active_material(0).normal_enabled,
-		"  Low on laptop graphics is lean too: FXAA, flat facades")
+	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED and not _kit_piece(city).get_active_material(0).normal_enabled,
+		"  Low on laptop graphics is lean too: no AA pass, flat facades")
 	var post: ColorRect = get_first_node_in_group("hud").get_node("PostFX")
 	gs.craving = 100.0
 	gs.craving_changed.emit(gs.craving)
@@ -3479,9 +3565,11 @@ func _scaler_checks() -> void:
 	gfx._integrated = true
 	gfx.set_preset(gfx.Preset.LOW)
 	var s: float = 0.8
+	# Laptop graphics keep headroom: down above 13 ms, up below 10.
 	_check(gfx.next_scale(s, 58.0, 16.2) < s, "  GPU over budget (16.2 ms at 58 FPS): resolution comes down")
-	_check(is_equal_approx(gfx.next_scale(s, 60.0, 14.0), s), "  14 ms: stays put")
-	_check(gfx.next_scale(s, 60.0, 11.0) > s, "  11 ms: room to sharpen, goes up")
+	_check(gfx.next_scale(s, 60.0, 14.0) < s, "  14 ms on a laptop GPU: comes down too, before it warms up")
+	_check(is_equal_approx(gfx.next_scale(s, 60.0, 11.5), s), "  11.5 ms: stays put")
+	_check(gfx.next_scale(s, 60.0, 9.0) > s, "  9 ms: room to sharpen, goes up")
 	_check(gfx.next_scale(s, 40.0, 0.0) < s, "  no GPU timing: falls back to the frame rate")
 	gfx._integrated = false
 	gfx.set_preset(gfx.Preset.MEDIUM)

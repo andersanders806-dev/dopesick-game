@@ -785,6 +785,7 @@ func _run() -> void:
 	await _darts_checks(gs)
 	await _slot_checks(gs)
 	await _survival_checks(gs)
+	await _crafting_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1514,6 +1515,64 @@ func _survival_checks(gs: Node) -> void:
 	_check(not labels.has("Continue") and labels.has("New run"), "  every start is a fresh run: no Continue (%s)" % ", ".join(labels))
 	title.queue_free()
 	await _frames(2)
+	sv.enabled = false
+	gs.start_run()
+
+func _crafting_checks(gs: Node) -> void:
+	await _section("Scavenging and crafting")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	var cr := root.get_node("Crafting")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var spots: Array = city.get_tree().get_nodes_in_group("scavenge")
+	var trash := spots.filter(func(z): return not z.get_meta("car"))
+	var cars := spots.filter(func(z): return z.get_meta("car"))
+	_check(trash.size() >= 6 and cars.size() == 3, "  trash bags and parked cars to search (%d, %d)" % [trash.size(), cars.size()])
+	_check(load("res://ui/Prompts.gd").text_for(trash[0]) == "Search the trash", "  'Search the trash'")
+	var first: String = cr.search("TestBag")
+	_check(cr.search("TestBag").begins_with("You've already"), "  each spot once a day")
+	# Enough searches turn up every material.
+	var got := {}
+	for i in 200:
+		var before: Array = gs.inventory.duplicate()
+		cr.search("Bag%d" % i)
+		for id in gs.inventory:
+			if id in cr.MATERIALS:
+				got[id] = true
+	_check(got.size() == 3, "  searching turns up rags, scrap and tape (%s)" % ", ".join(got.keys()))
+	_check(not gs.carrying_stolen(), "  scavenged stuff isn't stolen goods -- the cops don't care")
+	# Crafting.
+	gs.inventory.clear()
+	gs.inventory.append_array(["rags", "rags", "rags", "rags", "rags", "tape", "tape", "scrap"])
+	var bedroll := 1
+	var shiv := 2
+	_check(cr.make(bedroll) and gs.inventory.has("bedroll") and cr.count("rags") == 2 and cr.count("tape") == 1, "  a bedroll from 3 rags and tape")
+	_check(cr.make(shiv) and gs.inventory.has("shiv") and cr.count("scrap") == 0, "  a shiv from scrap and tape")
+	_check(not cr.make(0), "  no rag bandage when you're not bleeding")
+	sv.hurt(5.0, true)
+	_check(cr.make(0) and not sv.bleeding and cr.count("rags") == 0, "  ...and when you are, it stops it")
+	_check(not cr.make(shiv), "  out of parts, nothing to make")
+	# The bedroll keeps the cold off.
+	gs.clock = 23 * 60
+	gs.belongings["coat"] = "pawned"
+	sv.warmth = 80.0
+	sv.tick(60.0, true)
+	var with_roll: float = 80.0 - sv.warmth
+	gs.inventory.erase("bedroll")
+	sv.warmth = 80.0
+	sv.tick(60.0, true)
+	_check(with_roll < 80.0 - sv.warmth, "  a bedroll keeps the cold off outside (-%.0f vs -%.0f)" % [with_roll, 80.0 - sv.warmth])
+	gs.belongings["coat"] = "home"
+	# C opens the menu.
+	var menu: CanvasLayer = _player().open_craft_menu()
+	await _frames(2)
+	_check(is_instance_valid(menu) and menu.visible, "  C opens what you can make")
+	menu.queue_free()
+	_player().dialogue_active = false
 	sv.enabled = false
 	gs.start_run()
 

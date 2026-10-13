@@ -106,6 +106,9 @@ func tick(minutes: float, is_outside := outside()) -> void:
 		var cold := (COLD_NIGHT_PER_H if night() else 0.0) + (COLD_RAIN_PER_H if GameState.raining else 0.0)
 		if hl:
 			cold = cold * hl.cold_mult() + hl.day_cold()
+		var cr := get_node_or_null("/root/Crafting")
+		if cr and cr.has_bedroll():
+			cold *= cr.BEDROLL_COLD
 		if cold > 0.0:
 			warmth = maxf(0.0, warmth - cold * (COAT_FACTOR if wearing_coat() else 1.0) * h)
 		elif warmth < WARM_DAY_CAP:
@@ -194,7 +197,9 @@ func on_sleep(slept_minutes: float, is_outside := outside()) -> void:
 	rest = MAX
 	hunger = maxf(0.0, hunger - HUNGER_PER_H * 0.5 * h)
 	if is_outside:
-		warmth = maxf(0.0, warmth - COLD_NIGHT_PER_H * 0.5 * (COAT_FACTOR if wearing_coat() else 1.0) * h)
+		var cr := get_node_or_null("/root/Crafting")
+		var roll: float = cr.BEDROLL_SLEEP if cr and cr.has_bedroll() else 1.0
+		warmth = maxf(0.0, warmth - COLD_NIGHT_PER_H * 0.5 * (COAT_FACTOR if wearing_coat() else 1.0) * roll * h)
 	else:
 		warmth = MAX
 	if bleeding and GameState.now_minutes() >= bleed_until:

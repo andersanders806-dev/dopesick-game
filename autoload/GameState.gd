@@ -70,6 +70,13 @@ const REQUEST_POOL := [
 	{"id": "guitar", "name": "your guitar", "price": 30, "store": "home", "no_order": true},
 	{"id": "coat", "name": "your winter coat", "price": 10, "store": "home", "no_order": true},
 	{"id": "ring", "name": "your mother's ring", "price": 45, "store": "home", "no_order": true},
+	# Scavenged off the block and what you make of it (autoload/Crafting.gd):
+	# yours, not stolen, and worth next to nothing at the pawnshop.
+	{"id": "rags", "name": "some rags", "price": 1, "store": "street", "no_order": true},
+	{"id": "scrap", "name": "a strip of scrap metal", "price": 1, "store": "street", "no_order": true},
+	{"id": "tape", "name": "a roll of duct tape", "price": 2, "store": "street", "no_order": true},
+	{"id": "bedroll", "name": "a bedroll", "price": 3, "store": "street", "no_order": true},
+	{"id": "shiv", "name": "a shiv", "price": 2, "store": "street", "no_order": true},
 ]
 
 const STORE_NAMES := {
@@ -679,7 +686,7 @@ func is_belonging(id: String) -> bool:
 ## What you're carrying that you shouldn't be. Your own TV isn't evidence,
 ## and nobody on the street looks twice at a man with a guitar.
 func stolen_goods() -> Array:
-	return inventory.filter(func(id): return not is_belonging(id))
+	return inventory.filter(func(id): return not is_belonging(id) and item_info(id).get("store", "") != "street")
 
 func carrying_stolen() -> bool:
 	return not stolen_goods().is_empty()
@@ -1084,6 +1091,7 @@ func _setup_input_actions() -> void:
 	_bind("throttle", [])
 	_bind("brake", [])
 	_bind("notebook", [KEY_J])
+	_bind("craft", [KEY_C])
 	_bind("walkman", [KEY_T])
 	_bind("walkman_next", [KEY_N])
 	_bind("page_next", [KEY_TAB, KEY_RIGHT])
@@ -1135,6 +1143,7 @@ const PAD := {
 	"throttle": [[JOY_AXIS_TRIGGER_RIGHT, 1.0]],
 	"brake": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
 	"notebook": [JOY_BUTTON_TOUCHPAD, JOY_BUTTON_BACK],
+	"craft": [JOY_BUTTON_LEFT_SHOULDER],
 	"walkman": [JOY_BUTTON_Y],
 	"walkman_next": [JOY_BUTTON_DPAD_RIGHT],
 	"page_next": [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_DPAD_RIGHT],
@@ -1187,11 +1196,11 @@ func control_name(action: String) -> String:
 	return KEY_NAMES.get(action, action)
 
 const PAD_NAMES := {"interact": "Square", "cancel_ui": "Circle", "pause": "Options", "fire": "R2",
-	"steady": "L2", "sprint": "L3", "notebook": "Touchpad", "walkman": "Triangle",
+	"steady": "L2", "sprint": "L3", "notebook": "Touchpad", "craft": "L1", "walkman": "Triangle",
 	"walkman_next": "D-pad right", "page": "L1/R1", "aim": "Left stick", "look": "Right stick",
 	"drift": "R1", "throttle": "R2", "brake": "L2", "steer": "Left stick", "accept": "Cross"}
 const KEY_NAMES := {"interact": "E", "cancel_ui": "Esc", "pause": "Esc", "fire": "Space",
-	"steady": "Shift", "sprint": "Shift", "notebook": "J", "walkman": "T", "walkman_next": "N",
+	"steady": "Shift", "sprint": "Shift", "notebook": "J", "craft": "C", "walkman": "T", "walkman_next": "N",
 	"page": "Tab/arrows", "aim": "Mouse", "look": "Wheel", "drift": "Shift/Space", "throttle": "W",
 	"brake": "S", "steer": "A/D", "accept": "E/Enter"}
 

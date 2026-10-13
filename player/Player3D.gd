@@ -297,6 +297,29 @@ func _physics_process(delta: float) -> void:
 
 ## Footfalls stay in step with the walk animation: same cycle length, and
 ## slowed by the same factor when the stride slows in withdrawal.
+## C: what you can make from what you're carrying (autoload/Crafting.gd).
+func open_craft_menu() -> CanvasLayer:
+	dialogue_active = true
+	var have := Crafting.MATERIALS.map(func(m): return "%s %d" % [m, Crafting.count(m)])
+	var options: Array = Crafting.RECIPES.map(func(r):
+		var parts := []
+		for id in r["needs"]:
+			parts.append("%d %s" % [r["needs"][id], id])
+		return "%s  (%s)" % [r["label"], ", ".join(parts)])
+	var disabled := []
+	for i in Crafting.RECIPES.size():
+		if not Crafting.can_make(Crafting.RECIPES[i]):
+			disabled.append(i)
+	var menu: CanvasLayer = preload("res://ui/ChoiceMenu.gd").new()
+	get_tree().root.add_child(menu)
+	menu.chosen.connect(func(i: int):
+		dialogue_active = false
+		if Crafting.make(i):
+			Graphics._show_toast("Made: %s" % Crafting.RECIPES[i]["label"]))
+	menu.cancelled.connect(func(): dialogue_active = false)
+	menu.open("Make something", "Carrying: %s. Search trash bags and parked cars for more." % ", ".join(have), options, disabled)
+	return menu
+
 func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 	if not moving:
 		# Next step lands soon after starting to walk again, not instantly.
@@ -318,6 +341,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_sprint_latched = true
 	if event.is_action_pressed("interact"):
 		_try_interact()
+	elif event.is_action_pressed("craft") and not event.is_echo():
+		if not dialogue_active and not get_tree().paused:
+			get_viewport().set_input_as_handled()
+			open_craft_menu()
 	elif event.is_action_pressed("notebook") and not event.is_echo():
 		if not dialogue_active and not get_tree().paused:
 			get_viewport().set_input_as_handled()

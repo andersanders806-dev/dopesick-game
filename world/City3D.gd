@@ -52,6 +52,42 @@ var _night_lights: Array = []
 var _street_lamp_heads: Array[MeshInstance3D] = []
 
 const VendingScript := preload("res://world/VendingMachine3D.gd")
+
+## The block's trash bags and parked cars can be searched once a day each
+## (autoload/Crafting.gd): rags, scrap, tape, a little food or change.
+func _add_scavenge_spots() -> void:
+	for n in ["Trash0", "Trash1", "Trash2", "Trash3", "BarTrash0", "BarTrash1", "CarA", "CarB", "CarC"]:
+		var target := get_node_or_null(n) as Node3D
+		if target == null:
+			continue
+		var car: bool = n.begins_with("Car")
+		var zone := Area3D.new()
+		zone.name = "Scavenge" + n
+		zone.set_meta("spot", n)
+		zone.set_meta("car", car)
+		zone.set_meta("prompt", "Try the car door" if car else "Search the trash")
+		zone.add_to_group("scavenge")
+		zone.collision_layer = 4
+		zone.collision_mask = 0
+		zone.monitoring = false
+		zone.set_script(InteractableScript)
+		add_child(zone)
+		zone.global_position = Vector3(target.global_position.x, 0.0, target.global_position.z + (-1.4 if car else 0.6))
+		var shape := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(2.4 if car else 1.0, 1.4, 1.0)
+		shape.shape = box
+		shape.position = Vector3(0, 0.7, 0)
+		zone.add_child(shape)
+		zone.interacted.connect(_on_scavenge)
+
+func _on_scavenge(zone: Area3D, player: Node) -> void:
+	var hud := get_tree().get_first_node_in_group("hud")
+	var line: String = Crafting.search(zone.get_meta("spot"), zone.get_meta("car"))
+	SFX.play("steal", -6.0, 0.8)
+	if hud:
+		player.dialogue_active = true
+		hud.show_dialogue("", line)
 ## Against the wall between the police station and the apartment door.
 const VENDING_POS := Vector3(-19.25, 0.0, -3.95)
 
@@ -62,6 +98,7 @@ func _ready() -> void:
 	add_child(vending)
 	vending.position = VENDING_POS
 	super._ready()
+	_add_scavenge_spots()
 	# The Environment is a sub-resource of the cached PackedScene; blending a
 	# shared copy would leak today's daylight into the next visit's "night"
 	# baseline.

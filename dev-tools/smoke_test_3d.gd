@@ -1587,6 +1587,20 @@ func _street_life_checks(gs: Node) -> void:
 	var city := await _load("res://world/City3D.tscn")
 	_clear_patrol(city)
 	var life := city.get_node("StreetLife")
+	# The box truck and the garbage truck stood a head over everything else
+	# and filled the screen going under the camera; traffic is cars now.
+	var heights := []
+	for kind in life.CARS:
+		var m: Node3D = load("res://assets/kenney/cars/%s.glb" % kind).instantiate()
+		m.scale = Vector3.ONE * life.CAR_SCALE
+		m.position = Vector3(0, 0.3 * life.CAR_SCALE - 50.0, 0)
+		life.add_child(m)
+		var top := -INF
+		for mi in m.find_children("*", "MeshInstance3D", true, false):
+			top = maxf(top, ((mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()).end.y)
+		heights.append([kind, top + 50.0])
+		m.free()
+	_check(life.CARS.size() >= 8 and heights.all(func(h): return h[1] <= 2.95), "  traffic is cars, nothing taller than the taxi's roof sign (%s)" % ", ".join(heights.map(func(h): return "%s %.1f m" % h)))
 	_check(life.get_children().filter(func(c): return c is GPUParticles3D and c != life._rain).size() == 2, "  steam rises from both manholes")
 	var p := _player()
 	p.global_position = Vector3(0.0, 0, life.LANE_Z)

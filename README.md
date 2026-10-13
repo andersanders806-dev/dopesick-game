@@ -626,7 +626,8 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   gabapentin, cocaine, amphetamine, weed on top of the originals), and the
   pusher holds 12-17 of them a night. Not yet re-balanced with
   `dev-tools/drug_sim.gd`.
-- **Street life:** `world/StreetLife.gd` -- traffic (Kenney Car Kit, CC0)
+- **Street life:** `world/StreetLife.gd` -- traffic (Kenney Car Kit, CC0:
+  eight cars, no trucks -- the tall ones filled the screen under the camera)
   on the one-way lane by the curb, with headlights at night, stopping and
   honking for you; steam from the manholes; hourly weather rolls (rain
   streaks, a rain loop, the street going wet and shiny, a darker sky); and

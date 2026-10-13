@@ -12,6 +12,8 @@ extends "res://world/Store3D.gd"
 ##   waking up to your pockets turned out.
 
 const DELIVERY_HOURS := [6, 10]
+const DUMPSTER_FOOD_CHANCE := 0.6
+const DUMPSTER_FOOD := 25.0
 const DUMPSTER_CASH_CHANCE := 0.4
 const DUMPSTER_ITEM_CHANCE := 0.3
 ## Things people actually throw out that are still worth something.
@@ -68,6 +70,10 @@ func _dumpster(hud: Node) -> void:
 		var id: String = DUMPSTER_FINDS.pick_random()
 		GameState.steal_item(id)
 		hud.show_dialogue("", "Under a split bag: %s, barely used. Somebody'll pay for that." % GameState.item_name_for(id))
+	elif randf() < DUMPSTER_FOOD_CHANCE:
+		# Hungry enough, this is dinner (autoload/Survival.gd).
+		Survival.eat(DUMPSTER_FOOD)
+		hud.show_dialogue("", ["Half a sandwich, still in its wrapper. You eat it over the bin.", "A box of cold fries somebody barely touched. You don't think about it.", "Day-old bagels from the café out back. Hard, but food."].pick_random())
 	else:
 		hud.show_dialogue("", "Nothing. Rotten lettuce, broken glass, a smell that follows you out.")
 

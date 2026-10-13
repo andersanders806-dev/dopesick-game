@@ -31,6 +31,8 @@ func _cutscene_id() -> String:
 			return "recovered"
 		"alone":
 			return "relapse"
+		"health":
+			return "overdose"
 	return "sent_away"
 
 ## [title, colour, subtitle] for an ending.
@@ -42,6 +44,10 @@ func heading_for(cause: String) -> Array:
 			return ["YOU WENT OVER", Color(0.80, 0.30, 0.55), "Nobody had naloxone. This is how most runs really end."]
 		"alone":
 			return ["ALONE", Color(0.55, 0.6, 0.75), "Your sister, your oldest friend, your one bed. All of it, gone, one day at a time."]
+		"health":
+			var why: String = {"starved": "You starved.", "froze": "You froze to death outside.", "exhausted": "You ran yourself into the ground.",
+				"bled": "You bled out.", "sick": "The sickness wore you down to nothing."}.get(Survival.last_cause, "Your body gave out.")
+			return ["YOU DIED", Color(0.75, 0.2, 0.2), why + " Eat, stay warm, sleep, close the wounds -- on top of everything else."]
 	return ["PICKED UP AGAIN", Color(0.85, 0.25, 0.22), "That's %d strikes. You're going away for a while." % _summary.get("strikes", 0)]
 
 func _build() -> void:

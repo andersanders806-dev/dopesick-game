@@ -35,6 +35,7 @@ Jobs="*res://autoload/Jobs.gd"
 Headlines="*res://autoload/Headlines.gd"
 SceneLoader="*res://autoload/SceneLoader.gd"
 Story="*res://autoload/Story.gd"
+Survival="*res://autoload/Survival.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]

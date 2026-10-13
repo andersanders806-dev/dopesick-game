@@ -429,6 +429,9 @@ func start_run() -> void:
 	strikes_changed.emit(strikes)
 	wanted_changed.emit(wanted)
 	debt_changed.emit(debt)
+	var sv := get_node_or_null("/root/Survival")
+	if sv:
+		sv.reset()
 
 func max_strikes() -> int:
 	return STRIKES_PER_RUN + MetaProgress.extra_strikes()
@@ -1296,10 +1299,16 @@ func collect_debt() -> int:
 		craving = maxf(0.0, craving - BEATING_CRAVING_COST)
 		craving_changed.emit(craving)
 		hurt_until = now_minutes() + HURT_MINUTES
+		# And it opens you up: a cut that bleeds until it's bandaged.
+		var sv := get_node_or_null("/root/Survival")
+		if sv:
+			sv.hurt(BEATING_HEALTH, true)
 		debt += LATE_FEE
 		debt_due = now_minutes() + REGRACE_MINUTES
 		debt_changed.emit(debt)
 	return taken
+
+const BEATING_HEALTH := 25.0
 
 func is_hurt() -> bool:
 	return now_minutes() < hurt_until
@@ -1448,6 +1457,7 @@ func end_run(cause := "busted") -> void:
 		"overdose": log_event("Went over, alone. Nobody had naloxone.", "overdose_floor")
 		"recovered": log_event("Five clean days. Got out.", "recovered_street")
 		"alone": log_event("Nobody left.", "relapse")
+		"health": pass  # Survival.die() has already said how.
 		_: log_event("Sent away.", "sent_away_bus")
 	var days_survived := day
 	# The next run remembers this one (MetaProgress, autoload/Story.gd).
@@ -1514,6 +1524,11 @@ func sleep() -> void:
 		day += 1
 		day_changed.emit(day)
 	clock = WAKE_MINUTE
+	# The body sleeps too (autoload/Survival.gd): before the clock moves on,
+	# so the jump isn't counted as hours awake.
+	var sv := get_node_or_null("/root/Survival")
+	if sv:
+		sv.on_sleep(slept)
 	_emit_clock()
 	log_event("Woke up. Day %d." % day, "new_day")
 	craving = min(craving, 55.0)

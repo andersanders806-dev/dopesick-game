@@ -124,10 +124,14 @@ static func _vendor_hourly() -> void:
 			GameState.cash_earned += n * UNIT_PRICE
 			GameState.cash_changed.emit(GameState.cash)
 			GameState.log_event("Shipped %d off Silk Lane overnight. $%d in coin." % [n, n * UNIT_PRICE])
-			raid_check()
+			raid_check(raid_chance)
 		else:
 			v["heat"] = float(v.get("heat", 0.0)) * 0.7
 	GameState.vendor = v
+
+## The daily raid chance, when set (>= 0) in place of the heat -- for tests
+## that need the sale without the dice.
+static var raid_chance := -1.0
 
 ## Did someone follow the coin? `chance` overrides the heat (the smoke test).
 static func raid_check(chance := -1.0) -> bool:

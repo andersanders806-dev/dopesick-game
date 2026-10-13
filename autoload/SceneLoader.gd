@@ -78,7 +78,17 @@ func prefetch(path: String, soon := false) -> void:
 		_queue.append(path)
 	_start_next()
 
+## Background loads finish on the main thread in bursts (38-83 ms on the
+## street in perf.log), which you feel as a hitch mid-stride; so a new one
+## only starts while you're standing still. A door you walk through still
+## loads at once (_scene), behind the fade.
+func may_start() -> bool:
+	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D if is_inside_tree() else null
+	return player == null or Vector2(player.velocity.x, player.velocity.z).length() < 0.5
+
 func _start_next() -> void:
+	if not may_start():
+		return
 	while _loading.is_empty() and not _queue.is_empty():
 		var path: String = _queue.pop_front()
 		if _scenes.has(path):

@@ -196,6 +196,7 @@ Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits a
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.
 Music: OpenGameArt -- omfgdude, Nostromo, Of Far Different Nature (CC-BY), Tsorthan Grove,
 Centurion_of_war, Eldritch Grim (CC0). Room tone: CC0 field recordings.
+Fonts: Bungee by David Jonathan Ross, DSEG by keshikan (SIL OFL).
 Full lists sit beside the files: assets/*/CREDITS*, LICENSE*.
 
 If you or someone you love is using: carry naloxone, don't use alone, and

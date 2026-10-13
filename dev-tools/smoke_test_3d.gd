@@ -767,6 +767,7 @@ func _run() -> void:
 	await _walkman_checks(gs)
 	await _pool_checks(gs)
 	await _darts_checks(gs)
+	await _slot_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1322,6 +1323,67 @@ func _darts_checks(gs: Node) -> void:
 	game._close()
 	await _frames(3)
 	_check(not _player().dialogue_active, "  and you can walk away from the board")
+	gs.start_run()
+
+func _slot_checks(gs: Node) -> void:
+	await _section("Slot machine: the Lucky Devil at the Dive Bar")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 21 * 60
+	var Slots = load("res://ui/SlotMachine.gd")
+	var strips: Array = Slots.strips()
+	_check(strips.size() == 3 and strips.all(func(s): return s.size() == 22), "  three reels of 22 stops")
+	var rtp: float = Slots.rtp()
+	_check(rtp > 0.86 and rtp < 0.94, "  it keeps about a dime on the dollar (pays back %.1f%%)" % (rtp * 100.0))
+	_check(Slots.payout(Slots.SEVEN, Slots.SEVEN, Slots.SEVEN) == 150, "  three sevens pay 150x")
+	_check(Slots.payout(Slots.CHERRY, Slots.CHERRY, Slots.LEMON) == 6, "  two cherries pay 6x")
+	_check(Slots.payout(Slots.CHERRY, Slots.LEMON, Slots.LEMON) == 1, "  one cherry gives the bet back")
+	_check(Slots.payout(Slots.LEMON, Slots.CHERRY, Slots.CHERRY) == 0, "  cherries only count from the first reel")
+	_check(Slots.payout(Slots.BAR, Slots.BAR, Slots.BELL) == 0, "  two of a kind and a miss is nothing")
+	var bar := await _load("res://world/DiveBar3D.tscn")
+	_check(bar.find_child("SlotZone", true, false) != null, "  the slot machine can be played")
+	_check(bar.get_node_or_null("SlotMachine") is StaticBody3D, "  and it's solid -- you walk round it")
+	var hm := func(sym: int, reel: int) -> int: return strips[reel].find(sym)
+	gs.cash = 20
+	var game: Node = bar._start_slots(_player())
+	await _frames(2)
+	_check(_player().dialogue_active, "  sitting down at it holds the player")
+	game.bet_index = 0
+	game._howto = false
+	var spun := []
+	game.spun.connect(func(w): spun.append(w))
+	# Three sevens.
+	var t0: float = gs.clock
+	_check(game.spin([hm.call(Slots.SEVEN, 0), hm.call(Slots.SEVEN, 1), hm.call(Slots.SEVEN, 2)]), "  a $1 pull goes in")
+	_check(gs.cash == 19, "  the dollar's taken up front ($%d)" % gs.cash)
+	_check(not game.spin(), "  you can't pull again while the reels turn")
+	_check(game._reels[2]["stop_at"] > game._reels[1]["stop_at"] + 1.0, "  two matching reels make the third hang on")
+	# Headless frames aren't capped, so wait on the wall clock.
+	var t_start := Time.get_ticks_msec()
+	while spun.is_empty() and Time.get_ticks_msec() - t_start < 8000:
+		await process_frame
+	_check(spun.size() == 1 and spun[0] == 150, "  the reels stop and pay out (%s after %.1fs)" % [str(spun), (Time.get_ticks_msec() - t_start) / 1000.0])
+	var shown := [game._sym_at(0, game._reels[0]["pos"]), game._sym_at(1, game._reels[1]["pos"]), game._sym_at(2, game._reels[2]["pos"])]
+	_check(shown == [Slots.SEVEN, Slots.SEVEN, Slots.SEVEN], "  the line shows what it paid for (%s)" % str(shown))
+	_check(gs.cash == 169, "  $150 lands in your pocket ($%d)" % gs.cash)
+	_check(root.get_node("MetaProgress").achievements.has("jackpot"), "  and the jackpot is an achievement")
+	# A losing pull.
+	spun.clear()
+	game.spin([hm.call(Slots.LEMON, 0), hm.call(Slots.PLUM, 1), hm.call(Slots.BELL, 2)])
+	t_start = Time.get_ticks_msec()
+	while spun.is_empty() and Time.get_ticks_msec() - t_start < 8000:
+		await process_frame
+	_check(spun == [0] and gs.cash == 168, "  a losing pull just takes the dollar ($%d)" % gs.cash)
+	_check(game._message != "", "  and the machine has something to say about it")
+	# Broke.
+	gs.cash = 0
+	_check(not game.spin() and gs.cash == 0, "  no money, no pull")
+	game._close()
+	await _frames(3)
+	_check(not _player().dialogue_active, "  you can walk away from it")
+	_check(absf(gs.clock - (t0 + 2 * Slots.MINUTES_PER_SPIN)) < 0.01, "  and the pulls took time (%.1f min)" % (gs.clock - t0))
+	_check(gs.is_processing(), "  the clock runs again once you're up")
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:
@@ -3700,6 +3762,9 @@ func _gameplay3_checks(gs: Node) -> void:
 	_check(Darknet.vendor_order("ok"), "  ordering a wholesale lot")
 	_check(gs.cash == 200 - Darknet.WHOLESALE_PRICE, "  ...$%d up front" % Darknet.WHOLESALE_PRICE)
 	_hour(gs, 2, 9)
+	# Each day's sales roll a small chance of a raid (heat * RAID_SCALE, ~4%
+	# here) that empties the shop; pin the dice so this checks the sale.
+	seed(20261013)
 	_hour(gs, 2, 10)
 	var v: Dictionary = gs.vendor
 	_check(v.get("sold", 0) >= 2 and v.get("stock", 0) == Darknet.WHOLESALE_UNITS - v.get("sold", 0) and gs.cash > 200 - Darknet.WHOLESALE_PRICE, "  next morning it's in, and some sells (%d sold, %d left)" % [v.get("sold", 0), v.get("stock", 0)])

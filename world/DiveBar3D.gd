@@ -31,6 +31,7 @@ const SIT_HEIGHT := 0.0
 func _ready() -> void:
 	_refresh_patrons()
 	_seat_patrons()
+	_add_slots()
 	super._ready()
 	_connect_pool()
 	_add_darts()
@@ -162,6 +163,193 @@ func _start_darts(table: Dictionary, player: Node) -> void:
 	game.tree_exited.connect(func():
 		if is_instance_valid(player):
 			player.dialogue_active = false)
+
+# --- The slot machine -------------------------------------------------------
+
+const SlotMachine := preload("res://ui/SlotMachine.gd")
+## Against the east wall between the COLD BEER neon and the leaning cue,
+## facing into the room.
+const SLOT_POS := Vector3(7.12, 0.0, -1.9)
+const SLOT_ATTRACT := Vector2(35.0, 80.0)  # seconds between its little tune
+
+var _slot_bulbs: Array = []  # two materials, lit in turn
+var _slot_attract: AudioStreamPlayer3D
+var _slot_attract_in := 20.0
+
+## Built here rather than by the room generator so the bar scene doesn't
+## need regenerating; it goes in before the navmesh bake so people walk
+## round it.
+func _add_slots() -> void:
+	var cab := StaticBody3D.new()
+	cab.name = "SlotMachine"
+	add_child(cab)
+	cab.position = SLOT_POS
+	cab.rotation_degrees.y = -90.0
+	var body_col := _slot_mat(Color(0.5, 0.05, 0.06), 0.45)
+	var chrome := _slot_mat(Color(0.8, 0.8, 0.83), 0.2, 0.0, 0.9)
+	var dark := _slot_mat(Color(0.05, 0.05, 0.06), 0.6)
+	_slot_box(cab, Vector3(0.66, 0.78, 0.56), Vector3(0, 0.39, 0), body_col)
+	_slot_box(cab, Vector3(0.68, 0.05, 0.58), Vector3(0, 0.8, 0), chrome)
+	_slot_box(cab, Vector3(0.62, 0.92, 0.44), Vector3(0, 1.26, -0.06), body_col)
+	_slot_box(cab, Vector3(0.48, 0.3, 0.02), Vector3(0, 1.36, 0.165), chrome)
+	# The reel window: lit paper bands with a 7 on each.
+	var reels := _slot_box(cab, Vector3(0.42, 0.24, 0.02), Vector3(0, 1.36, 0.172), _slot_mat(Color(0.97, 0.94, 0.86), 0.5, 0.9))
+	var bungee: Font = load("res://assets/fonts/Bungee-Regular.ttf") if ResourceLoader.exists("res://assets/fonts/Bungee-Regular.ttf") else null
+	for i in 3:
+		var sym := Label3D.new()
+		sym.text = ["7", "BAR", "7"][i]
+		sym.font_size = 64 if i != 1 else 30
+		sym.pixel_size = 0.0019
+		sym.modulate = Color(0.85, 0.05, 0.08) if i != 1 else Color(0.08, 0.08, 0.1)
+		sym.outline_size = 0
+		if bungee:
+			sym.font = bungee
+		reels.add_child(sym)
+		sym.position = Vector3(-0.14 + i * 0.14, 0, 0.012)
+	_slot_box(cab, Vector3(0.44, 0.006, 0.01), Vector3(0, 1.36, 0.19), _slot_mat(Color(1, 0.1, 0.1), 0.5, 2.0))
+	# Buttons and the coin tray.
+	_slot_box(cab, Vector3(0.6, 0.06, 0.2), Vector3(0, 0.84, 0.2), dark)
+	for i in 3:
+		_slot_box(cab, Vector3(0.08, 0.025, 0.06), Vector3(-0.18 + i * 0.12, 0.88, 0.24), _slot_mat([Color(1, 0.75, 0.1), Color(1, 0.75, 0.1), Color(1, 0.15, 0.1)][i], 0.4, 1.2))
+	_slot_box(cab, Vector3(0.36, 0.12, 0.1), Vector3(0, 0.22, 0.3), chrome)
+	_slot_box(cab, Vector3(0.32, 0.08, 0.08), Vector3(0, 0.24, 0.32), dark)
+	# The marquee box, glowing, with bulbs round its face.
+	var marquee := _slot_box(cab, Vector3(0.68, 0.3, 0.48), Vector3(0, 1.88, -0.04), _slot_mat(Color(0.25, 0.02, 0.03), 0.5))
+	var face := _slot_box(marquee, Vector3(0.58, 0.2, 0.01), Vector3(0, 0, 0.245), _slot_mat(Color(0.6, 0.05, 0.05), 0.5, 1.4))
+	var title := Label3D.new()
+	title.text = "LUCKY DEVIL"
+	title.font_size = 56
+	title.pixel_size = 0.00135
+	title.modulate = Color(1.0, 0.82, 0.3)
+	title.outline_modulate = Color(0.3, 0.02, 0.02)
+	title.outline_size = 10
+	if bungee:
+		title.font = bungee
+	face.add_child(title)
+	title.position = Vector3(0, 0, 0.008)
+	_slot_bulbs = [_slot_mat(Color(1, 0.8, 0.35), 0.4, 3.0), _slot_mat(Color(1, 0.8, 0.35), 0.4, 3.0)]
+	var bulb := SphereMesh.new()
+	bulb.radius = 0.018
+	bulb.height = 0.036
+	bulb.radial_segments = 8
+	bulb.rings = 4
+	for k in 14:
+		var b := MeshInstance3D.new()
+		b.mesh = bulb
+		b.material_override = _slot_bulbs[k % 2]
+		b.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		marquee.add_child(b)
+		var u := k / 13.0
+		b.position = Vector3(lerpf(-0.31, 0.31, u), 0.125 if k % 2 == 0 else -0.125, 0.25)
+	# The lever down the right side.
+	var arm := MeshInstance3D.new()
+	var arm_mesh := CylinderMesh.new()
+	arm_mesh.top_radius = 0.015
+	arm_mesh.bottom_radius = 0.015
+	arm_mesh.height = 0.42
+	arm.mesh = arm_mesh
+	arm.material_override = chrome
+	cab.add_child(arm)
+	arm.position = Vector3(0.37, 1.38, 0.0)
+	arm.rotation_degrees.x = -12.0
+	_slot_box(cab, Vector3(0.06, 0.16, 0.1), Vector3(0.34, 1.18, 0.0), chrome)
+	var knob := MeshInstance3D.new()
+	var knob_mesh := SphereMesh.new()
+	knob_mesh.radius = 0.045
+	knob_mesh.height = 0.09
+	knob.mesh = knob_mesh
+	knob.material_override = _slot_mat(Color(0.85, 0.05, 0.08), 0.25, 0.4)
+	cab.add_child(knob)
+	knob.position = Vector3(0.37, 1.6, 0.045)
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(0.7, 2.0, 0.6)
+	shape.shape = box
+	shape.position = Vector3(0, 1.0, 0)
+	cab.add_child(shape)
+	# Its glow on the floor and the wall -- no shadows, it's only a lamp's worth.
+	var glow := OmniLight3D.new()
+	glow.light_color = Color(1.0, 0.45, 0.25)
+	glow.light_energy = 0.9
+	glow.omni_range = 2.4
+	glow.shadow_enabled = false
+	cab.add_child(glow)
+	glow.position = Vector3(0, 1.6, 0.6)
+	# Every so often it plays its little tune to the room, to nobody.
+	_slot_attract = AudioStreamPlayer3D.new()
+	_slot_attract.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
+	if ResourceLoader.exists("res://assets/sfx/slot_win_small.wav"):
+		_slot_attract.stream = load("res://assets/sfx/slot_win_small.wav")
+	_slot_attract.volume_db = -14.0
+	_slot_attract.unit_size = 2.0
+	_slot_attract.max_distance = 14.0
+	cab.add_child(_slot_attract)
+	_slot_attract.position = Vector3(0, 1.6, 0.2)
+	_slot_attract_in = randf_range(8.0, SLOT_ATTRACT.x)
+	# Walk up to it to play.
+	var zone := Area3D.new()
+	zone.name = "SlotZone"
+	zone.collision_layer = 4
+	zone.collision_mask = 0
+	zone.monitoring = false
+	zone.set_script(InteractableScript)
+	cab.add_child(zone)
+	zone.position = Vector3(0, 0, 0.75)
+	var zshape := CollisionShape3D.new()
+	var zbox := BoxShape3D.new()
+	zbox.size = Vector3(1.0, 1.4, 0.9)
+	zshape.shape = zbox
+	zshape.position = Vector3(0, 0.7, 0)
+	zone.add_child(zshape)
+	zone.interacted.connect(_on_slots)
+
+func _slot_mat(col: Color, rough: float, emit := 0.0, metal := 0.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = col
+	m.roughness = rough
+	m.metallic = metal
+	if emit > 0.0:
+		m.emission_enabled = true
+		m.emission = col
+		m.emission_energy_multiplier = emit
+	return m
+
+func _slot_box(parent: Node3D, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	parent.add_child(mi)
+	mi.position = pos
+	return mi
+
+func _process(delta: float) -> void:
+	super._process(delta)
+	if _slot_bulbs.is_empty():
+		return
+	# Chasing bulbs: the two halves trade places twice a second.
+	var phase := int(Time.get_ticks_msec() / 450) % 2
+	_slot_bulbs[0].emission_energy_multiplier = 3.0 if phase == 0 else 0.3
+	_slot_bulbs[1].emission_energy_multiplier = 0.3 if phase == 0 else 3.0
+	_slot_attract_in -= delta
+	if _slot_attract_in <= 0.0:
+		_slot_attract_in = randf_range(SLOT_ATTRACT.x, SLOT_ATTRACT.y)
+		if _slot_attract.stream and not get_tree().root.get_children().any(func(n): return n is SlotMachine):
+			_slot_attract.play()
+
+func _on_slots(_zone: Area3D, player: Node) -> void:
+	_start_slots(player)
+
+func _start_slots(player: Node) -> CanvasLayer:
+	player.dialogue_active = true
+	var game: CanvasLayer = SlotMachine.new()
+	get_tree().root.add_child(game)
+	game.start()
+	game.tree_exited.connect(func():
+		if is_instance_valid(player):
+			player.dialogue_active = false)
+	return game
 
 func _connect_pool() -> void:
 	var zone := find_child("PoolZone", true, false)

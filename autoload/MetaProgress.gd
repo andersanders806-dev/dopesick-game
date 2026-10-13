@@ -95,6 +95,7 @@ const ACHIEVEMENTS := {
 	"moms_ring": ["Mom's Ring", "End a run with Mom's ring still at home."],
 	"tested": ["Tested", "Test what you bought, and throw the fentanyl away."],
 	"alone": ["Alone", "Lose Mia, Ray and the bed."],
+	"jackpot": ["Seven Seven Seven", "Hit the jackpot on the Dive Bar's slot machine."],
 }
 const HISTORY_KEEP := 20
 ## id -> the run number it came in.

@@ -692,6 +692,8 @@ func _run() -> void:
 	# combination precipitates withdrawal, which is covered separately below.
 	gs.start_run()
 	gs.craving = 10.0
+	# A dose rolls its overdose risk; pin the dice so this checks the relief.
+	seed(20261013)
 	gs.take_drug("heroin")
 	var after_heroin: float = gs.craving
 	var heroin_decay: float = gs.current_craving_decay()
@@ -4066,7 +4068,11 @@ func _smooth_quick_checks(gs: Node) -> void:
 	gfx.set_laptop_mode(true)
 	_check(Engine.max_fps == 30 and gfx.laptop_mode, "  laptop mode: a steady 30")
 	gfx.set_laptop_mode(false)
-	_check(Engine.max_fps == 0, "  ...off again: as fast as it goes")
+	# Mailbox vsync doesn't cap anything: the title screen ran at 515 FPS on
+	# the UHD 620, heating it into throttling. Off, it's held at the screen's
+	# refresh (60 where there's no screen to ask).
+	_check(Engine.max_fps == gfx.fps_cap() and gfx.fps_cap() == 60, "  ...off again: held at the screen's refresh, not flat out (%d)" % Engine.max_fps)
+	_check(gfx.refresh_cap(144.0) == 144 and gfx.refresh_cap(59.94) == 60 and gfx.refresh_cap(-1.0) == 60, "  the cap follows the monitor (144 Hz, 59.94 Hz, unknown)")
 	var menu = load("res://ui/SettingsMenu.gd").new()
 	root.add_child(menu)
 	menu.open()

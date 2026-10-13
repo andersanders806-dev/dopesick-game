@@ -106,6 +106,7 @@ func _ready() -> void:
 	get_tree().node_added.connect(_on_node_added)
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_vsync_mode(VSYNC)
+	Engine.max_fps = fps_cap()
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
 	_apply_viewport()
 	if _migrated:
@@ -186,8 +187,22 @@ func set_first_person(on: bool) -> void:
 
 func set_laptop_mode(on: bool) -> void:
 	laptop_mode = on
-	Engine.max_fps = 30 if on else 0
+	Engine.max_fps = fps_cap()
 	_save_settings()
+
+## Mailbox vsync shows the newest frame but doesn't stop the game drawing
+## more: uncapped, the title screen ran at 515 FPS on the UHD 620 (perf.log),
+## and a GPU kept flat out heats up and throttles -- the stutter comes back
+## mid-walk. So the frame rate is held at the screen's refresh (30 in
+## laptop mode).
+func fps_cap() -> int:
+	if laptop_mode:
+		return 30
+	return refresh_cap(DisplayServer.screen_get_refresh_rate() if DisplayServer.get_name() != "headless" else -1.0)
+
+## 59.94 Hz -> 60; a screen that won't say -> 60.
+static func refresh_cap(hz: float) -> int:
+	return int(round(hz)) if hz > 1.0 else 60
 
 func set_look_sensitivity(v: float) -> void:
 	look_sensitivity = clampf(v, 0.3, 2.5)
@@ -624,7 +639,7 @@ func _load_settings() -> void:
 		first_person = bool(cfg.get_value("controls", "first_person", false))
 		look_sensitivity = clampf(float(cfg.get_value("controls", "look_sensitivity", 1.0)), 0.3, 2.5)
 		laptop_mode = bool(cfg.get_value("graphics", "laptop_mode", false))
-		Engine.max_fps = 30 if laptop_mode else 0
+		Engine.max_fps = fps_cap()
 		invert_look = bool(cfg.get_value("controls", "invert_look", false))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))

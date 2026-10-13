@@ -269,15 +269,22 @@ func _adapt_resolution(delta: float) -> void:
 ## timing (0), the old frame-rate rule.
 const GPU_HIGH_MS := 15.5
 const GPU_LOW_MS := 12.0
+const LEAN_GPU_HIGH_MS := 13.0
+const LEAN_GPU_LOW_MS := 10.0
 var _gpu_acc := 0.0
 
 func next_scale(current: float, fps: float, gpu_ms: float) -> float:
 	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
 	var next := current
+	# Laptop graphics slow down as they warm up (13 -> 20 ms for the same
+	# street view within minutes on the UHD 620), and with plain vsync any
+	# frame over 16.7 ms shows twice: keep real headroom there.
+	var high_ms := LEAN_GPU_HIGH_MS if lean() else GPU_HIGH_MS
+	var low_ms := LEAN_GPU_LOW_MS if lean() else GPU_LOW_MS
 	if gpu_ms > 0.0:
-		if gpu_ms > GPU_HIGH_MS:
+		if gpu_ms > high_ms:
 			next -= 0.05
-		elif gpu_ms < GPU_LOW_MS:
+		elif gpu_ms < low_ms:
 			next += 0.02
 	elif fps < TARGET_FPS - 8.0:
 		next -= 0.05
@@ -346,7 +353,9 @@ func _apply_viewport() -> void:
 	_shadow_filter = RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW if lean() else RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
 	RenderingServer.positional_soft_shadow_filter_set_quality(_shadow_filter)
 	RenderingServer.directional_soft_shadow_filter_set_quality(_shadow_filter)
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 else (Viewport.SCREEN_SPACE_AA_FXAA if lean() else Viewport.SCREEN_SPACE_AA_SMAA)
+	# Low: no screen-space AA at all -- FXAA was 1.3 ms on the street, and the
+	# FSR upscale already softens the edges.
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 or preset == Preset.LOW else (Viewport.SCREEN_SPACE_AA_FXAA if lean() else Viewport.SCREEN_SPACE_AA_SMAA)
 	for n in get_tree().get_nodes_in_group("film_look"):
 		n.visible = high
 	render_scale = SCALE_START[preset]
@@ -430,9 +439,35 @@ func _apply_light(light: Light3D) -> void:
 		return
 	if not light.has_meta("built_shadow"):
 		light.set_meta("built_shadow", light.shadow_enabled)
+		light.set_meta("built_fade", light.distance_fade_enabled)
+		light.set_meta("built_fade_begin", light.distance_fade_begin)
+		light.set_meta("built_fade_length", light.distance_fade_length)
+		if light is OmniLight3D:
+			light.set_meta("built_range", light.omni_range)
 	# Low: no point-light shadows at all. The budget picks which of the
 	# rest are on; until it runs, nothing new is.
 	light.shadow_enabled = light.get_meta("built_shadow") and preset == Preset.PS5
+	# Low: lamps and sign glows fade out past LOW_LIGHT_FADE from the camera.
+	# The street's 20 cost 3.5 ms on a UHD 620; the camera sees ~25 m, and
+	# the far ones only tint the edge of the screen.
+	# And they reach less far: at night the street's 6 lamps and 12 sign
+	# glows were 6 ms, and a light costs what it covers on screen. The signs
+	# glow on their own; their light only needs to touch the wall.
+	if light is OmniLight3D:
+		var k := 1.0
+		if preset == Preset.LOW:
+			k = 0.4 if String(light.name).ends_with("SignGlow") else 0.7
+		light.omni_range = float(light.get_meta("built_range")) * k
+	if preset == Preset.LOW:
+		light.distance_fade_enabled = true
+		light.distance_fade_begin = LOW_LIGHT_FADE
+		light.distance_fade_length = 4.0
+	else:
+		light.distance_fade_enabled = light.get_meta("built_fade")
+		light.distance_fade_begin = light.get_meta("built_fade_begin")
+		light.distance_fade_length = light.get_meta("built_fade_length")
+
+const LOW_LIGHT_FADE := 14.0
 
 ## The sun (the City's "Moon" by day): four cascades out to 100 m cost
 ## 5.8 ms on a UHD 620 for a camera that sees ~30 m. Lean: two out to 35 m
@@ -459,7 +494,9 @@ func _apply_shadow_budget() -> void:
 	if sky:
 		if not sky.has_meta("built_shadow"):
 			sky.set_meta("built_shadow", sky.shadow_enabled)
-		var want: bool = sky.get_meta("built_shadow") and (is_high() or GameState.daylight() > 0.3)
+		# On Low it goes by day too: 2 ms of a laptop GPU that slows as it
+		# warms up.
+		var want: bool = sky.get_meta("built_shadow") and (is_high() or (GameState.daylight() > 0.3 and preset != Preset.LOW))
 		if sky.shadow_enabled != want:
 			sky.shadow_enabled = want
 	var player := get_tree().get_first_node_in_group("player") as Node3D

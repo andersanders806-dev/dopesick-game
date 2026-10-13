@@ -4096,3 +4096,53 @@ func _smooth_quick_checks(gs: Node) -> void:
 	await _frames(2)
 	_check(menu.find_child("LaptopMode", true, false) is CheckButton, "  laptop mode is in Settings")
 	menu.queue_free()
+	await _laptop_street_checks(gs)
+
+## Low on the street, measured on the UHD 620 (dev-tools/gpu_probe.gd): the
+## lamps and sign glows 3.5 ms, the sun's shadow 2, FXAA 1.3 -- and the GPU
+## slows as it warms, 19 -> 24 ms for the same view inside a minute.
+func _laptop_street_checks(gs: Node) -> void:
+	await _section("Smooth: Low on the street leaves the laptop GPU headroom")
+	var gfx := root.get_node("Graphics")
+	var loader := root.get_node("SceneLoader")
+	var saved: int = gfx.preset
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	gfx.set_preset(gfx.Preset.LOW)
+	await _frames(20)
+	var sun := city.get_node("Moon") as DirectionalLight3D
+	_check(not sun.shadow_enabled, "  no sun shadow on Low, even by day")
+	var lamps: Array = city.find_children("*", "Light3D", true, false).filter(func(l): return not l is DirectionalLight3D)
+	_check(not lamps.is_empty() and lamps.all(func(l): return l.distance_fade_enabled and l.distance_fade_begin <= 15.0),
+		"  lamps and sign glows fade out past ~14 m from the camera (%d lights)" % lamps.size())
+	_check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "  no FXAA pass on Low")
+	# At night the 6 lamps and 12 sign glows were 6 ms: light cost goes with
+	# the screen they cover, so on Low they reach less far.
+	var glow := city.get_node("BarSignGlow") as OmniLight3D
+	var lamp := city.get_node("Streetlight1/Light") as OmniLight3D
+	_check(glow.omni_range <= 0.45 * glow.get_meta("built_range") and lamp.omni_range <= 0.75 * lamp.get_meta("built_range"),
+		"  sign glows and lamps reach less far on Low (%.1f, %.1f m)" % [glow.omni_range, lamp.omni_range])
+	# A laptop GPU slows as it warms (13 -> 20 ms in a few minutes): with plain
+	# vsync any frame over 16.7 ms shows twice, so the lean profile keeps
+	# real headroom and steps down at 13 ms, not 15.5.
+	var was_int: bool = gfx._integrated
+	gfx._integrated = true
+	_check(gfx.lean() and gfx.next_scale(0.8, 60.0, 14.0) < 0.8 and is_equal_approx(gfx.next_scale(0.8, 60.0, 11.0), 0.8),
+		"  laptop graphics: resolution comes down from 13 ms, holds at 11")
+	gfx._integrated = was_int
+	gfx.set_preset(gfx.Preset.MEDIUM)
+	await _frames(5)
+	_check(lamps.all(func(l): return not l.distance_fade_enabled or l.get_meta("built_fade", false)), "  ...and Medium gets the far lamps back")
+	_check(is_equal_approx(lamp.omni_range, lamp.get_meta("built_range")), "  ...at their full reach")
+	# Background loads finish on the main thread in bursts (38-83 ms in
+	# perf.log): they wait while you're walking.
+	var p := _player()
+	loader._queue.clear()
+	p.velocity = Vector3(4.0, 0, 0)
+	_check(not loader.may_start(), "  no background load starts while you walk")
+	p.velocity = Vector3.ZERO
+	_check(loader.may_start(), "  ...and they go on once you stop")
+	gfx.set_preset(saved)
+	gs.start_run()

@@ -118,6 +118,10 @@ func _apply_view(on: bool) -> void:
 	_first_person = on
 	for m in model.find_children("*", "GeometryInstance3D", true, false):
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	# First person: drawn every frame from where the body is drawn and the
+	# latest mouse look (_process), not stepped on the physics tick -- the
+	# fix Godot's jitter/stutter guide gives for first-person cameras.
+	$CameraMount.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF if on else Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 	if on:
 		# Look the way you were facing.
 		set_look(_facing_angle + PI, 0.0)
@@ -149,8 +153,7 @@ func wants_mouse_captured() -> bool:
 
 func _update_camera_rig(delta: float) -> void:
 	if _first_person:
-		$CameraMount.global_position = global_position + Vector3(0, EYE_HEIGHT, 0)
-		$CameraMount.rotation = Vector3(_look_pitch, _look_yaw, 0.0)
+		_update_fp_camera()
 		return
 	var target := global_position
 	# Snap after a spawn or a door; ease otherwise.
@@ -160,6 +163,15 @@ func _update_camera_rig(delta: float) -> void:
 	else:
 		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
 	$CameraMount.global_position = _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
+
+func _process(delta: float) -> void:
+	if _first_person:
+		_update_camera_shake(delta)
+		_update_fp_camera()
+
+func _update_fp_camera() -> void:
+	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
+	$CameraMount.rotation = Vector3(_look_pitch, _look_yaw, 0.0)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
@@ -194,9 +206,11 @@ func _physics_process(delta: float) -> void:
 		var zoom := Input.get_axis("look_up", "look_down")
 		if absf(zoom) > 0.0:
 			_user_zoom = clampf(_user_zoom + zoom * PAD_ZOOM_RATE * delta, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
-	# On the physics tick, so interpolation smooths the shake with the rest.
-	_update_camera_shake(delta)
-	_update_camera_rig(delta)
+	# Third person on the physics tick, so interpolation smooths the shake
+	# with the rest; first person every frame (_process).
+	if not _first_person:
+		_update_camera_shake(delta)
+		_update_camera_rig(delta)
 	if dialogue_active:
 		velocity = Vector3.ZERO
 		move_and_slide()

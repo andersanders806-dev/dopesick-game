@@ -787,6 +787,7 @@ func _run() -> void:
 	await _survival_checks(gs)
 	await _crafting_checks(gs)
 	await _camp_checks(gs)
+	await _fight_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1622,6 +1623,95 @@ func _camp_checks(gs: Node) -> void:
 	menu.queue_free()
 	_player().dialogue_active = false
 	sv.enabled = false
+	gs.start_run()
+
+func _fight_checks(gs: Node) -> void:
+	await _section("Muggers and fighting back")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 23 * 60
+	var Fight = load("res://ui/FightGame.gd")
+	# Hand it over.
+	gs.cash = 30
+	var f: CanvasLayer = Fight.new()
+	root.add_child(f)
+	f.start(false)
+	f.choose(1)
+	_check(f.outcome == "paid" and gs.cash == 0 and sv.health == sv.MAX, "  hand it over: the cash goes, you don't get hurt")
+	f._close()
+	# Fight: a dodge at the last moment leaves him open, and that hit counts double.
+	f = Fight.new()
+	root.add_child(f)
+	f.start(false)
+	f.choose(0)
+	_check(f.phase == "fight", "  fight: it's on")
+	f.state = "windup"
+	f.windup_len = 1.0
+	f.t = 0.3
+	f.dodge()
+	_check(f.state == "windup", "  dodging too early does nothing")
+	f.t = 0.85
+	_check(f.in_dodge_window(), "  ...the last moment of the wind-up is the window")
+	f.dodge()
+	_check(f.state == "open", "  ...dodge in it and he's wide open")
+	var hp: float = f.mugger_hp
+	f.punch()
+	_check(is_equal_approx(hp - f.mugger_hp, f.PUNCH * f.OPEN_MULT), "  an open hit counts double (%.0f)" % (hp - f.mugger_hp))
+	# Getting caught by the swing costs health; enough of it and you're down.
+	var h0: float = sv.health
+	f.state = "windup"
+	f.t = 0.0
+	f.windup_len = 0.1
+	f.step(0.2)
+	_check(sv.health < h0 and not sv.bleeding, "  his swing lands: health, no bleeding (%.0f -> %.0f)" % [h0, sv.health])
+	gs.cash = 12
+	f.lost = f.GO_DOWN - 1.0
+	f._take_hit()
+	_check(f.outcome == "lost" and gs.cash == 0 and sv.bleeding, "  go down and he takes everything, and you're bleeding")
+	f._close()
+	# Put him down.
+	sv.reset()
+	f = Fight.new()
+	root.add_child(f)
+	f.start(true)
+	f.choose(0)
+	_check(f.mugger_hp > f.MUGGER_HP, "  a knife: harder to put down")
+	f.mugger_hp = 3.0
+	f.state = "open"
+	f._cooldown = 0.0
+	f.punch()
+	_check(f.outcome == "won", "  put him down and he runs")
+	f._close()
+	# A shiv and the sickness.
+	gs.inventory.append("shiv")
+	f = Fight.new()
+	root.add_child(f)
+	f.start(false)
+	_check(is_equal_approx(f.damage_mult(), f.SHIV_MULT), "  a shiv: %.1fx the damage" % f.damage_mult())
+	var calm: float = f.run_chance()
+	gs.craving = 0.0
+	_check(f.run_chance() < calm and f.dodge_window() < f.DODGE_WINDOW, "  sick: slower legs and a smaller window")
+	f._close()
+	gs.craving = 45.0
+	gs.inventory.erase("shiv")
+	# On the street at night.
+	var city := await _load("res://world/City3D.tscn")
+	var m: Node3D = city.spawn_mugger(false)
+	await _frames(3)
+	_check(city.get_tree().get_nodes_in_group("mugger").size() == 1, "  a mugger comes for you on the block at night")
+	var game: CanvasLayer = m.confront(_player())
+	await _frames(2)
+	_check(_player().dialogue_active and is_instance_valid(game), "  ...and when he reaches you, it's your call")
+	game.choose(1)
+	game._close()
+	await _frames(3)
+	_check(not _player().dialogue_active and not is_instance_valid(m), "  ...and then he's gone and you can walk on")
+	sv.enabled = false
+	city._maybe_mugger()
+	_check(city.get_tree().get_first_node_in_group("mugger") == null, "  (no muggers with the survival layer off)")
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:

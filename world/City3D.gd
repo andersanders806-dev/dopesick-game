@@ -336,8 +336,43 @@ func _update_collector(delta: float) -> void:
 func _on_weather_changed(_raining: bool) -> void:
 	_apply_daylight()
 
-func _on_clock_changed(_minute: int) -> void:
+func _on_clock_changed(minute: int) -> void:
 	_apply_daylight()
+	if minute / 60 != _last_hour:
+		_last_hour = minute / 60
+		_maybe_mugger()
+
+# --- Muggers (npc/Mugger3D.gd, ui/FightGame.gd) ------------------------------
+## After dark, alone on the block: each hour there's a chance somebody
+## decides you're worth following. Part of the survival layer, so off when
+## it is (the smoke tests).
+const MUGGER_HOURS := [21, 4]
+const MUGGER_CHANCE := 0.3
+const MUGGER_KNIFE_CHANCE := 0.35
+const MuggerScript := preload("res://npc/Mugger3D.gd")
+var _last_hour := -1
+
+func _maybe_mugger() -> void:
+	if not Survival.enabled or GameState.wanted or GameState.in_custody:
+		return
+	if not GameState.hours_contain(MUGGER_HOURS, GameState.hour()):
+		return
+	if get_tree().get_first_node_in_group("mugger") != null or randf() >= MUGGER_CHANCE:
+		return
+	spawn_mugger(randf() < MUGGER_KNIFE_CHANCE)
+
+func spawn_mugger(knife := false) -> Node3D:
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var mugger := CollectorScene.instantiate()
+	mugger.set_script(MuggerScript)
+	mugger.knife = knife
+	mugger.name = "Mugger"
+	add_child(mugger)
+	var px: float = player.global_position.x if player else 0.0
+	var x := px + (16.0 if px < 0.0 else -16.0)
+	mugger.global_position = Vector3(clampf(x, -26.0, 26.0), 0.0, -2.6)
+	mugger.reset_physics_interpolation()
+	return mugger
 
 ## Blends the scene between its baked night look and daylight as the clock
 ## moves through dawn and dusk.

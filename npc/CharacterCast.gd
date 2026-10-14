@@ -54,6 +54,8 @@ const CAST := {
 	"security_guard": {"model": DIR + "Security_Male_01.glb", "look": {}},
 	# The smoker outside the liquor store, on a break that runs long.
 	"smoker": {"model": DIR + "Construction_Male_08.glb", "look": {}},
+	# Whoever comes at you on the block after dark (npc/Mugger3D.gd).
+	"mugger": {"model": DIR + "Male_Adult_02.glb", "look": {}},
 }
 
 ## Dive Bar regulars. Keyed by the same names as NPC3D.PATRON_PROFILES and

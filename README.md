@@ -565,6 +565,25 @@ the dark end of the block. Get caught and you wake up in a jail cell.
   by the apartment door (`world/VendingMachine3D.gd`: chips, a sandwich,
   hot coffee, bandages). There's no Continue on the title: every start is
   a fresh run.
+- **Survival days** (`autoload/Headlines.gd`): a cold snap (the cold bites
+  outside even by day, double at night), food bank day (the shelter serves
+  7-20 with bigger plates), a police sweep (no backyard mattress, the
+  shelter's cots full).
+- **Scavenging and crafting** (`autoload/Crafting.gd`, after Project
+  Zomboid / The Long Dark): search the block's trash bags and parked cars
+  once a day each for rags, scrap and duct tape (sometimes food, change,
+  or a car alarm). C crafts a rag bandage (stops bleeding), a bedroll
+  (the cold bites less, carried or slept in) and a shiv. Scavenged things
+  aren't stolen goods.
+- **Your camp** (`autoload/Camp.gd`, in the backyard lot): a fire barrel
+  (lit with a rag, 4 h of heat), a lean-to over the mattress (far warmer
+  nights, half the robbery chance) and a stash box (what's in it isn't on
+  you).
+- **Muggers and fighting back** (`npc/Mugger3D.gd`, `ui/FightGame.gd`):
+  21:00-04:00 somebody may follow you on the block. Fight, hand it over or
+  run. Dodge his swing in the last moment of the wind-up and he's open for
+  double damage; a knife cut bleeds; a shiv hits 2.4x; withdrawal shrinks
+  the window. Lose and he robs you and leaves you bleeding.
 - **Slot machine.** The Lucky Devil stands against the Dive Bar's east
   wall (`ui/SlotMachine.gd`, cabinet built in `world/DiveBar3D.gd`): three
   reels, one payline, $1/$2/$5 a pull. Drag the red knob down or press

@@ -248,6 +248,18 @@ func _on_node_added(node: Node) -> void:
 		_apply_env.call_deferred(node)
 	elif node is Light3D:
 		_apply_light.call_deferred(node)
+	elif node is BaseButton:
+		_add_button_sounds(node)
+
+## Every button in every menu answers back: a soft tick as focus moves onto
+## it, a firmer one when it's pressed.
+func _add_button_sounds(b: BaseButton) -> void:
+	if b.has_meta("ui_sounds"):
+		return
+	b.set_meta("ui_sounds", true)
+	b.focus_entered.connect(func(): if b.is_visible_in_tree(): SFX.play("blip", -22.0, 1.5))
+	b.mouse_entered.connect(func(): if not b.disabled: b.grab_focus())
+	b.pressed.connect(func(): SFX.play("blip", -12.0, 1.05))
 
 ## Half-second averages: a slow frame rate lowers the render scale a step,
 ## a comfortable one raises it again, slower, so it doesn't pump.

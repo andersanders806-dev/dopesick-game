@@ -181,6 +181,25 @@ func _build_survival() -> void:
 	Survival.changed.connect(_update_survival)
 	_update_survival()
 
+func _on_hurt(amount: float) -> void:
+	if _hurt_flash == null:
+		_hurt_flash = ColorRect.new()
+		_hurt_flash.name = "HurtFlash"
+		_hurt_flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_hurt_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hurt_flash.color = Color(0.7, 0.0, 0.0, 0.0)
+		add_child(_hurt_flash)
+	_hurt_flash.color.a = clampf(amount / 40.0, 0.15, 0.45)
+	_hurt_flash.create_tween().tween_property(_hurt_flash, "color:a", 0.0, 0.5)
+	var player := get_tree().get_first_node_in_group("player")
+	if player and player.has_method("kick"):
+		player.kick(clampf(amount / 15.0, 0.4, 1.5))
+	var base := survival_panel.position
+	var tw := survival_panel.create_tween()
+	for i in 4:
+		tw.tween_property(survival_panel, "position", base + Vector2(randf_range(-4, 4), randf_range(-2, 2)), 0.04)
+	tw.tween_property(survival_panel, "position", base, 0.04)
+
 func _small_label(parent: Control, text: String, at: Vector2) -> void:
 	var l := Label.new()
 	l.text = text
@@ -208,9 +227,16 @@ func _bar(parent: Control, at: Vector2, w: float, h: float) -> ColorRect:
 	parent.add_child(fill)
 	return fill
 
+var _last_health := -1.0
+var _hurt_flash: ColorRect
+
 func _update_survival() -> void:
 	if health_fill == null:
 		return
+	# A real hit, not the slow drain: red flash, a jolt, the bar shakes.
+	if _last_health >= 0.0 and _last_health - Survival.health >= 3.0:
+		_on_hurt(_last_health - Survival.health)
+	_last_health = Survival.health
 	var hp := Survival.health / Survival.MAX
 	health_fill.size.x = float(health_fill.get_meta("full")) * hp
 	health_fill.color = Color(0.8, 0.15, 0.15) if hp < 0.3 else Color(0.75, 0.25, 0.22).lerp(Color(0.45, 0.7, 0.35), hp)
@@ -426,8 +452,33 @@ func _update_clock() -> void:
 	clock_label.text = GameState.clock_text()
 	clock_label.add_theme_color_override("font_color", CLOCK_NIGHT_COLOR.lerp(CLOCK_DAY_COLOR, GameState.daylight()))
 
+var _last_cash := -1
+
 func _update_cash(cash: int) -> void:
 	cash_label.text = "$%d" % cash
+	if _last_cash >= 0 and cash != _last_cash and is_inside_tree():
+		_cash_pop(cash - _last_cash)
+	_last_cash = cash
+
+## "+$5" in green or "-$5" in red, floating up off the cash, and the cash
+## itself giving a little bump.
+func _cash_pop(delta: int) -> void:
+	var l := Label.new()
+	l.text = ("+$%d" if delta > 0 else "-$%d") % absi(delta)
+	l.add_theme_font_size_override("font_size", 16)
+	l.add_theme_color_override("font_color", Color(0.5, 0.95, 0.5) if delta > 0 else Color(1.0, 0.45, 0.4))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.add_theme_constant_override("outline_size", 4)
+	l.position = Vector2(cash_label.position.x + 60.0, cash_label.position.y + 4.0)
+	$TopBar.add_child(l)
+	var tw := l.create_tween().set_parallel()
+	tw.tween_property(l, "position:y", l.position.y - 26.0, 0.9).set_ease(Tween.EASE_OUT)
+	tw.tween_property(l, "modulate:a", 0.0, 0.9).set_delay(0.3)
+	tw.chain().tween_callback(l.queue_free)
+	cash_label.pivot_offset = cash_label.size * 0.5
+	var bump := cash_label.create_tween()
+	bump.tween_property(cash_label, "scale", Vector2.ONE * 1.2, 0.08)
+	bump.tween_property(cash_label, "scale", Vector2.ONE, 0.18)
 
 func _update_craving(craving: float) -> void:
 	var frac: float = craving / 100.0
@@ -454,6 +505,8 @@ func _set_post_fx(sick: float) -> void:
 		mat.shader = want
 	mat.set_shader_parameter("sickness", sick)
 
+var _last_inv := 0
+
 func _update_inventory() -> void:
 	for child in inventory_icons.get_children():
 		inventory_icons.remove_child(child)
@@ -461,6 +514,7 @@ func _update_inventory() -> void:
 	if GameState.inventory.is_empty():
 		inventory_label.text = "Carrying: nothing"
 		_layout_carry_panel(0)
+		_last_inv = 0
 		return
 	inventory_label.text = "Carrying:"
 	var icon_count := 0
@@ -481,6 +535,17 @@ func _update_inventory() -> void:
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		inventory_icons.add_child(icon)
 	_layout_carry_panel(icon_count)
+	# Something new in your pockets pops in.
+	if GameState.inventory.size() > _last_inv and inventory_icons.get_child_count() > 0:
+		# (A container resets its children's scale, so the newest flashes
+		# bright and the whole row bumps.)
+		var newest := inventory_icons.get_child(inventory_icons.get_child_count() - 1) as Control
+		newest.modulate = Color(2.2, 2.0, 1.2)
+		newest.create_tween().tween_property(newest, "modulate", Color.WHITE, 0.45)
+		inventory_icons.pivot_offset = Vector2(inventory_icons.size.x, inventory_icons.size.y * 0.5)
+		inventory_icons.scale = Vector2.ONE * 1.15
+		inventory_icons.create_tween().tween_property(inventory_icons, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_last_inv = GameState.inventory.size()
 
 func _layout_carry_panel(icon_count: int) -> void:
 	var label_w := inventory_label.get_minimum_size().x

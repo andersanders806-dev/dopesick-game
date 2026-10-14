@@ -790,6 +790,7 @@ func _run() -> void:
 	await _camp_checks(gs)
 	await _fight_checks(gs)
 	await _objective_checks(gs)
+	await _juice_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1751,6 +1752,50 @@ func _objective_checks(gs: Node) -> void:
 		hud._hint_t = 0.0
 		hud._tick_objective(0.01)
 	_check(meta.hints_seen.size() == Obj.FIRST_STEPS.size(), "  ...all %d of them" % Obj.FIRST_STEPS.size())
+	sv.enabled = false
+	gs.start_run()
+
+func _juice_checks(gs: Node) -> void:
+	await _section("Game feel: everything answers back")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 12 * 60
+	await _load("res://world/City3D.tscn")
+	var hud := get_first_node_in_group("hud")
+	var b := Button.new()
+	root.add_child(b)
+	await _frames(1)
+	_check(b.has_meta("ui_sounds"), "  every button gets a focus tick and a press sound")
+	b.queue_free()
+	gs.cash += 7
+	gs.cash_changed.emit(gs.cash)
+	await _frames(1)
+	_check(hud.get_node("TopBar").get_children().any(func(n): return n is Label and n.text == "+$7"), "  money in: '+$7' floats off the cash")
+	gs.inventory.append("rags")
+	gs.inventory_changed.emit()
+	await _frames(1)
+	var icons: Node = hud.inventory_icons
+	_check(icons.get_child_count() > 0 and (icons.get_child(icons.get_child_count() - 1) as Control).modulate.r > 1.0, "  something new in your pockets pops in")
+	sv.hurt(20.0, false)
+	await _frames(1)
+	var flash: ColorRect = hud.get_node_or_null("HurtFlash")
+	_check(flash != null and flash.color.a > 0.1 and _player()._kick > 0.0, "  a hit: red flash and the view jolts")
+	var Fight = load("res://ui/FightGame.gd")
+	var f: CanvasLayer = Fight.new()
+	root.add_child(f)
+	f.start(false)
+	f.choose(0)
+	f.state = "open"
+	f.punch()
+	_check(Engine.time_scale < 1.0 and f._shake > 0.0, "  a punch that lands: hit-stop and shake")
+	var t0 := Time.get_ticks_msec()
+	while Engine.time_scale < 1.0 and Time.get_ticks_msec() - t0 < 1000:
+		await process_frame
+	_check(is_equal_approx(Engine.time_scale, 1.0), "  ...and time comes back")
+	f._close()
 	sv.enabled = false
 	gs.start_run()
 

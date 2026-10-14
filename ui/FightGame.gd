@@ -41,6 +41,8 @@ var _cooldown := 0.0
 var _punch_anim := 0.0
 var _hit_flash := 0.0
 var _dodge_anim := 0.0
+## Screen shake after a hit, either way; dies away fast.
+var _shake := 0.0
 var _hud: CanvasLayer
 var _canvas: Control
 var _choice: int = 0
@@ -69,6 +71,7 @@ func start(with_knife := false) -> void:
 
 func _exit_tree() -> void:
 	GameState.set_process(true)
+	Engine.time_scale = 1.0
 
 func damage_mult() -> float:
 	return (SHIV_MULT if Crafting.has_shiv() else 1.0) * lerpf(1.0, 0.6, GameState.sickness())
@@ -116,6 +119,8 @@ func _process(delta: float) -> void:
 	_punch_anim = maxf(0.0, _punch_anim - delta * 4.0)
 	_hit_flash = maxf(0.0, _hit_flash - delta * 3.0)
 	_dodge_anim = maxf(0.0, _dodge_anim - delta * 3.0)
+	_shake = maxf(0.0, _shake - delta * 5.0)
+	_canvas.position = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * 14.0 * _shake
 	if phase == "fight":
 		step(delta)
 	_canvas.queue_redraw()
@@ -169,6 +174,7 @@ func punch() -> void:
 		return
 	mugger_hp -= dmg
 	SFX.play("punch", -4.0, randf_range(0.95, 1.1))
+	_impact(0.6 if state != "open" else 1.0)
 	if mugger_hp <= 0.0:
 		var dropped := randi_range(0, 6)
 		if dropped > 0:
@@ -182,6 +188,7 @@ func _take_hit() -> void:
 	lost += dmg
 	_hit_flash = 1.0
 	SFX.play("punch", -2.0, 0.85)
+	_impact(1.0)
 	Survival.hurt(dmg, knife)
 	message = "The blade catches your arm." if knife else "He catches you on the jaw."
 	if Survival.dead:
@@ -193,6 +200,15 @@ func _take_hit() -> void:
 		Survival.hurt(0.0, true)
 		GameState.log_event("Got beaten and robbed on the block.")
 		_end("lost", "You're on the pavement and he's going through your pockets. $%d, gone. You're bleeding." % cash)
+
+## Hit-stop and shake: the world freezes for a beat on contact, the way
+## fighting games sell a hit.
+func _impact(strength: float) -> void:
+	_shake = maxf(_shake, strength)
+	if not is_inside_tree():
+		return
+	Engine.time_scale = 0.05
+	get_tree().create_timer(0.07 * strength, true, false, true).timeout.connect(func(): Engine.time_scale = 1.0)
 
 func _end(result: String, text: String) -> void:
 	if phase == "over":

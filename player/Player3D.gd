@@ -94,6 +94,8 @@ var _look_pitch: float = 0.0
 var _tp_camera_base: Transform3D
 var _tp_fov: float
 var _shake_t: float = 0.0
+## A jolt that dies away fast: a punch, a fall, a knife (kick()).
+var _kick: float = 0.0
 var _cramp_timer: float = 0.0
 
 func _ready() -> void:
@@ -175,10 +177,17 @@ func _update_fp_camera() -> void:
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
+## Jolts the view (HUD calls it when you take a hit).
+func kick(strength := 1.0) -> void:
+	_kick = maxf(_kick, strength)
+
 func _update_camera_shake(delta: float) -> void:
 	var s := GameState.sickness()
 	_shake_t += delta
 	var offset := Vector3(sin(_shake_t * 1.7) + 0.5 * sin(_shake_t * 5.3), cos(_shake_t * 1.3) * 0.6, 0.0) * SHAKE_OFFSET * s
+	if _kick > 0.0:
+		offset += Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * 0.12 * _kick
+		_kick = maxf(0.0, _kick - delta * 4.0)
 	var roll := deg_to_rad(sin(_shake_t * 0.8) * SHAKE_ROLL_DEG * s)
 	camera.transform = _camera_base.translated_local(offset).rotated_local(Vector3.FORWARD, roll)
 

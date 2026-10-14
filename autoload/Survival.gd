@@ -101,7 +101,11 @@ func tick(minutes: float, is_outside := outside()) -> void:
 	var h := minutes / 60.0
 	hunger = maxf(0.0, hunger - HUNGER_PER_H * h)
 	rest = maxf(0.0, rest - REST_PER_H * h)
-	if is_outside:
+	var camp := get_node_or_null("/root/Camp")
+	if is_outside and camp and camp.here() and camp.fire_lit():
+		# Standing at your own fire barrel.
+		warmth = minf(MAX, warmth + camp.FIRE_WARM_PER_H * h)
+	elif is_outside:
 		var hl := get_node_or_null("/root/Headlines")
 		var cold := (COLD_NIGHT_PER_H if night() else 0.0) + (COLD_RAIN_PER_H if GameState.raining else 0.0)
 		if hl:
@@ -199,6 +203,9 @@ func on_sleep(slept_minutes: float, is_outside := outside()) -> void:
 	if is_outside:
 		var cr := get_node_or_null("/root/Crafting")
 		var roll: float = cr.BEDROLL_SLEEP if cr and cr.has_bedroll() else 1.0
+		var camp := get_node_or_null("/root/Camp")
+		if camp and camp.here() and camp.has("leanto"):
+			roll *= camp.LEANTO_SLEEP
 		warmth = maxf(0.0, warmth - COLD_NIGHT_PER_H * 0.5 * (COAT_FACTOR if wearing_coat() else 1.0) * roll * h)
 	else:
 		warmth = MAX

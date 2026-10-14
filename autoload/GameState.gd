@@ -439,6 +439,9 @@ func start_run() -> void:
 	var sv := get_node_or_null("/root/Survival")
 	if sv:
 		sv.reset()
+	var camp := get_node_or_null("/root/Camp")
+	if camp:
+		camp.reset()
 
 func max_strikes() -> int:
 	return STRIKES_PER_RUN + MetaProgress.extra_strikes()

@@ -786,6 +786,7 @@ func _run() -> void:
 	await _slot_checks(gs)
 	await _survival_checks(gs)
 	await _crafting_checks(gs)
+	await _camp_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1571,6 +1572,53 @@ func _crafting_checks(gs: Node) -> void:
 	var menu: CanvasLayer = _player().open_craft_menu()
 	await _frames(2)
 	_check(is_instance_valid(menu) and menu.visible, "  C opens what you can make")
+	menu.queue_free()
+	_player().dialogue_active = false
+	sv.enabled = false
+	gs.start_run()
+
+func _camp_checks(gs: Node) -> void:
+	await _section("Your camp out back: fire barrel, lean-to, stash")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	var camp := root.get_node("Camp")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 23 * 60
+	_check(camp.built.is_empty() and camp.stash.is_empty(), "  a new run starts with no camp")
+	var yard := await _load("res://world/Backyard3D.tscn")
+	_check(yard.get_node_or_null("CampZone") != null, "  a corner of the lot to make yours")
+	_check(not camp.build(0), "  nothing to build it with, nothing built")
+	gs.inventory.append_array(["scrap", "scrap", "scrap", "scrap", "scrap", "rags", "rags", "rags", "rags", "rags", "tape", "tape"])
+	_check(camp.build(0) and camp.has("fire") and gs.inventory.count("scrap") == 3, "  a fire barrel from 2 scrap")
+	await _frames(2)
+	_check(yard.find_child("FireBarrel", true, false) != null, "  ...and there it is")
+	_check(camp.light_fire() and camp.fire_lit() and gs.inventory.count("rags") == 4, "  a rag lights it")
+	gs.belongings["coat"] = "pawned"
+	sv.warmth = 30.0
+	sv.tick(60.0, true)
+	_check(sv.warmth > 30.0, "  at your fire on a night outside, you warm up (%.0f)" % sv.warmth)
+	gs.belongings["coat"] = "home"
+	_check(camp.build(1) and camp.has("leanto"), "  a lean-to over the mattress")
+	_check(camp.build(2) and camp.has("stash"), "  a stash box")
+	gs.inventory.clear()
+	gs.inventory.append("watch")
+	_check(camp.put("watch") and not gs.inventory.has("watch") and camp.stash.has("watch"), "  what's in the stash isn't on you")
+	_check(not gs.carrying_stolen(), "  ...so the cops can't find it on you")
+	_check(camp.take("watch") and gs.inventory.has("watch"), "  and you can take it back")
+	# Sleeping under the lean-to keeps the cold off.
+	gs.clock = 23 * 60
+	sv.warmth = 80.0
+	sv.on_sleep(540.0, true)
+	var under: float = 80.0 - sv.warmth
+	camp.built.erase("leanto")
+	sv.warmth = 80.0
+	sv.on_sleep(540.0, true)
+	_check(under < (80.0 - sv.warmth) * 0.5, "  a night under the lean-to is far warmer (-%.0f vs -%.0f)" % [under, 80.0 - sv.warmth])
+	var menu: CanvasLayer = yard.open_camp_menu(_player())
+	await _frames(2)
+	_check(is_instance_valid(menu), "  the camp has a menu")
 	menu.queue_free()
 	_player().dialogue_active = false
 	sv.enabled = false

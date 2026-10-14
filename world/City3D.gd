@@ -52,6 +52,33 @@ var _night_lights: Array = []
 var _street_lamp_heads: Array[MeshInstance3D] = []
 
 const VendingScript := preload("res://world/VendingMachine3D.gd")
+const MailboxScript := preload("res://world/Mailbox3D.gd")
+const PostmanScript := preload("res://npc/Postman3D.gd")
+## Your mailbox, just east of the apartment door.
+const MAILBOX_POS := Vector3(-16.1, 0.0, -3.7)
+## He sets off this long before the package is due.
+const POSTMAN_LEAD := 20.0
+
+## A Silk Lane order coming today: the postman walks it to your mailbox
+## while you're out here; whenever it's due, it's posted, seen or not.
+func _check_post() -> void:
+	var p: Dictionary = GameState.parcel
+	if p.is_empty() or not p.has("arrive_at") or p.get("posted", false) or p.get("fate", "") != "ok":
+		return
+	var now := GameState.now_minutes()
+	var due := float(p["arrive_at"])
+	if now >= due:
+		p["posted"] = true
+		return
+	if now >= due - POSTMAN_LEAD and get_tree().get_first_node_in_group("postman") == null:
+		var man := CollectorScene.instantiate()
+		man.set_script(PostmanScript)
+		man.name = "Postman"
+		man.target = MAILBOX_POS + Vector3(0, 0, 0.7)
+		man.exit = Vector3(26.0, 0.0, -2.6)
+		add_child(man)
+		man.global_position = Vector3(-26.0, 0.0, -2.6)
+		man.reset_physics_interpolation()
 
 ## The block's trash bags and parked cars can be searched once a day each
 ## (autoload/Crafting.gd): rags, scrap, tape, a little food or change.
@@ -97,8 +124,13 @@ func _ready() -> void:
 	vending.set_script(VendingScript)
 	add_child(vending)
 	vending.position = VENDING_POS
+	var mailbox := StaticBody3D.new()
+	mailbox.set_script(MailboxScript)
+	add_child(mailbox)
+	mailbox.position = MAILBOX_POS
 	super._ready()
 	_add_scavenge_spots()
+	_check_post()
 	# The Environment is a sub-resource of the cached PackedScene; blending a
 	# shared copy would leak today's daylight into the next visit's "night"
 	# baseline.
@@ -338,6 +370,7 @@ func _on_weather_changed(_raining: bool) -> void:
 
 func _on_clock_changed(minute: int) -> void:
 	_apply_daylight()
+	_check_post()
 	if minute / 60 != _last_hour:
 		_last_hour = minute / 60
 		_maybe_mugger()

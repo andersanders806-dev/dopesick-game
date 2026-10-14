@@ -56,6 +56,8 @@ const CAST := {
 	"smoker": {"model": DIR + "Construction_Male_08.glb", "look": {}},
 	# Whoever comes at you on the block after dark (npc/Mugger3D.gd).
 	"mugger": {"model": DIR + "Male_Adult_02.glb", "look": {}},
+	# Your Silk Lane orders, to the mailbox by your door (npc/Postman3D.gd).
+	"postman": {"model": DIR + "Male_Adult_01.glb", "look": {}},
 }
 
 ## Dive Bar regulars. Keyed by the same names as NPC3D.PATRON_PROFILES and

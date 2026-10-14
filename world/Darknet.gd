@@ -7,7 +7,10 @@ extends RefCounted
 ##
 ## The order lives in GameState.parcel (saved with the run):
 ##   {"asked": id, "drug": what's really in it, "contaminated": bool,
-##    "day": the morning it arrives, "fate": "ok" | "scam" | "seized"}
+##    "arrive_at": the game minute it lands, "fate": "ok" | "scam" | "seized",
+##    "posted": the postman's been}
+## It always lands within MAX_WAIT_HOURS, in the postman's hours, in the
+## mailbox by your door on the block (world/Mailbox3D.gd, npc/Postman3D.gd).
 ## Everything is settled when you order; the hourly clock and the apartment
 ## only play it out.
 
@@ -23,6 +26,10 @@ const FAKE_MULT := 0.5
 const SCAM_CHANCE := 0.10
 const SEIZE_CHANCE := 0.05
 const ARRIVAL_HOUR := 9
+const MAX_WAIT_HOURS := 24.0
+const MIN_WAIT_HOURS := 3.0
+## The postman's round.
+const POST_HOURS := [8, 20]
 ## What's listed: no naloxone or strips on the street's terms, but a
 ## harm-reduction vendor sells strips by the five.
 const LISTED := ["heroin", "oxy", "fentanyl", "clonazepam", "alprazolam", "bupe", "meth"]
@@ -51,13 +58,35 @@ static func order(id: String, fate := "") -> bool:
 	if fate == "":
 		var r := randf()
 		fate = "scam" if r < SCAM_CHANCE else ("seized" if r < SCAM_CHANCE + SEIZE_CHANCE else "ok")
-	GameState.parcel = {"asked": id, "drug": got, "contaminated": dirty, "day": GameState.day + 1, "fate": fate}
+	GameState.parcel = {"asked": id, "drug": got, "contaminated": dirty, "arrive_at": pick_arrival(GameState.now_minutes()), "fate": fate, "posted": false}
 	GameState.log_event("Ordered %s off Silk Lane for $%d." % [name_for(id), price(id)])
 	return true
 
 static func arrived() -> bool:
 	var p: Dictionary = GameState.parcel
-	return not p.is_empty() and (GameState.day > p["day"] or (GameState.day == p["day"] and GameState.hour() >= ARRIVAL_HOUR))
+	if p.is_empty():
+		return false
+	if p.has("arrive_at"):
+		return GameState.now_minutes() >= float(p["arrive_at"])
+	# A run saved before deliveries were timed: the next morning, as it was.
+	return GameState.day > p["day"] or (GameState.day == p["day"] and GameState.hour() >= ARRIVAL_HOUR)
+
+## A random minute between MIN_WAIT_HOURS and MAX_WAIT_HOURS from `now`
+## that falls in the postman's round.
+static func pick_arrival(now: float) -> float:
+	var slots := []
+	var m := now + MIN_WAIT_HOURS * 60.0
+	while m <= now + MAX_WAIT_HOURS * 60.0:
+		var h := int(fposmod(m, 1440.0) / 60.0)
+		if h >= POST_HOURS[0] and h < POST_HOURS[1]:
+			slots.append(m)
+		m += 10.0
+	return slots.pick_random() if not slots.is_empty() else now + MAX_WAIT_HOURS * 60.0
+
+## Hours until it lands, for the laptop.
+static func hours_left() -> float:
+	var p: Dictionary = GameState.parcel
+	return maxf(0.0, (float(p.get("arrive_at", GameState.now_minutes())) - GameState.now_minutes()) / 60.0)
 
 ## Hourly (GameState): a seized package means a warrant as soon as it would
 ## have arrived, home or not.
@@ -167,8 +196,8 @@ static func laptop_text() -> String:
 		GameState.log_event("The Silk Lane vendor took the money and disappeared.")
 		return "Your order page is a 404. The vendor's gone -- shop, reviews, all of it -- and your $%d with them." % price(p["asked"])
 	if arrived():
-		return "Tracking says delivered. Check inside the door."
-	return "Order status: shipped. Plain envelope, no return address. Arrives tomorrow morning."
+		return "Tracking says delivered. It's in your mailbox downstairs, by the door."
+	return "Order status: shipped. Plain envelope, no return address. Out for delivery in about %d hours -- the postman leaves it in your mailbox on the block." % maxi(1, roundi(hours_left()))
 
 ## The laptop and, when it's come, the package -- added to the apartment at
 ## load, so the room's scene doesn't change.
@@ -202,9 +231,11 @@ static func furnish(room: Node3D) -> void:
 	laptop.interacted.connect(func(_z, player): open_laptop(player))
 	refresh_package(room)
 
+## Deliveries go to the mailbox on the block now (world/Mailbox3D.gd); this
+## only clears a box a run saved before that left inside the door.
 static func refresh_package(room: Node3D) -> void:
 	var old := room.get_node_or_null("Package")
-	var want: bool = arrived() and GameState.parcel.get("fate", "") == "ok"
+	var want := false
 	if old and not want:
 		old.queue_free()
 	if want and old == null:
@@ -252,7 +283,7 @@ static func open_laptop(player: Node) -> void:
 		if GameState.cash < price(id):
 			disabled.append(i)
 	options.append("Your vendor page (sell your own)")
-	var text := (status + "\n\n" if status != "" else "") + "The neighbour's wifi, a browser that takes a minute to load anything. Prices in coin, shown in dollars. Pay now, it comes tomorrow morning. You have $%d." % GameState.cash
+	var text := (status + "\n\n" if status != "" else "") + "The neighbour's wifi, a browser that takes a minute to load anything. Prices in coin, shown in dollars. Pay now, it lands in your mailbox within a day. You have $%d." % GameState.cash
 	player.dialogue_active = true
 	var menu: CanvasLayer = ChoiceMenu.new()
 	player.get_tree().root.add_child(menu)
@@ -287,7 +318,7 @@ static func _confirm(player: Node, id: String) -> void:
 		else:
 			_done(player))
 	menu.cancelled.connect(func(): _done(player))
-	menu.open(SITE, "%s from a vendor with 4.%d stars. $%d, paid now. Plain envelope, arrives tomorrow morning -- probably." % [name_for(id), randi_range(3, 9), price(id)], ["Pay and order", "Back"])
+	menu.open(SITE, "%s from a vendor with 4.%d stars. $%d, paid now. Plain envelope, in your mailbox within 24 hours -- probably." % [name_for(id), randi_range(3, 9), price(id)], ["Pay and order", "Back"])
 
 ## Opening it: the drug goes in, the strips go in your pocket. `ask` false
 ## skips the test-strip question (the smoke test). Returns take_drug's

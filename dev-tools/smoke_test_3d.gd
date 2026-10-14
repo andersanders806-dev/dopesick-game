@@ -3833,28 +3833,35 @@ func _darknet_checks(gs: Node) -> void:
 	_check(price < street, "  cheaper than the corner ($%d vs $%d)" % [price, street])
 	gs.cash = 100
 	_check(Darknet.order("heroin", "ok"), "  ordering works")
-	_check(gs.cash == 100 - price and not gs.parcel.is_empty() and gs.parcel["day"] == gs.day + 1, "  paid, and it ships for tomorrow")
+	var due: float = float(gs.parcel["arrive_at"]) - gs.now_minutes()
+	var due_hour: int = int(fposmod(float(gs.parcel["arrive_at"]), 1440.0) / 60.0)
+	_check(gs.cash == 100 - price and due > 0.0 and due <= 24 * 60 and due_hour >= 8 and due_hour < 20,
+		"  paid, and it lands within 24 hours, in the postman's hours (%.1f h, at %02d:00)" % [due / 60.0, due_hour])
 	_check(not Darknet.order("heroin", "ok"), "  one order at a time")
-	_check(home.get_node_or_null("Package") == null, "  nothing on the mat today")
-	# Next morning.
-	gs.day += 1
-	gs.clock = 10 * 60
-	home = await _load("res://world/Apartment3D.tscn")
-	var box: Node = home.get_node_or_null("Package")
-	_check(box != null and load("res://ui/Prompts.gd").text_for(box) == "Open the package", "  next morning there's a package inside the door")
+	_check(home.get_node_or_null("Package") == null, "  nothing comes inside the flat any more")
+	var city := await _load("res://world/City3D.tscn")
+	var mailbox: Node = city.get_node_or_null("Mailbox")
+	_check(mailbox != null and load("res://ui/Prompts.gd").text_for(mailbox.get_node("MailboxZone")) == "Check the mailbox", "  a mailbox by your door on the block")
+	_check(not mailbox.has_mail(), "  ...empty until it comes")
+	# The postman, when it's due and you're out on the block.
+	_set_minutes(gs, float(gs.parcel["arrive_at"]) - 10.0)
+	city._check_post()
+	_check(city.get_tree().get_first_node_in_group("postman") != null, "  the postman comes down the block when it's due")
+	_set_minutes(gs, float(gs.parcel["arrive_at"]) + 5.0)
+	city._check_post()
+	await _frames(2)
+	_check(mailbox.has_mail(), "  ...and then it's in the mailbox, flag up")
 	gs.craving = 10.0
-	var outcome: String = Darknet.open_package(box, false)
+	var outcome: String = Darknet.open_package(null, false)
+	mailbox.refresh()
 	_check(gs.parcel.is_empty() and outcome in ["relief", "precipitated", "overdose", "saved"] and gs.craving > 10.0 or outcome != "relief",
 		"  opening it, you take what came (%s, craving %.0f)" % [outcome, gs.craving])
-	await _frames(2)
-	_check(home.get_node_or_null("Package") == null or home.get_node("Package").is_queued_for_deletion(), "  ...and the box is gone")
+	_check(not mailbox.has_mail(), "  ...and the mailbox is empty again")
+	home = await _load("res://world/Apartment3D.tscn")
 	# The vendor who took the money and ran.
 	gs.cash = 100
 	Darknet.order("oxy", "scam")
-	gs.day += 1
-	gs.clock = 9 * 60 + 59
-	gs._last_minute = 9 * 60 + 59
-	gs.clock = 10 * 60
+	_set_minutes(gs, float(gs.parcel["arrive_at"]) + 61.0)
 	gs._emit_clock()
 	home = await _load("res://world/Apartment3D.tscn")
 	_check(home.get_node_or_null("Package") == null and gs.parcel.get("fate", "") == "scam", "  an exit scam: no package")
@@ -3862,12 +3869,19 @@ func _darknet_checks(gs: Node) -> void:
 	# Opened at the post office.
 	gs.warrant = false
 	Darknet.order("meth", "seized")
-	gs.day += 1
-	gs._last_minute = 9 * 60 + 30
-	gs.clock = 10 * 60
+	_set_minutes(gs, float(gs.parcel["arrive_at"]) - 61.0)
+	var land: float = float(gs.parcel["arrive_at"]) + 1.0
+	gs.day = int(land / 1440.0) + 1
+	gs.clock = fposmod(land, 1440.0)
 	gs._emit_clock()
 	_check(gs.warrant and gs.parcel.is_empty(), "  a package seized in the post: there's a warrant out")
 	gs.warrant = false
+
+## Puts the clock at an absolute game minute (day and time).
+func _set_minutes(gs: Node, m: float) -> void:
+	gs.day = int(m / 1440.0) + 1
+	gs.clock = fposmod(m, 1440.0)
+	gs._last_minute = int(gs.clock)
 
 func SaveGame_has_field(f: String) -> bool:
 	return f in root.get_node("SaveGame").FIELDS

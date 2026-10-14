@@ -95,6 +95,7 @@ func _build() -> void:
 	root.add_child(_heading(head[0], 30, head[1]))
 	root.add_child(_heading(head[2], 14, Color(0.62, 0.60, 0.56)))
 	root.add_child(_heading(Story.ending_line(cause), 15, Color(0.85, 0.82, 0.74)))
+	root.add_child(_heading(record_line(_summary), 14, Color(0.95, 0.8, 0.35) if is_new_best(_summary) else Color(0.6, 0.58, 0.55)))
 	if not MetaProgress.unlocked_this_run.is_empty():
 		var names: Array = MetaProgress.unlocked_this_run.map(func(id): return MetaProgress.ACHIEVEMENTS[id][0])
 		root.add_child(_heading("Unlocked: " + ", ".join(names), 13, Color(0.9, 0.78, 0.4)))
@@ -117,11 +118,16 @@ func _build() -> void:
 	stats.add_theme_constant_override("separation", 2)
 	stats.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stats.custom_minimum_size = Vector2(PANEL_W * 0.8, 0)
-	stats.add_child(_stat("Days survived", str(_summary.get("days", 0))))
-	stats.add_child(_stat("Orders delivered", str(_summary.get("orders", 0))))
-	stats.add_child(_stat("Cash earned", "$%d" % _summary.get("cash", 0)))
-	stats.add_child(_stat("Doses taken", str(_summary.get("doses", 0))))
-	stats.add_child(_stat("Know-How earned", "+%d" % _summary.get("know_how", 0), Color(0.85, 0.78, 0.35)))
+	var rs: Dictionary = _summary.get("stats", {})
+	stats.add_child(_stat("Days survived", "%d", _summary.get("days", 0)))
+	stats.add_child(_stat("Walked", "%.1f km", float(rs.get("walked", 0.0)) / 1000.0))
+	stats.add_child(_stat("Meals", "%d", rs.get("meals", 0)))
+	stats.add_child(_stat("Fights won / lost", "%d / " + str(int(rs.get("fights_lost", 0))), rs.get("fights_won", 0)))
+	stats.add_child(_stat("Scavenged / crafted", "%d / " + str(int(rs.get("crafted", 0))), rs.get("scavenged", 0)))
+	stats.add_child(_stat("Orders delivered", "%d", _summary.get("orders", 0)))
+	stats.add_child(_stat("Cash earned", "$%d", _summary.get("cash", 0)))
+	stats.add_child(_stat("Doses taken", "%d", _summary.get("doses", 0)))
+	stats.add_child(_stat("Know-How earned", "+%d", _summary.get("know_how", 0), Color(0.85, 0.78, 0.35)))
 	root.add_child(stats)
 	root.add_child(_spacer(6))
 
@@ -147,11 +153,20 @@ func _build() -> void:
 		list.add_child(row["node"])
 
 	root.add_child(_spacer(6))
+	var buttons := HBoxContainer.new()
+	buttons.add_theme_constant_override("separation", 10)
+	root.add_child(buttons)
 	var start := Button.new()
 	start.text = "Start over"
 	start.custom_minimum_size = Vector2(0, 38)
+	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	start.pressed.connect(_on_start_over)
-	root.add_child(start)
+	buttons.add_child(start)
+	var credits := Button.new()
+	credits.text = "Credits"
+	credits.custom_minimum_size = Vector2(140, 38)
+	credits.pressed.connect(roll_credits)
+	buttons.add_child(credits)
 
 	_refresh()
 
@@ -225,18 +240,70 @@ func _spacer(h: float) -> Control:
 	c.custom_minimum_size = Vector2(0, h)
 	return c
 
-func _stat(label: String, value: String, color := Color(0.80, 0.78, 0.74)) -> HBoxContainer:
+## A stat row whose number counts up from zero as the screen comes in.
+## `fmt` takes the one number ("%d", "$%d", "%.1f km").
+func _stat(label: String, fmt: String, value: Variant, color := Color(0.80, 0.78, 0.74)) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	var l := Label.new()
 	l.text = label
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.add_theme_color_override("font_color", Color(0.58, 0.56, 0.53))
 	var v := Label.new()
-	v.text = value
 	v.add_theme_color_override("font_color", color)
+	var target := float(value)
+	var integer := not fmt.contains("%.")
+	var show := func(x: float): v.text = fmt % (int(round(x)) if integer else x)
+	show.call(0.0)
+	v.set_meta("final", fmt % (int(round(target)) if integer else target))
 	row.add_child(l)
 	row.add_child(v)
+	if is_inside_tree() and target > 0.0:
+		var tw := create_tween()
+		tw.tween_interval(0.2 + _rows.size() * 0.0)
+		tw.tween_method(show, 0.0, target, 1.1).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	else:
+		show.call(target)
 	return row
+
+## "Run 12  -  best: day 6", or a new best.
+static func record_line(summary: Dictionary) -> String:
+	var days := int(summary.get("days", 0))
+	var best := int(summary.get("prev_best", 0))
+	var run := int(summary.get("run", 0))
+	if is_new_best(summary):
+		return "Run %d  -  NEW BEST: day %d (was day %d)" % [run, days, best] if best > 0 else "Run %d  -  your first record: day %d" % [run, days]
+	return "Run %d  -  best so far: day %d" % [run, best]
+
+static func is_new_best(summary: Dictionary) -> bool:
+	return int(summary.get("days", 0)) > int(summary.get("prev_best", 0))
+
+## The credits, rolling up the screen over everything; any key or click
+## ends them.
+func roll_credits() -> Control:
+	var layer := Control.new()
+	layer.name = "Credits"
+	_fill_screen(layer)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(layer)
+	var bg := ColorRect.new()
+	bg.color = Color(0, 0, 0, 0.96)
+	_fill_screen(bg)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(bg)
+	var text := Label.new()
+	text.text = "DOPE SICK\n\n\n" + preload("res://ui/TitleScreen.gd").CREDITS + "\n\n\nThanks for playing.\n\n\n"
+	text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	text.add_theme_font_size_override("font_size", 18)
+	text.add_theme_color_override("font_color", Color(0.88, 0.85, 0.78))
+	text.size = Vector2(900, 0)
+	text.position = Vector2(190, 720)
+	layer.add_child(text)
+	var tw := text.create_tween()
+	tw.tween_property(text, "position:y", -900.0, 28.0)
+	tw.tween_callback(layer.queue_free)
+	layer.gui_input.connect(func(e): if e is InputEventMouseButton and e.pressed: layer.queue_free())
+	return layer
 
 ## One upgrade: name, what it does, tier pips, and a buy button.
 func _upgrade_row(id: String) -> Dictionary:

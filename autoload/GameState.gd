@@ -305,6 +305,12 @@ var probation_days: Array = []
 var warrant: bool = false
 ## An order off the laptop at home (world/Darknet.gd), until it's played out.
 var parcel: Dictionary = {}
+## What this run did, for the end screen: "walked" (m), "meals", "fights_won",
+## "fights_lost", "scavenged", "crafted". stat() adds to one.
+var run_stats: Dictionary = {}
+
+func stat(key: String, amount := 1.0) -> void:
+	run_stats[key] = float(run_stats.get(key, 0.0)) + amount
 ## Mia, Ray and Dana's week (autoload/Story.gd).
 var story: Dictionary = {}
 ## Your own Silk Lane shop (world/Darknet.gd): stock, heat, a lot on its way.
@@ -407,6 +413,7 @@ func start_run() -> void:
 	probation_days.clear()
 	warrant = false
 	parcel = {}
+	run_stats = {}
 	story = {}
 	vendor = {}
 	last_street_use = -99999.0
@@ -1478,6 +1485,7 @@ func end_run(cause := "busted") -> void:
 		"health": pass  # Survival.die() has already said how.
 		_: log_event("Sent away.", "sent_away_bus")
 	var days_survived := day
+	var prev_best: int = MetaProgress.best_day
 	# The next run remembers this one (MetaProgress, autoload/Story.gd).
 	var st := get_node_or_null("/root/Story")
 	MetaProgress.remember_run({"cause": cause, "day": day, "ray": st.state()["ray"] if st else "",
@@ -1502,6 +1510,9 @@ func end_run(cause := "busted") -> void:
 		"strikes": strikes,
 		"doses": doses_taken,
 		"cause": cause,
+		"prev_best": prev_best,
+		"run": MetaProgress.runs_completed,
+		"stats": run_stats.duplicate(),
 	})
 
 ## Called at bedtime: did today count?

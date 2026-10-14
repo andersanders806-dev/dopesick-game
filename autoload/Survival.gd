@@ -161,6 +161,8 @@ func die() -> void:
 
 func eat(amount: float, what := "") -> void:
 	hunger = minf(MAX, hunger + amount)
+	if amount >= 15.0:
+		GameState.stat("meals")
 	_warned.erase("hunger")
 	if what != "":
 		GameState.log_event("Ate %s." % what)

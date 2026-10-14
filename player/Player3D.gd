@@ -275,6 +275,7 @@ func _physics_process(delta: float) -> void:
 	var target := dir * speed
 	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
 	move_and_slide()
+	GameState.stat("walked", Vector2(velocity.x, velocity.z).length() * delta)
 	# Withdrawal slows the stride along with the movement, so it reads as a
 	# shuffle rather than the feet sliding; so does easing in and out.
 	var moved := Vector2(velocity.x, velocity.z).length()

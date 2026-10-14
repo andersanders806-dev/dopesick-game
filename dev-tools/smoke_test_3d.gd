@@ -791,6 +791,7 @@ func _run() -> void:
 	await _fight_checks(gs)
 	await _objective_checks(gs)
 	await _juice_checks(gs)
+	await _recap_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1797,6 +1798,42 @@ func _juice_checks(gs: Node) -> void:
 	_check(is_equal_approx(Engine.time_scale, 1.0), "  ...and time comes back")
 	f._close()
 	sv.enabled = false
+	gs.start_run()
+
+func _recap_checks(gs: Node) -> void:
+	await _section("The ending: your run told back, your record, the credits")
+	_close_menus()
+	var End = load("res://ui/RunEndScreen.gd")
+	gs.start_run()
+	gs.stat("walked", 2400.0)
+	gs.stat("meals")
+	gs.stat("fights_won")
+	_check(gs.run_stats["walked"] == 2400.0 and gs.run_stats["meals"] == 1.0, "  the run counts what you did (walked, meals, fights...)")
+	var meta := root.get_node("MetaProgress")
+	meta.best_day = 3
+	gs.day = 5
+	var got := []
+	gs.run_ended.connect(func(s): got.append(s), CONNECT_ONE_SHOT)
+	gs.end_run("health")
+	_check(got.size() == 1 and got[0]["prev_best"] == 3 and got[0]["stats"]["walked"] == 2400.0, "  the summary carries the stats and the old best")
+	_check(End.is_new_best(got[0]) and End.record_line(got[0]).contains("NEW BEST"), "  beat your best and it says so ('%s')" % End.record_line(got[0]))
+	_check(not End.is_new_best({"days": 2, "prev_best": 5}) and End.record_line({"days": 2, "prev_best": 5, "run": 4}).contains("best so far: day 5"), "  ...and otherwise shows the record to beat")
+	await _frames(2)
+	for c in root.get_children():
+		if c is CanvasLayer and c.get_script() == End:
+			c.free()
+	var screen: CanvasLayer = End.new()
+	root.add_child(screen)
+	screen._summary = got[0]
+	screen._build()
+	await _frames(2)
+	var walked := screen.find_children("*", "Label", true, false).filter(func(l): return l.has_meta("final") and String(l.get_meta("final")).ends_with("km"))
+	_check(walked.size() == 1 and walked[0].get_meta("final") == "2.4 km", "  'Walked 2.4 km', counting up")
+	var credits: Control = screen.roll_credits()
+	await _frames(2)
+	_check(is_instance_valid(credits) and credits.find_children("*", "Label", false, false).size() > 0, "  the credits roll")
+	screen.queue_free()
+	await _frames(2)
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:

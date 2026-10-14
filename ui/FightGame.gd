@@ -215,6 +215,8 @@ func _end(result: String, text: String) -> void:
 		return
 	phase = "over"
 	outcome = result
+	if result in ["won", "lost"]:
+		GameState.stat("fights_" + result)
 	if text != "":
 		message = text
 	finished.emit(result)

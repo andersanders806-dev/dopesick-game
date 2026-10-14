@@ -50,6 +50,7 @@ func make(i: int) -> bool:
 	else:
 		GameState.inventory.append(r["id"])
 	GameState.inventory_changed.emit()
+	GameState.stat("crafted")
 	SFX.play("steal", -8.0, 1.2)
 	GameState.log_event("Made %s." % GameState.item_name_for(r["id"]))
 	return true
@@ -65,6 +66,8 @@ func search(spot: String, car := false) -> String:
 	if not GameState.daily_available("scav_" + spot, true):
 		return "You've already been through it today." if not car else "You've already tried this one today."
 	var found := _roll(CAR_FINDS if car else TRASH_FINDS)
+	if found not in ["", "alarm"]:
+		GameState.stat("scavenged")
 	match found:
 		"":
 			return ["Nothing worth taking.", "Wet paper and someone's bad day.", "Picked clean already."].pick_random()

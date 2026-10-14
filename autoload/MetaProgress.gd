@@ -104,6 +104,8 @@ var achievements: Dictionary = {}
 var history: Array = []
 ## What this run unlocked, for its end screen.
 var unlocked_this_run: Array = []
+## One-time hints already shown (ui/Objectives.gd FIRST_STEPS), across runs.
+var hints_seen: Dictionary = {}
 
 func unlock(id: String) -> bool:
 	if not ACHIEVEMENTS.has(id) or achievements.has(id):
@@ -162,6 +164,7 @@ func load_progress() -> void:
 	last_run = cfg.get_value("meta", "last_run", {})
 	achievements = cfg.get_value("meta", "achievements", {})
 	history = cfg.get_value("meta", "history", [])
+	hints_seen = cfg.get_value("meta", "hints_seen", {})
 	var saved: Dictionary = cfg.get_value("meta", "levels", {})
 	# Only keep ids that still exist, so removing an upgrade can't break a
 	# save made before it was removed.
@@ -182,6 +185,7 @@ func save_progress() -> void:
 	cfg.set_value("meta", "achievements", achievements)
 	cfg.set_value("meta", "history", history)
 	cfg.set_value("meta", "levels", levels)
+	cfg.set_value("meta", "hints_seen", hints_seen)
 	cfg.save(SAVE_PATH)
 
 # --- upgrades --------------------------------------------------------------

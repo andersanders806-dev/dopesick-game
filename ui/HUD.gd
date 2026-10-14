@@ -79,6 +79,7 @@ func _ready() -> void:
 	GameState.run_ended.connect(_show_run_end)
 	_build_clock()
 	_build_survival()
+	_build_objective()
 	_build_debt()
 	GameState.debt_changed.connect(_on_debt_changed)
 	_build_status()
@@ -95,6 +96,49 @@ func _ready() -> void:
 	busted_overlay.visible = false
 	_build_headline()
 	Headlines.headline_changed.connect(_on_headline_changed)
+
+# --- What now (ui/Objectives.gd) ---------------------------------------------
+## The most urgent thing, right under "Carrying", and the first run's
+## walk-through hints.
+const Objectives := preload("res://ui/Objectives.gd")
+var objective_label: Label
+var _objective_t := 0.0
+var _hint_t := 2.0
+
+func _build_objective() -> void:
+	objective_label = Label.new()
+	objective_label.name = "Objective"
+	objective_label.add_theme_font_size_override("font_size", 13)
+	objective_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.55))
+	objective_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+	objective_label.add_theme_constant_override("outline_size", 5)
+	objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	objective_label.offset_left = 640.0
+	objective_label.offset_right = 952.0
+	objective_label.offset_top = 44.0
+	objective_label.offset_bottom = 84.0
+	$TopBar.add_child(objective_label)
+	_update_objective()
+
+func _update_objective() -> void:
+	objective_label.text = "> " + Objectives.current()
+
+## Every half second; and the next first-run hint every few seconds.
+func _tick_objective(delta: float) -> void:
+	_objective_t -= delta
+	if _objective_t <= 0.0:
+		_objective_t = 0.5
+		_update_objective()
+	_hint_t -= delta
+	if _hint_t <= 0.0:
+		_hint_t = 6.0
+		for h in Objectives.FIRST_STEPS:
+			if not MetaProgress.hints_seen.has(h[0]):
+				MetaProgress.hints_seen[h[0]] = true
+				MetaProgress.save_progress()
+				Graphics._show_toast(h[1], 5.5)
+				break
 
 # --- The body (autoload/Survival.gd) ------------------------------------------
 ## Under the cash and craving: health as a full bar, then food, warmth and
@@ -239,6 +283,8 @@ func _update_sick_grade() -> void:
 
 func _process(delta: float) -> void:
 	_update_sick_grade()
+	if objective_label and not Cutscene.is_playing() and not get_tree().paused:
+		_tick_objective(delta)
 	if _headline_panel == null:
 		return
 	if Headlines.announced_day != GameState.day and not Cutscene.is_playing() and not get_tree().paused:

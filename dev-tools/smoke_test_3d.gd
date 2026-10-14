@@ -38,6 +38,7 @@ func _initialize() -> void:
 	meta.last_run = {}
 	meta.achievements = {}
 	meta.history = []
+	meta.hints_seen = {"move": true, "craving": true, "body": true, "keys": true, "goal": true}
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
@@ -788,6 +789,7 @@ func _run() -> void:
 	await _crafting_checks(gs)
 	await _camp_checks(gs)
 	await _fight_checks(gs)
+	await _objective_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1712,6 +1714,44 @@ func _fight_checks(gs: Node) -> void:
 	sv.enabled = false
 	city._maybe_mugger()
 	_check(city.get_tree().get_first_node_in_group("mugger") == null, "  (no muggers with the survival layer off)")
+	gs.start_run()
+
+func _objective_checks(gs: Node) -> void:
+	await _section("What now: the objective line and first-run hints")
+	_close_menus()
+	var sv := root.get_node("Survival")
+	var Obj = load("res://ui/Objectives.gd")
+	sv.enabled = true
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 12 * 60
+	await _load("res://world/Apartment3D.tscn")
+	var hud := get_first_node_in_group("hud")
+	var label: Label = hud.get_node_or_null("TopBar/Objective")
+	_check(label != null and label.text.length() > 5, "  there's always a line saying what to do (\"%s\")" % (label.text if label else ""))
+	_check(Obj.current().contains("rent"), "  a fresh run: make rent")
+	sv.hunger = 10.0
+	_check(Obj.current().begins_with("Eat"), "  hungry: eat, and where")
+	sv.hurt(5.0, true)
+	_check(Obj.current().begins_with("Stop the bleeding"), "  bleeding beats hungry")
+	gs.wanted = true
+	_check(Obj.current().begins_with("Lose the police"), "  the police beat everything")
+	gs.wanted = false
+	sv.reset()
+	gs.craving = 0.0
+	_check(Obj.current().contains("dope sick"), "  dope sick: where the pusher is")
+	gs.craving = 45.0
+	# First-run hints, once each, across runs.
+	var meta := root.get_node("MetaProgress")
+	meta.hints_seen = {}
+	hud._hint_t = 0.0
+	hud._tick_objective(0.01)
+	_check(meta.hints_seen.size() == 1, "  the first run walks you through, one hint at a time")
+	for i in 10:
+		hud._hint_t = 0.0
+		hud._tick_objective(0.01)
+	_check(meta.hints_seen.size() == Obj.FIRST_STEPS.size(), "  ...all %d of them" % Obj.FIRST_STEPS.size())
+	sv.enabled = false
 	gs.start_run()
 
 func _menu_and_save_checks(gs: Node) -> void:

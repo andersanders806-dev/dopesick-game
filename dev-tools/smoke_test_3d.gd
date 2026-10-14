@@ -4492,5 +4492,22 @@ func _laptop_street_checks(gs: Node) -> void:
 	_check(not loader.may_start(), "  no background load starts while you walk")
 	p.velocity = Vector3.ZERO
 	_check(loader.may_start(), "  ...and they go on once you stop")
+	# A load that finished while you walk is taken off the loader once you stop.
+	loader._scenes.erase("res://world/Pawn3D.tscn")
+	loader.prefetch("res://world/Pawn3D.tscn")
+	p.velocity = Vector3(4.0, 0, 0)
+	for i in 600:
+		await _frames(1)
+		p.velocity = Vector3(4.0, 0, 0)
+		if ResourceLoader.load_threaded_get_status("res://world/Pawn3D.tscn") == ResourceLoader.THREAD_LOAD_LOADED:
+			break
+	await _frames(3)
+	_check(not loader.cached("res://world/Pawn3D.tscn"), "  a finished load waits while you walk")
+	p.velocity = Vector3.ZERO
+	for i in 120:
+		await _frames(1)
+		if loader.cached("res://world/Pawn3D.tscn"):
+			break
+	_check(loader.cached("res://world/Pawn3D.tscn"), "  ...and is picked up when you stop")
 	gfx.set_preset(saved)
 	gs.start_run()

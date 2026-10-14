@@ -102,6 +102,11 @@ func _process(delta: float) -> void:
 	for path in _loading.keys():
 		var status := ResourceLoader.load_threaded_get_status(path)
 		if status == ResourceLoader.THREAD_LOAD_LOADED:
+			# Taking it off the loader finishes it on the main thread (a 37 ms
+			# hitch mid-stride in perf.log): wait until you stop walking. A
+			# door needing it now takes it at once (_scene).
+			if not may_start():
+				continue
 			_scenes[path] = ResourceLoader.load_threaded_get(path)
 			_loading.erase(path)
 		elif status != ResourceLoader.THREAD_LOAD_IN_PROGRESS:

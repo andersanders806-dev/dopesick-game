@@ -4,7 +4,7 @@ const CRAVING_BAR_WIDTH := 120.0
 
 # The carrying panel is right-aligned and sized to its contents, so it only
 # covers as much of the view as it needs to.
-const CARRY_RIGHT_EDGE := 952.0
+const CARRY_RIGHT_EDGE := 1268.0
 const CARRY_PADDING := 10.0
 const ICON_SIZE := 22.0
 const ICON_GAP := 6.0
@@ -67,6 +67,9 @@ func _ready() -> void:
 	add_to_group("hud")
 	_build_film_look()
 	add_child(preload("res://ui/InteractPrompt.gd").new())
+	for sig in [GameState.cash_changed, GameState.inventory_changed, GameState.wanted_changed,
+			GameState.day_changed, GameState.debt_changed, GameState.rent_changed, GameState.legal_changed]:
+		sig.connect(_wake_on)
 	GameState.cash_changed.connect(_update_cash)
 	GameState.craving_changed.connect(_update_craving)
 	GameState.inventory_changed.connect(_update_inventory)
@@ -97,6 +100,49 @@ func _ready() -> void:
 	_build_headline()
 	Headlines.headline_changed.connect(_on_headline_changed)
 
+# --- Immersive HUD -------------------------------------------------------------
+## While you walk and nothing needs you, the panels fade back so the street
+## is the picture. Anything changing (cash, what you carry, the objective, a
+## warning), standing still, or holding Tab brings them straight back.
+## Settings > "Fade the HUD while walking" (Graphics.immersive_hud).
+const CALM_ALPHA := 0.2
+const AWAKE_TIME := 6.0
+const STILL_TIME := 0.8
+var _awake := AWAKE_TIME
+var _still := 0.0
+var _last_objective := ""
+
+func wake() -> void:
+	_awake = AWAKE_TIME
+
+## Any of GameState's signals, whatever they carry.
+func _wake_on(_a = null) -> void:
+	wake()
+
+## Whether the panels have to be readable right now.
+func hud_needed() -> bool:
+	if not Graphics.immersive_hud or _awake > 0.0 or _still >= STILL_TIME:
+		return true
+	if Input.is_physical_key_pressed(KEY_TAB) or dialogue_panel.visible:
+		return true
+	if GameState.wanted or GameState.sickness() >= 0.5:
+		return true
+	return Survival.enabled and not Survival.warnings().is_empty()
+
+func _tick_fade(delta: float) -> void:
+	if get_tree().paused:
+		return
+	_awake -= delta
+	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D
+	var moving := player != null and Vector2(player.velocity.x, player.velocity.z).length() > 0.4
+	_still = 0.0 if moving else _still + delta
+	if objective_label and objective_label.text != _last_objective:
+		_last_objective = objective_label.text
+		wake()
+	var want := 1.0 if hud_needed() else CALM_ALPHA
+	var bar: Control = $TopBar
+	bar.modulate.a = move_toward(bar.modulate.a, want, delta * (4.0 if want > bar.modulate.a else 0.7))
+
 # --- What now (ui/Objectives.gd) ---------------------------------------------
 ## The most urgent thing, right under "Carrying", and the first run's
 ## walk-through hints.
@@ -114,8 +160,8 @@ func _build_objective() -> void:
 	objective_label.add_theme_constant_override("outline_size", 5)
 	objective_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	objective_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	objective_label.offset_left = 640.0
-	objective_label.offset_right = 952.0
+	objective_label.offset_left = 956.0
+	objective_label.offset_right = 1268.0
 	objective_label.offset_top = 44.0
 	objective_label.offset_bottom = 84.0
 	$TopBar.add_child(objective_label)
@@ -309,6 +355,7 @@ func _update_sick_grade() -> void:
 
 func _process(delta: float) -> void:
 	_update_sick_grade()
+	_tick_fade(delta)
 	if objective_label and not Cutscene.is_playing() and not get_tree().paused:
 		_tick_objective(delta)
 	if _headline_panel == null:

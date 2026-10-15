@@ -114,6 +114,12 @@ func open() -> void:
 	var inv := _check("Invert look up/down", Graphics.invert_look, Graphics.set_invert_look)
 	inv.name = "InvertLook"
 	col.add_child(inv)
+	var motion := _check("Camera motion (head bob, sprint zoom)", Graphics.camera_motion, Graphics.set_camera_motion)
+	motion.name = "CameraMotion"
+	col.add_child(motion)
+	var calm := _check("Fade the HUD while walking", Graphics.immersive_hud, Graphics.set_immersive_hud)
+	calm.name = "ImmersiveHud"
+	col.add_child(calm)
 	var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options", 12, Color(0.6, 0.58, 0.54))
 	col.add_child(keys)
 

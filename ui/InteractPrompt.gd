@@ -14,9 +14,26 @@ func _ready() -> void:
 	add_theme_constant_override("outline_size", 5)
 	horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# A dark pill with the accent down its left edge, like the arrival card.
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.04, 0.035, 0.05, 0.72)
+	box.border_color = Color(0.93, 0.35, 0.55)
+	box.border_width_left = 3
+	box.set_corner_radius_all(4)
+	box.content_margin_left = 12
+	box.content_margin_right = 12
+	box.content_margin_top = 4
+	box.content_margin_bottom = 5
+	add_theme_stylebox_override("normal", box)
 	visible = false
 
-func _process(_delta: float) -> void:
+## Each new thing to use eases in: a fade and a short rise.
+const EASE_IN := 0.18
+const RISE := 8.0
+var _target: Node3D
+var _shown := 0.0
+
+func _process(delta: float) -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	var target: Node3D = null
 	if player and not player.dialogue_active and not get_tree().paused and not SceneLoader.busy():
@@ -25,7 +42,14 @@ func _process(_delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if what == "" or cam == null:
 		visible = false
+		_target = null
 		return
+	if target != _target:
+		_target = target
+		_shown = 0.0
+	_shown = minf(_shown + delta / EASE_IN, 1.0)
+	var k := 1.0 - pow(1.0 - _shown, 3.0)
+	modulate.a = k
 	text = "%s  %s" % [GameState.control_name("interact"), what]
 	size = Vector2.ZERO
 	var at: Vector2
@@ -38,5 +62,5 @@ func _process(_delta: float) -> void:
 			visible = false
 			return
 		at = cam.unproject_position(p)
-	position = (at - size * 0.5).round()
+	position = (at - size * 0.5 + Vector2(0, RISE * (1.0 - k))).round()
 	visible = true

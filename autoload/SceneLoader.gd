@@ -47,15 +47,71 @@ func _ready() -> void:
 	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_black.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_layer.add_child(_black)
+	_build_cards()
+	GameState.day_changed.connect(_on_day_changed)
+
+## The arrival card: the place's name, big and spaced out, a rule drawing
+## itself under it, and the day and time -- the way a chapter opens. And
+## the day card, centred, when a new day starts.
+const CARD_ACCENT := Color(0.93, 0.35, 0.55)
+const RULE_WIDTH := 240.0
+var _when: Label
+var _rule: ColorRect
+var _day_card: Label
+var _day_sub: Label
+var _pending_day := 0
+
+func _build_cards() -> void:
+	var font := FontVariation.new()
+	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
+	font.spacing_glyph = 4
 	_card = Label.new()
 	_card.name = "ArrivalCard"
-	_card.position = Vector2(24, 132)
-	_card.add_theme_font_size_override("font_size", 22)
-	_card.add_theme_color_override("font_color", Color(0.93, 0.9, 0.82))
-	_card.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
-	_card.add_theme_constant_override("outline_size", 6)
+	_card.position = Vector2(48, 410)
+	_card.add_theme_font_override("font", font)
+	_card.add_theme_font_size_override("font_size", 34)
+	_card.add_theme_color_override("font_color", Color(0.96, 0.93, 0.86))
+	_card.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
+	_card.add_theme_constant_override("shadow_offset_y", 3)
+	_card.add_theme_constant_override("shadow_outline_size", 8)
 	_card.modulate.a = 0.0
 	_layer.add_child(_card)
+	_rule = ColorRect.new()
+	_rule.color = CARD_ACCENT
+	_rule.position = Vector2(2, 50)
+	_rule.size = Vector2(0, 3)
+	_card.add_child(_rule)
+	_when = Label.new()
+	_when.name = "When"
+	_when.position = Vector2(2, 58)
+	_when.add_theme_font_size_override("font_size", 15)
+	_when.add_theme_color_override("font_color", Color(0.8, 0.76, 0.7))
+	_when.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	_when.add_theme_constant_override("outline_size", 5)
+	_card.add_child(_when)
+	var big := FontVariation.new()
+	big.base_font = font.base_font
+	big.spacing_glyph = 10
+	_day_card = Label.new()
+	_day_card.name = "DayCard"
+	_day_card.set_anchors_preset(Control.PRESET_CENTER)
+	_day_card.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_day_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_day_card.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_day_card.add_theme_font_override("font", big)
+	_day_card.add_theme_font_size_override("font_size", 72)
+	_day_card.add_theme_color_override("font_color", Color(0.97, 0.94, 0.88))
+	_day_card.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_day_card.add_theme_constant_override("shadow_outline_size", 12)
+	_day_card.modulate.a = 0.0
+	_layer.add_child(_day_card)
+	_day_sub = Label.new()
+	_day_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_day_sub.add_theme_font_size_override("font_size", 16)
+	_day_sub.add_theme_color_override("font_color", CARD_ACCENT.lightened(0.25))
+	_day_sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_day_sub.add_theme_constant_override("outline_size", 5)
+	_day_card.add_child(_day_sub)
 
 func busy() -> bool:
 	return _busy
@@ -113,6 +169,9 @@ func _process(delta: float) -> void:
 			_loading.erase(path)
 			_failed[path] = true
 	_start_next()
+	if _pending_day > 0 and not _busy and not Cutscene.is_playing() and not get_tree().paused \
+			and get_tree().get_first_node_in_group("hud") != null:
+		_show_day_card()
 	_scan -= delta
 	if _scan <= 0.0 and not _busy:
 		_scan = 0.25
@@ -181,7 +240,8 @@ func go(path: String, spawn := "") -> void:
 	await tree.scene_changed
 	# The first frame of a room compiles its shaders; let it pass in black.
 	await tree.process_frame
-	_card.text = "%s  ·  %s" % [NAMES.get(path.get_file().get_basename(), "").to_upper(), GameState.clock_text()]
+	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
+	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]
 	# The room holds still until you can see it: a cop who followed you
 	# through the door doesn't get a head start in the dark.
 	if not hidden:
@@ -205,9 +265,37 @@ func _fade(to: float, time: float) -> void:
 	await tw.finished
 
 func _show_card() -> void:
-	if _card.text.begins_with(" "):
+	if _card.text.strip_edges() == "":
 		return
+	var tw := create_tween().set_parallel()
+	_card.position.x = 28.0
+	_rule.size.x = 0.0
+	tw.tween_property(_card, "modulate:a", 1.0, 0.5)
+	tw.tween_property(_card, "position:x", 48.0, 0.9).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	tw.tween_property(_rule, "size:x", RULE_WIDTH, 1.1).set_delay(0.2).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_interval(CARD_TIME)
+	tw.chain().tween_property(_card, "modulate:a", 0.0, 0.9)
+
+## A new day while you're in the game (waking up, or past midnight): the
+## card waits until no room change or cutscene is on screen.
+func _on_day_changed(day: int) -> void:
+	if day > 1:
+		_pending_day = day
+
+func _show_day_card() -> void:
+	var day := _pending_day
+	_pending_day = 0
+	_day_card.text = "DAY %d" % day
+	var best: int = MetaProgress.best_day
+	_day_sub.text = ("Further than you've ever made it." if best > 0 and day > best
+		else "Your best is day %d." % best if best > 0 else "Still here.")
+	_day_card.reset_size()
+	_day_card.position = (get_viewport().get_visible_rect().size - _day_card.size) * 0.5 - Vector2(0, 60)
+	_day_sub.size.x = _day_card.size.x
+	_day_sub.position = Vector2(0, _day_card.size.y)
+	_day_card.scale = Vector2.ONE
+	_day_card.pivot_offset = _day_card.size * 0.5
 	var tw := create_tween()
-	tw.tween_property(_card, "modulate:a", 1.0, 0.3)
-	tw.tween_interval(CARD_TIME)
-	tw.tween_property(_card, "modulate:a", 0.0, 0.8)
+	tw.tween_property(_day_card, "modulate:a", 1.0, 0.8)
+	tw.parallel().tween_property(_day_card, "scale", Vector2.ONE * 1.04, 3.6)
+	tw.tween_property(_day_card, "modulate:a", 0.0, 1.0)

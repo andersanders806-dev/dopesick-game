@@ -83,6 +83,11 @@ const FRAME_LOG := 120
 var frame_times: Array = []
 var _graph: Control
 var invert_look: bool = false
+## The HUD fades back while you walk and nothing needs you (ui/HUD.gd).
+var immersive_hud: bool = true
+## Head bob and the sprint FOV push (player/Player3D.gd); off for anyone
+## it makes queasy.
+var camera_motion: bool = true
 signal view_changed(first_person: bool)
 var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
 var _bus_base_db := {}
@@ -121,6 +126,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_F3:
 			set_preset((preset + 1) % PRESET_NAMES.size())
 			_show_toast("Graphics: %s" % PRESET_NAMES[preset])
+		elif event.physical_keycode == KEY_F12 and not get_tree().paused:
+			if preload("res://ui/PhotoMode.gd").open_over(get_tree()):
+				get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_F4:
 			show_fps = not show_fps
 			_fps_label.visible = show_fps
@@ -208,6 +216,14 @@ func set_look_sensitivity(v: float) -> void:
 
 func set_invert_look(on: bool) -> void:
 	invert_look = on
+	_save_settings()
+
+func set_immersive_hud(on: bool) -> void:
+	immersive_hud = on
+	_save_settings()
+
+func set_camera_motion(on: bool) -> void:
+	camera_motion = on
 	_save_settings()
 
 func set_fullscreen(on: bool) -> void:
@@ -688,6 +704,8 @@ func _load_settings() -> void:
 		laptop_mode = bool(cfg.get_value("graphics", "laptop_mode", false))
 		Engine.max_fps = fps_cap()
 		invert_look = bool(cfg.get_value("controls", "invert_look", false))
+		immersive_hud = bool(cfg.get_value("interface", "immersive_hud", true))
+		camera_motion = bool(cfg.get_value("controls", "camera_motion", true))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
@@ -705,4 +723,6 @@ func _save_settings() -> void:
 	cfg.set_value("controls", "look_sensitivity", look_sensitivity)
 	cfg.set_value("graphics", "laptop_mode", laptop_mode)
 	cfg.set_value("controls", "invert_look", invert_look)
+	cfg.set_value("interface", "immersive_hud", immersive_hud)
+	cfg.set_value("controls", "camera_motion", camera_motion)
 	cfg.save(SETTINGS_PATH)

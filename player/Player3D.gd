@@ -181,10 +181,33 @@ func _update_fp_camera() -> void:
 func kick(strength := 1.0) -> void:
 	_kick = maxf(_kick, strength)
 
+## Walking moves the view a little, the way a head does: a sway per stride
+## and a dip per footfall in first person, and a push of the field of view
+## when you break into a run (either view). Settings > Camera motion.
+const BOB := Vector2(0.024, 0.028)
+## Radians of bob phase per metre walked: one sway each way per two steps.
+const BOB_PER_METRE := 4.2
+const SPRINT_FOV := 7.0
+var _bob_phase := 0.0
+var _bob_weight := 0.0
+
+func _update_camera_feel(delta: float) -> Vector3:
+	var speed := Vector2(velocity.x, velocity.z).length()
+	var on := Graphics.camera_motion and not dialogue_active
+	var base := FP_FOV if _first_person else _tp_fov
+	var want := base + (SPRINT_FOV if on and _sprinting and speed > 1.0 else 0.0)
+	camera.fov = lerpf(camera.fov, want, 1.0 - exp(-5.0 * delta))
+	if not _first_person:
+		return Vector3.ZERO
+	_bob_weight = move_toward(_bob_weight, clampf(speed / 3.0, 0.0, 1.3) if on else 0.0, delta * 4.0)
+	_bob_phase = fmod(_bob_phase + speed * delta * BOB_PER_METRE, TAU * 2.0)
+	return Vector3(sin(_bob_phase) * BOB.x, -absf(sin(_bob_phase)) * BOB.y, 0.0) * _bob_weight
+
 func _update_camera_shake(delta: float) -> void:
 	var s := GameState.sickness()
 	_shake_t += delta
 	var offset := Vector3(sin(_shake_t * 1.7) + 0.5 * sin(_shake_t * 5.3), cos(_shake_t * 1.3) * 0.6, 0.0) * SHAKE_OFFSET * s
+	offset += _update_camera_feel(delta)
 	if _kick > 0.0:
 		offset += Vector3(randf_range(-1, 1), randf_range(-1, 1), 0.0) * 0.12 * _kick
 		_kick = maxf(0.0, _kick - delta * 4.0)

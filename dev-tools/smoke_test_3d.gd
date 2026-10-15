@@ -792,6 +792,7 @@ func _run() -> void:
 	await _objective_checks(gs)
 	await _juice_checks(gs)
 	await _recap_checks(gs)
+	await _showcase_checks(gs)
 	await _menu_and_save_checks(gs)
 	await _recovery_checks(gs)
 	await _regulars_checks(gs)
@@ -1798,6 +1799,93 @@ func _juice_checks(gs: Node) -> void:
 	_check(is_equal_approx(Engine.time_scale, 1.0), "  ...and time comes back")
 	f._close()
 	sv.enabled = false
+	gs.start_run()
+
+func _showcase_checks(gs: Node) -> void:
+	await _section("Showcase: photo mode, title cards, a HUD that steps back, camera feel")
+	_close_menus()
+	var gfx := root.get_node("Graphics")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 12 * 60
+	var city := await _load("res://world/City3D.tscn")
+	var hud := get_first_node_in_group("hud")
+	var bar: Control = hud.get_node("TopBar")
+	await _frames(2)
+	# Photo mode.
+	var PM = load("res://ui/PhotoMode.gd")
+	var game_cam := root.get_viewport().get_camera_3d()
+	_check(PM.open_over(self), "  photo mode opens over the street")
+	var pm: Node = root.get_node("PhotoMode")
+	await _frames(2)
+	_check(paused and pm.cam.current and not bar.visible, "  the world stops, a free camera takes over, the HUD goes")
+	pm.set_filter(1)
+	pm.set_dof(true)
+	var attrs := pm.cam.attributes as CameraAttributesPractical
+	_check(pm._look.visible and attrs.dof_blur_far_enabled and attrs.dof_blur_far_distance > 0.0, "  a look (Noir) and depth of field")
+	pm.zoom(-100.0)
+	_check(is_equal_approx(pm.cam.fov, 20.0), "  zoom stops at 20 degrees")
+	var img := Image.create(8, 8, false, Image.FORMAT_RGB8)
+	var path: String = PM.save_image(img)
+	_check(path.ends_with(".png") and FileAccess.file_exists(path), "  a photo saves as a PNG ('%s')" % path)
+	DirAccess.remove_absolute(path)
+	pm.close()
+	await _frames(2)
+	_check(not paused and game_cam.current and bar.visible and root.get_node_or_null("PhotoMode") == null, "  leaving puts the game, its camera and the HUD back")
+	var cover := CanvasLayer.new()
+	root.add_child(cover)
+	_check(not PM.open_over(self), "  ...but not over a screen of its own (the run's end, a menu)")
+	cover.free()
+	# The day card.
+	var loader := root.get_node("SceneLoader")
+	gs.day = 2
+	gs.day_changed.emit(2)
+	await _frames(20)
+	var day_card: Label = loader.find_child("DayCard", true, false)
+	_check(day_card.text == "DAY 2" and day_card.modulate.a > 0.05, "  a new day gets its card ('%s')" % day_card.text)
+	# The HUD steps back while you walk and nothing needs you.
+	gfx.immersive_hud = true
+	hud._awake = 0.0
+	hud._still = 0.0
+	_check(not hud.hud_needed(), "  walking, nothing wrong: the HUD can fade")
+	gs.cash_changed.emit(gs.cash)
+	_check(hud.hud_needed(), "  money changing hands brings it back")
+	hud._awake = 0.0
+	gs.wanted = true
+	_check(hud.hud_needed(), "  so does being wanted")
+	gs.wanted = false
+	gfx.immersive_hud = false
+	_check(hud.hud_needed(), "  and the setting turns the fading off")
+	# Camera feel.
+	var p := _player()
+	var base: float = p._tp_fov
+	gfx.camera_motion = true
+	p._sprinting = true
+	p.velocity = Vector3(5, 0, 0)
+	for i in 30:
+		p._update_camera_feel(0.05)
+	_check(p.camera.fov > base + 4.0, "  breaking into a run pushes the field of view (%.1f -> %.1f)" % [base, p.camera.fov])
+	gfx.camera_motion = false
+	for i in 60:
+		p._update_camera_feel(0.05)
+	_check(absf(p.camera.fov - base) < 0.5, "  camera motion off: no push")
+	gfx.camera_motion = true
+	p._first_person = true
+	var bobbed := 0.0
+	for i in 30:
+		bobbed = maxf(bobbed, p._update_camera_feel(0.05).length())
+	_check(bobbed > 0.01, "  first person: the head bobs as you walk (%.3f m)" % bobbed)
+	p._first_person = false
+	p._sprinting = false
+	p.velocity = Vector3.ZERO
+	# The prompt eases in.
+	p.global_position = city.get_node("DoorToBar").global_position
+	await _frames(2)
+	var prompt: Label = hud.find_child("InteractPrompt", true, false)
+	var early := prompt.modulate.a
+	await _frames(30)
+	_check(prompt.visible and prompt.has_theme_stylebox_override("normal") and prompt.modulate.a > 0.99 and early < 0.99,
+		"  a prompt fades in on its pill (%.2f -> %.2f)" % [early, prompt.modulate.a])
 	gs.start_run()
 
 func _recap_checks(gs: Node) -> void:
@@ -3713,8 +3801,9 @@ func _room_change_checks(gs: Node) -> void:
 	_check(current_scene.name == "DiveBar3D" and darkest > 0.99 and fade.color.a < 0.01,
 		"  the room fades to black and back in (darkest %.2f, now %.2f)" % [darkest, fade.color.a])
 	_check(longest < 500, "  no frame of the change froze for half a second (longest %d ms)" % longest)
-	_check(card.text.begins_with("THE DIVE BAR") and card.text.ends_with(gs.clock_text()) and card.modulate.a > 0.5,
-		"  an arrival card says where and when ('%s')" % card.text)
+	var when: Label = card.get_node("When")
+	_check(card.text == "THE DIVE BAR" and when.text.ends_with(gs.clock_text()) and card.modulate.a > 0.5,
+		"  an arrival card says where and when ('%s' / '%s')" % [card.text, when.text])
 	_check(_player().global_position.distance_to(current_scene.get_node(spawn).global_position) < 0.5,
 		"  the player arrives at the door's spawn point")
 

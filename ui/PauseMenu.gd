@@ -48,6 +48,7 @@ func open() -> void:
 	var resume := _button(col, "Resume", _close)
 	_button(col, "Notebook  (%s)" % GameState.control_name("notebook"), _open_notebook)
 	_button(col, "Settings", _open_settings)
+	_button(col, "Photo mode  (F12)", _open_photo_mode)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"
 	_button(col, quit_label, _quit_to_title)
 	resume.grab_focus.call_deferred()
@@ -79,6 +80,12 @@ func _open_settings() -> void:
 	get_tree().root.add_child(s)
 	s.open()
 	s.closed.connect(func(): _panel.visible = true)
+
+func _open_photo_mode() -> void:
+	var tree := get_tree()
+	tree.paused = _was_paused
+	queue_free()
+	preload("res://ui/PhotoMode.gd").open_over(tree)
 
 func _quit_to_title() -> void:
 	# The save is whatever the last room you walked into wrote; refresh it

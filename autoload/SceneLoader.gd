@@ -136,11 +136,24 @@ func prefetch(path: String, soon := false) -> void:
 
 ## Background loads finish on the main thread in bursts (38-83 ms on the
 ## street in perf.log), which you feel as a hitch mid-stride; so a new one
-## only starts while you're standing still. A door you walk through still
+## only starts once you've stood still a moment. Not just slowed: a load
+## started as you turned round or bumped a wall ran on for a second after
+## you walked off, and dropped frames all the way (6-7 slow frames in 38 s
+## of walking the street, 2-3 without). A door you walk through still
 ## loads at once (_scene), behind the fade.
+const STILL_BEFORE_LOAD := 0.75
+var _still := 0.0
+
 func may_start() -> bool:
+	return _still >= STILL_BEFORE_LOAD
+
+## Taking a finished load off the loader waits only until you're not walking.
+func may_finish() -> bool:
+	return not _player_walking()
+
+func _player_walking() -> bool:
 	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D if is_inside_tree() else null
-	return player == null or Vector2(player.velocity.x, player.velocity.z).length() < 0.5
+	return player != null and Vector2(player.velocity.x, player.velocity.z).length() >= 0.5
 
 func _start_next() -> void:
 	if not may_start():
@@ -155,13 +168,14 @@ func _start_next() -> void:
 			_failed[path] = true
 
 func _process(delta: float) -> void:
+	_still = 0.0 if _player_walking() else _still + delta
 	for path in _loading.keys():
 		var status := ResourceLoader.load_threaded_get_status(path)
 		if status == ResourceLoader.THREAD_LOAD_LOADED:
 			# Taking it off the loader finishes it on the main thread (a 37 ms
 			# hitch mid-stride in perf.log): wait until you stop walking. A
 			# door needing it now takes it at once (_scene).
-			if not may_start():
+			if not may_finish():
 				continue
 			_scenes[path] = ResourceLoader.load_threaded_get(path)
 			_loading.erase(path)

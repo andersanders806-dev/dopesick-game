@@ -4714,9 +4714,15 @@ func _laptop_street_checks(gs: Node) -> void:
 	var p := _player()
 	loader._queue.clear()
 	p.velocity = Vector3(4.0, 0, 0)
+	await _frames(2)
 	_check(not loader.may_start(), "  no background load starts while you walk")
 	p.velocity = Vector3.ZERO
-	_check(loader.may_start(), "  ...and they go on once you stop")
+	await _frames(2)
+	_check(not loader.may_start(), "  ...nor the moment you stop (turning round, a bump)")
+	var still_t := Time.get_ticks_msec()
+	while not loader.may_start() and Time.get_ticks_msec() - still_t < 3000:
+		await _frames(1)
+	_check(loader.may_start(), "  ...they go on once you've stood still a moment")
 	# A load that finished while you walk is taken off the loader once you stop.
 	loader._scenes.erase("res://world/Pawn3D.tscn")
 	loader.prefetch("res://world/Pawn3D.tscn")

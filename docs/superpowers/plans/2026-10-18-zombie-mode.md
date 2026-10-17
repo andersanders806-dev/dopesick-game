@@ -6,10 +6,10 @@
 
 **Architecture:** `autoload/ZombieMode.gd` owns the mode's state (round, points, perks, power, save). City3D runs in a zombie variant. Zombies are Rocketbox bodies driven by `npc/Zombie3D.gd` with per-bone hitboxes; weapons are data `Resource`s used by a `player/WeaponHolder.gd` shared by both views; gore lives in `fx/gore/` (wounds shader, sever, gibs, blood pools).
 
-**Tech Stack:** Godot 4.7.2 flatpak, GDScript, Forward+ Vulkan; Rocketbox (MIT), Mixamo clips (player-downloaded), CC0/CC-BY assets with credits.
+**Tech Stack:** Godot 4.7.2 flatpak, GDScript, Forward+ Vulkan; Rocketbox (MIT), Quaternius UAL1/UAL2 (CC0), NVIDIA Kimodo via kimodo.cpp (CPU text-to-motion), headless Blender for retargeting/cutting, FLUX.1-schnell Space for 2D art, CC0/CC-BY assets with credits. No Mixamo.
 
 **Spec:** `docs/superpowers/specs/2026-10-18-zombie-mode-design.md`
-**Research:** `docs/superpowers/research/2026-10-18-zombie-gore-gunfeel.md`
+**Research:** `docs/superpowers/research/2026-10-18-zombie-gore-gunfeel.md`, `docs/superpowers/research/2026-10-18-free-animation-ai.md` (animation/AI stack, bone maps, licences)
 
 ## Global Constraints
 
@@ -45,7 +45,7 @@
 
 ### Task Z2: Zombies (bodies, animation, navigation, spawning, barricades) + early perf gate
 
-**Files:** Create `npc/Zombie3D.gd`, `npc/ZombieSpawner.gd`, `npc/zombie_rot.gdshader`, `npc/ZombieHitboxes.gd` (builds per-bone Area3D hitboxes on BoneAttachment3D: head, neck, torso, upper/lower arms, upper/lower legs; meta `part`), `world/Barricade.gd`, `dev-tools/fetch_mixamo_retarget.gd` (import pipeline: BoneMap from research §5 into `assets/mixamo/*.fbx` import settings, extracting an AnimationLibrary `res://assets/mixamo/zombie_clips.res`); modify `npc/CharacterAnimator.gd` aliases for zombie clips (`z_walk*`, `z_run`, `z_crawl`, `z_attack*`, `z_hit_*`, `z_death*`, `z_standup`, `z_scream`) with fallbacks to existing clips until Mixamo files exist.
+**Files:** Create `npc/Zombie3D.gd`, `npc/ZombieSpawner.gd`, `npc/zombie_rot.gdshader`, `npc/ZombieHitboxes.gd` (builds per-bone Area3D hitboxes on BoneAttachment3D: head, neck, torso, upper/lower arms, upper/lower legs; meta `part`), `world/Barricade.gd`, `dev-tools/fetch_zombie_anims.py` (downloads Quaternius UAL1/UAL2 CC0; builds kimodo.cpp and generates the missing clips from text prompts listed in the script, BVH out), `dev-tools/retarget_to_bip01.py` (headless Blender: bakes UAL1/UAL2/SOMA30 onto Rocketbox Bip01, exports animation-only GLB → `res://assets/zombie_anims/zombie_clips.res` AnimationLibrary; bone maps from the animation research file); modify `npc/CharacterAnimator.gd` aliases for zombie clips (`z_walk*`, `z_run`, `z_crawl`, `z_attack*`, `z_hit_*`, `z_death*`, `z_standup`, `z_scream`, `z_climb`, `p_kick`, `p_stab`) with fallbacks to existing Rocketbox clips for any clip not yet produced.
 
 **Interfaces:** Consumes Z1 (`zombie_health`, `round_started`). Produces `Zombie3D.take_hit(part: String, damage: float, dir: Vector3, weapon: Resource) -> void`, `signal died(zombie, part, melee: bool)`, `var legless: bool`, group `zombies`; `ZombieSpawner.alive() -> int`.
 
@@ -54,11 +54,11 @@
 - [ ] Step 5: **Perf gate** in a window on Low: 20 zombies chasing the player on Main Street, 60 s: report FPS, GPU ms, frames > 33 ms. If over budget: LOD meshes via `dev-tools/slim_glb.py`, animation update every 2nd frame beyond 15 m, shadows off on zombies — until within budget. Record numbers in the report.
 - [ ] Step 6: full smoke; commit `feat(zombies): the dead walk the block`.
 
-**Mixamo:** when this task starts, the controller gives the player the clip list (research §5) to download into `assets/mixamo/`; the task proceeds with fallbacks and wires the clips in when present.
+**Animations:** no Mixamo. Clip quality check: each generated/retargeted clip is reviewed in a window capture (feet planted via the `.pilot/feet.gd` method, no twisted limbs); bad Kimodo takes are regenerated with a different seed/prompt. All licences go in `assets/LICENSES.md`.
 
 ### Task Z3: Weapons, purchases, box, upgrade machine
 
-**Files:** Create `weapons/WeaponData.gd` (Resource), `weapons/*.tres` (pistol, SMG, shotgun, AR, sniper, magnum, LMG, wonder weapon + upgraded variants), `player/WeaponHolder.gd` (fire/reload/ammo/swap; hitscan from the active camera through hitboxes; shotgun pellets), `world/WallBuy.gd`, `world/MysteryBox.gd`, `world/UpgradeMachine.gd`; asset fetch `dev-tools/fetch_guns.py` (CC0/CC-BY guns per research §6, licenses recorded).
+**Files:** Create `weapons/WeaponData.gd` (Resource), `weapons/*.tres` (pistol, SMG, shotgun, AR, sniper, magnum, LMG, wonder weapon + upgraded variants), `player/WeaponHolder.gd` (fire/reload/ammo/swap; hitscan from the active camera through hitboxes; shotgun pellets), `world/WallBuy.gd`, `world/MysteryBox.gd`, `world/UpgradeMachine.gd`; asset fetch `dev-tools/fetch_guns.py` (Poly Haven CC0 service_pistol, bolt_action_rifle_7_62, machete, crowbar_01, fish_knife; OpenGameArt CC0 rifles; missing guns kitbashed; licences recorded).
 
 **Interfaces:** Consumes Z1 points API, Z2 `take_hit`. Produces `WeaponHolder.fire()`, `reload()`, `swap()`, `current: WeaponData`, `signal hit(part, killed)`, `signal fired`.
 
@@ -67,7 +67,7 @@
 
 ### Task Z4: First-person COD feel
 
-**Files:** Create `player/Viewmodel.gd` + `player/viewmodel.gdshader` (draw-on-top depth/projection per research §2, Godot 4.3+ variant), `player/FPFeel.gd` (ADS, sway, bob, recoil kick/recovery, trauma shake, slide), `ui/Hitmarker.gd`, `ui/PointsPopup.gd`; arms from Rocketbox (cut via import) or CC0 MakeHuman arms; procedural reload/inspect tweens; muzzle flash, shell ejection, tracers (pooled).
+**Files:** Create `player/Viewmodel.gd` + `player/viewmodel.gdshader` (draw-on-top depth/projection per research §2, Godot 4.3+ variant), `player/FPFeel.gd` (ADS, sway, bob, recoil kick/recovery, trauma shake, slide), `ui/Hitmarker.gd`, `ui/PointsPopup.gd`; first-person arms cut from a Rocketbox avatar in headless Blender (shares Bip01); procedural reload/inspect tweens; muzzle flash, shell ejection, tracers (pooled).
 
 - [ ] Step 1: failing checks: ADS reaches target FOV within 0.2 s ± 0.03; hip spread > ADS spread; recoil recovers to aim within 0.35 s after release; hitmarker shows 0.12 s, red on kill; slide only from sprint, lasts ~0.8 s; switching to TP mid-ADS/mid-reload leaves state consistent; viewmodel never clips (its material uses the depth shader).
 - [ ] Step 2-4; Step 5: window captures of firing/ADS for review (screenshots in scratchpad), feel tuning against research numbers; commit `feat(zombies): first person that feels like a modern shooter`.
@@ -81,7 +81,7 @@
 
 ### Task Z6: Gore
 
-**Files:** Create `fx/gore/wound.gdshader` (pose-space ellipsoid cutouts, 2 wounds, damage mask layering skin → flesh → bone), `fx/gore/Wounds.gd`, `fx/gore/Sever.gd` (bone scale-to-zero, stump caps, gib spawn), `fx/gore/GibPool.gd` (24), `fx/gore/BloodDecals.gd` (pool 80, raycast placement, drips from stumps, pools under corpses), `fx/gore/BloodFX.gd` (particle bursts < 64, neck fountain), `fx/gore/ScreenBlood.gd`, `fx/gore/Ragdolls.gd` (PhysicalBoneSimulator3D 11 bones, <= 6 active, freeze after 3 s, corpses <= 12); `dev-tools/bake_gore.gd` (bake rest pose to CUSTOM0, pre-cut limb gibs and stump caps per Rocketbox zombie body); gore textures/meshes fetched (CC0) or made procedurally; gore toggle in the mode menu.
+**Files:** Create `fx/gore/wound.gdshader` (pose-space ellipsoid cutouts, 2 wounds, damage mask layering skin → flesh → bone), `fx/gore/Wounds.gd`, `fx/gore/Sever.gd` (bone scale-to-zero, stump caps, gib spawn), `fx/gore/GibPool.gd` (24), `fx/gore/BloodDecals.gd` (pool 80, raycast placement, drips from stumps, pools under corpses), `fx/gore/BloodFX.gd` (particle bursts < 64, neck fountain), `fx/gore/ScreenBlood.gd`, `fx/gore/Ragdolls.gd` (PhysicalBoneSimulator3D 11 bones, <= 6 active, freeze after 3 s, corpses <= 12); `dev-tools/bake_gore.gd` (bake rest pose to CUSTOM0, pre-cut limb gibs and stump caps per Rocketbox zombie body); limb gibs and stump caps cut from the Rocketbox meshes in headless Blender (`dev-tools/bake_gore.gd` + `dev-tools/cut_gore.py`); blood splat decals generated with the FLUX.1-schnell Space or CC0 OpenGameArt splats; gore toggle in the mode menu.
 
 - [ ] Step 1: failing checks: per-limb thresholds sever exactly that limb; both legs → `legless` and crawl clip; lethal headshot → head hidden, stump visible, fountain emitting; pools never exceed caps (fire 500 shots); one shotgun blast severing several parts awards points once and leaves no orphan nodes; gore off → no severs/decals but kills still count.
 - [ ] Step 2-4; Step 5: horde perf with gore (same gate as Z2) and screenshots of wounds/severs/head pops for AA review; commit `feat(zombies): gore`.

@@ -19,8 +19,9 @@ settled.
 Player decisions:
 - Core loop: rounds in the open block (COD Zombies style).
 - Third person: RE4 Remake feel.
-- Assets: CC0/CC-BY with credits, plus Mixamo zombie animations the player
-  downloads from a list we give.
+- Assets: CC0/CC-BY/permissive with credits. No Mixamo (the player
+  declined: it needs their login). Free animation + AI stack per
+  `docs/superpowers/research/2026-10-18-free-animation-ai.md`.
 
 ## Mode shell
 
@@ -105,11 +106,20 @@ Player decisions:
 - Rocketbox bodies with a rot shader (pale/grey-green skin, veins, dirt,
   blood stains, torn clothes via alpha-scissor damage mask), eyes glow
   faintly.
-- Mixamo clips retargeted to the Rocketbox (Bip01) skeleton through
-  BoneMap + SkeletonProfileHumanoid at import (research §5 bone map):
-  walks (several), run, crawl, attacks, bite, hit reactions (front/back/
-  left/right/head), deaths, stand-up, scream. Until downloaded, existing
-  Rocketbox clips stand in.
+- Animation sources, in order: Quaternius UAL1/UAL2 (CC0: zombie idle,
+  walk, scratch, hit knockback, hit chest/head, death, lay-to-idle
+  stand-up, climb-up); Rocketbox's own MIT clips (drunk/injured walks,
+  crouch); NVIDIA Kimodo (text-to-motion, commercial-use licence, runs on
+  CPU via kimodo.cpp, BVH out) for what's missing: shambling walk
+  variants, run, crawl, attacks/bites, grab, per-direction hit reactions,
+  kneel, knockdowns, deaths, window climb, scream, and the player's kick
+  and knife stab. Not used in the shipped game: HY-Motion/Hunyuan (licence
+  excludes EU/UK/KR), MoMask (AMASS-trained, grey) — prototyping only.
+- Retarget: headless Blender (`dev-tools/retarget_to_bip01.py`, extending
+  the world-space bake in `dev-tools/rocketbox_to_glb.py`) bakes each source
+  (UAL1 Rigify DEF-, UAL2 UE-style, SOMA30 BVH) onto Bip01 and exports
+  animation-only GLBs into an AnimationLibrary; bone maps in the research
+  file (trap: SOMA "LeftLeg" is the thigh).
 - Navigation: NavigationAgent3D on the block navmesh, avoidance only near
   the player, repath every 0.5-1 s; spawn at block spawn points out of
   sight, via windows/barricades.
@@ -137,6 +147,18 @@ Player decisions:
 - Corpses: ragdoll on death via PhysicalBoneSimulator3D (11 bones), max 4-6
   simulating, frozen after 3 s, corpses removed oldest-first beyond 12.
 - Gore setting: on/off (default on) in the mode's menu.
+
+## Art sources
+
+- Guns/melee: Poly Haven CC0 (service_pistol, bolt_action_rifle_7_62,
+  machete, crowbar_01, fish_knife) + OpenGameArt CC0 rifles; missing guns
+  by kitbash or TRELLIS.2 (MIT) when a free HF token run is available.
+- First-person arms: cut from a Rocketbox avatar (shares Bip01).
+- Gore pieces (severed limbs, stumps, gibs): cut from the Rocketbox
+  meshes in headless Blender so skin and clothes match.
+- Decals/icons/UI (blood splats, perk icons): FLUX.1-schnell (Apache-2.0)
+  via its public HF Space, plus ambientCG/Poly Haven PBR textures.
+- Every source and licence in `assets/LICENSES.md` and the credits.
 
 ## Audio / music
 

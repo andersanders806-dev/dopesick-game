@@ -19,7 +19,7 @@
 - Max 20 zombies alive; gib pool 24; blood decal pool 80; ragdolls simulating <= 6; corpses <= 12.
 - Performance on Low, UHD 620: 60 FPS with 20 zombies + gore, GPU <= 14 ms, no frame > 33 ms in a horde.
 - Names: our own (Iron Lung, Quickhands, Double Shot, Second Wind, Long Legs; "upgrade machine", "mystery box"); no COD audio, logos or names in game.
-- Every downloaded asset: license recorded in `assets/<pack>/LICENSE.md` and in the credits screen (ui credits list); CC-BY needs the author + link.
+- Every downloaded asset: license recorded in `assets/<pack>/LICENSE.md`, `assets/LICENSES.md` and the credits screen; CC-BY/BY-NC need the author + link. The game is non-commercial: non-commercial licences (CC-BY-NC, CC-BY-NC-ND used unmodified-on-disk, MoMask, Bandai Namco, LAFAN1) are allowed; HY-Motion/Hunyuan stay out (EU territory exclusion).
 - Checks: `_zombie_<feature>_checks(gs)` in `dev-tools/smoke_test_3d.gd` + focused `dev-tools/smoke_zombie_<feature>.gd`; full smoke passes at the end of each task.
 - Never commit `dev-tools/gpu_probe.gd` or `assets/voice/*.wav`.
 

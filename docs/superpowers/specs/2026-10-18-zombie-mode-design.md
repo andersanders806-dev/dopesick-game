@@ -113,8 +113,13 @@ Player decisions:
   CPU via kimodo.cpp, BVH out) for what's missing: shambling walk
   variants, run, crawl, attacks/bites, grab, per-direction hit reactions,
   kneel, knockdowns, deaths, window climb, scream, and the player's kick
-  and knife stab. Not used in the shipped game: HY-Motion/Hunyuan (licence
-  excludes EU/UK/KR), MoMask (AMASS-trained, grey) — prototyping only.
+  and knife stab. The game is non-commercial (player, 2026-10-18), so
+  non-commercial sources are also in: MoMask (text-to-motion, anonymous HF
+  Space, BVH), Bandai Namco Research Motion Dataset and LAFAN1 (CC BY-NC-ND:
+  falls, get-ups, hit/stagger, injured gaits; used locally, not
+  redistributed as separate files). Still out: HY-Motion/Hunyuan, whose
+  licence excludes the EU (the player is in Denmark) regardless of
+  commercial use.
 - Retarget: headless Blender (`dev-tools/retarget_to_bip01.py`, extending
   the world-space bake in `dev-tools/rocketbox_to_glb.py`) bakes each source
   (UAL1 Rigify DEF-, UAL2 UE-style, SOMA30 BVH) onto Bip01 and exports
@@ -150,15 +155,19 @@ Player decisions:
 
 ## Art sources
 
-- Guns/melee: Poly Haven CC0 (service_pistol, bolt_action_rifle_7_62,
-  machete, crowbar_01, fish_knife) + OpenGameArt CC0 rifles; missing guns
-  by kitbash or TRELLIS.2 (MIT) when a free HF token run is available.
+- Guns/melee: realistic Sketchfab models under CC-BY or CC-BY-NC
+  (non-commercial is fine for this game) first, then Poly Haven CC0
+  (service_pistol, bolt_action_rifle_7_62, machete, crowbar_01, fish_knife)
+  and OpenGameArt CC0; missing guns by kitbash or TRELLIS.2 (MIT).
+  Sketchfab downloads need an account: the controller asks the player for
+  a free API token only if CC0 sources fall short.
 - First-person arms: cut from a Rocketbox avatar (shares Bip01).
 - Gore pieces (severed limbs, stumps, gibs): cut from the Rocketbox
   meshes in headless Blender so skin and clothes match.
 - Decals/icons/UI (blood splats, perk icons): FLUX.1-schnell (Apache-2.0)
   via its public HF Space, plus ambientCG/Poly Haven PBR textures.
-- Every source and licence in `assets/LICENSES.md` and the credits.
+- Every source and licence in `assets/LICENSES.md` and the credits
+  (attribution is still required for CC-BY/BY-NC).
 
 ## Audio / music
 

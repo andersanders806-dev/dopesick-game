@@ -129,6 +129,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_F12 and not get_tree().paused:
 			if preload("res://ui/PhotoMode.gd").open_over(get_tree()):
 				get_viewport().set_input_as_handled()
+		elif event.physical_keycode == KEY_F11 or (event.physical_keycode == KEY_ENTER and event.alt_pressed):
+			toggle_fullscreen()
+			get_viewport().set_input_as_handled()
 		elif event.physical_keycode == KEY_F4:
 			show_fps = not show_fps
 			_fps_label.visible = show_fps
@@ -230,6 +233,11 @@ func set_fullscreen(on: bool) -> void:
 	fullscreen = on
 	_apply_fullscreen()
 	_save_settings()
+
+## F11 (or Alt+Enter), anywhere, and the pause menu's button.
+func toggle_fullscreen() -> void:
+	set_fullscreen(not fullscreen)
+	_show_toast("Fullscreen" if fullscreen else "Windowed")
 
 func set_show_fps(on: bool) -> void:
 	show_fps = on
@@ -387,9 +395,10 @@ func _apply_viewport() -> void:
 	_shadow_filter = RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW if lean() else RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
 	RenderingServer.positional_soft_shadow_filter_set_quality(_shadow_filter)
 	RenderingServer.directional_soft_shadow_filter_set_quality(_shadow_filter)
-	# Low: no screen-space AA at all -- FXAA was 1.3 ms on the street, and the
-	# FSR upscale already softens the edges.
-	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 or preset == Preset.LOW else (Viewport.SCREEN_SPACE_AA_FXAA if lean() else Viewport.SCREEN_SPACE_AA_SMAA)
+	# Low: FXAA. Without any pass the street crawled when you walked (Low
+	# upscales from 60-75% and FSR sharpens the stair-steps); FXAA cuts that
+	# shimmer by a fifth and Low still holds 60 on the UHD 620.
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if ps5 else (Viewport.SCREEN_SPACE_AA_FXAA if lean() or preset == Preset.LOW else Viewport.SCREEN_SPACE_AA_SMAA)
 	for n in get_tree().get_nodes_in_group("film_look"):
 		n.visible = high
 	render_scale = SCALE_START[preset]

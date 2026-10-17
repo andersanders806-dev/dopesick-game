@@ -1963,6 +1963,7 @@ func _menu_and_save_checks(gs: Node) -> void:
 	pause.open()
 	await _frames(2)
 	_check(paused, "  the pause menu stops the game")
+	_check(pause.find_children("*", "Button", true, false).any(func(b): return b.text.begins_with("Fullscreen")), "  ...and has a fullscreen button")
 	pause._close()
 	await _frames(2)
 	_check(not paused, "  ...and resume starts it again")
@@ -3442,9 +3443,18 @@ func _aa_checks(gs: Node) -> void:
 	var vp := root.get_viewport()
 	gfx.set_preset(gfx.Preset.MEDIUM)
 	_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_SMAA, "  Medium: SMAA, not FXAA")
-	# Low drops the pass: 1.3 ms on the street, and FSR already softens.
+	# Low: FXAA, the cheap pass -- without one the street crawled as you walked.
 	gfx.set_preset(gfx.Preset.LOW)
-	_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "  Low: no AA pass at all")
+	_check(vp.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "  Low: FXAA")
+	# Fullscreen with one key, F11, from anywhere.
+	var was_full: bool = gfx.fullscreen
+	var f11 := InputEventKey.new()
+	f11.physical_keycode = KEY_F11
+	f11.pressed = true
+	gfx._unhandled_input(f11)
+	_check(gfx.fullscreen != was_full, "  F11 switches fullscreen")
+	gfx._unhandled_input(f11)
+	_check(gfx.fullscreen == was_full, "  ...and back")
 	gfx.set_preset(gfx.Preset.HIGH)
 	# On an integrated GPU FSR 2 from ~59% crawls at 20-25 FPS; FSR 1 from
 	# 77% with TAA and SMAA measured faster and smoother on a UHD 620.
@@ -3990,8 +4000,8 @@ func _low_checks(gs: Node) -> void:
 	gfx.set_preset(gfx.Preset.LOW)
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(5)
-	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED and not _kit_piece(city).get_active_material(0).normal_enabled,
-		"  Low on laptop graphics is lean too: no AA pass, flat facades")
+	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_piece(city).get_active_material(0).normal_enabled,
+		"  Low on laptop graphics is lean too: FXAA, flat facades")
 	var post: ColorRect = get_first_node_in_group("hud").get_node("PostFX")
 	gs.craving = 100.0
 	gs.craving_changed.emit(gs.craving)
@@ -4470,6 +4480,16 @@ func _anim6_checks(gs: Node) -> void:
 	var idle_a = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
 	var idle_b = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
 	_check(not is_equal_approx(idle_a._player.current_animation_position, idle_b._player.current_animation_position) or not is_equal_approx(idle_a._idle_rate, idle_b._idle_rate), "  two people standing about aren't breathing in step")
+	# Walking in place: the Rocketbox clips carry the hips ~1.2 m forward
+	# per loop and snap them back, which jerked everyone back a step.
+	for clip in ["walk", "sprint", "walk_sick", "idle_sick"]:
+		var a: Animation = idle_a._player.get_animation(idle_a._resolved.get(clip, ""))
+		var worst := 0.0
+		for t in a.get_track_count():
+			if a.track_get_type(t) == Animation.TYPE_POSITION_3D and a.track_get_key_count(t) > 1:
+				var d: Vector3 = a.track_get_key_value(t, a.track_get_key_count(t) - 1) - a.track_get_key_value(t, 0)
+				worst = maxf(worst, Vector2(d.x, d.z).length())
+		_check(worst < 0.5, "  %s loops in place: no snap back (%.2f)" % [clip, worst])
 	# Heads turn.
 	var ray: Node = city.find_child("Ray", true, false)
 	var look: Node = ray.find_children("*", "LookAtModifier3D", true, false).front() if ray else null
@@ -4690,7 +4710,7 @@ func _laptop_street_checks(gs: Node) -> void:
 	var lamps: Array = city.find_children("*", "Light3D", true, false).filter(func(l): return not l is DirectionalLight3D)
 	_check(not lamps.is_empty() and lamps.all(func(l): return l.distance_fade_enabled and l.distance_fade_begin <= 15.0),
 		"  lamps and sign glows fade out past ~14 m from the camera (%d lights)" % lamps.size())
-	_check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED, "  no FXAA pass on Low")
+	_check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "  FXAA on Low")
 	# At night the 6 lamps and 12 sign glows were 6 ms: light cost goes with
 	# the screen they cover, so on Low they reach less far.
 	var glow := city.get_node("BarSignGlow") as OmniLight3D

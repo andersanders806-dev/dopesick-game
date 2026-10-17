@@ -57,7 +57,7 @@ func open() -> void:
 	_note = _label(PRESET_NOTES[Graphics.preset], 12, Color(0.6, 0.58, 0.54))
 	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(_note)
-	col.add_child(_check("Fullscreen", Graphics.fullscreen, Graphics.set_fullscreen))
+	col.add_child(_check("Fullscreen  (F11)", Graphics.fullscreen, Graphics.set_fullscreen))
 	col.add_child(_check("Show frame rate  (F4)", Graphics.show_fps, Graphics.set_show_fps))
 	var laptop := _check("Laptop mode  (cooler, lower resolution)", Graphics.laptop_mode, Graphics.set_laptop_mode)
 	laptop.name = "LaptopMode"

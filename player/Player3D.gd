@@ -3,12 +3,17 @@ extends CharacterBody3D
 const PauseMenuScript := preload("res://ui/PauseMenu.gd")
 const FirstPersonRoom := preload("res://world/FirstPersonRoom.gd")
 const NotebookScript := preload("res://ui/Notebook.gd")
-const BASE_SPEED := 4.2
+## A walk: the clip plants its feet up to 1.8x its own pace (0.98 m/s on
+## this body), so this is as fast as walking goes without skating. It was
+## 4.2, a jog the walk cycle could never keep up with.
+const BASE_SPEED := 1.75
 ## Sprinting is the risk/reward half of the stealth layer: it gets you out of
 ## a room fast, and it is the single loudest thing you can do in front of a
 ## guard (see Guard3D.SUSPICION_SPRINTING). Withdrawal takes it away -- when
 ## you are sick you cannot run, which is when you most need to.
-const SPRINT_MULT := 1.55
+## 5.25 m/s: the run clip's planted limit (2.95 m/s x 1.8), and still clear
+## of the police (4.6) and the mugger (3.9).
+const SPRINT_MULT := 3.0
 const SICK_SPEED_MULT := 0.55
 const SICK_THRESHOLD := 20.0
 ## Limping for a few hours after the collector's been at you.
@@ -22,8 +27,8 @@ const DECEL := 50.0
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
 
-# One full walk cycle is two footfalls.
-const STEP_INTERVAL := 0.333
+# One full walk cycle is two footfalls; before the body is loaded.
+const STEP_INTERVAL := 0.615
 
 ## How long the player is rooted in place for a grab. Long enough to read
 ## as deliberate rather than a twitch; the animation is stretched to fit,
@@ -321,7 +326,7 @@ func _physics_process(delta: float) -> void:
 		anim.play("sprint", anim_speed)
 	else:
 		anim.update(moved, anim_speed)
-	_update_footsteps(delta, dir.length() > 0.1, anim_speed * (SPRINT_MULT if _sprinting else 1.0))
+	_update_footsteps(delta, dir.length() > 0.1, anim_speed, anim.step_time(clip))
 
 	if dir.length() > 0.1:
 		var target_angle := atan2(dir.x, dir.z)
@@ -353,15 +358,15 @@ func open_craft_menu() -> CanvasLayer:
 	menu.open("Make something", "Carrying: %s. Search trash bags and parked cars for more." % ", ".join(have), options, disabled)
 	return menu
 
-func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
+func _update_footsteps(delta: float, moving: bool, anim_speed: float, interval := STEP_INTERVAL) -> void:
 	if not moving:
 		# Next step lands soon after starting to walk again, not instantly.
-		_step_timer = STEP_INTERVAL * 0.5
+		_step_timer = interval * 0.5
 		return
 	_step_timer -= delta * anim_speed
 	if _step_timer > 0.0:
 		return
-	_step_timer += STEP_INTERVAL
+	_step_timer = maxf(_step_timer + interval, 0.0)
 	_left_foot = not _left_foot
 	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
 

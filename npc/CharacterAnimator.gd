@@ -62,6 +62,7 @@ var _one_shot := ""
 var _rest_clip := "idle"
 ## Logical clip name -> the real clip on this model, or "" if it has none.
 var _resolved := {}
+var _skeleton: Skeleton3D
 ## Everyone's idle runs at their own rate, from their own point in it, so a
 ## room of people standing about isn't breathing in step.
 var _idle_rate: float = randf_range(0.88, 1.12)
@@ -73,6 +74,7 @@ func _init(model: Node, moving_clip := "walk") -> void:
 		_player = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _player == null:
 		return
+	_skeleton = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	for logical in LOGICAL_CLIPS:
 		_resolved[logical] = _resolve(logical)
 	# Locomotion clips import with looping off in both packs.
@@ -93,23 +95,37 @@ func _init(model: Node, moving_clip := "walk") -> void:
 ## own movement does the travelling: take the steady drift out of each
 ## position track, across the ground only, keeping the bob and sway. The
 ## clips are shared by every copy of a model, so once per clip.
+##
+## Their first frame is also a stall -- the hips sit at the origin for one
+## key before moving off -- which was a hitch per loop (6.5 cm in the run).
+## So the pace is taken from the second key to the last, and the first key
+## is set to the last, which is where the loop comes round to.
 static func _in_place(a: Animation) -> void:
 	if a.has_meta("in_place"):
 		return
 	a.set_meta("in_place", true)
+	var travel := 0.0
 	for t in a.get_track_count():
 		var n := a.track_get_key_count(t)
-		if a.track_get_type(t) != Animation.TYPE_POSITION_3D or n < 2:
+		if a.track_get_type(t) != Animation.TYPE_POSITION_3D or n < 3:
 			continue
-		var t0 := a.track_get_key_time(t, 0)
-		var span := a.track_get_key_time(t, n - 1) - t0
-		var drift: Vector3 = a.track_get_key_value(t, n - 1) - a.track_get_key_value(t, 0)
+		var t1 := a.track_get_key_time(t, 1)
+		var span := a.track_get_key_time(t, n - 1) - t1
+		var drift: Vector3 = a.track_get_key_value(t, n - 1) - a.track_get_key_value(t, 1)
 		drift.y = 0.0
 		if span <= 0.0 or drift.length() < 0.01:
 			continue
-		for k in n:
+		var pace := drift / span
+		travel = maxf(travel, pace.length())
+		for k in range(1, n):
 			var v: Vector3 = a.track_get_key_value(t, k)
-			a.track_set_key_value(t, k, v - drift * ((a.track_get_key_time(t, k) - t0) / span))
+			a.track_set_key_value(t, k, v - pace * (a.track_get_key_time(t, k) - t1))
+		var last: Vector3 = a.track_get_key_value(t, n - 1)
+		var first: Vector3 = a.track_get_key_value(t, 0)
+		a.track_set_key_value(t, 0, Vector3(last.x, first.y, last.z))
+	# What the hips covered, per second in skeleton units: the pace that
+	# keeps this clip's feet planted (natural_speed()).
+	a.set_meta("travel", travel)
 
 ## Finds the real clip on this model for a logical name. Exact matches win
 ## over suffix matches so a model that genuinely has "walk" never picks up
@@ -138,13 +154,31 @@ func update(horizontal_speed: float, anim_speed := -1.0) -> void:
 		play(_rest_clip, anim_speed if anim_speed >= 0.0 else _idle_rate)
 
 func stride_rate(clip: String, ground_speed: float) -> float:
-	var natural := WALK_NATURAL
+	return clampf(ground_speed / natural_speed(clip), STRIDE_LIMITS.x, STRIDE_LIMITS.y)
+
+## Ground speed (m/s) this body's clip covers at playback speed 1: from
+## the hips' travel that _in_place took out, so each model plants its own
+## feet (the women's walk covers a fifth more than the men's). The
+## constants are for a body not yet in the world, or a clip without travel.
+func natural_speed(clip: String) -> float:
+	var real: String = _resolved.get(clip, "")
+	if _player and _skeleton and real != "" and _skeleton.is_inside_tree():
+		var travel: float = _player.get_animation(real).get_meta("travel", 0.0)
+		if travel > 0.0:
+			return travel * _skeleton.global_transform.basis.get_scale().x
 	match clip:
 		"sprint":
-			natural = SPRINT_NATURAL
+			return SPRINT_NATURAL
 		"walk_sick":
-			natural = SHUFFLE_NATURAL
-	return clampf(ground_speed / natural, STRIDE_LIMITS.x, STRIDE_LIMITS.y)
+			return SHUFFLE_NATURAL
+	return WALK_NATURAL
+
+## Seconds of clip between footfalls at playback speed 1: a loop is two.
+func step_time(clip: String) -> float:
+	var real: String = _resolved.get(clip, "")
+	if _player == null or real == "":
+		return 0.615
+	return _player.get_animation(real).length * 0.5
 
 ## What the character does when not moving: "idle" (standing) by default,
 ## or e.g. "sit" for a patron in a booth. Takes effect immediately.

@@ -4476,7 +4476,16 @@ func _anim6_checks(gs: Node) -> void:
 	var peds: Array = get_nodes_in_group("pedestrians")
 	var walker: Node = peds[0]
 	var ap: AnimationPlayer = walker.anim._player
-	_check(absf(ap.speed_scale - walker.speed / Anim.WALK_NATURAL) < 0.05, "  a passerby's steps match their pace (%.2f for %.2f m/s)" % [ap.speed_scale, walker.speed])
+	_check(absf(ap.speed_scale - walker.speed / walker.anim.natural_speed("walk")) < 0.05, "  a passerby's steps match their pace (%.2f for %.2f m/s)" % [ap.speed_scale, walker.speed])
+	# Your own feet: walking and sprinting both inside what the clips can
+	# plant, rather than skating along at a jog.
+	var me: Node = _player()
+	var walk_rate: float = me.BASE_SPEED / me.anim.natural_speed("walk")
+	var run_rate: float = me.BASE_SPEED * me.SPRINT_MULT / me.anim.natural_speed("sprint")
+	_check(walk_rate <= Anim.STRIDE_LIMITS.y + 0.01 and run_rate <= Anim.STRIDE_LIMITS.y + 0.01, "  your feet keep up when you walk (%.2fx) and sprint (%.2fx)" % [walk_rate, run_rate])
+	var police: float = load("res://npc/Police3D.gd").SPEED
+	var mugger: float = load("res://npc/Mugger3D.gd").MUGGER_SPEED
+	_check(me.BASE_SPEED * me.SPRINT_MULT > maxf(police, mugger), "  ...and a sprint still outruns the police and the mugger")
 	var idle_a = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
 	var idle_b = Anim.new(load(load("res://npc/CharacterCast.gd").model_for("player")).instantiate())
 	_check(not is_equal_approx(idle_a._player.current_animation_position, idle_b._player.current_animation_position) or not is_equal_approx(idle_a._idle_rate, idle_b._idle_rate), "  two people standing about aren't breathing in step")

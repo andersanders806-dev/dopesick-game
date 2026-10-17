@@ -16,8 +16,10 @@ extends RefCounted
 const BLEND_TIME := 0.2
 ## Ground speed (m/s, at the cast's 1.5 scale) each locomotion clip covers at
 ## playback speed 1, measured from the feet: update() plays them at the
-## rate that keeps the feet planted instead of sliding.
-const WALK_NATURAL := 2.0
+## rate that keeps the feet planted instead of sliding. The walk was 2.0
+## while the clips still carried the hips forward; walking in place
+## (_in_place) it's 1.25.
+const WALK_NATURAL := 1.25
 const SPRINT_NATURAL := 5.6
 const SHUFFLE_NATURAL := 1.0
 const STRIDE_LIMITS := Vector2(0.4, 1.8)
@@ -78,11 +80,36 @@ func _init(model: Node, moving_clip := "walk") -> void:
 		var real: String = _resolved.get(logical, "")
 		if real != "":
 			_player.get_animation(real).loop_mode = Animation.LOOP_LINEAR
+			_in_place(_player.get_animation(real))
 	_player.animation_finished.connect(_on_animation_finished)
 	play("idle", _idle_rate)
 	var idle: String = _resolved.get("idle", "")
 	if idle != "":
 		_player.seek(randf() * _player.get_animation(idle).length, true)
+
+## The Rocketbox clips walk the hips forward (~1.2 m a walk loop, more for
+## the sprint; the sick idle drifts too) and the loop snaps them back, so
+## everyone lurched back a step per stride on top of moving. The body's
+## own movement does the travelling: take the steady drift out of each
+## position track, across the ground only, keeping the bob and sway. The
+## clips are shared by every copy of a model, so once per clip.
+static func _in_place(a: Animation) -> void:
+	if a.has_meta("in_place"):
+		return
+	a.set_meta("in_place", true)
+	for t in a.get_track_count():
+		var n := a.track_get_key_count(t)
+		if a.track_get_type(t) != Animation.TYPE_POSITION_3D or n < 2:
+			continue
+		var t0 := a.track_get_key_time(t, 0)
+		var span := a.track_get_key_time(t, n - 1) - t0
+		var drift: Vector3 = a.track_get_key_value(t, n - 1) - a.track_get_key_value(t, 0)
+		drift.y = 0.0
+		if span <= 0.0 or drift.length() < 0.01:
+			continue
+		for k in n:
+			var v: Vector3 = a.track_get_key_value(t, k)
+			a.track_set_key_value(t, k, v - drift * ((a.track_get_key_time(t, k) - t0) / span))
 
 ## Finds the real clip on this model for a logical name. Exact matches win
 ## over suffix matches so a model that genuinely has "walk" never picks up

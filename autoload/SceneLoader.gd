@@ -192,11 +192,10 @@ func _process(delta: float) -> void:
 		_prefetch_near_doors()
 
 func _prefetch_near_doors() -> void:
-	var player := get_tree().get_first_node_in_group("player") as Node3D
-	if player == null:
-		return
 	# The street is where every door leads: start on it, and on the facade
-	# kits it builds itself from, from the first room you're in.
+	# kits it builds itself from, as soon as the game is up -- the title
+	# screen's time is enough for the whole block to be in before "Continue"
+	# drops you on it.
 	if not _warmed:
 		_warmed = true
 		prefetch("res://world/City3D.tscn")
@@ -204,6 +203,9 @@ func _prefetch_near_doors() -> void:
 			prefetch(path)
 		for path in preload("res://npc/CharacterCast.gd").all_models():
 			prefetch(path)
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		return
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene, true)

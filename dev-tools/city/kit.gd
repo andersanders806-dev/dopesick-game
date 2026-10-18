@@ -24,7 +24,10 @@ const CELLS := {
 	"Cell_West": AABB(Vector3(-90, -1, -94), Vector3(26, 25, 98.6)),
 	"Cell_East": AABB(Vector3(64, -1, -94), Vector3(26, 25, 98.6)),
 	"Cell_Back": AABB(Vector3(-90, -1, -110), Vector3(180, 25, 25)),
-	"Cell_Inner": AABB(Vector3(-65, -1, -85), Vector3(130, 25, 69)),
+	# Down to Main's building line: the pusher's alleys and the underpass's
+	# mouth onto Main are the inside's too; and out over West Ave's
+	# sidewalk, where the park's trees lean.
+	"Cell_Inner": AABB(Vector3(-70, -1, -85), Vector3(135, 25, 80.5)),
 }
 const CHAINLINK := "res://assets/polyhaven/modular_chainlink_fence/modular_chainlink_fence.gltf"
 const MultiMeshFill := preload("res://world/MultiMeshFill.gd")
@@ -33,6 +36,22 @@ const FENCE_H := 2.4
 
 static var _mats := {}
 static var _meshes := {}
+## Heavy data (meshes, the navmesh) is saved beside the scene as binary
+## resources: inside City3D.tscn as text it added ~1.2 s to a cold load.
+const DATA_DIR := "res://world/block/"
+
+## Saves `res` to DATA_DIR/<file>.res and makes the scene refer to it there.
+static func external(res: Resource, file: String) -> Resource:
+	DirAccess.make_dir_recursive_absolute(DATA_DIR)
+	var path := DATA_DIR + file + ".res"
+	if res.resource_path == path:
+		return res
+	var err := ResourceSaver.save(res, path, ResourceSaver.FLAG_COMPRESS)
+	if err != OK:
+		push_error("external: couldn't save %s (%d)" % [path, err])
+		return res
+	res.take_over_path(path)
+	return res
 
 # --- Cells and places ------------------------------------------------------------
 
@@ -55,6 +74,14 @@ static func place(b: Node, n: String, pos: Vector3) -> Marker3D:
 ## Never hidden when its cell sleeps: you navigate by it from anywhere.
 static func landmark(node: Node) -> void:
 	node.add_to_group("landmark", true)
+
+## A light that's only on after dark: City3D switches the group
+## "night_lights" with the streetlights. (A fire is lit all day:
+## "always_lit".)
+static func night_light(b: Node, parent: Node, n: String, pos: Vector3, color: Color, energy: float, light_range: float) -> OmniLight3D:
+	var l: OmniLight3D = b._light(parent, n, pos, color, energy, light_range, false)
+	l.add_to_group("night_lights", true)
+	return l
 
 # --- Materials -------------------------------------------------------------------
 
@@ -120,6 +147,14 @@ static func mat(b: Node, key: String) -> Material:
 			m = b._tex_mat("pbr:tarp", 1.0)
 			m.albedo_color = {"tarp_blue": Color(0.16, 0.3, 0.58), "tarp_green": Color(0.24, 0.32, 0.2), "tarp_grey": Color(0.4, 0.4, 0.38)}[key]
 			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		"leaves":
+			m = StandardMaterial3D.new()
+			m.albedo_texture = load("res://assets/decals/leaves.png")
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+			m.alpha_scissor_threshold = 0.5
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
+			m.roughness = 0.9
+			m.albedo_color = Color(0.85, 0.85, 0.8)
 		"bark":
 			m = StandardMaterial3D.new()
 			m.albedo_texture = load("res://assets/pbr/bark_diff.jpg")
@@ -187,7 +222,7 @@ static func bake_navigation(b: Node) -> void:
 	var Room = load("res://world/WorldRoot3D.gd")
 	var nav_mesh: NavigationMesh = Room.new_nav_mesh()
 	NavigationServer3D.bake_from_source_geometry_data(nav_mesh, source)
-	(b._root.get_node("NavRegion") as NavigationRegion3D).navigation_mesh = nav_mesh
+	(b._root.get_node("NavRegion") as NavigationRegion3D).navigation_mesh = external(nav_mesh, "navmesh")
 
 static func _box(size: Vector3) -> BoxShape3D:
 	var s := BoxShape3D.new()
@@ -224,7 +259,7 @@ static func _kit_mesh(path: String, piece: String) -> Mesh:
 	if not _meshes.has(key):
 		var scene: Node = load(path).instantiate()
 		var mi := scene.find_child(piece, true, false) as MeshInstance3D
-		_meshes[key] = mi.mesh
+		_meshes[key] = external(mi.mesh, piece)
 		scene.free()
 	return _meshes[key]
 
@@ -279,23 +314,36 @@ static func fence(b: Node, parent: Node, n: String, a: Vector3, to: Vector3, hei
 ## copied out as plain MeshInstance3Ds under a holder, so they can be picked
 ## from or repainted (`paint`) -- the builder's changes to nodes inside an
 ## instanced model aren't saved with the scene.
-static func copy_model(b: Node, parent: Node, n: String, path: String, xform: Transform3D, paint: Material = null, only := "") -> Node3D:
-	var holder := Node3D.new()
-	holder.name = n
-	b._add(parent, holder)
-	holder.transform = xform
-	var scene: Node3D = load(path).instantiate()
-	for mi in scene.find_children("*", "MeshInstance3D", true, false):
-		if only != "" and not String(mi.name).contains(only):
-			continue
-		var copy := MeshInstance3D.new()
-		copy.name = mi.name
-		copy.mesh = mi.mesh
-		copy.material_override = paint
-		b._add(holder, copy)
-		copy.transform = _rel(scene, mi)
-	scene.free()
-	return holder
+static func copy_model(b: Node, parent: Node, n: String, path: String, xform: Transform3D, paint: Material = null, only := "") -> MeshInstance3D:
+	# Merged into one mesh (a surface per material), saved once per model
+	# and pick: every separate resource is another load.
+	var file := path.get_file().get_basename() + ("_" + only if only != "" else "")
+	if not _meshes.has(file):
+		var scene: Node3D = load(path).instantiate()
+		var by_mat := {}
+		for mi in scene.find_children("*", "MeshInstance3D", true, false):
+			if only != "" and not String(mi.name).contains(only):
+				continue
+			for i in mi.mesh.get_surface_count():
+				var m: Material = mi.mesh.surface_get_material(i)
+				if not by_mat.has(m):
+					var st := SurfaceTool.new()
+					st.begin(Mesh.PRIMITIVE_TRIANGLES)
+					by_mat[m] = st
+				(by_mat[m] as SurfaceTool).append_from(mi.mesh, i, _rel(scene, mi))
+		scene.free()
+		var merged := ArrayMesh.new()
+		for m in by_mat:
+			(by_mat[m] as SurfaceTool).commit(merged)
+			merged.surface_set_material(merged.get_surface_count() - 1, m)
+		_meshes[file] = external(merged, file)
+	var copy := MeshInstance3D.new()
+	copy.name = n
+	copy.mesh = _meshes[file]
+	copy.material_override = paint
+	b._add(parent, copy)
+	copy.transform = xform
+	return copy
 
 ## `node`'s transform relative to the root of the (out of tree) scene.
 static func _rel(root: Node3D, node: Node3D) -> Transform3D:
@@ -389,6 +437,78 @@ static func shop_sign(b: Node, parent: Node, n: String, text: String, pos: Vecto
 	var out := Basis(Vector3.UP, deg_to_rad(yaw)) * Vector3(0, -0.3, 0.8)
 	b._light(parent, n + "SignGlow", pos + out, color, 1.2, 4.0, false)
 
+## A newsstand kiosk: a solid box with a slanted tin roof, papers racked on
+## the side facing `front`, a lit price board. A real thing to walk round,
+## and what breaks the long view down a sidewalk.
+static func kiosk(b: Node, parent: Node, n: String, pos: Vector3, size: Vector2, front: Vector3, paint: Color, board_text := "LOTTO\nPAPERS\nSMOKES") -> StaticBody3D:
+	var stand: StaticBody3D = b._solid(parent, n, Vector3(size.x, 2.4, size.y), pos + Vector3(0, 1.2, 0), b._color_mat(paint, 0.6))
+	b._box_mesh(stand, "Roof", Vector3(size.x + 0.5, 0.12, size.y + 0.5), front * 0.15 + Vector3(0, 1.3, 0), mat(b, "iron"))
+	var papers := b._color_mat(Color(0.82, 0.8, 0.74), 0.9) as Material
+	var half := Vector3(size.x, 0, size.y) / 2.0
+	var face := front * (absf(front.x) * half.x + absf(front.z) * half.z + 0.06)
+	var along := front.cross(Vector3.UP)
+	for k in 3:
+		var rack := Vector3(0.12, 0.35, 0.8) if absf(front.x) > 0.5 else Vector3(0.8, 0.35, 0.12)
+		b._box_mesh(stand, "Papers%d" % k, rack, face + along * (-0.45 + (k % 2) * 0.9) + Vector3(0, -0.55 + k * 0.4, 0), papers)
+	var board := Label3D.new()
+	board.name = "Board"
+	board.text = board_text
+	board.font_size = 40
+	board.pixel_size = 0.006
+	board.modulate = Color(1.0, 0.85, 0.4)
+	board.outline_modulate = Color(0, 0, 0, 0.9)
+	b._add(stand, board)
+	board.position = face + Vector3(0, 0.6, 0) + front * 0.02
+	board.rotation.y = atan2(front.x, front.z)
+	return stand
+
+## A box truck double-parked or at the curb, taller than anyone's eye line:
+## cab, cargo box with a company's name down both sides, wheels. Local +x
+## is forward; `yaw` turns it.
+static func box_truck(b: Node, parent: Node, n: String, pos: Vector3, yaw: float, livery: String, paint: Color) -> StaticBody3D:
+	var t := StaticBody3D.new()
+	t.name = n
+	b._add(parent, t)
+	t.position = pos
+	t.rotation_degrees.y = yaw
+	var body := (mat(b, "metal") as StandardMaterial3D).duplicate() as StandardMaterial3D
+	body.albedo_color = paint
+	b._box_mesh(t, "Cargo", Vector3(4.6, 2.5, 2.3), Vector3(-0.7, 1.75, 0), body)
+	b._box_mesh(t, "Cab", Vector3(1.5, 1.8, 2.2), Vector3(2.35, 1.4, 0), b._color_mat(Color(0.82, 0.8, 0.76), 0.5))
+	b._box_mesh(t, "Windshield", Vector3(0.05, 0.75, 1.9), Vector3(3.11, 1.85, 0), b._color_mat(Color(0.05, 0.06, 0.08), 0.1))
+	b._box_mesh(t, "Bumper", Vector3(0.15, 0.25, 2.3), Vector3(3.15, 0.55, 0), mat(b, "iron"))
+	b._box_mesh(t, "Chassis", Vector3(6.0, 0.35, 1.9), Vector3(0, 0.55, 0), mat(b, "iron"))
+	var tyre := b._color_mat(Color(0.04, 0.04, 0.04), 0.9) as Material
+	for wx in [2.2, -1.6, -2.4]:
+		for side in [-1.0, 1.0]:
+			var w: MeshInstance3D = b._cylinder(t, "Wheel", 0.45, 0.3, Vector3(wx, 0.45, side * 1.0), tyre)
+			w.rotation_degrees.x = 90.0
+	for side in [-1.0, 1.0]:
+		var l := Label3D.new()
+		l.name = "Livery"
+		l.text = livery
+		l.font_size = 64
+		l.pixel_size = 0.01
+		l.modulate = Color(0.95, 0.93, 0.88)
+		l.outline_modulate = Color(0, 0, 0, 0.6)
+		l.outline_size = 6
+		b._add(t, l)
+		l.position = Vector3(-0.7, 2.0, side * 1.16)
+		l.rotation_degrees.y = 0.0 if side > 0 else 180.0
+	b._collision(t, b._box_shape(Vector3(6.2, 2.9, 2.3)), Vector3(0, 1.45, 0))
+	return t
+
+## A green-grey electrical cabinet, stickered: solid, chest high-plus.
+static func cabinet(b: Node, parent: Node, n: String, pos: Vector3, yaw: float) -> void:
+	var c: StaticBody3D = b._solid(parent, n, Vector3(1.4, 1.7, 0.7), pos + Vector3(0, 0.85, 0), null)
+	c.rotation_degrees.y = yaw
+	var box := (mat(b, "metal") as StandardMaterial3D).duplicate() as StandardMaterial3D
+	box.albedo_color = Color(0.42, 0.47, 0.42)
+	b._box_mesh(c, "Mesh", Vector3(1.4, 1.7, 0.7), Vector3.ZERO, box)
+	b._box_mesh(c, "Vent", Vector3(0.9, 0.25, 0.02), Vector3(0, 0.45, 0.36), mat(b, "iron"))
+	b._box_mesh(c, "Sticker", Vector3(0.22, 0.3, 0.01), Vector3(-0.4, 0.0, 0.36), b._color_mat(Color(0.9, 0.85, 0.3), 0.7))
+	b._box_mesh(c, "Sticker2", Vector3(0.3, 0.12, 0.01), Vector3(0.35, -0.25, 0.36), b._color_mat(Color(0.85, 0.2, 0.25), 0.7))
+
 ## A bare tree (the park's are dead or near it): trunk, limbs and twigs as
 ## tapered six-sided tubes in one mesh, a collider round the trunk.
 static func tree(b: Node, parent: Node, n: String, pos: Vector3, variant: int) -> void:
@@ -414,17 +534,45 @@ static func _tree_mesh(b: Node, variant: int) -> ArrayMesh:
 	rng.seed = 7001 + variant * 31
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_branch(st, rng, Vector3.ZERO, Vector3(rng.randf_range(-0.08, 0.08), 1, rng.randf_range(-0.08, 0.08)).normalized(), 3.2 + variant * 0.5, 0.2, 0)
+	var tips: Array[Vector3] = []
+	_branch(st, rng, Vector3.ZERO, Vector3(rng.randf_range(-0.08, 0.08), 1, rng.randf_range(-0.08, 0.08)).normalized(), 3.2 + variant * 0.5, 0.2, 0, tips)
 	st.generate_tangents()
 	var mesh := st.commit()
 	mesh.surface_set_material(0, mat(b, "bark"))
-	_meshes[key] = mesh
+	# Thin, tired foliage: crossed leaf cards at the outer twigs, most of
+	# them; the park's trees are half bare.
+	var leaves := SurfaceTool.new()
+	leaves.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for tip in tips:
+		if rng.randf() < 0.3:
+			continue
+		var size := rng.randf_range(1.1, 1.9)
+		var spin := rng.randf_range(0.0, PI)
+		for k in 2:
+			var a := Vector3(cos(spin + k * PI / 2.0), 0, sin(spin + k * PI / 2.0)) * size / 2.0
+			var up := Vector3(0, size / 2.0, 0)
+			_card(leaves, tip - a - up, tip + a - up, tip + a + up, tip - a + up)
+		_card(leaves, tip + Vector3(-size / 2, 0.1, -size / 2), tip + Vector3(size / 2, 0.1, -size / 2), tip + Vector3(size / 2, 0.1, size / 2), tip + Vector3(-size / 2, 0.1, size / 2))
+	leaves.commit(mesh)
+	mesh.surface_set_material(1, mat(b, "leaves"))
+	_meshes[key] = external(mesh, key)
 	return mesh
 
-static func _branch(st: SurfaceTool, rng: RandomNumberGenerator, from: Vector3, dir: Vector3, length: float, radius: float, depth: int) -> void:
+## One leaf card (a quad, UVs 0-1), corners in order round it.
+static func _card(st: SurfaceTool, a: Vector3, c1: Vector3, c2: Vector3, c3: Vector3) -> void:
+	var n := (c1 - a).cross(c3 - a).normalized()
+	var corners := [[a, Vector2(0, 1)], [c1, Vector2(1, 1)], [c2, Vector2(1, 0)], [c3, Vector2(0, 0)]]
+	for i in [0, 2, 1, 0, 3, 2]:
+		st.set_normal(n)
+		st.set_uv(corners[i][1])
+		st.add_vertex(corners[i][0])
+
+static func _branch(st: SurfaceTool, rng: RandomNumberGenerator, from: Vector3, dir: Vector3, length: float, radius: float, depth: int, tips: Array[Vector3]) -> void:
 	var to := from + dir * length
 	var r_end := radius * (0.55 if depth < 3 else 0.25)
 	_tube(st, from, to, radius, r_end)
+	if depth >= 2:
+		tips.append(to)
 	if depth >= 3:
 		return
 	var kids: int = 3 + rng.randi_range(0, 1)
@@ -436,7 +584,7 @@ static func _branch(st: SurfaceTool, rng: RandomNumberGenerator, from: Vector3, 
 		var side := Vector3(cos(spin), 0, sin(spin))
 		var kid_dir := (dir * cos(tilt) + side * sin(tilt)).normalized()
 		kid_dir.y = maxf(kid_dir.y, 0.2)
-		_branch(st, rng, at, kid_dir.normalized(), length * rng.randf_range(0.5, 0.7), r_end * 0.85, depth + 1)
+		_branch(st, rng, at, kid_dir.normalized(), length * rng.randf_range(0.5, 0.7), r_end * 0.85, depth + 1, tips)
 
 static func _tube(st: SurfaceTool, a: Vector3, to: Vector3, r0: float, r1: float) -> void:
 	var axis := (to - a).normalized()

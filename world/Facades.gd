@@ -134,7 +134,7 @@ const BLOCK_FRONTS := [
 ## Buildings with no front of their own on Main Street or the outer rows:
 ## name, x0, z0, x1, z1, floors, kit (for the walls), cell.
 const BLOCK_MASSES := [
-	["NWCorner", -65.0, -85.0, -50.0, -70.0, 3, "apt", "Cell_West"],
+	["NWCorner", -65.0, -85.0, -50.0, -70.0, 3, "apt", "Cell_Inner"],
 	["Garage", -30.0, -50.0, -9.0, -16.0, 2, "factory", "Cell_Inner"],
 	["Tenement", -30.0, -85.0, -9.0, -50.0, 4, "apt", "Cell_Inner"],
 	["InnerSW", -6.0, -50.0, 15.0, -19.0, 3, "factory", "Cell_Inner"],
@@ -172,6 +172,7 @@ func _ready() -> void:
 		_build_front(f)
 	for m in masses():
 		_build_mass(m)
+	_build_roof_units()
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
@@ -372,12 +373,17 @@ func _cell_of(mass_name: String) -> String:
 			return m["cell"]
 	return "Cell_Main"
 
+## The list is fixed: worked out once per session.
+static var _masses: Array = []
+
 ## Every building on the block: {name, rect (Rect2 in x/z), floors, kit,
 ## cell}. The rows' buildings come from their fronts (one per front, out
 ## to the row's depth, butted up so there are no slits between them); the
 ## rest are BLOCK_MASSES. build_rooms_3d.gd gives each one its collider.
 static func masses() -> Array:
-	var out := []
+	if not _masses.is_empty():
+		return _masses
+	var out := _masses
 	var rows := {}
 	for f in FRONTS:
 		rows.get_or_add("main", []).append([f[0], f[1], f[2], f[3], f[4]])
@@ -491,11 +497,8 @@ func _roof_clutter(mass: Node3D, m: Dictionary, h: float) -> void:
 		return Vector3(rng.randf_range(inner.position.x, inner.end.x), h, rng.randf_range(inner.position.y, inner.end.y))
 	var count := clampi(int(r.get_area() / 150.0), 1, 3)
 	for i in count:
-		var unit: Node3D = _scene(AIRCON).instantiate()
-		unit.name = "RoofAirCon%d" % i
-		mass.add_child(unit)
-		unit.position = spot.call()
-		unit.rotation.y = rng.randi_range(0, 3) * PI / 2.0
+		var at: Vector3 = spot.call()
+		_roof_units.get_or_add(m["cell"], []).append(Transform3D(Basis(Vector3.UP, rng.randi_range(0, 3) * PI / 2.0), at))
 	var dark := _roof_bits()
 	_bar(mass, dark, Vector3(1.0, 0.5, 1.0), spot.call() + Vector3(0, 0.25, 0))
 	for i in mini(3, count):
@@ -533,6 +536,37 @@ func _roof_clutter(mass: Node3D, m: Dictionary, h: float) -> void:
 		for k in 4:
 			var leg := Vector3(cos(k * PI / 2.0 + 0.78), 0, sin(k * PI / 2.0 + 0.78)) * 1.3
 			_bar(mass, dark, Vector3(0.12, 2.0, 0.12), tp + leg + Vector3(0, 1.0, 0))
+
+## Roof air-con units, by cell: [Transform3D], drawn as one MultiMesh per
+## unit mesh per cell (instancing ~100 model scenes was most of a load).
+var _roof_units := {}
+
+func _build_roof_units() -> void:
+	var model: Node3D = _scene(AIRCON).instantiate()
+	var parts := []
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var xf: Transform3D = mi.transform
+		var p: Node = mi.get_parent()
+		while p != model:
+			xf = (p as Node3D).transform * xf
+			p = p.get_parent()
+		parts.append([mi.mesh, xf])
+	model.free()
+	for cell in _roof_units:
+		var units: Array = _roof_units[cell]
+		for part in parts:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = part[0]
+			mm.instance_count = units.size()
+			for i in units.size():
+				mm.set_instance_transform(i, units[i] * part[1])
+			var mmi := MultiMeshInstance3D.new()
+			mmi.name = "RoofAirCons"
+			mmi.multimesh = mm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mmi.set_meta("cell", cell)
+			add_child(mmi)
 
 static var _bits_mat: StandardMaterial3D
 static var _tank: StandardMaterial3D

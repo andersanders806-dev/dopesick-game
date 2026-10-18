@@ -161,10 +161,20 @@ func _color_mat(color: Color, roughness := 0.8, emission := 0.0) -> StandardMate
 		mat.emission_energy_multiplier = emission
 	return mat
 
+## The City shares one BoxMesh per size and material (_share_boxes): it has
+## hundreds of boxes, and every distinct one is a resource to parse on load.
+var _share_boxes := false
+var _boxes := {}
+
 func _box_mesh(parent: Node, name: String, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
-	mesh.material = mat
+	var key := [size.snapped(Vector3.ONE * 0.001), mat]
+	var mesh: BoxMesh = _boxes.get(key) if _share_boxes else null
+	if mesh == null:
+		mesh = BoxMesh.new()
+		mesh.size = size
+		mesh.material = mat
+		if _share_boxes:
+			_boxes[key] = mesh
 	var mi := MeshInstance3D.new()
 	mi.name = name
 	mi.mesh = mesh
@@ -2106,6 +2116,7 @@ func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan", par
 
 func _build_city() -> Node3D:
 	_new_root("City3D", "res://world/City3D.gd")
+	_share_boxes = true
 	_environment(Color(0.35, 0.4, 0.6), 0.3, true)
 	# The block (open world): five cells, one per area, each a root that
 	# world/BlockCells.gd can put to sleep. Main Street's own things go in

@@ -20,16 +20,24 @@ static func build(b: Node, _root: Node3D) -> void:
 	# stand taller than the cars: the road doesn't read as one long strip.
 	b._car("CarMainW1", Vector3(-58.0, 0, 2.6), false, "van", main)
 	b._car("CarMainW2", Vector3(-44.5, 0, 2.7), true, "sedan", main)
-	b._car("CarMainW3", Vector3(-33.0, 0, 2.6), false, "covered", main)
-	b._car("CarMainE1", Vector3(34.5, 0, 2.6), true, "van", main)
+	b._car("CarMainW3", Vector3(-38.5, 0, 2.6), false, "covered", main)
+	b._car("CarMainE1", Vector3(38.5, 0, 2.6), true, "van", main)
+	# What keeps the street from being one 154 m strip at eye level: a
+	# newsstand at each end of the shops (people step round them on the
+	# building side) and a box truck unloading at each end of the parking.
+	# The shops' stretch between them is just under 55 m.
+	Kit.kiosk(b, main, "NewsstandMainW", Vector3(-28.1, 0, -2.625), Vector2(1.4, 1.45), Vector3.BACK, Color(0.12, 0.26, 0.18))
+	Kit.kiosk(b, main, "NewsstandMainE", Vector3(27.7, 0, -2.625), Vector2(1.4, 1.45), Vector3.BACK, Color(0.3, 0.12, 0.1), "DAILY NEWS\nLOTTO\nPHONE CARDS")
+	Kit.box_truck(b, main, "TruckMainW", Vector3(-30.2, 0, 2.6), 0.0, "ACE MOVING", Color(0.75, 0.72, 0.66))
+	Kit.box_truck(b, main, "TruckMainE", Vector3(30.2, 0, 2.6), 180.0, "SUNRISE BAKERY", Color(0.55, 0.62, 0.7))
 	b._car("CarMainE2", Vector3(47.0, 0, 2.7), false, "suv", main)
 	b._ph(main, "ManholeW", "water_manhole_cover", Vector3(-48.0, 0.005, 0.9))
 	b._ph(main, "ManholeE", "water_manhole_cover", Vector3(43.0, 0.005, 1.4))
-	Kit.hydrant(b, main, "HydrantW", Vector3(-55.5, 0, -2.0))
-	Kit.hydrant(b, main, "HydrantE", Vector3(49.0, 0, -2.0))
-	Kit.trash_can(b, main, "BinW1", Vector3(-49.6, 0, -2.0))
-	Kit.trash_can(b, main, "BinW2", Vector3(-31.0, 0, -2.0))
-	Kit.trash_can(b, main, "BinE1", Vector3(38.2, 0, -2.0))
+	Kit.hydrant(b, main, "HydrantW", Vector3(-55.5, 0, -1.85))
+	Kit.hydrant(b, main, "HydrantE", Vector3(49.0, 0, -1.85))
+	Kit.trash_can(b, main, "BinW1", Vector3(-49.6, 0, -1.8))
+	Kit.trash_can(b, main, "BinW2", Vector3(-32.0, 0, -1.8))
+	Kit.trash_can(b, main, "BinE1", Vector3(40.2, 0, -1.8))
 	b._ph(main, "UtilityBoxW", "utility_box_01", Vector3(-60.5, 0, -4.2))
 	b._ph(main, "UtilityBoxE", "utility_box_02", Vector3(51.0, 0, -4.2))
 	Kit.bags(b, main, "BagsTires", Vector3(42.6, 0, -4.1), 3, 41)
@@ -89,4 +97,4 @@ static func _pharmacy_tower(b: Node, main: Node3D) -> void:
 	b._box_mesh(tower, "CrossH", Vector3(1.5, 0.45, 0.2), Vector3(0, 14.1, 0.05), glow)
 	b._box_mesh(tower, "Mast", Vector3(0.18, 1.0, 0.18), Vector3(0, 13.0, -0.1), Kit.mat(b, "iron"))
 	b._light(tower, "PharmacyTowerSignGlow", Vector3(0, 9.0, 1.2), green, 2.2, 9.0, false)
-	b._light(tower, "CrossGlow", Vector3(0, 14.1, 0.8), green, 1.6, 6.0, false)
+	Kit.night_light(b, tower, "CrossGlow", Vector3(0, 14.1, 0.8), green, 1.6, 6.0)

@@ -79,9 +79,41 @@ const BLOCK_WALLS := [
 	[-83.0, -20.0, -9.0, Vector3.RIGHT], [-83.0, -20.0, -6.0, Vector3.LEFT],
 ]
 
+## Open ground inside the block: [x0, z0, x1, z1, how many, what]. The
+## park's grass worn through to earth, the lot's oil and puddles, the camp's
+## litter.
+const BLOCK_GROUNDS := [
+	[-64.5, -69.5, -30.5, -16.5, 26, "park"], [-49.5, -84.5, -30.5, -70.5, 10, "park"],
+	[36.6, -84.0, 55.4, -17.0, 40, "lot"], [56.6, -84.0, 64.8, -9.0, 36, "camp"],
+]
+## The overpass's pillars (inner.gd), tagged on the faces into the camp.
+const PILLARS_Z := [-22.0, -36.0, -50.0, -64.0, -80.0]
+
 func _dress_block() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2026
+	for g in BLOCK_GROUNDS:
+		for i in int(g[4]):
+			var p := Vector3(rng.randf_range(g[0], g[2]), 0.0, rng.randf_range(g[1], g[3]))
+			match [g[5], i % 4]:
+				["park", 0], ["park", 1]:
+					# Bare earth where the grass gave up.
+					var d := _ground("stain_dark", p, rng.randf_range(2.0, 4.5), rng, 0.55)
+					d.modulate = Color(0.55, 0.42, 0.3, 0.55)
+				["park", 2], ["lot", 2], ["camp", 2]:
+					_ground("litter", p, rng.randf_range(0.8, 1.4), rng, 1.0)
+				["lot", 0]:
+					_puddles.append(_ground("puddle", p, rng.randf_range(1.2, 2.8), rng, 1.0, true))
+				["lot", 1], ["camp", 1]:
+					_ground("stain_oil", p, rng.randf_range(1.0, 2.4), rng, 0.8)
+				_:
+					_ground("stain_dark", p, rng.randf_range(0.8, 1.8), rng, 0.7)
+	for z: float in PILLARS_Z:
+		for face in [[58.0, Vector3.RIGHT], [63.4, Vector3.LEFT]]:
+			if rng.randf() < 0.75:
+				var tex: String = TAGS[rng.randi() % TAGS.size()]
+				var tw := rng.randf_range(1.0, 1.15)
+				_wall_facing(tex, face[1], face[0], z + rng.randf_range(-0.05, 0.05), rng.randf_range(1.2, 1.8), Vector2(tw, tw * (0.4 if tex != "tag_circle_a" else 1.0)), 0.0, 1.0)
 	for r in BLOCK_SIDEWALKS:
 		var area: float = (r[2] - r[0]) * (r[3] - r[1])
 		for i in int(area / 9.0):

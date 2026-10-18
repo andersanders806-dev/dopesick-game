@@ -249,6 +249,37 @@ def court_lines(name, px_per_m=40):
     save(Image.fromarray(a.astype(np.uint8)), name)
 
 
+def leaves(name, size=512):
+    """A clump of tired city-tree leaves (dull olive to brown, a few gone
+    yellow) on transparent, for alpha-scissored leaf cards on the park's
+    trees (dev-tools/city/kit.gd)."""
+    lr = random.Random(31)
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    cx = cy = size / 2
+    palette = [(72, 84, 38), (88, 96, 44), (104, 92, 46), (120, 98, 40), (66, 70, 34), (140, 112, 48)]
+    # Twigs under the leaves.
+    for i in range(9):
+        a = lr.random() * math.tau
+        d.line([cx, cy, cx + math.cos(a) * size * 0.36, cy + math.sin(a) * size * 0.36], fill=(48, 38, 30, 255), width=3)
+    for i in range(900):
+        # Denser in the middle, thinning to the edge of the clump.
+        r = (lr.random() ** 0.7) * size * 0.46
+        a = lr.random() * math.tau
+        x, y = cx + math.cos(a) * r, cy + math.sin(a) * r
+        ln, wd = lr.uniform(10, 22), lr.uniform(5, 10)
+        rot = lr.random() * math.tau
+        pts = []
+        for k in range(10):
+            t = k / 9 * math.tau
+            px, py = math.cos(t) * ln, math.sin(t) * wd * (1 - 0.6 * abs(math.cos(t)))
+            pts.append((x + px * math.cos(rot) - py * math.sin(rot), y + px * math.sin(rot) + py * math.cos(rot)))
+        c = palette[lr.randrange(len(palette))]
+        shade = lr.uniform(0.7, 1.15)
+        d.polygon(pts, fill=(int(min(255, c[0] * shade)), int(min(255, c[1] * shade)), int(min(255, c[2] * shade)), 255))
+    save(img, name)
+
+
 tag("NO FUTURE", (240, 60, 130), (20, 20, 25), "tag_nofuture.png")
 tag("DSK", (70, 220, 230), (25, 20, 60), "tag_dsk.png", (768, 512))
 tag("BLOCK 9", (250, 220, 60), (120, 20, 20), "tag_block9.png")
@@ -266,3 +297,4 @@ crack("crack.png")
 litter("litter.png")
 puddle("puddle.png")
 court_lines("court_lines.png")
+leaves("leaves.png")

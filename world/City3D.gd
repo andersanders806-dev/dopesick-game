@@ -29,28 +29,47 @@ var _collector_timer: float = COLLECTOR_DELAY
 const PedestrianScript := preload("res://npc/Pedestrian3D.gd")
 const GuardScene := preload("res://npc/Guard3D.tscn")
 const PatrolScript := preload("res://npc/PatrolCop3D.gd")
-## Sidewalk lanes round the block: walk in at `from`, out at `to`. The
-## first two are Main Street's shops, one each way, where they always
-## were; then Main past the juts, both avenues' sidewalks, and Back
-## Street's. Task 4's schedules give people real places to go; these are
-## the passers-by. Busier by day.
-const LANES := [
-	{"from": Vector3(-29.5, 0, -3.1), "to": Vector3(29.5, 0, -3.1)},
-	{"from": Vector3(29.5, 0, -2.2), "to": Vector3(-29.5, 0, -2.2)},
-	{"from": Vector3(-66.0, 0, -2.6), "to": Vector3(-30.0, 0, -2.6)},
-	{"from": Vector3(66.0, 0, -2.6), "to": Vector3(30.0, 0, -2.6)},
-	{"from": Vector3(-66.6, 0, -6.0), "to": Vector3(-66.6, 0, -84.0)},
-	{"from": Vector3(-76.2, 0, -96.0), "to": Vector3(-76.2, 0, 3.5)},
-	{"from": Vector3(76.2, 0, 3.5), "to": Vector3(76.2, 0, -96.0)},
-	{"from": Vector3(66.6, 0, -84.0), "to": Vector3(66.6, 0, -6.0)},
-	{"from": Vector3(-76.0, 0, -95.0), "to": Vector3(76.0, 0, -95.0)},
-	{"from": Vector3(55.0, 0, -85.6), "to": Vector3(-64.0, 0, -85.6)},
+## The passers-by's walks: two loops round the block's sidewalks, one each
+## way, chained so nobody pops out of thin air -- they come out of a door
+## (`doors`: the points where a stretch starts at one) and go in at another.
+## The first loop walks Main's shops eastbound at z -3.1 and the second
+## westbound at -2.2, where the two lanes always were; both step round the
+## newsstands on the building side. Task 4's schedules give people real
+## places to go; these are the passers-by.
+const WALKS := [
+	{"points": [
+		Vector3(-66.6, 0, -2.6), Vector3(-53.0, 0, -2.6), Vector3(-29.6, 0, -2.6), Vector3(-29.0, 0, -3.9),
+		Vector3(-27.2, 0, -3.9), Vector3(-26.5, 0, -3.1), Vector3(3.5, 0, -3.1), Vector3(25.9, 0, -3.1),
+		Vector3(26.6, 0, -3.9), Vector3(28.6, 0, -3.9), Vector3(29.3, 0, -2.6), Vector3(47.0, 0, -2.6),
+		Vector3(66.6, 0, -2.6), Vector3(66.6, 0, -47.8), Vector3(67.5, 0, -48.4), Vector3(67.5, 0, -51.6),
+		Vector3(66.6, 0, -52.2), Vector3(66.6, 0, -85.6), Vector3(53.6, 0, -85.6), Vector3(53.0, 0, -87.0),
+		Vector3(51.0, 0, -87.0), Vector3(50.4, 0, -85.6), Vector3(5.6, 0, -85.6), Vector3(5.0, 0, -87.0),
+		Vector3(3.0, 0, -87.0), Vector3(2.4, 0, -85.6), Vector3(-7.5, 0, -85.6), Vector3(-42.4, 0, -85.6),
+		Vector3(-43.0, 0, -87.0), Vector3(-45.0, 0, -87.0), Vector3(-45.6, 0, -85.6), Vector3(-66.6, 0, -85.6),
+		Vector3(-66.6, 0, -52.2), Vector3(-67.5, 0, -51.6), Vector3(-67.5, 0, -48.4), Vector3(-66.6, 0, -47.8),
+		Vector3(-66.6, 0, -24.0)],
+		"doors": [1, 6, 11, 26, 36]},
+	{"points": [
+		Vector3(76.2, 0, -2.35), Vector3(29.2, 0, -2.35), Vector3(28.6, 0, -3.9), Vector3(26.8, 0, -3.9),
+		Vector3(26.2, 0, -2.2), Vector3(17.5, 0, -2.2), Vector3(-26.2, 0, -2.2), Vector3(-27.2, 0, -3.9),
+		Vector3(-29.0, 0, -3.9), Vector3(-29.6, 0, -2.35), Vector3(-61.0, 0, -2.35), Vector3(-76.2, 0, -2.35),
+		Vector3(-76.2, 0, -45.6), Vector3(-74.9, 0, -46.2), Vector3(-74.9, 0, -49.8), Vector3(-76.2, 0, -50.4),
+		Vector3(-76.2, 0, -57.0), Vector3(-76.2, 0, -95.0), Vector3(-23.4, 0, -95.0), Vector3(-22.8, 0, -96.2),
+		Vector3(-21.2, 0, -96.2), Vector3(-20.6, 0, -95.0), Vector3(-10.0, 0, -95.0), Vector3(10.2, 0, -95.0),
+		Vector3(10.6, 0, -96.2), Vector3(12.4, 0, -96.2), Vector3(12.8, 0, -95.0), Vector3(45.6, 0, -95.0),
+		Vector3(46.2, 0, -96.2), Vector3(47.8, 0, -96.2), Vector3(48.4, 0, -95.0), Vector3(76.2, 0, -95.0),
+		Vector3(76.2, 0, -50.4), Vector3(74.9, 0, -49.8), Vector3(74.9, 0, -46.2), Vector3(76.2, 0, -45.6),
+		Vector3(76.2, 0, -33.0)],
+		"doors": [5, 10, 16, 22, 36]},
 ]
-## Half of everyone walks Main Street's shops (lanes 0 and 1).
-const MAIN_LANE_SHARE := 0.5
-const PEDESTRIANS_NIGHT := 2
-const PEDESTRIANS_DAY := 8
-const PEDESTRIAN_SPAWN_GAP := Vector2(2.0, 6.0)
+## The Main Street stretch of each walk where the first people are put,
+## out where you come out of a door.
+const MAIN_SEGMENT := [5, 5]
+## Now and then someone goes in at a door even when the street isn't busy.
+const LEAVE_CHANCE := 0.2
+const PEDESTRIANS_NIGHT := 1
+const PEDESTRIANS_DAY := 5
+const PEDESTRIAN_SPAWN_GAP := Vector2(3.0, 8.0)
 ## The beat cop walks out of the station; after a chase he's back on the
 ## block a while later.
 const PATROL_START := Vector3(-24.5, 0, -1.3)
@@ -187,6 +206,11 @@ func _ready() -> void:
 			_street_lamp_heads.append(head)
 	for glow in find_children("*SignGlow", "Light3D", true, false):
 		_night_lights.append([glow, glow.light_energy])
+	# The block's other after-dark lights: back doors, under the overpass,
+	# the billboard, the projects' entrance, the bus shelter's ad.
+	for light in get_tree().get_nodes_in_group("night_lights"):
+		if is_ancestor_of(light) and not light.name.ends_with("SignGlow"):
+			_night_lights.append([light, light.light_energy])
 	GameState.clock_changed.connect(_on_clock_changed)
 	GameState.weather_changed.connect(_on_weather_changed)
 	_apply_daylight()
@@ -221,9 +245,11 @@ func _ready() -> void:
 	booster.name = "Booster"
 	add_child(booster)
 	# Start with the street already populated rather than empty: the first
-	# two on Main Street's shops, where you come out.
+	# two on Main Street's shops, where you come out, the rest anywhere.
 	for i in _pedestrian_target():
-		_spawn_pedestrian(randf_range(0.05, 0.95), i if i < 2 else -1)
+		var walk := i % WALKS.size()
+		var seg: int = MAIN_SEGMENT[walk] if i < 2 else randi() % WALKS[walk]["points"].size()
+		_spawn_pedestrian(walk, seg, randf_range(0.05, 0.95))
 	if not GameState.wanted:
 		_spawn_patrol(Vector3(randf_range(-22.0, 22.0), 0, PATROL_START.z))
 	for body in get_tree().get_nodes_in_group("car_bodies"):
@@ -251,15 +277,17 @@ func _mute_parked_cars() -> void:
 			var base := (mi as MeshInstance3D).get_active_material(0) as StandardMaterial3D
 			if base == null:
 				continue
-			var key := [base.get_instance_id(), paint]
-			if not _muted.has(key):
+			# Keyed by the material itself (held, so it can't be freed and
+			# its id handed to another), then by paint.
+			var by_paint: Dictionary = _muted.get_or_add(base, {})
+			if not by_paint.has(paint):
 				var muted := base.duplicate() as StandardMaterial3D
 				# The paint is in Kenney's palette texture, so a tint can only
 				# darken and grey it, not repaint it.
 				muted.albedo_color = muted.albedo_color * paint * 2.0
 				muted.roughness = maxf(muted.roughness, 0.55)
-				_muted[key] = muted
-			(mi as MeshInstance3D).set_surface_override_material(0, _muted[key])
+				by_paint[paint] = muted
+			(mi as MeshInstance3D).set_surface_override_material(0, by_paint[paint])
 
 ## Places on the block to crouch out of sight when the police are after
 ## you: in the mouth of the alley by the pusher's corner, behind a stack of
@@ -369,18 +397,24 @@ func _warm_looks() -> void:
 	if is_instance_valid(holder):
 		holder.queue_free()
 
-## `at` is how far along the lane to start (0 = walk in at its start);
-## `lane` -1 picks one: half the time Main Street's shops.
-func _spawn_pedestrian(at := 0.0, lane := -1) -> void:
-	if lane < 0:
-		lane = randi() % 2 if randf() < MAIN_LANE_SHARE else 2 + randi() % (LANES.size() - 2)
+## Someone on walk `walk`, `at` (0..1) of the way along segment `seg`; by
+## default coming out of one of its doors.
+func _spawn_pedestrian(walk := -1, seg := -1, at := 0.0) -> void:
+	if walk < 0:
+		walk = randi() % WALKS.size()
+	if seg < 0:
+		seg = WALKS[walk]["doors"].pick_random()
 	var walker: Area3D = PedestrianScript.new()
-	walker.lane_from = LANES[lane]["from"]
-	walker.lane_to = LANES[lane]["to"]
+	walker.points = WALKS[walk]["points"]
+	walker.doors = WALKS[walk]["doors"]
+	walker.leave_here = _walker_leaves
 	walker.speed = randf_range(1.1, 1.5)
 	walker.look_index = randi()
 	add_child(walker)
-	walker.place_at(at)
+	walker.place_at(seg, at)
+
+func _walker_leaves() -> bool:
+	return get_tree().get_nodes_in_group("pedestrians").size() > _pedestrian_target() or randf() < LEAVE_CHANCE
 
 func _spawn_patrol(pos: Vector3) -> void:
 	var cop := GuardScene.instantiate()

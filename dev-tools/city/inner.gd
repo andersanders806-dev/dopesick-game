@@ -69,7 +69,7 @@ static func _back_door(b: Node, c: Node3D, n: String, pos: Vector3, yaw: float) 
 	b._box_mesh(d, "Door", Vector3(1.0, 2.1, 0.08), Vector3(0, 1.05, 0.05), Kit.mat(b, "metal"))
 	b._box_mesh(d, "Step", Vector3(1.4, 0.12, 0.45), Vector3(0, 0.06, 0.24), Kit.mat(b, "concrete_dark"))
 	b._ph(d, "Lamp", "security_light", Vector3(0, 2.55, 0.05), 1.0)
-	b._light(d, "Light", Vector3(0, 2.4, 0.6), Color(1.0, 0.78, 0.5), 0.9, 5.0, false)
+	Kit.night_light(b, d, "Light", Vector3(0, 2.4, 0.6), Color(1.0, 0.78, 0.5), 0.9, 5.0)
 
 # --- The park ------------------------------------------------------------------------
 
@@ -115,7 +115,7 @@ static func _park(b: Node, c: Node3D) -> void:
 	Kit.bench(b, c, "ParkBench4", Vector3(-33.4, 0, -74.0), -90.0)
 	Kit.place(b, "Place_ParkBench", Vector3(-46.0, 0, -26.6))
 	_chess_table(b, c, Vector3(-58.0, 0, -19.4))
-	var trees := [Vector3(-62.0, 0, -30.0), Vector3(-60.5, 0, -38.5), Vector3(-61.0, 0, -50.0), Vector3(-61.5, 0, -63.0),
+	var trees := [Vector3(-62.0, 0, -30.0), Vector3(-60.5, 0, -38.5), Vector3(-61.0, 0, -50.0), Vector3(-63.0, 0, -55.5),
 		Vector3(-52.0, 0, -67.0), Vector3(-44.0, 0, -67.5), Vector3(-32.5, 0, -30.0), Vector3(-32.5, 0, -40.0),
 		Vector3(-32.5, 0, -61.0), Vector3(-46.0, 0, -79.0), Vector3(-41.5, 0, -81.5), Vector3(-32.5, 0, -81.0),
 		Vector3(-51.0, 0, -19.6), Vector3(-41.0, 0, -19.0)]
@@ -126,7 +126,45 @@ static func _park(b: Node, c: Node3D) -> void:
 		b._streetlight("StreetlightPark%d" % (i + 1), lamps[i].x, lamps[i].z, 50 + i, c, [180.0, 180.0, -90.0, -90.0][i])
 	Kit.trash_can(b, c, "ParkBin1", Vector3(-47.9, 0, -27.9))
 	Kit.trash_can(b, c, "ParkBin2", Vector3(-34.6, 0, -64.0))
+	Kit.trash_can(b, c, "ParkBin3", Vector3(-33.6, 0, -78.0))
 	Kit.bags(b, c, "ParkBags", Vector3(-63.6, 0, -18.0), 2, 86)
+	Kit.bags(b, c, "ParkBags2", Vector3(-33.4, 0, -46.6), 2, 91)
+	Kit.bench(b, c, "ParkBench5", Vector3(-52.0, 0, -21.0), 180.0)
+	Kit.bench(b, c, "ParkBench6", Vector3(-33.4, 0, -37.0), -90.0)
+	_swings(b, c, Vector3(-61.0, 0, -65.0))
+	_picnic_table(b, c, "Picnic1", Vector3(-60.0, 0, -44.0), 10.0)
+	_picnic_table(b, c, "Picnic2", Vector3(-45.0, 0, -74.0), -15.0)
+	Kit.cart(b, c, "ParkCart", Vector3(-62.8, 0, -36.0), 100.0)
+	b._box_mesh(c, "ParkMattress", Vector3(1.9, 0.18, 0.95), Vector3(-36.6, 0.09, -82.4), b._tex_mat("res://assets/env3d/mattress_stained.png", 0.6, 0.95)).rotation_degrees.y = 12.0
+
+## A swing set with one seat left: steel A-frames, a top bar, chains.
+static func _swings(b: Node, c: Node3D, pos: Vector3) -> void:
+	var s := StaticBody3D.new()
+	s.name = "Swings"
+	b._add(c, s)
+	s.position = pos
+	var steel := Kit.mat(b, "steel")
+	b._cylinder(s, "TopBar", 0.05, 4.2, Vector3(0, 2.4, 0), steel).rotation_degrees.z = 90.0
+	for ex in [-2.0, 2.0]:
+		for lean in [-1.0, 1.0]:
+			var leg: MeshInstance3D = b._cylinder(s, "Leg", 0.05, 2.55, Vector3(ex, 1.2, lean * 0.42), steel)
+			leg.rotation_degrees.x = lean * 20.0
+	for sx in [-1.0, 1.0]:
+		b._box_mesh(s, "Chain", Vector3(0.02, 1.8, 0.02), Vector3(sx - 0.22, 1.5, 0), steel)
+		b._box_mesh(s, "Chain", Vector3(0.02, 1.8, 0.02), Vector3(sx + 0.22, 1.5, 0), steel)
+	b._box_mesh(s, "Seat", Vector3(0.5, 0.04, 0.2), Vector3(-1.0, 0.6, 0), b._color_mat(Color(0.1, 0.1, 0.1), 0.8))
+	b._box_mesh(s, "Seat2", Vector3(0.5, 0.04, 0.2), Vector3(1.0, 0.25, 0.15), b._color_mat(Color(0.5, 0.15, 0.1), 0.8)).rotation_degrees.x = 50.0
+	b._collision(s, b._box_shape(Vector3(4.2, 2.5, 0.3)), Vector3(0, 1.25, 0))
+
+## A wooden picnic table, benches built on.
+static func _picnic_table(b: Node, c: Node3D, n: String, pos: Vector3, yaw: float) -> void:
+	var t: StaticBody3D = b._solid(c, n, Vector3(1.8, 0.75, 1.6), pos + Vector3(0, 0.375, 0), null)
+	t.rotation_degrees.y = yaw
+	var wood := Kit.mat(b, "wood")
+	b._box_mesh(t, "Top", Vector3(1.8, 0.06, 0.8), Vector3(0, 0.36, 0), wood)
+	for side in [-1.0, 1.0]:
+		b._box_mesh(t, "Seat", Vector3(1.8, 0.05, 0.28), Vector3(0, -0.06, side * 0.66), wood)
+		b._box_mesh(t, "Legs", Vector3(0.08, 0.72, 1.5), Vector3(side * 0.7, -0.02, 0), wood)
 
 ## An open gate in the park fence: two swung-back leaves and the park's
 ## sign on the frame above. `yaw` 90 for a gate in a north-south fence.
@@ -238,6 +276,13 @@ static func _lot(b: Node, c: Node3D) -> void:
 	b._ph(c, "LotPropane", "propane_tank", Vector3(38.5, 0, -33.0), 1.0, 0.0)
 	Kit.bags(b, c, "LotBags", Vector3(37.4, 0, -46.0), 5, 87)
 	Kit.dumpster(b, c, "LotDumpster", Vector3(37.4, 0, -40.0), 90.0)
+	# Rusted drums (the stove barrels, cold) and a porta-john nobody empties.
+	for i in 4:
+		b._ph(c, "LotDrum%d" % i, "barrel_stove", Vector3(54.4 + (i % 2) * 0.75, 0, -55.5 - (i / 2) * 0.75), 1.2, i * 70.0)
+	var john: StaticBody3D = b._solid(c, "PortaJohn", Vector3(1.2, 2.3, 1.2), Vector3(38.2, 1.15, -78.5), b._color_mat(Color(0.18, 0.32, 0.55), 0.6))
+	b._box_mesh(john, "Roof", Vector3(1.3, 0.1, 1.3), Vector3(0, 1.2, 0), b._color_mat(Color(0.85, 0.85, 0.82), 0.6))
+	b._box_mesh(john, "Door", Vector3(0.8, 1.9, 0.02), Vector3(0, -0.1, 0.61), b._color_mat(Color(0.15, 0.27, 0.48), 0.6))
+	b._solid(c, "LotPallets2", Vector3(1.2, 1.6, 1.0), Vector3(54.8, 0.8, -26.0), Kit.mat(b, "wood"))
 	Kit.cart(b, c, "LotCart", Vector3(52.0, 0, -30.5), 120.0)
 	b._box_mesh(c, "LotMattress", Vector3(1.9, 0.18, 0.95), Vector3(48.0, 0.09, -72.5), b._tex_mat("res://assets/env3d/mattress_stained.png", 0.6, 0.95)).rotation_degrees.y = 35.0
 	b._solid(c, "LotPallets", Vector3(1.2, 1.1, 1.0), Vector3(54.6, 0.55, -36.0), Kit.mat(b, "wood"))
@@ -283,48 +328,43 @@ static func _billboard(b: Node, c: Node3D, pos: Vector3) -> void:
 	b._add(bb, phone)
 	phone.position = Vector3(0, 6.75, 0.11)
 	for lx in [-2.8, 2.8]:
-		b._light(bb, "BillboardLight%d" % int(lx + 3), Vector3(lx, 6.4, 1.6), Color(1.0, 0.85, 0.6), 2.0, 6.5, false)
+		Kit.night_light(b, bb, "BillboardLight%d" % int(lx + 3), Vector3(lx, 6.4, 1.6), Color(1.0, 0.85, 0.6), 2.0, 6.5)
 
 # --- The underpass -------------------------------------------------------------------
 
 ## Where the overpass's pillars stand (z), both sides of its deck.
 const PILLAR_Z := [8.0, -8.0, -22.0, -36.0, -50.0, -64.0, -80.0, -103.0]
 const PILLAR_X := [57.4, 64.0]
-## Its underside at 7 m: the third-person camera rides ~6.75 m over you, and
-## a lower deck put the camera inside it all the way under.
-const DECK := AABB(Vector3(56.0, 7.0, -112.0), Vector3(10.0, 1.2, 126.0))
+## Everything hanging under the deck (caps, girders) stays above 10 m: the
+## camera rides 6.75 m over you, 9.45 m zoomed right out, and must never
+## pass through it.
+const DECK_CLEAR := 10.0
+const DECK := AABB(Vector3(56.0, DECK_CLEAR + 0.4, -112.0), Vector3(10.0, 1.2, 126.0))
 
 static func _underpass(b: Node, c: Node3D) -> void:
 	Kit.ground(b, c, "UnderpassGround", 56.0, -85.0, 65.0, -4.5, "concrete_dark")
-	_overpass(b, c)
+	_overpass(b)
+	# Sodium lights on the pillars, for the camp, after dark.
+	for z in PILLAR_Z:
+		if z < -10.0 and z > -90.0:
+			var lamp: Node3D = b._ph(c, "UnderLamp%d" % int(-z), "security_light", Vector3(PILLAR_X[0] + 0.62, 4.2, z), 1.0, 90.0)
+			lamp.rotation_degrees.y = 90.0
+			Kit.night_light(b, c, "UnderLight%d" % int(-z), Vector3(PILLAR_X[0] + 1.6, 3.9, z + 0.6), Color(1.0, 0.62, 0.3), 2.6, 10.0)
 	# Its fence to East Ave, with one gap: the way in from the avenue.
 	Kit.fence(b, c, "CampFenceE1", Vector3(65.2, 0, -80.0), Vector3(65.2, 0, -44.0))
 	Kit.fence(b, c, "CampFenceE2", Vector3(65.2, 0, -40.0), Vector3(65.2, 0, -8.0))
-	# The camp: tents and tarps between the pillars, a fire barrel, carts,
-	# a mattress, a couch someone dragged here.
-	_tent(b, c, "Tent1", Vector3(61.5, 0, -47.0), 10.0, "tarp_blue")
-	_tent(b, c, "Tent2", Vector3(61.2, 0, -63.0), -15.0, "tarp_green")
-	_tent(b, c, "Tent3", Vector3(58.6, 0, -57.5), 80.0, "tarp_grey")
-	_tent(b, c, "Tent4", Vector3(63.3, 0, -27.0), 5.0, "tarp_blue")
-	_lean_to(b, c, "LeanTo1", Vector3(58.4, 0, -36.0))
-	_lean_to(b, c, "LeanTo2", Vector3(58.4, 0, -70.0))
-	_fire(b, c, "FireBarrel", Vector3(60.3, 0, -55.0))
-	Kit.cart(b, c, "CampCart1", Vector3(63.6, 0, -52.0), 70.0)
-	Kit.cart(b, c, "CampCart2", Vector3(59.0, 0, -30.0), -20.0)
-	b._ph(c, "CampCouch", "sofa_02", Vector3(63.5, 0, -58.5), 1.0, -90.0)
-	b._box_mesh(c, "CampMattress", Vector3(1.9, 0.18, 0.95), Vector3(63.3, 0.09, -66.5), b._tex_mat("res://assets/env3d/mattress_stained.png", 0.6, 0.95))
-	Kit.bags(b, c, "CampBags", Vector3(57.3, 0, -44.0), 4, 88)
-	b._ph(c, "CampCrate", "plastic_crate_01", Vector3(61.0, 0, -52.6), 1.0, 15.0)
+	_camp(b, c)
 	Kit.place(b, "Place_UnderpassCamp", Vector3(61.8, 0, -55.5))
 	Kit.place(b, "Place_PusherNight", Vector3(61.5, 0, -36.0))
 
-## The east landmark: an elevated road on concrete pillars, its deck 7 m
+## The east landmark: an elevated road on concrete pillars, its deck 10 m
 ## up, running north-south over the camp and across both Main Street and
-## Back Street. Never hidden (group "landmark").
-static func _overpass(b: Node, c: Node3D) -> void:
+## Back Street. Never hidden (group "landmark") and longer than any cell,
+## so it stands on the scene root, outside them.
+static func _overpass(b: Node) -> void:
 	var o := Node3D.new()
 	o.name = "Overpass"
-	b._add(c, o)
+	b._add(b._root, o)
 	Kit.landmark(o)
 	var concrete := Kit.mat(b, "concrete")
 	var deck_mid := DECK.get_center()
@@ -333,35 +373,100 @@ static func _overpass(b: Node, c: Node3D) -> void:
 	for side in [-1.0, 1.0]:
 		var bx: float = deck_mid.x + side * (DECK.size.x / 2.0 - 0.3)
 		b._box_mesh(o, "Barrier", Vector3(0.45, 0.85, DECK.size.z), Vector3(bx, DECK.end.y + 0.42, deck_mid.z), concrete)
-		b._box_mesh(o, "Girder", Vector3(0.4, 0.3, DECK.size.z), Vector3(deck_mid.x + side * 2.5, DECK.position.y - 0.15, deck_mid.z), Kit.mat(b, "steel"))
+		b._box_mesh(o, "Girder", Vector3(0.4, 0.3, DECK.size.z), Vector3(deck_mid.x + side * 2.5, DECK_CLEAR + 0.15, deck_mid.z), Kit.mat(b, "steel"))
 	for z in PILLAR_Z:
-		b._box_mesh(o, "Cap%d" % int(z), Vector3(9.4, 0.4, 1.4), Vector3(deck_mid.x, DECK.position.y - 0.2, z), concrete)
+		b._box_mesh(o, "Cap%d" % int(z), Vector3(9.4, 0.4, 1.4), Vector3(deck_mid.x, DECK_CLEAR + 0.2, z), concrete)
 		for px in PILLAR_X:
-			b._solid(o, "Pillar%d_%d" % [int(px), int(z)], Vector3(1.2, DECK.position.y - 0.4, 1.2), Vector3(px, (DECK.position.y - 0.4) / 2.0, z), Kit.mat(b, "concrete_dark"))
-		# Sodium lights under the deck, on all night.
-		if z < 0.0 and z > -90.0:
-			b._ph(o, "UnderLamp%d" % int(-z), "security_light", Vector3(60.7, DECK.position.y - 0.65, z + 0.75), 1.0, 180.0)
-			b._light(o, "UnderLight%d" % int(-z), Vector3(60.7, 3.6, z + 1.5), Color(1.0, 0.62, 0.3), 2.2, 9.0, false)
+			b._solid(o, "Pillar%d_%d" % [int(px), int(z)], Vector3(1.2, DECK_CLEAR, 1.2), Vector3(px, DECK_CLEAR / 2.0, z), Kit.mat(b, "concrete_dark"))
 	# Lamps on the deck, for the silhouette at night.
 	for z in [-100.0, -70.0, -40.0, -10.0]:
 		b._ph(o, "DeckLamp%d" % int(-z), "street_lamp_01", Vector3(DECK.end.x - 0.6, DECK.end.y, z), 1.6, -90.0)
 
-## A ridge tent of tarp (a prism) with a collider as tall as it is.
+## The camp under the overpass: tents and tarps between the pillars, two
+## fire barrels, carts, a couch someone dragged here, a washing line. Dense
+## enough to read as people living here, lit by the fires all the time and
+## the sodium lamps after dark.
+static func _camp(b: Node, c: Node3D) -> void:
+	_tent(b, c, "Tent1", Vector3(61.5, 0, -47.0), 10.0, "tarp_blue")
+	_tent(b, c, "Tent2", Vector3(61.2, 0, -63.0), -15.0, "tarp_green")
+	_dome(b, c, "Dome1", Vector3(58.9, 0, -57.5), "tarp_grey")
+	_dome(b, c, "Dome2", Vector3(63.3, 0, -27.0), "tarp_blue")
+	_dome(b, c, "Dome3", Vector3(59.2, 0, -75.0), "tarp_green")
+	_dome(b, c, "Dome4", Vector3(62.9, 0, -71.0), "tarp_grey")
+	_lean_to(b, c, "LeanTo1", Vector3(58.4, 0, -36.0))
+	_lean_to(b, c, "LeanTo2", Vector3(58.4, 0, -64.5))
+	_fire(b, c, "FireBarrel", Vector3(60.3, 0, -55.0))
+	_fire(b, c, "FireBarrel2", Vector3(60.6, 0, -30.5))
+	Kit.cart(b, c, "CampCart1", Vector3(63.6, 0, -52.0), 70.0)
+	Kit.cart(b, c, "CampCart2", Vector3(58.8, 0, -24.5), -20.0)
+	Kit.cart(b, c, "CampCart3", Vector3(63.8, 0, -76.5), 10.0)
+	b._ph(c, "CampCouch", "sofa_02", Vector3(63.5, 0, -58.5), 1.0, -90.0)
+	var mattress := b._tex_mat("res://assets/env3d/mattress_stained.png", 0.6, 0.95) as Material
+	b._box_mesh(c, "CampMattress", Vector3(1.9, 0.18, 0.95), Vector3(63.3, 0.09, -66.5), mattress)
+	b._box_mesh(c, "CampMattress2", Vector3(1.9, 0.18, 0.95), Vector3(58.3, 0.09, -42.0), mattress).rotation_degrees.y = 80.0
+	b._box_mesh(c, "CampBlanket", Vector3(1.0, 0.1, 1.6), Vector3(58.4, 0.22, -42.1), b._color_mat(Color(0.3, 0.14, 0.12), 1.0))
+	b._solid(c, "CampPallets", Vector3(1.2, 1.0, 1.0), Vector3(63.8, 0.5, -33.5), Kit.mat(b, "wood"))
+	b._ph(c, "CampCrate", "plastic_crate_01", Vector3(61.0, 0, -52.6), 1.0, 15.0)
+	b._ph(c, "CampCrate2", "wooden_crate_01", Vector3(59.4, 0, -53.2), 1.0, 40.0)
+	b._ph(c, "CampTyre", "old_tyre", Vector3(64.0, 0.3, -38.0), 1.0, 20.0)
+	Kit.bags(b, c, "CampBags", Vector3(57.3, 0, -44.0), 4, 88)
+	Kit.bags(b, c, "CampBags2", Vector3(64.2, 0, -68.5), 3, 89)
+	Kit.bags(b, c, "CampBags3", Vector3(57.4, 0, -79.0), 3, 90)
+	var cardboard := b._color_mat(Color(0.52, 0.4, 0.26), 0.95) as Material
+	for i in 5:
+		var box: MeshInstance3D = b._box_mesh(c, "CampBox%d" % i, Vector3(0.55, 0.4, 0.45), Vector3(57.8 + (i % 2) * 0.6, 0.2, -50.5 + i * 0.5), cardboard)
+		box.rotation_degrees.y = i * 23.0
+	# A tarp hung on the lot's fence for a wall, and a washing line.
+	var wall: MeshInstance3D = b._box_mesh(c, "CampTarpWall", Vector3(0.02, 2.0, 9.0), Vector3(56.25, 1.1, -29.0), Kit.mat(b, "tarp_blue"))
+	wall.rotation_degrees.x = 2.0
+	b._box_mesh(c, "WashLine", Vector3(5.4, 0.015, 0.015), Vector3(60.7, 2.3, -50.0), Kit.mat(b, "iron"))
+	var colors := [Color(0.6, 0.15, 0.12), Color(0.8, 0.78, 0.7), Color(0.15, 0.25, 0.45), Color(0.3, 0.32, 0.2), Color(0.7, 0.55, 0.2)]
+	for i in colors.size():
+		b._box_mesh(c, "Washing%d" % i, Vector3(0.55, 0.7, 0.02), Vector3(58.6 + i * 1.0, 1.95, -50.0), b._color_mat(colors[i], 1.0))
+	# A battery lantern on the crate by the main fire.
+	b._box_mesh(c, "Lantern", Vector3(0.14, 0.24, 0.14), Vector3(59.4, 0.62, -53.2), b._color_mat(Color(1.0, 0.85, 0.55), 0.4, 3.0))
+
+## A ridge tent of tarp (a prism), a second, darker tarp thrown over its
+## ridge, and a collider as tall as it is.
 static func _tent(b: Node, c: Node3D, n: String, pos: Vector3, yaw: float, tarp: String) -> void:
 	var t := StaticBody3D.new()
 	t.name = n
 	b._add(c, t)
 	t.position = pos
 	t.rotation_degrees.y = yaw
+	for k in 2:
+		var mi := MeshInstance3D.new()
+		mi.name = "Mesh" if k == 0 else "Fly"
+		var prism := PrismMesh.new()
+		prism.size = Vector3(2.2, 1.65, 2.5) if k == 0 else Vector3(2.5, 1.2, 1.6)
+		prism.material = Kit.mat(b, tarp if k == 0 else "tarp_grey")
+		mi.mesh = prism
+		b._add(t, mi)
+		mi.position = Vector3(0, 0.825, 0) if k == 0 else Vector3(0, 1.1, 0.2)
+	b._collision(t, b._box_shape(Vector3(2.2, 1.65, 2.5)), Vector3(0, 0.825, 0))
+
+## A cheap dome tent: half a squashed sphere of tarp.
+static func _dome(b: Node, c: Node3D, n: String, pos: Vector3, tarp: String) -> void:
+	var t := StaticBody3D.new()
+	t.name = n
+	b._add(c, t)
+	t.position = pos
 	var mi := MeshInstance3D.new()
 	mi.name = "Mesh"
-	var prism := PrismMesh.new()
-	prism.size = Vector3(2.2, 1.65, 2.5)
-	prism.material = Kit.mat(b, tarp)
-	mi.mesh = prism
+	var dome := SphereMesh.new()
+	dome.radius = 1.25
+	dome.height = 2.5
+	dome.is_hemisphere = true
+	dome.radial_segments = 16
+	dome.rings = 6
+	dome.material = Kit.mat(b, tarp)
+	mi.mesh = dome
+	mi.scale = Vector3(1.0, 0.95, 1.15)
 	b._add(t, mi)
-	mi.position = Vector3(0, 0.825, 0)
-	b._collision(t, b._box_shape(Vector3(2.2, 1.65, 2.5)), Vector3(0, 0.825, 0))
+	var cyl := CylinderShape3D.new()
+	cyl.radius = 1.2
+	cyl.height = 1.2
+	b._collision(t, cyl, Vector3(0, 0.6, 0))
 
 ## A tarp tied off against a pillar, cardboard and a blanket under it.
 static func _lean_to(b: Node, c: Node3D, n: String, pos: Vector3) -> void:
@@ -374,15 +479,69 @@ static func _lean_to(b: Node, c: Node3D, n: String, pos: Vector3) -> void:
 	b._box_mesh(l, "Cardboard", Vector3(1.2, 0.02, 2.0), Vector3(0.9, 0.01, 0), b._color_mat(Color(0.52, 0.4, 0.26), 0.95))
 	b._box_mesh(l, "Blanket", Vector3(0.9, 0.08, 1.7), Vector3(0.9, 0.05, 0.1), b._color_mat(Color(0.35, 0.15, 0.14), 1.0))
 
-## A barrel stove with a fire in it: glowing coals and a warm light.
+## A barrel stove with a fire in it: flames, glowing coals and a warm light
+## that's lit day and night (group "always_lit").
 static func _fire(b: Node, c: Node3D, n: String, pos: Vector3) -> void:
 	var f := StaticBody3D.new()
 	f.name = n
 	b._add(c, f)
 	f.position = pos
 	b._ph(f, "Model", "barrel_stove", Vector3.ZERO, 1.3)
-	b._box_mesh(f, "Coals", Vector3(0.5, 0.05, 0.5), Vector3(0, 1.08, 0), b._color_mat(Color(1.0, 0.4, 0.1), 0.6, 6.0))
-	b._light(f, "Fire", Vector3(0, 1.6, 0), Color(1.0, 0.5, 0.18), 2.2, 7.0, false)
+	# Dark coals glowing red (lit from above by the fire's own light, a pale
+	# albedo burns out to a white square).
+	var coals := StandardMaterial3D.new()
+	coals.albedo_color = Color(0.08, 0.03, 0.02)
+	coals.emission_enabled = true
+	coals.emission = Color(1.0, 0.3, 0.05)
+	coals.emission_energy_multiplier = 1.5
+	b._box_mesh(f, "Coals", Vector3(0.44, 0.04, 0.44), Vector3(0, 1.0, 0), coals)
+	var light: OmniLight3D = b._light(f, "Fire", Vector3(0, 2.2, 0), Color(1.0, 0.5, 0.18), 3.6, 9.0, false)
+	light.add_to_group("always_lit", true)
+	var flames := CPUParticles3D.new()
+	flames.name = "Flames"
+	flames.amount = 14
+	flames.lifetime = 0.7
+	flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	flames.emission_sphere_radius = 0.16
+	flames.direction = Vector3.UP
+	flames.spread = 12.0
+	flames.gravity = Vector3(0, 0.6, 0)
+	flames.initial_velocity_min = 0.4
+	flames.initial_velocity_max = 0.9
+	flames.scale_amount_min = 0.6
+	flames.scale_amount_max = 1.0
+	var shrink := Curve.new()
+	shrink.add_point(Vector2(0, 1))
+	shrink.add_point(Vector2(1, 0.1))
+	flames.scale_amount_curve = shrink
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(1.0, 0.85, 0.4, 1.0))
+	ramp.set_color(1, Color(0.9, 0.2, 0.05, 0.0))
+	flames.color_ramp = ramp
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.32, 0.42)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	fm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fm.vertex_color_use_as_albedo = true
+	fm.albedo_color = Color(1.0, 0.8, 0.55)
+	# A soft tongue, not a card: bright at the heart, gone at the edge.
+	var tongue := GradientTexture2D.new()
+	tongue.width = 64
+	tongue.height = 64
+	tongue.fill = GradientTexture2D.FILL_RADIAL
+	tongue.fill_from = Vector2(0.5, 0.6)
+	tongue.fill_to = Vector2(0.5, 0.05)
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	tongue.gradient = g
+	fm.albedo_texture = tongue
+	quad.material = fm
+	flames.mesh = quad
+	b._add(f, flames)
+	flames.position = Vector3(0, 1.15, 0)
 	var cyl := CylinderShape3D.new()
 	cyl.radius = 0.42
 	cyl.height = 1.1

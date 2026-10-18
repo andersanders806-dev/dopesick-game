@@ -7,7 +7,6 @@ extends RefCounted
 ## the sidewalk; people sit on them (Place_Stoop1..3).
 
 const Kit := preload("res://dev-tools/city/kit.gd")
-const Facades := preload("res://world/Facades.gd")
 
 ## Row house centres (Facades' Row1..Row12): each has a stoop.
 const STOOP_X := [-59.0, -53.0, -47.0, -41.0, -35.0, -29.0, 9.0, 15.0, 21.0, 27.0, 33.0, 39.0]
@@ -41,10 +40,21 @@ static func build(b: Node, _root: Node3D) -> void:
 	# Under the overpass the north side's just a fenced-off patch of weeds.
 	Kit.fence(b, c, "UnderpassFenceN", Vector3(56.0, 0, LINE), Vector3(66.0, 0, LINE))
 	Kit.ground(b, c, "UnderpassWeedsN", 56.0, -103.0, 66.0, -99.0, "park")
-	Kit.hydrant(b, c, "HydrantBack", Vector3(-8.5, 0, -94.6))
-	Kit.trash_can(b, c, "BinBack1", Vector3(-30.5, 0, -94.6))
-	Kit.trash_can(b, c, "BinBack2", Vector3(16.5, 0, -94.6))
-	Kit.trash_can(b, c, "BinBack3", Vector3(-20.0, 0, -85.6))
+	Kit.hydrant(b, c, "HydrantBack", Vector3(-8.5, 0, -94.35))
+	Kit.trash_can(b, c, "BinBack1", Vector3(-30.5, 0, -94.35))
+	Kit.trash_can(b, c, "BinBack2", Vector3(17.5, 0, -94.35))
+	Kit.trash_can(b, c, "BinBack3", Vector3(-20.0, 0, -87.6))
+	# Breaking up the 154 m: newsstands on the stoops' side (where there's
+	# no stoop), cabinets and a newsstand on the near side, and a box truck
+	# each side of the middle of the road. People step round them.
+	Kit.kiosk(b, c, "NewsstandBack1", Vector3(-22.0, 0, -94.75), Vector2(1.4, 1.3), Vector3.BACK, Color(0.12, 0.26, 0.18))
+	Kit.kiosk(b, c, "NewsstandBack2", Vector3(11.5, 0, -94.75), Vector2(1.4, 1.3), Vector3.BACK, Color(0.18, 0.2, 0.35), "COFFEE\nBAGELS\nPAPERS")
+	Kit.kiosk(b, c, "NewsstandBack3", Vector3(47.0, 0, -94.75), Vector2(1.4, 1.3), Vector3.BACK, Color(0.3, 0.12, 0.1))
+	Kit.kiosk(b, c, "NewsstandBackS", Vector3(-44.0, 0, -85.7), Vector2(1.4, 1.2), Vector3.FORWARD, Color(0.12, 0.26, 0.18))
+	Kit.cabinet(b, c, "CabinetBack1", Vector3(4.0, 0, -85.7), 180.0)
+	Kit.cabinet(b, c, "CabinetBack2", Vector3(52.0, 0, -85.7), 180.0)
+	Kit.box_truck(b, c, "TruckBackW", Vector3(-25.0, 0, -89.9), 0.0, "MARTINEZ PLUMBING", Color(0.85, 0.85, 0.82))
+	Kit.box_truck(b, c, "TruckBackE", Vector3(25.0, 0, -89.9), 180.0, "CITY LINEN", Color(0.4, 0.5, 0.42))
 	for i in [1, 4, 8, 11]:
 		Kit.bags(b, c, "StoopBags%d" % i, Vector3(STOOP_X[i] + 2.2, 0, -98.4), 2, 70 + i)
 	b._ph(c, "ManholeBack", "water_manhole_cover", Vector3(-12.0, 0.005, -90.2))
@@ -96,7 +106,7 @@ static func _projects_entrance(b: Node, c: Node3D) -> void:
 	number.outline_modulate = Color(0, 0, 0, 0.9)
 	b._add(c, number)
 	number.position = Vector3(x, 3.7, LINE + 2.98)
-	b._light(c, "ProjectsLight", Vector3(x, 3.0, LINE + 1.6), Color(0.85, 1.0, 0.8), 1.4, 6.0, false)
+	Kit.night_light(b, c, "ProjectsLight", Vector3(x, 3.0, LINE + 1.6), Color(0.85, 1.0, 0.8), 1.4, 6.0)
 	for px in [-21.0, 1.0]:
 		b._solid(c, "ProjectsPlanter%d" % int(px), Vector3(6.0, 0.6, 1.2), Vector3(px, 0.3, LINE + 0.7), Kit.mat(b, "concrete_dark"))
 		b._box_mesh(c, "ProjectsSoil%d" % int(px), Vector3(5.7, 0.05, 0.9), Vector3(px, 0.61, LINE + 0.7), Kit.mat(b, "park"))
@@ -109,9 +119,12 @@ static func _bus_shelter(b: Node, c: Node3D, x: float) -> void:
 	var front_z := -87.7
 	var glass := Kit.mat(b, "glass")
 	var steel := Kit.mat(b, "steel")
+	# Built in place, then the holder moved onto its spot (so the shelter's
+	# origin is where it stands).
 	var s := Node3D.new()
 	s.name = "BusShelter"
 	b._add(c, s)
+	var spot := Vector3(x, 0, (back_z + front_z) / 2.0)
 	b._solid(s, "BackPanel", Vector3(4.0, 2.2, 0.05), Vector3(x, 1.25, back_z), glass)
 	for side in [-1.0, 1.0]:
 		b._solid(s, "SidePanel", Vector3(0.05, 2.2, 1.2), Vector3(x + side * 2.0, 1.25, back_z - 0.6), glass)
@@ -133,7 +146,7 @@ static func _bus_shelter(b: Node, c: Node3D, x: float) -> void:
 	b._add(s, ad)
 	ad.position = Vector3(x + 2.125, 1.3, back_z - 0.6)
 	ad.rotation_degrees.y = 90.0
-	b._light(s, "AdGlow", Vector3(x + 2.6, 1.3, back_z - 0.6), Color(0.8, 0.88, 1.0), 0.6, 3.0, false)
+	Kit.night_light(b, s, "AdGlow", Vector3(x + 2.6, 1.3, back_z - 0.6), Color(0.8, 0.88, 1.0), 0.6, 3.0)
 	b._cylinder(s, "StopPole", 0.04, 2.8, Vector3(x + 3.0, 1.4, front_z + 0.2), steel)
 	var stop := Label3D.new()
 	stop.name = "StopSign"
@@ -145,4 +158,7 @@ static func _bus_shelter(b: Node, c: Node3D, x: float) -> void:
 	stop.outline_size = 18
 	b._add(s, stop)
 	stop.position = Vector3(x + 3.0, 2.6, front_z + 0.22)
+	for child in s.get_children():
+		(child as Node3D).position -= spot
+	s.position = spot
 	Kit.place(b, "Place_BusStop", Vector3(x, 0, -87.2))

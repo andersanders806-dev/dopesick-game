@@ -4799,6 +4799,25 @@ const MAIN_STREET_POSITIONS := {
 	"RayCrate": Vector3(-12.1, 0.0, -3.95), "Lookout": Vector3(-8.7, 0.0, -3.2),
 	"VendingMachine": Vector3(-19.25, 0.0, -3.95), "Mailbox": Vector3(-16.1, 0.0, -3.7),
 }
+## The same, for things that move once the street's running (the rats run
+## the wall line; Ray and the cars should never move): checked as built.
+const MAIN_STREET_BUILT := {
+	"Ray": Vector3(-12.1, 0.0, -3.95), "Rat1": Vector3(-2.0, 0.0, -4.38), "Rat2": Vector3(17.0, 0.0, -4.38),
+	"PoliceCruiser": Vector3(-24.0, 0.0, 2.6), "CarA": Vector3(-12.0, 0.0, 2.6), "CarB": Vector3(5.5, 0.0, 2.6),
+	"CarC": Vector3(20.0, 0.0, 2.8), "Hydrant": Vector3(-8.8, 0.0, -2.2), "Dumpster": Vector3(21.0, 0.6, -3.9),
+	"Manhole1": Vector3(-9.0, 0.005, 1.6), "Manhole2": Vector3(12.0, 0.005, 0.4),
+	"Streetlight1": Vector3(-27.0, 0.0, -1.8), "Streetlight2": Vector3(-21.0, 0.0, -1.8), "Streetlight3": Vector3(-14.0, 0.0, -1.8),
+	"Streetlight4": Vector3(-7.0, 0.0, -1.8), "Streetlight5": Vector3(0.0, 0.0, -1.8), "Streetlight6": Vector3(7.0, 0.0, -1.8),
+}
+## Down every street, at eye level: [axis, the line's other coordinate,
+## from, to]. Main's three sidewalk lanes and its road, then Back Street's,
+## the avenues' (inner sidewalk, outer sidewalk, road).
+const BLOCK_SIGHT_LINES := [
+	["x", -3.0, -70.0, 70.0], ["x", -2.6, -70.0, 70.0], ["x", -2.2, -70.0, 70.0], ["x", 1.5, -70.0, 70.0],
+	["x", -95.0, -70.0, 70.0], ["x", -85.6, -70.0, 70.0], ["x", -91.0, -70.0, 70.0],
+	["z", -66.6, -90.0, 0.0], ["z", -76.2, -90.0, 0.0], ["z", -71.0, -90.0, 0.0],
+	["z", 66.6, -90.0, 0.0], ["z", 76.2, -90.0, 0.0], ["z", 71.0, -90.0, 0.0],
+]
 const BLOCK_PLACES := ["Place_BusStop", "Place_ParkBench", "Place_Court", "Place_UnderpassCamp",
 	"Place_AlleyDumpsters", "Place_Stoop1", "Place_Stoop2", "Place_Stoop3", "Place_PoliceStation",
 	"Place_PusherCorner", "Place_PusherNight", "Place_RayCrate"]
@@ -4807,6 +4826,30 @@ const BLOCK_CELLS := ["Cell_Main", "Cell_West", "Cell_East", "Cell_Back", "Cell_
 const MAX_SIGHTLINE := 55.0
 ## Loading the street behind the door's fade (the spec's budget).
 const CITY_LOAD_BUDGET_MS := 2500
+
+## A fresh game: the street and its facade kits load in the background
+## from boot (SceneLoader), and the first time onto the block -- "Continue"
+## from the title, or the first door -- is only what's left behind the fade.
+## Run from smoke_block.gd, where this is the process's first City3D.
+func _block_cold_load_checks(gs: Node) -> void:
+	await _section("The block: the first time onto the street in a fresh game")
+	var loader := root.get_node("SceneLoader")
+	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM
+	var t_boot := Time.get_ticks_msec()
+	while not warm.all(func(p): return loader.cached(p)) and Time.get_ticks_msec() - t_boot < 30000:
+		await process_frame
+	var warm_up := Time.get_ticks_msec() - t_boot
+	_check(warm.all(func(p): return loader.cached(p)), "  the street and its kits load in the background from boot (%d ms of title screen)" % warm_up)
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var t0 := Time.get_ticks_msec()
+	change_scene_to_file("res://world/City3D.tscn")
+	await process_frame
+	await process_frame
+	var first := Time.get_ticks_msec() - t0
+	_check(first <= CITY_LOAD_BUDGET_MS, "  ...so the first time onto it takes %d ms (budget %d; _ready %d ms)" % [first, CITY_LOAD_BUDGET_MS, current_scene.get("ready_ms")])
+	await _frames(10)
 
 func _block_layout_checks(gs: Node) -> void:
 	await _section("The block: four streets, an alley loop, a park and an underpass")
@@ -4838,7 +4881,22 @@ func _block_layout_checks(gs: Node) -> void:
 	if pusher == null or pusher._post_position.distance_to(Vector3(14.0, 0, -3.5)) > 0.001 \
 			or pusher.stash_position.distance_to(Vector3(21.0, 0, -3.15)) > 0.001 or pusher.hide_position.distance_to(Vector3(14.0, 0, -8.0)) > 0.001:
 		moved.append("Pusher")
+	var built: Node = load("res://world/City3D.tscn").instantiate()
+	for n in MAIN_STREET_BUILT:
+		var node := built.find_child(n, true, false) as Node3D
+		var at := Vector3.INF
+		if node:
+			at = node.position
+			var up := node.get_parent() as Node3D
+			while up != built and up != null:
+				at = up.transform * at
+				up = up.get_parent() as Node3D
+		if at.distance_to(MAIN_STREET_BUILT[n]) > 0.001:
+			moved.append("%s %s (as built)" % [n, at])
+	built.free()
 	var C = load("res://world/City3D.gd")
+	if C.HIDE_SPOTS[0]["pos"] != Vector3(14.0, 0, -4.05) or C.HIDE_SPOTS[1]["pos"] != Vector3(22.6, 0, -3.95):
+		moved.append("hide spots")
 	if C.MAILBOX_POS != Vector3(-16.1, 0, -3.7) or C.VENDING_POS != Vector3(-19.25, 0, -3.95) \
 			or C.PATROL_START != Vector3(-24.5, 0, -1.3) or C.COLLECTOR_ENTRY != Vector3(27.5, 0, 1.0):
 		moved.append("City3D constants")
@@ -4869,6 +4927,27 @@ func _block_layout_checks(gs: Node) -> void:
 			if not _ray_hits_static(space, from, from + dir * MAX_SIGHTLINE):
 				long.append("%s %s" % [m.name, dir])
 	_check(long.is_empty(), "  no clear sightline over %d m from any place (%s)" % [int(MAX_SIGHTLINE), long])
+	# ...nor down any street: every 10 m along each sidewalk lane and road,
+	# at eye level, both ways.
+	var open := []
+	for line in BLOCK_SIGHT_LINES:
+		var along: Vector3 = Vector3.RIGHT if line[0] == "x" else Vector3.BACK
+		var t: float = line[2]
+		while t <= line[3] + 0.01:
+			var from: Vector3 = (Vector3(t, 1.5, line[1]) if line[0] == "x" else Vector3(line[1], 1.5, t))
+			# A point inside a newsstand or a truck sees nothing.
+			var probe := PhysicsPointQueryParameters3D.new()
+			probe.position = from
+			probe.collision_mask = 1
+			if space.intersect_point(probe, 1).size() > 0:
+				t += 10.0
+				continue
+			for dir in [along, -along]:
+				if not _ray_hits_static(space, from, from + dir * MAX_SIGHTLINE):
+					open.append("%s %s" % [from.snapped(Vector3.ONE * 0.1), dir])
+			t += 10.0
+	_check(open.is_empty(), "  no clear run over %d m down any street, sidewalk or road (%d open: %s)" % [int(MAX_SIGHTLINE), open.size(), open.slice(0, 6)])
+	await _block_structure_checks(gs, city)
 	# Baked with the scene: a runtime bake of the whole block was 0.9-1.8 s.
 	var nav := city.get_node("NavRegion") as NavigationRegion3D
 	_check(int(city.get("nav_bake_ms")) == 0 and nav.navigation_mesh.get_polygon_count() > 0,
@@ -4886,6 +4965,92 @@ func _block_layout_checks(gs: Node) -> void:
 	_check(warm <= CITY_LOAD_BUDGET_MS, "  City3D loads in %d ms once cached (budget %d)" % [warm, CITY_LOAD_BUDGET_MS])
 	await _frames(10)
 	gs.start_run()
+
+## Cells hold only what's inside them; the night's lights go off by day;
+## the overpass clears the camera; and there are no dead ends.
+func _block_structure_checks(gs: Node, city: Node) -> void:
+	# Task 2 sleeps a cell by its bounds: nothing of it may stand outside.
+	var strays := []
+	for cn in BLOCK_CELLS:
+		var cell := city.get_node(cn) as Node3D
+		var bounds: AABB = (cell.get_meta("bounds") as AABB).grow(1.0)
+		for n in cell.find_children("*", "Node3D", true, false):
+			var inside := bounds.has_point(n.global_position)
+			if inside and n is VisualInstance3D and not (n is Light3D):
+				var b: AABB = n.global_transform * n.get_aabb()
+				inside = b.size == Vector3.ZERO or bounds.encloses(b)
+			if not inside:
+				strays.append("%s/%s" % [cn, cell.get_path_to(n)])
+	_check(strays.is_empty(), "  everything in a cell lies inside its bounds (%d strays: %s)" % [strays.size(), strays.slice(0, 5)])
+	# The overpass: nothing hangs below the camera's highest zoom plus half
+	# a metre (its pillars aside).
+	var player := _player()
+	var cam_top: float = player._cam_offset.y * player.CAM_ZOOM * player.CAM_USER_ZOOM.y
+	var low := []
+	for mi in city.get_node("Overpass").find_children("*", "VisualInstance3D", true, false):
+		if String(mi.name).begins_with("Pillar") or String(mi.get_parent().name).begins_with("Pillar"):
+			continue
+		var b: AABB = mi.global_transform * mi.get_aabb()
+		if b.position.y < cam_top + 0.5:
+			low.append("%s %.2f" % [mi.name, b.position.y])
+	_check(low.is_empty(), "  the overpass clears the camera at its highest zoom (%.2f m + 0.5): %s" % [cam_top, low.slice(0, 4)])
+	# By day the block's after-dark lights are off; at night they're on.
+	gs.clock = 14 * 60
+	gs.advance_clock(1)
+	await _frames(3)
+	var night := get_nodes_in_group("night_lights").filter(func(l): return city.is_ancestor_of(l))
+	var lit_by_day := night.filter(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01).map(func(l): return l.name)
+	# Every light in the block's cells is one of the switched kinds (or a
+	# fire, lit all day).
+	var unswitched := []
+	for l in city.find_children("*", "Light3D", true, false):
+		var top: Node = l
+		while top.get_parent() != city:
+			top = top.get_parent()
+		if not (String(top.name).begins_with("Cell_") or top.name == "Overpass"):
+			continue
+		if not (l.is_in_group("night_lights") or l.is_in_group("always_lit") or String(l.name).ends_with("SignGlow") or String(l.get_parent().name).begins_with("Streetlight")):
+			unswitched.append(l.name)
+	_check(night.size() > 10 and lit_by_day.is_empty() and unswitched.is_empty(),
+		"  at 14:00 the block's %d after-dark lights are off (lit: %s; never switched: %s)" % [night.size(), lit_by_day.slice(0, 4), unswitched.slice(0, 4)])
+	gs.clock = 22 * 60
+	gs.advance_clock(1)
+	await _frames(3)
+	_check(night.all(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01), "  ...and on at 22:00")
+	gs.clock = 17 * 60
+	# No dead ends. Each joint below is a short walk (under 1.4x the straight
+	# line, plus 3 m): both of the pusher's alleys run through to the service
+	# lane, the back alley to Back Street, every street joins the next at
+	# both ends, the park and the lot each have two ways in, the underpass
+	# three. (The basketball court has one door on purpose: it's somewhere
+	# you go, not through.)
+	var map: RID = city.get_world_3d().navigation_map
+	var joints := [
+		["alley 14", Vector3(13.6, 0, -5.0), Vector3(13.6, 0, -17.4)],
+		["alley 21", Vector3(21.4, 0, -5.0), Vector3(21.4, 0, -17.4)],
+		["the back alley", Vector3(-7.5, 0, -20.0), Vector3(-7.5, 0, -86.5)],
+		["Main to West Ave", Vector3(-60.0, 0, -3.0), Vector3(-66.6, 0, -20.0)],
+		["West Ave to Back St", Vector3(-66.6, 0, -70.0), Vector3(-55.0, 0, -86.5)],
+		["Back St to East Ave", Vector3(55.0, 0, -86.5), Vector3(66.6, 0, -70.0)],
+		["East Ave to Main", Vector3(66.6, 0, -20.0), Vector3(60.0, 0, -3.0)],
+		["park, West Ave gate", Vector3(-67.0, 0, -24.0), Vector3(-60.0, 0, -24.0)],
+		["park, Back St gate", Vector3(-36.5, 0, -86.6), Vector3(-36.5, 0, -80.0)],
+		["lot, from the lane", Vector3(30.0, 0, -17.5), Vector3(40.0, 0, -17.5)],
+		["lot, Back St gate", Vector3(46.0, 0, -86.6), Vector3(46.0, 0, -80.0)],
+		["underpass, from Main", Vector3(61.0, 0, -3.0), Vector3(61.0, 0, -20.0)],
+		["underpass, East Ave gap", Vector3(66.6, 0, -42.0), Vector3(62.0, 0, -42.0)],
+		["underpass, Back St", Vector3(61.0, 0, -86.6), Vector3(61.0, 0, -78.0)],
+	]
+	var stuck := []
+	for j in joints:
+		var path := NavigationServer3D.map_get_path(map, j[1], j[2], true)
+		var length := 0.0
+		for i in range(1, path.size()):
+			length += path[i - 1].distance_to(path[i])
+		var straight: float = (j[1] as Vector3).distance_to(j[2])
+		if path.is_empty() or path[path.size() - 1].distance_to(j[2]) > 0.6 or length > straight * 1.4 + 3.0:
+			stuck.append("%s (%.0f m for %.0f)" % [j[0], length, straight])
+	_check(stuck.is_empty(), "  no dead ends: every street, alley and gate goes through (%s)" % [stuck])
 
 ## A layer-1 static body somewhere along the ray: people and the player
 ## (bodies that move) don't count as blocking the view.

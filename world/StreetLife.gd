@@ -19,7 +19,9 @@ const CARS := ["sedan", "taxi", "van", "suv", "hatchback-sports", "sedan-sports"
 const CAR_SCALE := 1.6
 const LANE_Z := 0.35
 const LANE_SPEED := Vector2(7.0, 10.0)
-const STREET_END := 31.0
+## Main Street runs between the avenues now: cars turn in off West Ave and
+## out onto East Ave.
+const STREET_END := 74.0
 const CAR_GAP_DAY := Vector2(4.0, 10.0)
 const CAR_GAP_NIGHT := Vector2(12.0, 26.0)
 ## Stop this far short of a person (or the car in front) in the lane.
@@ -282,7 +284,7 @@ func _pick_flickering_signs() -> void:
 	var glows := get_parent().find_children("*SignGlow", "Light3D", true, false)
 	glows.shuffle()
 	for glow in glows.slice(0, 2):
-		var sign := get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
+		var sign := glow.get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
 		_flicker.append({"light": glow, "sign": sign, "energy": glow.light_energy, "timer": randf_range(1.0, 6.0), "off": 0.0})
 
 ## Sick enough, every sign on the block starts to stutter, not just the two
@@ -296,7 +298,7 @@ func _add_sick_flicker() -> void:
 	for glow in get_parent().find_children("*SignGlow", "Light3D", true, false):
 		if glow in taken:
 			continue
-		var sign := get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
+		var sign := glow.get_parent().get_node_or_null(String(glow.name).replace("SignGlow", "Sign")) as Label3D
 		_flicker.append({"light": glow, "sign": sign, "energy": glow.light_energy, "timer": randf_range(0.5, 4.0), "off": 0.0, "sick": true})
 
 func _update_flicker(delta: float) -> void:

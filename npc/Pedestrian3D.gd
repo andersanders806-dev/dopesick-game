@@ -31,11 +31,15 @@ const SHELTER_CHANCE := 0.5
 signal left_street
 
 var speed: float = 1.3
-var lane_z: float = 0.0
-## +1 walking east, -1 walking west.
-var direction: float = 1.0
-var end_x: float = 30.0
+## Their lane (City3D.LANES): in at lane_from, out at lane_to.
+var lane_from := Vector3(-29.5, 0, -3.1)
+var lane_to := Vector3(29.5, 0, -3.1)
 var look_index: int = 0
+## How far along the lane they are, and the lane's direction and its
+## left-hand side (where they step to get round you).
+var _along: float = 0.0
+var _dir := Vector3.RIGHT
+var _side := Vector3.FORWARD
 
 var anim: CharacterAnimator
 var _model_root: Node3D
@@ -69,7 +73,17 @@ func _ready() -> void:
 	CharacterLook.apply(model, entry["look"])
 	anim = CharacterAnimator.new(model)
 	preload("res://npc/HeadTurn.gd").attach(model)
-	_model_root.rotation.y = atan2(direction, 0.0)
+	_model_root.rotation.y = atan2(_dir.x, _dir.z)
+
+## Puts them `t` (0..1) of the way along their lane, facing along it.
+func place_at(t: float) -> void:
+	_dir = (lane_to - lane_from).normalized()
+	_side = _dir.cross(Vector3.UP)
+	_along = lane_from.distance_to(lane_to) * clampf(t, 0.0, 1.0)
+	global_position = lane_from + _dir * _along
+	if _model_root:
+		_model_root.rotation.y = atan2(_dir.x, _dir.z)
+	reset_physics_interpolation()
 
 func _physics_process(delta: float) -> void:
 	if _update_shelter(delta):
@@ -78,23 +92,30 @@ func _physics_process(delta: float) -> void:
 	# Step around you rather than through you: drift off the lane while
 	# you're in the way, then back onto it.
 	var target_dodge := 0.0
+	var on_lane := lane_from + _dir * _along
 	if player:
-		var ahead := (player.global_position.x - global_position.x) * direction
-		if ahead > -0.3 and ahead < 2.0 and absf(player.global_position.z - (lane_z + _dodge)) < PERSONAL_SPACE:
-			target_dodge = 1.2 if player.global_position.z < lane_z else -1.2
+		var rel := player.global_position - on_lane
+		var ahead := rel.dot(_dir)
+		var across := rel.dot(_side)
+		if ahead > -0.3 and ahead < 2.0 and absf(across - _dodge) < PERSONAL_SPACE:
+			target_dodge = -1.2 if across > 0.0 else 1.2
 	_dodge = move_toward(_dodge, target_dodge, 1.5 * delta)
-	global_position.x += direction * speed * delta
-	global_position.z = lane_z + _dodge
+	_along += speed * delta
+	global_position = lane_from + _dir * _along + _side * _dodge
 	anim.update(speed)
-	if (direction > 0.0 and global_position.x > end_x) or (direction < 0.0 and global_position.x < -end_x):
+	if _along > lane_from.distance_to(lane_to):
 		left_street.emit()
 		queue_free()
+
+## Only Main Street's shops have awnings to duck under.
+func _under_awnings() -> bool:
+	return absf(_dir.x) > 0.9 and absf(lane_from.x) < 30.0 and lane_from.z > -4.5 and lane_from.z < -1.5
 
 ## Returns true while the rain has them off their lane.
 func _update_shelter(delta: float) -> bool:
 	match _shelter:
 		"":
-			if not GameState.raining:
+			if not GameState.raining or not _under_awnings():
 				return false
 			for ax: float in AWNING_X:
 				# Once per awning, as they come level with it.
@@ -115,9 +136,12 @@ func _update_shelter(delta: float) -> bool:
 			if not GameState.raining or _shelter_wait <= 0.0:
 				_shelter = "out"
 		"out":
-			if _step_to(Vector3(global_position.x + direction * 0.8, 0, lane_z), delta):
+			var back := lane_from + _dir * ((global_position - lane_from).dot(_dir) + 0.8)
+			if _step_to(back, delta):
 				_shelter = ""
-				_model_root.rotation.y = atan2(direction, 0.0)
+				_dodge = 0.0
+				_along = (global_position - lane_from).dot(_dir)
+				_model_root.rotation.y = atan2(_dir.x, _dir.z)
 	return true
 
 func _step_to(target: Vector3, delta: float) -> bool:

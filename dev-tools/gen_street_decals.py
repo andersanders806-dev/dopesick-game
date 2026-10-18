@@ -3,7 +3,8 @@
 there's nothing to license: spray-painted tags with overspray and drips,
 torn flyers, grime streaks down the shop fronts, gum and coffee stains,
 cracks, litter, oil patches, and puddles (with an ORM map so they come out
-glossy and catch the neon). world/StreetDressing.gd places them.
+glossy and catch the neon). world/StreetDressing.gd places them. Also the
+park's basketball court lines, worn half away (dev-tools/city/inner.gd).
 
     .venv-portraits/bin/python3 dev-tools/gen_street_decals.py
 """
@@ -212,6 +213,42 @@ def puddle(name):
     save(Image.fromarray(orm), name.replace(".png", "_orm.png"))
 
 
+def court_lines(name, px_per_m=40):
+    """A full basketball court (15 x 28 m, long axis down the image) in
+    white paint, worn off in blotches where the ball and the feet go."""
+    w, h = 15 * px_per_m, 28 * px_per_m
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    col, lw, m = (235, 232, 220, 255), 4, 0.15 * px_per_m
+    cx = w / 2
+
+    def circle(x, y, r):
+        d.ellipse([x - r, y - r, x + r, y + r], outline=col, width=lw)
+
+    d.rectangle([m, m, w - m, h - m], outline=col, width=lw)
+    d.line([m, h / 2, w - m, h / 2], fill=col, width=lw)
+    circle(cx, h / 2, 1.8 * px_per_m)
+    for end in (0, 1):
+        sgn = 1 if end == 0 else -1
+        base = m if end == 0 else h - m
+        basket = base + sgn * 1.575 * px_per_m
+        key_end = base + sgn * 5.8 * px_per_m
+        d.rectangle([cx - 2.45 * px_per_m, min(base, key_end), cx + 2.45 * px_per_m, max(base, key_end)], outline=col, width=lw)
+        circle(cx, key_end, 1.8 * px_per_m)
+        r = 6.75 * px_per_m
+        side = w / 2 - m - 0.9 * px_per_m
+        dy = math.sqrt(r * r - side * side)
+        for sx in (cx - side, cx + side):
+            d.line([sx, base, sx, basket + sgn * dy], fill=col, width=lw)
+        a0 = math.degrees(math.atan2(sgn * dy, -side))
+        a1 = math.degrees(math.atan2(sgn * dy, side))
+        d.arc([cx - r, basket - r, cx + r, basket + r], a1 if end == 0 else a0, a0 if end == 0 else a1, fill=col, width=lw)
+    a = np.array(img).astype(np.float32)
+    wear = np.clip((noise(w, h, 6) - 0.28) * 4.0, 0.15, 1)
+    a[:, :, 3] *= wear * 0.9
+    save(Image.fromarray(a.astype(np.uint8)), name)
+
+
 tag("NO FUTURE", (240, 60, 130), (20, 20, 25), "tag_nofuture.png")
 tag("DSK", (70, 220, 230), (25, 20, 60), "tag_dsk.png", (768, 512))
 tag("BLOCK 9", (250, 220, 60), (120, 20, 20), "tag_block9.png")
@@ -228,3 +265,4 @@ blotch("stain_oil.png", (512, 512), (6, 6, 8), 4, 0.25, soft=5.0)
 crack("crack.png")
 litter("litter.png")
 puddle("puddle.png")
+court_lines("court_lines.png")

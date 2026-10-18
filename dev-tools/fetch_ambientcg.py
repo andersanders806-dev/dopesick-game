@@ -17,6 +17,9 @@ SETS = {
     "tiles_white": "Tiles141", "tiles_beige": "Tiles139", "plaster_painted": "PaintedPlaster017",
     "bricks_old": "Bricks097", "wood_dark": "Wood066", "leather_red": "Leather037",
     "felt": "Fabric030", "metal_worn": "Metal055A", "metal_brushed": "Metal032",
+    # the block (open world): the park, the lot, the underpass camp
+    "dirt": "Ground037", "gravel": "Gravel022", "bark": "Bark007",
+    "corrugated": "CorrugatedSteel005", "tarp": "Fabric045", "concrete_wall": "Concrete034",
 }
 MAPS = {"_Color.jpg": "diff", "_NormalGL.jpg": "nor", "_Roughness.jpg": "rough"}
 

@@ -106,6 +106,8 @@ const PBR_SIZE := {
 	"road_worn": 5.0, "sidewalk_slabs": 2.6, "curb": 2.0, "tiles_white": 1.0, "tiles_beige": 1.0,
 	"plaster_painted": 2.0, "bricks_old": 2.0, "wood_dark": 1.5, "leather_red": 1.0, "felt": 0.5,
 	"metal_worn": 1.0, "metal_brushed": 1.0,
+	# the block (open world)
+	"dirt": 2.5, "gravel": 1.5, "bark": 1.0, "corrugated": 2.0, "tarp": 1.0, "concrete_wall": 2.5,
 }
 ## The older albedo-only textures each map to the PBR set that replaces
 ## them, so existing _tex_mat() call sites upgrade without being rewritten.
@@ -375,11 +377,12 @@ func _room_tone(file: String, volume_db: float) -> void:
 	p.autoplay = true
 	_add(_root, p)
 
-func _marker(name: String, pos: Vector3) -> void:
+func _marker(name: String, pos: Vector3) -> Marker3D:
 	var m := Marker3D.new()
 	m.name = name
 	_add(_root, m)
 	m.position = pos
+	return m
 
 func _player_and_hud(spawn: Vector3) -> void:
 	_instance(_root, "Player3D", PlayerScene, spawn)
@@ -399,13 +402,13 @@ const ENV3D := "res://assets/env3d/"
 
 ## Decal projecting `tex` onto whatever is behind it. `wall` is "floor",
 ## "north", "west", or "east" and orients the projection into that surface.
-func _decal(name: String, tex: String, pos: Vector3, width: float, height: float, wall := "floor", spin_deg := 0.0, modulate := Color.WHITE) -> void:
+func _decal(name: String, tex: String, pos: Vector3, width: float, height: float, wall := "floor", spin_deg := 0.0, modulate := Color.WHITE, parent: Node = null) -> Decal:
 	var d := Decal.new()
 	d.name = name
 	d.texture_albedo = load(tex)
 	d.modulate = modulate
 	d.size = Vector3(width, 0.5, height)
-	_add(_root, d)
+	_add(parent if parent else _root, d)
 	d.position = pos
 	match wall:
 		"north":
@@ -416,6 +419,7 @@ func _decal(name: String, tex: String, pos: Vector3, width: float, height: float
 			d.rotation_degrees = Vector3(spin_deg, 0, 90)
 		_:
 			d.rotation_degrees = Vector3(0, spin_deg, 0)
+	return d
 
 func _cylinder(parent: Node, name: String, radius: float, height: float, pos: Vector3, mat: Material) -> MeshInstance3D:
 	var mesh := CylinderMesh.new()
@@ -1698,10 +1702,10 @@ const BAR_D := 9.0
 ## A neon sign: glowing Label3D text (HDR colour, so the environment's glow
 ## blooms it) on a dark backing board, plus a small light for the colour
 ## spill. `dim` < 1 for signs that have faded over the decades.
-func _neon(name: String, text: String, pos: Vector3, rot_y_deg: float, color: Color, font_size := 72, dim := 1.0) -> Label3D:
+func _neon(name: String, text: String, pos: Vector3, rot_y_deg: float, color: Color, font_size := 72, dim := 1.0, parent: Node = null) -> Label3D:
 	var holder := Node3D.new()
 	holder.name = name
-	_add(_root, holder)
+	_add(parent if parent else _root, holder)
 	holder.position = pos
 	holder.rotation_degrees.y = rot_y_deg
 	var label := Label3D.new()
@@ -2059,11 +2063,19 @@ func _build_dive_bar() -> Node3D:
 
 # --- City -------------------------------------------------------------------
 
-func _streetlight(name: String, x: float, z: float, index: int) -> void:
+const CityKit := preload("res://dev-tools/city/kit.gd")
+const CityMainExt := preload("res://dev-tools/city/main_street_ext.gd")
+const CityAvenues := preload("res://dev-tools/city/avenues.gd")
+const CityBackStreet := preload("res://dev-tools/city/back_street.gd")
+const CityInner := preload("res://dev-tools/city/inner.gd")
+
+## `yaw` turns the lamp to hang over a road that isn't Main Street's.
+func _streetlight(name: String, x: float, z: float, index: int, parent: Node = null, yaw := 0.0) -> void:
 	var sl := StaticBody3D.new()
 	sl.name = name
-	_add(_root, sl)
+	_add(parent if parent else _root, sl)
 	sl.position = Vector3(x, 0, z)
+	sl.rotation_degrees.y = yaw
 	# Poly Haven's street lamp (3.87 m), scaled to the old 3.4 m so the light
 	# below still sits in its head.
 	_ph(sl, "Model", "street_lamp_01", Vector3.ZERO, 3.4 / 3.87, 180.0)
@@ -2078,50 +2090,47 @@ func _streetlight(name: String, x: float, z: float, index: int) -> void:
 ## A parked car: Poly Haven's covered car (realistic, under a tarp), or a
 ## Kenney car in muted paint -- realistic CC0 cars with open downloads
 ## don't exist. The collision box is the old one's.
-func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan") -> void:
+func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan", parent: Node = null, yaw := 0.0) -> void:
 	var car := StaticBody3D.new()
 	car.name = name
-	_add(_root, car)
+	_add(parent if parent else _root, car)
 	car.position = pos
-	if facing_left:
-		car.rotation_degrees.y = 180.0
+	car.rotation_degrees.y = yaw + (180.0 if facing_left else 0.0)
 	if kind == "covered":
 		_ph(car, "Model", "covered_car", Vector3.ZERO, 1.0, 90.0)
 	else:
-		var m := _model(car, "Model", "cars/%s.glb" % kind, Vector3(0, 0.3 * KENNEY_CAR_SCALE, 0), KENNEY_CAR_SCALE, 90.0)
-		if kind != "police":
-			var paint: Color = [Color(0.22, 0.24, 0.27), Color(0.32, 0.29, 0.25), Color(0.18, 0.2, 0.17)][name.length() % 3]
-			for mi in m.find_children("*", "MeshInstance3D", true, false):
-				var base := (mi as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
-				if base == null:
-					continue
-				var muted := base.duplicate() as StandardMaterial3D
-				# The paint is in Kenney's palette texture, so a tint can only
-				# darken and grey it, not repaint it.
-				muted.albedo_color = muted.albedo_color * paint * 2.0
-				muted.roughness = maxf(muted.roughness, 0.55)
-				(mi as MeshInstance3D).set_surface_override_material(0, muted)
+		# Toy-bright paint: City3D._mute_parked_cars() dulls it at load
+		# (changes to nodes inside an instanced model don't save here).
+		_model(car, "Model", "cars/%s.glb" % kind, Vector3(0, 0.3 * KENNEY_CAR_SCALE, 0), KENNEY_CAR_SCALE, 90.0)
 	_collision(car, _box_shape(Vector3(3.8, 1.4, 1.7)), Vector3(0, 0.7, 0))
 
 func _build_city() -> Node3D:
 	_new_root("City3D", "res://world/City3D.gd")
 	_environment(Color(0.35, 0.4, 0.6), 0.3, true)
+	# The block (open world): five cells, one per area, each a root that
+	# world/BlockCells.gd can put to sleep. Main Street's own things go in
+	# Cell_Main; the doors, spawns and people stay on the scene root where
+	# everything finds them.
+	CityKit.make_cells(self)
+	var main := CityKit.cell(self, "Cell_Main")
 
-	var w := 58.0
 	var d := 9.0
 	var street_z := -4.5
-	_solid(_root, "Floor", Vector3(w, 0.1, d), Vector3(0, -0.05, 0), null, 16)
+	# One floor under the whole block (x -77..77, z -99..4.6): the navmesh
+	# bakes over it, round the buildings and fences.
+	_solid(_root, "Floor", Vector3(154.0, 0.1, 103.6), Vector3(0, -0.05, -47.2), null, 16)
+	# Main Street runs the length of the block now: the sidewalk between the
+	# avenues' inner sidewalks, the road between their outer curbs.
+	var w := 136.0
 	# Worn slabs, darkened: the paving texture is light grey new stone.
-	var slabs := _tex_mat("pbr:sidewalk_slabs", 1.0)
-	slabs.albedo_color = Color(0.58, 0.56, 0.53)
-	_box_mesh(_root, "Sidewalk", Vector3(w, 0.1, 3.0), Vector3(0, -0.04, street_z + 1.5), slabs)
-	_box_mesh(_root, "Road", Vector3(w, 0.1, d - 3.0), Vector3(0, -0.05, street_z + 3.0 + (d - 3.0) / 2), _tex_mat("pbr:road_worn", 1.0))
-	# A faded yellow centre line, dashed along the street.
-	var line_mat := _color_mat(Color(0.62, 0.5, 0.14), 0.8)
+	_box_mesh(main, "Sidewalk", Vector3(w, 0.1, 3.0), Vector3(0, -0.04, street_z + 1.5), CityKit.mat(self, "sidewalk"))
+	_box_mesh(main, "Road", Vector3(148.0, 0.1, d - 3.0), Vector3(0, -0.05, street_z + 3.0 + (d - 3.0) / 2), CityKit.mat(self, "road"))
+	# A faded yellow centre line, dashed along the street (the middle's
+	# dashes where they always were, every 3 m from x = -27.5).
 	var road_mid := street_z + 3.0 + (d - 3.0) / 2
-	for i in int(w / 3.0):
-		_box_mesh(_root, "LaneDash%d" % i, Vector3(1.4, 0.005, 0.1), Vector3(-w / 2 + 1.5 + i * 3.0, 0.002, road_mid), line_mat)
-	_box_mesh(_root, "Curb", Vector3(w, 0.14, 0.25), Vector3(0, 0.03, street_z + 3.0), _tex_mat("pbr:curb", 1.0))
+	for i in range(-13, 32):
+		_box_mesh(main, ("LaneDash%d" % i) if i >= 0 else ("LaneDashW%d" % -i), Vector3(1.4, 0.005, 0.1), Vector3(-27.5 + i * 3.0, 0.002, road_mid), CityKit.mat(self, "line"))
+	_box_mesh(main, "Curb", Vector3(w, 0.14, 0.25), Vector3(0, 0.03, street_z + 3.0), CityKit.mat(self, "curb"))
 
 	var moon := DirectionalLight3D.new()
 	moon.name = "Moon"
@@ -2131,12 +2140,10 @@ func _build_city() -> Node3D:
 	_add(_root, moon)
 	moon.rotation_degrees = Vector3(-50, 30, 0)
 
-	# Invisible boundary: the building row to the north, and the edges of the
-	# block everywhere else.
-	_solid(_root, "BoundsNorth", Vector3(w, WALL_H, 0.2), Vector3(0, WALL_H / 2, street_z - 0.1), null)
-	_solid(_root, "BoundsSouth", Vector3(w, WALL_H, 0.2), Vector3(0, WALL_H / 2, d / 2 + 0.1), null)
-	_solid(_root, "BoundsWest", Vector3(0.2, WALL_H, d), Vector3(-w / 2 - 0.1, WALL_H / 2, 0), null)
-	_solid(_root, "BoundsEast", Vector3(0.2, WALL_H, d), Vector3(w / 2 + 0.1, WALL_H / 2, 0), null)
+	# The block's edges: its buildings (colliders for world/Facades.gd's
+	# masses) everywhere but the south, where the camera looks in from.
+	CityKit.building_colliders(self)
+	_solid(main, "BoundsSouth", Vector3(154.0, WALL_H, 0.2), Vector3(0, WALL_H / 2, d / 2 + 0.1), null)
 
 	# The block, west to east. The police station's door is where you come
 	# out after a night in a cell; you can't walk in.
@@ -2178,9 +2185,9 @@ func _build_city() -> Node3D:
 		sign.pixel_size = 0.006
 		sign.modulate = f["color"]
 		sign.outline_modulate = Color(0, 0, 0, 0.8)
-		_add(_root, sign)
+		_add(main, sign)
 		sign.position = Vector3(x, 3.1, street_z + 0.02)
-		_light(_root, f["name"] + "SignGlow", Vector3(x, 2.8, street_z + 0.8), f["color"], 1.2, 4.0, false)
+		_light(main, f["name"] + "SignGlow", Vector3(x, 2.8, street_z + 0.8), f["color"], 1.2, 4.0, false)
 		# Opening hours on a small plate by the door (GameState.OPENING_HOURS).
 		var place := GameState.place_for_scene(f["scene"])
 		if place != "":
@@ -2193,10 +2200,10 @@ func _build_city() -> Node3D:
 			plate.pixel_size = 0.006
 			plate.modulate = Color(0.92, 0.9, 0.82)
 			plate.outline_modulate = Color(0, 0, 0, 0.9)
-			_add(_root, plate)
+			_add(main, plate)
 			plate.position = Vector3(x + 0.95, 1.55, street_z + 0.02)
 		if f["scene"] == "":
-			_box_mesh(_root, f["door"], Vector3(1.0, 2.0, 0.1), Vector3(x, 1.0, street_z + 0.01), _tex_mat("res://assets/env/door.png", 1.0, 0.7))
+			_box_mesh(main, f["door"], Vector3(1.0, 2.0, 0.1), Vector3(x, 1.0, street_z + 0.01), _tex_mat("res://assets/env/door.png", 1.0, 0.7))
 			# You can't walk in, but you can walk up: court, probation
 			# check-ins, turning yourself in (PoliceDoor3D.gd).
 			var pd := Area3D.new()
@@ -2212,16 +2219,13 @@ func _build_city() -> Node3D:
 			_door(f["door"], Vector3(x, 0, street_z + 0.45), Vector3.BACK, f["scene"], "SpawnFromCity")
 		_marker(f["spawn"], Vector3(x, 0, street_z + 1.5))
 	# A police cruiser parked out front of the station.
-	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6), false, "police")
+	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6), false, "police", main)
 
-	# A low filler building in the gap by the station (the one at -14 is the
-	# kart track now), and the two alleys at x = 14 and x = 21: the
-	# pusher's stash and his hiding spot.
-	# (The filler blocks -- behind the backyard gate, and at each end of the
-	# block -- are world/Facades.gd's too.)
+	# The two alleys at x = 14 and x = 21: the pusher's stash and his
+	# hiding spot. They run through to the service lane behind the shops
+	# now (dev-tools/city/inner.gd), where they used to stop at a fence.
 	for ax in [14.0, 21.0]:
-		_box_mesh(_root, "Alley%d" % int(ax), Vector3(2.2, 0.1, 5.0), Vector3(ax, -0.04, street_z - 2.5), _tex_mat("res://assets/env/road_tile.png", 0.3, 0.9))
-		_box_mesh(_root, "AlleyFence%d" % int(ax), Vector3(2.2, 2.2, 0.08), Vector3(ax, 1.1, street_z - 5.0), _color_mat(Color(0.25, 0.25, 0.27), 0.6))
+		_box_mesh(main, "Alley%d" % int(ax), Vector3(2.2, 0.1, 5.0), Vector3(ax, -0.04, street_z - 2.5), _tex_mat("res://assets/env/road_tile.png", 0.3, 0.9))
 
 	# A chain-link gate beside the station into the lot behind the block.
 	_door("DoorToBackyard", Vector3(-21.0, 0, street_z + 0.45), Vector3.BACK, "res://world/Backyard3D.tscn", "SpawnFromCity")
@@ -2233,26 +2237,26 @@ func _build_city() -> Node3D:
 	gate_sign.pixel_size = 0.006
 	gate_sign.modulate = Color(0.9, 0.2, 0.15)
 	gate_sign.outline_modulate = Color(0, 0, 0, 0.9)
-	_add(_root, gate_sign)
+	_add(main, gate_sign)
 	gate_sign.position = Vector3(-21.0, 2.25, street_z + 0.03)
 
 	# Streetlights: steady along the west and middle of the block, and none at
 	# the east end, which is where the pusher works.
 	var light_xs := [-27.0, -21.0, -14.0, -7.0, 0.0, 7.0]
 	for i in light_xs.size():
-		_streetlight("Streetlight%d" % (i + 1), light_xs[i], street_z + 2.7, i)
+		_streetlight("Streetlight%d" % (i + 1), light_xs[i], street_z + 2.7, i, main)
 
-	_car("CarA", Vector3(-12.0, 0, 2.6), false, "covered")
-	_car("CarB", Vector3(5.5, 0, 2.6), false, "sedan")
-	_car("CarC", Vector3(20.0, 0, 2.8), true, "covered")
+	_car("CarA", Vector3(-12.0, 0, 2.6), false, "covered", main)
+	_car("CarB", Vector3(5.5, 0, 2.6), false, "sedan", main)
+	_car("CarC", Vector3(20.0, 0, 2.8), true, "covered", main)
 
 	var hydrant := StaticBody3D.new()
 	hydrant.name = "Hydrant"
-	_add(_root, hydrant)
+	_add(main, hydrant)
 	hydrant.position = Vector3(-8.8, 0, street_z + 2.3)
 	_cylinder(hydrant, "Mesh", 0.16, 0.75, Vector3(0, 0.375, 0), _color_mat(Color(0.75, 0.1, 0.08), 0.5))
 	_collision(hydrant, _box_shape(Vector3(0.4, 0.75, 0.4)), Vector3(0, 0.375, 0))
-	_solid(_root, "Dumpster", Vector3(1.8, 1.2, 1.0), Vector3(21.0, 0.6, street_z + 0.6), _color_mat(Color(0.12, 0.28, 0.16), 0.7))
+	_solid(main, "Dumpster", Vector3(1.8, 1.2, 1.0), Vector3(21.0, 0.6, street_z + 0.6), _color_mat(Color(0.12, 0.28, 0.16), 0.7))
 
 	_room_tone("city_ambience_loop.wav", -14.0)
 
@@ -2266,11 +2270,11 @@ func _build_city() -> Node3D:
 	pusher.set("hide_position", Vector3(14.0, 0, street_z - 3.5))
 	# The stash: a stuffed backpack, a couple of knotted shopping bags and a
 	# shoebox, tucked behind the dumpster -- he's holding a lot these days.
-	_box_mesh(_root, "StashBag", Vector3(0.18, 0.08, 0.12), Vector3(20.2, 0.04, street_z + 1.2), _color_mat(Color(0.45, 0.33, 0.2), 0.95))
-	_box_mesh(_root, "StashBackpack", Vector3(0.32, 0.42, 0.2), Vector3(20.05, 0.21, street_z + 0.95), _color_mat(Color(0.12, 0.14, 0.2), 0.8))
-	_box_mesh(_root, "StashShoebox", Vector3(0.32, 0.12, 0.2), Vector3(20.5, 0.06, street_z + 0.9), _color_mat(Color(0.75, 0.3, 0.15), 0.8))
+	_box_mesh(main, "StashBag", Vector3(0.18, 0.08, 0.12), Vector3(20.2, 0.04, street_z + 1.2), _color_mat(Color(0.45, 0.33, 0.2), 0.95))
+	_box_mesh(main, "StashBackpack", Vector3(0.32, 0.42, 0.2), Vector3(20.05, 0.21, street_z + 0.95), _color_mat(Color(0.12, 0.14, 0.2), 0.8))
+	_box_mesh(main, "StashShoebox", Vector3(0.32, 0.12, 0.2), Vector3(20.5, 0.06, street_z + 0.9), _color_mat(Color(0.75, 0.3, 0.15), 0.8))
 	for k in 2:
-		_ph(_root, "StashBag%d" % k, "trashbag", Vector3(19.75 + k * 0.4, 0, street_z + 1.3), 0.45, k * 90.0)
+		_ph(main, "StashBag%d" % k, "trashbag", Vector3(19.75 + k * 0.4, 0, street_z + 1.3), 0.45, k * 90.0)
 
 	# His lookout stands between the pharmacy and the bar, watching west
 	# toward the police station.
@@ -2286,14 +2290,14 @@ func _build_city() -> Node3D:
 	# bar, manhole covers in the road, utility boxes, a dumped tyre, and a
 	# couple of rats working the wall line.
 	for b in 4:
-		_ph(_root, "Trash%d" % b, "trashbag", Vector3(19.6 + b * 0.5 + (2.0 if b > 1 else 0.0), 0, street_z + 0.45 + (b % 2) * 0.25), 1.0, b * 55.0)
+		_ph(main, "Trash%d" % b, "trashbag", Vector3(19.6 + b * 0.5 + (2.0 if b > 1 else 0.0), 0, street_z + 0.45 + (b % 2) * 0.25), 1.0, b * 55.0)
 	for b in 2:
-		_ph(_root, "BarTrash%d" % b, "trashbag", Vector3(-5.3 + b * 0.45, 0, street_z + 0.35), 1.0, 30.0 + b * 80.0)
-	_ph(_root, "Manhole1", "water_manhole_cover", Vector3(-9.0, 0.005, 1.6))
-	_ph(_root, "Manhole2", "water_manhole_cover", Vector3(12.0, 0.005, 0.4))
-	_ph(_root, "UtilityBox1", "utility_box_01", Vector3(-26.8, 0, street_z + 0.3))
-	_ph(_root, "UtilityBox2", "utility_box_01", Vector3(12.3, 0, street_z + 0.3))
-	_ph(_root, "Tyre", "old_tyre", Vector3(22.9, 0.3, street_z + 0.35), 1.0, 10.0)
+		_ph(main, "BarTrash%d" % b, "trashbag", Vector3(-5.3 + b * 0.45, 0, street_z + 0.35), 1.0, 30.0 + b * 80.0)
+	_ph(main, "Manhole1", "water_manhole_cover", Vector3(-9.0, 0.005, 1.6))
+	_ph(main, "Manhole2", "water_manhole_cover", Vector3(12.0, 0.005, 0.4))
+	_ph(main, "UtilityBox1", "utility_box_01", Vector3(-26.8, 0, street_z + 0.3))
+	_ph(main, "UtilityBox2", "utility_box_01", Vector3(12.3, 0, street_z + 0.3))
+	_ph(main, "Tyre", "old_tyre", Vector3(22.9, 0.3, street_z + 0.35), 1.0, 10.0)
 	for r in 2:
 		var rat := Node3D.new()
 		rat.name = "Rat%d" % (r + 1)
@@ -2309,16 +2313,16 @@ func _build_city() -> Node3D:
 	var ray_z := street_z + 0.55
 	var crate := StaticBody3D.new()
 	crate.name = "RayCrate"
-	_add(_root, crate)
+	_add(main, crate)
 	crate.position = Vector3(ray_x, 0, ray_z)
 	# Seat height matches the booth benches the "sit" clip was set up for.
 	_box_mesh(crate, "Crate", Vector3(0.42, 0.44, 0.42), Vector3(0, 0.22, -0.12), _color_mat(Color(0.12, 0.25, 0.55), 0.7))
 	_collision(crate, _box_shape(Vector3(0.5, 0.5, 0.5)), Vector3(0, 0.25, 0))
-	_box_mesh(_root, "RayCardboard", Vector3(1.2, 0.02, 0.8), Vector3(ray_x + 0.1, 0.01, ray_z + 0.25), _color_mat(Color(0.52, 0.40, 0.26), 0.95))
-	_cylinder(_root, "RayCup", 0.05, 0.12, Vector3(ray_x + 0.5, 0.06, ray_z + 0.45), _color_mat(Color(0.85, 0.82, 0.75), 0.8))
+	_box_mesh(main, "RayCardboard", Vector3(1.2, 0.02, 0.8), Vector3(ray_x + 0.1, 0.01, ray_z + 0.25), _color_mat(Color(0.52, 0.40, 0.26), 0.95))
+	_cylinder(main, "RayCup", 0.05, 0.12, Vector3(ray_x + 0.5, 0.06, ray_z + 0.45), _color_mat(Color(0.85, 0.82, 0.75), 0.8))
 	var cart := StaticBody3D.new()
 	cart.name = "RayCart"
-	_add(_root, cart)
+	_add(main, cart)
 	cart.position = Vector3(ray_x - 1.0, 0, ray_z + 0.1)
 	cart.rotation_degrees.y = 15.0
 	var wire := _color_mat(Color(0.62, 0.64, 0.66), 0.35)
@@ -2335,6 +2339,13 @@ func _build_city() -> Node3D:
 	ray.set("npc_name", "Ray")
 	ray.set("role", "homeless")
 
+	# The rest of the block, area by area (dev-tools/city/).
+	CityMainExt.build(self, _root)
+	CityAvenues.build(self, _root)
+	CityBackStreet.build(self, _root)
+	CityInner.build(self, _root)
+
 	_marker("SpawnDefault", Vector3(-17.5, 0, street_z + 1.5))
 	_player_and_hud(Vector3(-17.5, 0, street_z + 1.5))
+	CityKit.bake_navigation(self)
 	return _root

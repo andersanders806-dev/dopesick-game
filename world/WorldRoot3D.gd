@@ -11,6 +11,9 @@ const CLOSING_LINES := [
 ]
 
 var _closing: bool = false
+## How long the last navmesh bake took (City3D's is the one that matters:
+## it's behind the door's fade).
+var nav_bake_ms := 0
 
 func _ready() -> void:
 	_bake_navigation()
@@ -61,22 +64,30 @@ func _bake_navigation() -> void:
 	for body in find_children("*", "StaticBody3D", true, false):
 		body.add_to_group(NAV_OBSTACLE_GROUP)
 
+	var nav_mesh := new_nav_mesh()
+	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
+	nav_mesh.geometry_source_group_name = NAV_OBSTACLE_GROUP
+
+	nav_region.navigation_mesh = nav_mesh
+	var t0 := Time.get_ticks_msec()
+	nav_region.bake_navigation_mesh(false)
+	nav_bake_ms = Time.get_ticks_msec() - t0
+
+## The agent and cell settings every room bakes with (and the City, which
+## is baked ahead by build_rooms_3d.gd).
+static func new_nav_mesh() -> NavigationMesh:
 	# Floors live on layer 5 (value 16) so the player/police bodies and the
 	# line-of-sight rays (mask 1) ignore them, but the bake still needs them
 	# as the walkable surface.
 	var nav_mesh := NavigationMesh.new()
-	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
 	nav_mesh.geometry_collision_mask = 1 | 16
-	nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN
-	nav_mesh.geometry_source_group_name = NAV_OBSTACLE_GROUP
 	nav_mesh.agent_radius = 0.4
 	nav_mesh.agent_height = 1.6
 	nav_mesh.agent_max_climb = 0.1
 	nav_mesh.cell_size = 0.1
 	nav_mesh.cell_height = 0.1
-
-	nav_region.navigation_mesh = nav_mesh
-	nav_region.bake_navigation_mesh(false)
+	return nav_mesh
 
 func _place_player_at_spawn() -> Marker3D:
 	if GameState.pending_spawn == "":

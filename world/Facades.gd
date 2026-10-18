@@ -6,9 +6,17 @@ extends Node3D
 ## The ground floor is what the top-down camera sees most: shop glass with
 ## a lit interior, and a roller shutter when the place is closed.
 ##
-## Visual only: the street's colliders (BoundsNorth) and doors are the
-## builder's and don't move. Fronts sit just behind the street_z plane the
-## signs, hour plates and posters are on.
+## Every front is laid out as if it faced south onto Main Street (local x
+## along the street, its face on FACE_Z) and then turned and moved onto its
+## own side of the block (SIDES), so one set of placement rules builds all
+## four streets, the alley walls and the park's.
+##
+## Behind the fronts stand the buildings themselves (masses()): walls in the
+## kit's own brick or plaster where no front covers them, and a tar-and-
+## gravel roof, which is most of what the camera sees from above. Visual
+## only: build_rooms_3d.gd gives each mass its collider from the same list,
+## and the doors are the builder's and don't move. Fronts sit just behind
+## their side's line, where the signs, hour plates and posters are.
 
 const APT := "res://assets/polyhaven/modular_urban_apartments_facade/modular_urban_apartments_facade.gltf"
 const FACTORY := "res://assets/polyhaven/modular_factory_facade/modular_factory_facade.gltf"
@@ -22,7 +30,8 @@ const STREET_Z := -4.5
 const FACE_Z := STREET_Z - 0.03
 const MODULE := 3.0
 ## name, x from, x to, kit, floors, place (GameState.OPENING_HOURS key, or "").
-## The x extents are the old Kenney buildings', measured.
+## The x extents are the old Kenney buildings', measured. Main Street's
+## north side, facing south.
 const FRONTS := [
 	["Police", -26.71, -22.29, "apt", 2, ""], ["Home", -19.71, -15.29, "apt", 3, ""],
 	["Pharmacy", -12.60, -8.40, "apt", 3, "pharmacy"], ["Bar", -5.93, -1.07, "apt", 3, "bar"],
@@ -30,10 +39,117 @@ const FRONTS := [
 	["Supermarket", 14.55, 20.45, "apt", 1, "supermarket"], ["Electronics", 22.29, 26.71, "apt", 3, "electronics"],
 	["Karts", -15.25, -12.75, "factory", 4, "karts"], ["Pawn", -1.25, 1.25, "factory", 4, "pawn"],
 	["Music", -8.25, -5.75, "factory", 4, "music"], ["Shelter", 5.75, 8.25, "factory", 4, "shelter"],
-	# The block behind the backyard gate, and one at each end of the street.
+	# The block behind the backyard gate, and one at each end of the shops.
 	["Gate", -22.25, -19.75, "factory", 4, ""], ["WestEnd", -34.60, -26.71, "apt", 2, ""],
-	["EastEnd", 28.29, 32.71, "apt", 2, ""],
+	["EastEnd", 26.71, 29.60, "factory", 3, ""],
 ]
+
+## Each row of fronts: the way it faces and where its wall line is (z for
+## rows facing north or south, x for rows facing east or west).
+const SIDES := {
+	"main": [Vector3.BACK, -4.5],      # Main Street's north side
+	"jut": [Vector3.BACK, -3.1],       # two buildings that step out onto Main's sidewalk
+	"west_in": [Vector3.LEFT, -65.0],  # West Ave, the block's side
+	"west_out": [Vector3.RIGHT, -77.0],
+	"east_out": [Vector3.LEFT, 77.0],
+	"back_n": [Vector3.BACK, -99.0],   # Back Street's far side: stoops, the projects
+	"back_s": [Vector3.FORWARD, -85.0],
+	"lane": [Vector3.BACK, -19.0],     # the service lane behind Main's shops
+	"alley_w": [Vector3.RIGHT, -9.0],  # the back alley's two walls
+	"alley_e": [Vector3.LEFT, -6.0],
+	"underpass": [Vector3.RIGHT, 56.0],
+	"park_e": [Vector3.LEFT, -30.0],   # windows over the park
+	"park_n": [Vector3.BACK, -70.0],
+	"park_ne": [Vector3.RIGHT, -50.0],
+}
+## The rest of the block: name, from, to (along the side, ascending world
+## x or z), kit, floors, place, side, the building (mass) it's the face of,
+## and dressing ("escape", "aircon", "shutter" for a garage door that's
+## always down, "shop" for shop glass lit 8-21, "closed" for a shop that's
+## shuttered for good).
+const BLOCK_FRONTS := [
+	# Main Street, extended west and east of the shops.
+	["WestCorner", -65.0, -57.0, "apt", 4, "", "main", "WestCorner", "aircon,shop"],
+	["CheckCash", -57.0, -49.0, "apt", 2, "", "main", "CheckCash", "aircon,shop"],
+	["Wigs", -49.0, -42.0, "factory", 3, "", "main", "Wigs", "closed"],
+	["WestJut", -42.0, -34.6, "apt", 3, "", "jut", "WestJut", "escape,shop"],
+	["EastJut", 29.6, 37.0, "apt", 3, "", "jut", "EastJut", "aircon,shop"],
+	["Tires", 37.0, 44.0, "factory", 2, "", "main", "Tires", "shutter"],
+	["Noodles", 44.0, 50.0, "apt", 3, "", "main", "Noodles", "escape,shop"],
+	["EastCorner", 50.0, 56.0, "apt", 4, "", "main", "EastCorner", "closed"],
+	["WestCornerSide", -16.0, -4.5, "apt", 4, "", "west_in", "WestCorner", ""],
+	["EastCornerSide", -16.0, -4.5, "apt", 4, "", "underpass", "EastCorner", "aircon"],
+	# West Ave's far side, south to north... west_out and east_out run in z.
+	["WO1", -99.0, -87.0, "apt", 4, "", "west_out", "WO1", "escape"],
+	["WO2", -87.0, -75.0, "factory", 3, "", "west_out", "WO2", "closed"],
+	["WO3", -75.0, -63.0, "apt", 5, "", "west_out", "WO3", "aircon"],
+	["WO4", -63.0, -51.0, "apt", 3, "", "west_out", "WO4", "escape,shop"],
+	["WO5", -51.0, -39.0, "factory", 4, "", "west_out", "WO5", ""],
+	["WO6", -39.0, -27.0, "apt", 3, "", "west_out", "WO6", "shutter"],
+	["WO7", -27.0, -15.0, "apt", 4, "", "west_out", "WO7", "escape,closed"],
+	["WO8", -15.0, 4.6, "apt", 5, "", "west_out", "WO8", "aircon"],
+	["EO1", -99.0, -87.0, "apt", 4, "", "east_out", "EO1", "aircon"],
+	["EO2", -87.0, -75.0, "apt", 3, "", "east_out", "EO2", "escape,shop"],
+	["EO3", -75.0, -63.0, "factory", 4, "", "east_out", "EO3", ""],
+	["EO4", -63.0, -51.0, "apt", 5, "", "east_out", "EO4", "escape"],
+	["EO5", -51.0, -39.0, "apt", 3, "", "east_out", "EO5", "shutter"],
+	["EO6", -39.0, -27.0, "factory", 3, "", "east_out", "EO6", "closed"],
+	["EO7", -27.0, -15.0, "apt", 4, "", "east_out", "EO7", "aircon"],
+	["EO8", -15.0, 4.6, "apt", 3, "", "east_out", "EO8", "escape,shop"],
+	# Back Street's north side: brownstones with stoops, and the projects.
+	["NWOuter", -77.0, -62.0, "apt", 4, "", "back_n", "NWOuter", "escape,shop"],
+	["Row1", -62.0, -56.0, "apt", 3, "", "back_n", "Row1", ""],
+	["Row2", -56.0, -50.0, "factory", 3, "", "back_n", "Row2", ""],
+	["Row3", -50.0, -44.0, "apt", 3, "", "back_n", "Row3", "aircon"],
+	["Row4", -44.0, -38.0, "apt", 3, "", "back_n", "Row4", ""],
+	["Row5", -38.0, -32.0, "factory", 3, "", "back_n", "Row5", ""],
+	["Row6", -32.0, -26.0, "apt", 3, "", "back_n", "Row6", "aircon"],
+	["Projects", -26.0, 6.0, "apt", 7, "", "back_n", "Projects", "aircon"],
+	["Row7", 6.0, 12.0, "apt", 3, "", "back_n", "Row7", ""],
+	["Row8", 12.0, 18.0, "factory", 3, "", "back_n", "Row8", "aircon"],
+	["Row9", 18.0, 24.0, "apt", 3, "", "back_n", "Row9", ""],
+	["Row10", 24.0, 30.0, "apt", 3, "", "back_n", "Row10", ""],
+	["Row11", 30.0, 36.0, "factory", 3, "", "back_n", "Row11", "aircon"],
+	["Row12", 36.0, 42.0, "apt", 3, "", "back_n", "Row12", ""],
+	["NEMid", 42.0, 56.0, "factory", 4, "", "back_n", "NEMid", "escape,closed"],
+	["NEOuter", 66.0, 77.0, "apt", 4, "", "back_n", "NEOuter", "aircon,shop"],
+	# Back Street's near side and the block's inside: tenements, a garage,
+	# the backs of things onto the service lane and the back alley.
+	["NWCornerN", -65.0, -50.0, "apt", 3, "", "back_s", "NWCorner", ""],
+	["NWCornerW", -85.0, -70.0, "apt", 3, "", "west_in", "NWCorner", "escape"],
+	["NWCornerPark", -65.0, -50.0, "apt", 3, "", "park_n", "NWCorner", "escape"],
+	["NWCornerParkE", -85.0, -70.0, "apt", 3, "", "park_ne", "NWCorner", ""],
+	["TenementN", -30.0, -9.0, "apt", 4, "", "back_s", "Tenement", "closed"],
+	["TenementAlley", -85.0, -50.0, "apt", 4, "", "alley_w", "Tenement", "escape"],
+	["TenementPark", -85.0, -50.0, "apt", 4, "", "park_e", "Tenement", "aircon"],
+	["GarageAlley", -50.0, -16.0, "factory", 2, "", "alley_w", "Garage", "shutter"],
+	["GaragePark", -50.0, -16.0, "factory", 2, "", "park_e", "Garage", ""],
+	["InnerSWLane", -6.0, 15.0, "factory", 3, "", "lane", "InnerSW", "escape"],
+	["InnerSWAlley", -50.0, -19.0, "factory", 3, "", "alley_e", "InnerSW", ""],
+	["InnerSELane", 15.0, 36.0, "apt", 2, "", "lane", "InnerSE", "aircon"],
+	["InnerNWN", -6.0, 15.0, "apt", 3, "", "back_s", "InnerNW", ""],
+	["InnerNWAlley", -85.0, -50.0, "apt", 3, "", "alley_e", "InnerNW", "escape"],
+	["InnerNEN", 15.0, 36.0, "factory", 2, "", "back_s", "InnerNE", ""],
+]
+## Buildings with no front of their own on Main Street or the outer rows:
+## name, x0, z0, x1, z1, floors, kit (for the walls), cell.
+const BLOCK_MASSES := [
+	["NWCorner", -65.0, -85.0, -50.0, -70.0, 3, "apt", "Cell_West"],
+	["Garage", -30.0, -50.0, -9.0, -16.0, 2, "factory", "Cell_Inner"],
+	["Tenement", -30.0, -85.0, -9.0, -50.0, 4, "apt", "Cell_Inner"],
+	["InnerSW", -6.0, -50.0, 15.0, -19.0, 3, "factory", "Cell_Inner"],
+	["InnerSE", 15.0, -50.0, 36.0, -19.0, 2, "apt", "Cell_Inner"],
+	["InnerNW", -6.0, -85.0, 15.0, -50.0, 3, "apt", "Cell_Inner"],
+	["InnerNE", 15.0, -85.0, 36.0, -50.0, 2, "factory", "Cell_Inner"],
+]
+## How deep the rows' buildings run behind their fronts: Main's to the
+## service lane and the park, the outer rows 10 m (no one sees their backs).
+const ROW_BACK := {"main": -16.0, "jut": -16.0, "west_out": -87.0, "east_out": 87.0, "back_n": -109.0}
+const ROW_CELL := {"main": "Cell_Main", "jut": "Cell_Main", "west_out": "Cell_West", "east_out": "Cell_East", "back_n": "Cell_Back"}
+## Roofs sit just under the crown's top, so the cornice reads as a parapet.
+const ROOF_OVER := 0.15
+const COPING := Vector2(0.3, 0.45)
+
 const KIT_PIECES := {
 	"apt": {"wall": "wall_standard_standard_01", "bay": "wall_window_centered_large_01", "window": "window_centered_large_01",
 		"band": "cornice_standard_standard_01", "crown": "crown_standard_standard_01", "base": "base_standard_01"},
@@ -52,6 +168,10 @@ var _window_glass: StandardMaterial3D
 func _ready() -> void:
 	for f in FRONTS:
 		_build_front(f)
+	for f in BLOCK_FRONTS:
+		_build_front(f)
+	for m in masses():
+		_build_mass(m)
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
@@ -72,6 +192,8 @@ static var _detail := true
 
 static func set_detail(on: bool) -> void:
 	_detail = on
+	for m in _mass_mats.values():
+		(m as BaseMaterial3D).normal_enabled = on
 	for kit in _meshes:
 		for mesh in _meshes[kit].values():
 			for i in mesh.get_surface_count():
@@ -115,6 +237,19 @@ func _piece(parent: Node3D, kit: String, piece: String, x: float, y: float, sx :
 	mi.position = Vector3(x - b.position.x * sx, y - b.position.y, FACE_Z - b.end.z - inset)
 	return mi
 
+## Percent of upper-floor windows with a light on after dark.
+const LIT_WINDOWS := 32
+## Shared by every lit window; its glow follows the daylight (refresh()).
+static var _lit_window: StandardMaterial3D
+
+func _lit_glass() -> StandardMaterial3D:
+	if _lit_window == null:
+		_lit_window = _glass().duplicate() as StandardMaterial3D
+		_lit_window.albedo_color = Color(0.3, 0.22, 0.14)
+		_lit_window.emission_enabled = true
+		_lit_window.emission = Color(1.0, 0.72, 0.42)
+	return _lit_window
+
 func _glass() -> StandardMaterial3D:
 	if _window_glass == null:
 		_window_glass = StandardMaterial3D.new()
@@ -127,9 +262,13 @@ func _build_front(f: Array) -> void:
 	var front := Node3D.new()
 	front.name = "Front" + f[0]
 	add_child(front)
+	var side: String = f[6] if f.size() > 6 else "main"
+	front.transform = side_transform(side)
+	front.set_meta("side", side)
+	front.set_meta("cell", _cell_of(f[7]) if f.size() > 7 else "Cell_Main")
 	var kit: String = f[3]
 	var p: Dictionary = KIT_PIECES[kit]
-	var x0: float = f[1]
+	var x0: float = local_from(side, f[1], f[2])
 	var width: float = f[2] - f[1]
 	var bays := maxi(1, ceili(width / MODULE - 0.2))
 	var sx := width / (bays * MODULE)
@@ -146,7 +285,12 @@ func _build_front(f: Array) -> void:
 		for i in bays:
 			var bx := x0 + i * bay_w
 			_piece(front, kit, p["bay"], bx, y, sx)
-			_piece(front, kit, p["window"], bx + (bay_w - win.size.x) / 2.0, y + (MODULE - win.size.y) / 2.0)
+			var w := _piece(front, kit, p["window"], bx + (bay_w - win.size.x) / 2.0, y + (MODULE - win.size.y) / 2.0)
+			# Someone's home behind about a third of the windows: lit at night.
+			if absi(("%s%d%d" % [f[0], floor_i, i]).hash()) % 100 < LIT_WINDOWS:
+				for k in w.mesh.get_surface_count():
+					if w.get_surface_override_material(k) == _glass():
+						w.set_surface_override_material(k, _lit_glass())
 			_piece(front, kit, p["band"], bx, y - 0.1, sx)
 	for i in bays:
 		_piece(front, kit, p["crown"], x0 + i * bay_w, f[4] * MODULE, sx)
@@ -159,14 +303,308 @@ func _build_front(f: Array) -> void:
 ## window, a camera over each shop door. Each is placed by its measured
 ## bounds so its back sits on the wall and nothing pokes past street_z.
 func _dress(front: Node3D, f: Array) -> void:
-	var x0: float = f[1]
+	var x0: float = local_from(f[6] if f.size() > 6 else "main", f[1], f[2])
 	var width: float = f[2] - f[1]
+	if f.size() > 8:
+		_dress_block(front, f, x0, width)
+		return
 	if f[0] in ["Home", "Electronics"] and f[4] >= 3:
 		_fire_escape(front, "FireEscape" + f[0], x0, width, f[4])
 	if f[3] == "apt" and f[4] >= 2 and f[0] != "Home":
 		_on_wall(front, AIRCON, "AirCon", x0 + width * 0.75, MODULE + 0.35)
 	if f[5] != "" and f[5] != "bar":
 		_on_wall(front, CAMERA, "Camera", x0 + width / 2.0 + 0.9, 2.45)
+
+## The rest of the block's fronts dress by their flags.
+func _dress_block(front: Node3D, f: Array, x0: float, width: float) -> void:
+	var flags: String = f[8]
+	if flags.contains("escape") and f[4] >= 3:
+		_fire_escape(front, "FireEscape" + f[0], x0 + width * 0.1, minf(width * 0.8, 5.0), f[4])
+	if flags.contains("aircon") and f[4] >= 2:
+		_on_wall(front, AIRCON, "AirCon", x0 + width * 0.3, MODULE + 0.35)
+		if width > 9.0:
+			_on_wall(front, AIRCON, "AirCon2", x0 + width * 0.8, MODULE * 2.0 + 0.35 if f[4] >= 3 else MODULE + 0.35)
+	# A shop that isn't one of the game's: glass and a glow while it's
+	# open (8-21), the shutter after; or one that's closed for good.
+	if flags.contains("shop") or flags.contains("closed"):
+		_storefront(front, x0, width)
+		front.set_meta("hours", [8, 21] if flags.contains("shop") else [0, 0])
+	if flags.contains("shutter"):
+		var shutter: Node3D = _scene(SHUTTER).instantiate()
+		shutter.name = "GarageShutter"
+		front.add_child(shutter)
+		var sb := AABB()
+		for mi in shutter.find_children("*", "MeshInstance3D", true, false):
+			if not String(mi.name).contains("graffiti"):
+				mi.free()
+				continue
+			var mb: AABB = mi.transform * mi.get_aabb()
+			sb = mb if sb.size == Vector3.ZERO else sb.merge(mb)
+		var w := minf(width - 0.6, 4.0)
+		var ssx := w / sb.size.x
+		shutter.scale = Vector3(ssx, 2.6 / sb.size.y, 1.0)
+		shutter.position = Vector3(x0 + (width - w) / 2.0 - sb.position.x * ssx, 0.05 - sb.position.y * shutter.scale.y, FACE_Z - sb.end.z)
+
+# --- Sides of the block --------------------------------------------------------
+
+## The transform that turns a front laid out facing south on Main Street
+## (local x along the street, its face on FACE_Z) onto `side`.
+static func side_transform(side: String) -> Transform3D:
+	var facing: Vector3 = SIDES[side][0]
+	var along := Vector3.UP.cross(facing)
+	var origin := facing * (float(SIDES[side][1]) * _axis_sign(facing) - STREET_Z)
+	return Transform3D(Basis(along, Vector3.UP, facing), origin)
+
+## +1 if `facing` points along +x or +z, -1 if along -x or -z.
+static func _axis_sign(facing: Vector3) -> float:
+	return facing.x + facing.z
+
+## Where a front from world `a` to `b` (along its side) starts in its own
+## local x: rows facing north or west run against the world axis.
+static func local_from(side: String, a: float, b: float) -> float:
+	var along := Vector3.UP.cross(SIDES[side][0])
+	var s := along.x + along.z
+	return a if s > 0.0 else -b
+
+func _cell_of(mass_name: String) -> String:
+	for m in masses():
+		if m["name"] == mass_name:
+			return m["cell"]
+	return "Cell_Main"
+
+## Every building on the block: {name, rect (Rect2 in x/z), floors, kit,
+## cell}. The rows' buildings come from their fronts (one per front, out
+## to the row's depth, butted up so there are no slits between them); the
+## rest are BLOCK_MASSES. build_rooms_3d.gd gives each one its collider.
+static func masses() -> Array:
+	var out := []
+	var rows := {}
+	for f in FRONTS:
+		rows.get_or_add("main", []).append([f[0], f[1], f[2], f[3], f[4]])
+	for f in BLOCK_FRONTS:
+		if ROW_BACK.has(f[6]) and f[7] == f[0]:
+			rows.get_or_add(f[6], []).append([f[0], f[1], f[2], f[3], f[4]])
+	for side in rows:
+		var list: Array = rows[side]
+		list.sort_custom(func(a, b): return a[1] < b[1])
+		var line: float = SIDES[side][1]
+		var back: float = ROW_BACK[side]
+		var along_x := absf(Vector3(SIDES[side][0]).z) > 0.5
+		for i in list.size():
+			var a: float = list[i][1]
+			var b: float = list[i][2]
+			# Trim into the neighbour that's already there; close slits.
+			if i > 0:
+				a = maxf(a, list[i - 1][2])
+			if i + 1 < list.size() and list[i + 1][1] - b < 0.3 and list[i + 1][1] > b:
+				b = list[i + 1][1]
+			var r := Rect2(a, minf(line, back), b - a, absf(line - back)) if along_x else Rect2(minf(line, back), a, absf(line - back), b - a)
+			out.append({"name": list[i][0], "rect": r, "floors": list[i][4], "kit": list[i][3], "cell": ROW_CELL[side]})
+	for m in BLOCK_MASSES:
+		out.append({"name": m[0], "rect": Rect2(m[1], m[2], m[3] - m[1], m[4] - m[2]), "floors": m[5], "kit": m[6], "cell": m[7]})
+	return out
+
+static var _roof_mat: StandardMaterial3D
+## The buildings' own walls (where no front covers them): old brick, a shade
+## per kit, triplanar so it tiles at true size on any wall.
+static var _mass_mats := {}
+
+static func _mass_mat(kit: String) -> StandardMaterial3D:
+	if not _mass_mats.has(kit):
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = load("res://assets/pbr/bricks_old_diff.jpg")
+		m.normal_enabled = _detail
+		m.normal_texture = load("res://assets/pbr/bricks_old_nor.jpg")
+		m.roughness_texture = load("res://assets/pbr/bricks_old_rough.jpg")
+		m.albedo_color = Color(0.62, 0.5, 0.44) if kit == "apt" else Color(0.5, 0.44, 0.4)
+		m.uv1_triplanar = true
+		m.uv1_world_triplanar = true
+		m.uv1_scale = Vector3.ONE / 2.0
+		_mass_mats[kit] = m
+	return _mass_mats[kit]
+
+## A building behind its fronts: its walls where no front covers them, in
+## the kit's own brick or plaster (UVs at the kit's 3 m per tile), a coping
+## along their tops, and a gravel roof. One mesh, two surfaces.
+func _build_mass(m: Dictionary) -> void:
+	var r: Rect2 = m["rect"]
+	var h: float = m["floors"] * MODULE + ROOF_OVER
+	var walls := SurfaceTool.new()
+	walls.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# x0,z0 -> x1,z1 corners per face, outward normal.
+	var faces := [
+		[Vector3(r.position.x, 0, r.end.y), Vector3(r.end.x, 0, r.end.y), Vector3.BACK],
+		[Vector3(r.end.x, 0, r.position.y), Vector3(r.position.x, 0, r.position.y), Vector3.FORWARD],
+		[Vector3(r.end.x, 0, r.end.y), Vector3(r.end.x, 0, r.position.y), Vector3.RIGHT],
+		[Vector3(r.position.x, 0, r.position.y), Vector3(r.position.x, 0, r.end.y), Vector3.LEFT],
+	]
+	var any_wall := false
+	for face in faces:
+		for seg in _uncovered(m["name"], face[0], face[1], face[2]):
+			any_wall = true
+			_quad(walls, seg[0], seg[1], 0.0, h + COPING.y, face[2])
+			# The coping: a lip along the top, so the roof reads as a roof.
+			var inward: Vector3 = -face[2] * COPING.x
+			_cap(walls, seg[0] + Vector3(0, h + COPING.y, 0), seg[1] + Vector3(0, h + COPING.y, 0), inward)
+			_quad(walls, seg[1] + inward, seg[0] + inward, h, h + COPING.y, -face[2])
+	var mesh := ArrayMesh.new()
+	if any_wall:
+		walls.generate_tangents()
+		walls.commit(mesh)
+		mesh.surface_set_material(0, _mass_mat(m["kit"]))
+	var roof := SurfaceTool.new()
+	roof.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_cap(roof, Vector3(r.position.x, h, r.end.y), Vector3(r.end.x, h, r.end.y), Vector3(0, 0, -r.size.y))
+	roof.generate_tangents()
+	roof.commit(mesh)
+	if _roof_mat == null:
+		_roof_mat = StandardMaterial3D.new()
+		_roof_mat.albedo_texture = load("res://assets/pbr/gravel_diff.jpg")
+		_roof_mat.normal_enabled = true
+		_roof_mat.normal_texture = load("res://assets/pbr/gravel_nor.jpg")
+		_roof_mat.roughness_texture = load("res://assets/pbr/gravel_rough.jpg")
+		_roof_mat.albedo_color = Color(0.36, 0.35, 0.34)
+		_roof_mat.uv1_triplanar = true
+		_roof_mat.uv1_world_triplanar = true
+		# Roofing gravel is small: the set's 1.5 m tile at half size.
+		_roof_mat.uv1_scale = Vector3.ONE / 0.75
+	mesh.surface_set_material(mesh.get_surface_count() - 1, _roof_mat)
+	var mi := MeshInstance3D.new()
+	mi.name = "Mass" + m["name"]
+	mi.mesh = mesh
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.set_meta("cell", m["cell"])
+	add_child(mi)
+	_roof_clutter(mi, m, h)
+
+## What's on a flat roof: air-con units, a hatch, vent stacks; the bigger
+## roofs a water tank. Placed from the building's name, so it's the same
+## every visit.
+func _roof_clutter(mass: Node3D, m: Dictionary, h: float) -> void:
+	var r: Rect2 = m["rect"]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = String(m["name"]).hash()
+	var inner := r.grow(-1.2)
+	if inner.size.x < 1.0 or inner.size.y < 1.0:
+		return
+	var spot := func() -> Vector3:
+		return Vector3(rng.randf_range(inner.position.x, inner.end.x), h, rng.randf_range(inner.position.y, inner.end.y))
+	var count := clampi(int(r.get_area() / 150.0), 1, 3)
+	for i in count:
+		var unit: Node3D = _scene(AIRCON).instantiate()
+		unit.name = "RoofAirCon%d" % i
+		mass.add_child(unit)
+		unit.position = spot.call()
+		unit.rotation.y = rng.randi_range(0, 3) * PI / 2.0
+	var dark := _roof_bits()
+	_bar(mass, dark, Vector3(1.0, 0.5, 1.0), spot.call() + Vector3(0, 0.25, 0))
+	for i in mini(3, count):
+		var p: Vector3 = spot.call()
+		var stack := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.12
+		cyl.bottom_radius = 0.12
+		cyl.height = 1.1
+		cyl.radial_segments = 8
+		cyl.material = dark
+		stack.mesh = cyl
+		mass.add_child(stack)
+		stack.position = p + Vector3(0, 0.55, 0)
+	if r.get_area() > 400.0:
+		var tank := MeshInstance3D.new()
+		var t := CylinderMesh.new()
+		t.top_radius = 1.6
+		t.bottom_radius = 1.7
+		t.height = 3.0
+		t.material = _tank_mat()
+		tank.mesh = t
+		mass.add_child(tank)
+		var tp: Vector3 = spot.call()
+		tank.position = tp + Vector3(0, 3.5, 0)
+		var cone := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.05
+		cm.bottom_radius = 1.75
+		cm.height = 0.9
+		cm.material = dark
+		cone.mesh = cm
+		mass.add_child(cone)
+		cone.position = tp + Vector3(0, 5.45, 0)
+		for k in 4:
+			var leg := Vector3(cos(k * PI / 2.0 + 0.78), 0, sin(k * PI / 2.0 + 0.78)) * 1.3
+			_bar(mass, dark, Vector3(0.12, 2.0, 0.12), tp + leg + Vector3(0, 1.0, 0))
+
+static var _bits_mat: StandardMaterial3D
+static var _tank: StandardMaterial3D
+
+func _roof_bits() -> StandardMaterial3D:
+	if _bits_mat == null:
+		_bits_mat = StandardMaterial3D.new()
+		_bits_mat.albedo_color = Color(0.2, 0.2, 0.21)
+		_bits_mat.metallic = 0.5
+		_bits_mat.roughness = 0.6
+	return _bits_mat
+
+## The old wooden water tanks on New York roofs.
+func _tank_mat() -> StandardMaterial3D:
+	if _tank == null:
+		_tank = StandardMaterial3D.new()
+		_tank.albedo_texture = load("res://assets/pbr/planks_diff.jpg")
+		_tank.albedo_color = Color(0.5, 0.42, 0.34)
+		_tank.uv1_triplanar = true
+		_tank.uv1_world_triplanar = true
+		_tank.uv1_scale = Vector3.ONE / 2.0
+	return _tank
+
+## The parts of a face from `a` to `b` (outward `normal`) that no front of
+## this building covers: those get a plain wall.
+func _uncovered(mass_name: String, a: Vector3, b: Vector3, normal: Vector3) -> Array:
+	var dir := (b - a).normalized()
+	var length := a.distance_to(b)
+	var covered := []
+	var fronts := FRONTS.map(func(f): return [f[0], f[1], f[2], "", 0, "", "main", f[0]]) + BLOCK_FRONTS
+	for f in fronts:
+		if f[7] != mass_name or Vector3(SIDES[f[6]][0]) != normal:
+			continue
+		# The front's span, measured from `a` along the face.
+		var p0 := Vector3(f[1], 0, 0) if absf(normal.z) > 0.5 else Vector3(0, 0, f[1])
+		var p1 := Vector3(f[2], 0, 0) if absf(normal.z) > 0.5 else Vector3(0, 0, f[2])
+		var t0 := (p0 - a).dot(dir)
+		var t1 := (p1 - a).dot(dir)
+		covered.append([minf(t0, t1), maxf(t0, t1)])
+	covered.sort_custom(func(x, y): return x[0] < y[0])
+	var out := []
+	var t := 0.0
+	for c in covered:
+		if c[0] > t + 0.01:
+			out.append([a + dir * t, a + dir * minf(c[0], length)])
+		t = maxf(t, c[1])
+	if t < length - 0.01:
+		out.append([a + dir * t, b])
+	return out
+
+## A vertical quad from `a` to `b` between heights y0 and y1, facing
+## `normal`; UVs in kit tiles (3 m).
+func _quad(st: SurfaceTool, a: Vector3, b: Vector3, y0: float, y1: float, normal: Vector3) -> void:
+	var w := a.distance_to(b) / MODULE
+	var corners := [[a + Vector3(0, y0, 0), Vector2(0, y1 / MODULE)], [b + Vector3(0, y0, 0), Vector2(w, y1 / MODULE)],
+		[b + Vector3(0, y1, 0), Vector2(w, y0 / MODULE)], [a + Vector3(0, y1, 0), Vector2(0, y0 / MODULE)]]
+	for i in [0, 2, 1, 0, 3, 2]:
+		st.set_normal(normal)
+		st.set_uv(Vector2(corners[i][1].x, (y1 - corners[i][0].y + y0) / MODULE))
+		st.add_vertex(corners[i][0])
+
+## A horizontal strip facing up, from the edge a-b reaching `depth` across.
+func _cap(st: SurfaceTool, a: Vector3, b: Vector3, depth: Vector3) -> void:
+	var corners := [a, b, b + depth, a + depth]
+	var tri := [0, 1, 2, 0, 2, 3]
+	# Wind so the face points up, whichever way the edge runs.
+	if (b - a).cross(depth).y > 0.0:
+		tri = [0, 2, 1, 0, 3, 2]
+	for i in tri:
+		st.set_normal(Vector3.UP)
+		st.set_uv(Vector2(corners[i].x, corners[i].z) / MODULE)
+		st.add_vertex(corners[i])
 
 ## A fire escape up the upper floors, scaled from the kit's showcase stack
 ## to the building: it starts above the signs (3.5 m) and stands out from
@@ -278,8 +716,10 @@ func _storefront(front: Node3D, x0: float, width: float) -> void:
 	# Only the plain shutter: the kit also ships a graffiti one.
 	var sb := AABB()
 	for mi in shutter.find_children("*", "MeshInstance3D", true, false):
+		# The kit's other variant stands beside this one: gone, not just
+		# hidden, so nothing of it sits out in the street.
 		if String(mi.name).contains("graffiti"):
-			mi.visible = false
+			mi.free()
 			continue
 		sb = mi.get_aabb() if sb.size == Vector3.ZERO else sb.merge(mi.get_aabb())
 	var ssx := (width - 0.2) / sb.size.x
@@ -300,10 +740,13 @@ func _on_clock(_minute: int) -> void:
 
 ## Shutters down while closed, glass lit while open.
 func refresh() -> void:
+	if _lit_window:
+		_lit_window.emission_energy_multiplier = 1.4 * (1.0 - smoothstep(0.3, 0.7, GameState.daylight()))
 	for front in get_children():
 		var place: String = front.get_meta("place", "")
-		if place == "" or not front.has_node("Shutter"):
+		var hours: Array = front.get_meta("hours", [])
+		if (place == "" and hours.is_empty()) or not front.has_node("Glow"):
 			continue
-		var open: bool = GameState.is_open(place)
+		var open: bool = GameState.is_open(place) if place != "" else GameState.hours_contain(hours, GameState.hour())
 		front.get_node("Shutter").visible = not open
 		front.get_node("Glow").visible = open

@@ -26,3 +26,9 @@ leather_red: ambientCG Leather037
 felt: ambientCG Fabric030
 metal_worn: ambientCG Metal055A
 metal_brushed: ambientCG Metal032
+dirt: ambientCG Ground037
+gravel: ambientCG Gravel022
+bark: ambientCG Bark007
+corrugated: ambientCG CorrugatedSteel005
+tarp: ambientCG Fabric045
+concrete_wall: ambientCG Concrete034

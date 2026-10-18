@@ -830,6 +830,7 @@ func _run() -> void:
 	await _achievements8_checks(gs)
 	await _smooth_quick_checks(gs)
 	await _one_load_at_a_time_checks()
+	await _block_layout_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3621,7 +3622,7 @@ func _world_art_checks(gs: Node) -> void:
 	gs.clock_running = false
 	gs.clock = 14 * 60
 	var city := await _load("res://world/City3D.tscn")
-	var kenney := city.find_children("*", "Node3D", false, false).filter(func(n): return String(n.scene_file_path).contains("kenney/city"))
+	var kenney := city.find_children("*", "Node3D", true, false).filter(func(n): return String(n.scene_file_path).contains("kenney/city"))
 	_check(kenney.is_empty(), "  no Kenney toy buildings left on the street (%s)" % [kenney.map(func(n): return n.name)])
 	var fronts: Node = city.get_node_or_null("Facades")
 	var names := ["Police", "Home", "Pharmacy", "Bar", "Shop", "Liquor", "Supermarket", "Electronics", "Karts", "Pawn", "Music", "Shelter"]
@@ -3632,10 +3633,13 @@ func _world_art_checks(gs: Node) -> void:
 	_check(doors.all(func(d): return city.find_child(d, true, false) != null), "  every door is still there")
 	if fronts:
 		# Fronts sit behind the signs: nothing of a facade pokes in front of
-		# z = -4.5 at sign height or below (fire escapes stand out above it).
+		# z = -4.5 at sign height or below (fire escapes stand out above it)
+		# along the shops (the block's other streets have their own lines).
 		var poking := []
 		for mi in fronts.find_children("*", "MeshInstance3D", true, false):
 			var b: AABB = mi.global_transform * mi.get_aabb()
+			if b.end.x < -29.5 or b.position.x > 29.5:
+				continue
 			if b.end.z > -4.5 + 0.001 and b.position.y < 3.45:
 				poking.append(mi.name)
 		_check(poking.is_empty(), "  fronts sit behind the signs and plates (%s)" % [poking.slice(0, 5)])
@@ -3653,17 +3657,17 @@ func _world_art_checks(gs: Node) -> void:
 	_check(short.is_empty(), "  posters and graffiti still reach the wall (%s)" % [short.map(func(d): return d.name)])
 	gs.clock = 14 * 60
 	city = await _load("res://world/City3D.tscn")
-	var lamps := city.find_children("Streetlight*", "StaticBody3D", false, false)
+	var lamps := city.find_children("Streetlight*", "StaticBody3D", true, false)
 	_check(lamps.size() > 0 and lamps.all(func(l): return l.get_node_or_null("Model") != null and l.get_node_or_null("Light") != null and l.get_node_or_null("Pole") == null),
 		"  street lamps are real lamps, same light (%d)" % lamps.size())
-	var cars := city.find_children("Car*", "StaticBody3D", false, false) + city.find_children("PoliceCruiser", "StaticBody3D", false, false)
+	var cars := city.find_children("Car*", "StaticBody3D", true, false) + city.find_children("PoliceCruiser", "StaticBody3D", true, false)
 	_check(cars.size() > 0 and cars.all(func(c): return c.get_node_or_null("Body") == null and c.get_node_or_null("Model") != null and c.find_children("*", "CollisionShape3D", false, false).size() > 0),
 		"  parked cars are cars, not boxes, and still solid (%d)" % cars.size())
-	var road := city.get_node("Road") as MeshInstance3D
-	var walk := city.get_node("Sidewalk") as MeshInstance3D
+	var road := city.get_node("Cell_Main/Road") as MeshInstance3D
+	var walk := city.get_node("Cell_Main/Sidewalk") as MeshInstance3D
 	var road_tex := String((road.mesh.material as StandardMaterial3D).albedo_texture.resource_path) if road.mesh.material else ""
 	var walk_tex := String((walk.mesh.material as StandardMaterial3D).albedo_texture.resource_path) if walk.mesh.material else ""
-	_check(road_tex.contains("road_worn") and walk_tex.contains("sidewalk_slabs") and city.get_node_or_null("Curb") != null,
+	_check(road_tex.contains("road_worn") and walk_tex.contains("sidewalk_slabs") and city.get_node_or_null("Cell_Main/Curb") != null,
 		"  worn asphalt, paving slabs and a curb underfoot (%s, %s)" % [road_tex.get_file(), walk_tex.get_file()])
 	_check(city.get_node("Facades").find_children("FireEscape*", "Node3D", true, false).size() >= 2, "  fire escapes on the apartment blocks")
 	gs.start_run()
@@ -4722,8 +4726,8 @@ func _laptop_street_checks(gs: Node) -> void:
 	_check(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "  FXAA on Low")
 	# At night the 6 lamps and 12 sign glows were 6 ms: light cost goes with
 	# the screen they cover, so on Low they reach less far.
-	var glow := city.get_node("BarSignGlow") as OmniLight3D
-	var lamp := city.get_node("Streetlight1/Light") as OmniLight3D
+	var glow := city.get_node("Cell_Main/BarSignGlow") as OmniLight3D
+	var lamp := city.get_node("Cell_Main/Streetlight1/Light") as OmniLight3D
 	_check(glow.omni_range <= 0.45 * glow.get_meta("built_range") and lamp.omni_range <= 0.75 * lamp.get_meta("built_range"),
 		"  sign glows and lamps reach less far on Low (%.1f, %.1f m)" % [glow.omni_range, lamp.omni_range])
 	# A laptop GPU slows as it warms (13 -> 20 ms in a few minutes): with plain
@@ -4771,3 +4775,129 @@ func _laptop_street_checks(gs: Node) -> void:
 	_check(loader.cached("res://world/Pawn3D.tscn"), "  ...and is picked up when you stop")
 	gfx.set_preset(saved)
 	gs.start_run()
+
+# --- The block: four streets round an interior (open world, task 1) ---------
+
+## Main Street's doors, spawns and fixed people as they stood before the
+## block was built round them: everything here must not have moved.
+const MAIN_STREET_POSITIONS := {
+	"DoorToBackyard": Vector3(-21.0, 0.0, -4.05), "DoorToBar": Vector3(-3.5, 0.0, -4.05),
+	"DoorToElectronics": Vector3(24.5, 0.0, -4.05), "DoorToHome": Vector3(-17.5, 0.0, -4.05),
+	"DoorToKarts": Vector3(-14.0, 0.0, -4.05), "DoorToLiquor": Vector3(10.5, 0.0, -4.05),
+	"DoorToMusic": Vector3(-7.0, 0.0, -4.05), "DoorToPawn": Vector3(0.0, 0.0, -4.05),
+	"DoorToPharmacy": Vector3(-10.5, 0.0, -4.05), "DoorToShelter": Vector3(7.0, 0.0, -4.05),
+	"DoorToShop": Vector3(3.5, 0.0, -4.05), "DoorToSupermarket": Vector3(17.5, 0.0, -4.05),
+	"StationDoor": Vector3(-24.5, 0.0, -4.05),
+	"SpawnDefault": Vector3(-17.5, 0.0, -3.0), "SpawnFromBackyard": Vector3(-21.0, 0.0, -3.0),
+	"SpawnFromBar": Vector3(-3.5, 0.0, -3.0), "SpawnFromElectronics": Vector3(24.5, 0.0, -3.0),
+	"SpawnFromHome": Vector3(-17.5, 0.0, -3.0), "SpawnFromJail": Vector3(-24.5, 0.0, -3.0),
+	"SpawnFromKarts": Vector3(-14.0, 0.0, -3.0), "SpawnFromLiquor": Vector3(10.5, 0.0, -3.0),
+	"SpawnFromMusic": Vector3(-7.0, 0.0, -3.0), "SpawnFromPawn": Vector3(0.0, 0.0, -3.0),
+	"SpawnFromPharmacy": Vector3(-10.5, 0.0, -3.0), "SpawnFromShelter": Vector3(7.0, 0.0, -3.0),
+	"SpawnFromShop": Vector3(3.5, 0.0, -3.0), "SpawnFromSupermarket": Vector3(17.5, 0.0, -3.0),
+	"Alley14": Vector3(14.0, -0.04, -7.0), "Alley21": Vector3(21.0, -0.04, -7.0),
+	"RayCrate": Vector3(-12.1, 0.0, -3.95), "Lookout": Vector3(-8.7, 0.0, -3.2),
+	"VendingMachine": Vector3(-19.25, 0.0, -3.95), "Mailbox": Vector3(-16.1, 0.0, -3.7),
+}
+const BLOCK_PLACES := ["Place_BusStop", "Place_ParkBench", "Place_Court", "Place_UnderpassCamp",
+	"Place_AlleyDumpsters", "Place_Stoop1", "Place_Stoop2", "Place_Stoop3", "Place_PoliceStation",
+	"Place_PusherCorner", "Place_PusherNight", "Place_RayCrate"]
+const BLOCK_CELLS := ["Cell_Main", "Cell_West", "Cell_East", "Cell_Back", "Cell_Inner"]
+## The longest clear straight line you may see down a street at eye level.
+const MAX_SIGHTLINE := 55.0
+## Loading the street behind the door's fade (the spec's budget).
+const CITY_LOAD_BUDGET_MS := 2500
+
+func _block_layout_checks(gs: Node) -> void:
+	await _section("The block: four streets, an alley loop, a park and an underpass")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var t0 := Time.get_ticks_msec()
+	var city := await _load("res://world/City3D.tscn")
+	print("  (City3D load %d ms with %d frames of settling; _ready %d ms, navmesh bake %d ms)" % [Time.get_ticks_msec() - t0, 10, city.get("ready_ms"), city.get("nav_bake_ms")])
+	await _frames(5)
+	# Cells: the five roots the block's areas are built under.
+	var cells: Array = BLOCK_CELLS.map(func(n): return city.get_node_or_null(n))
+	_check(cells.all(func(c): return c is Node3D and c.get_parent() == city and c.get_meta("bounds", null) is AABB),
+		"  five cells, each a Node3D with its bounds (%s)" % [BLOCK_CELLS.filter(func(n): return not (city.get_node_or_null(n) is Node3D and city.get_node(n).has_meta("bounds")))])
+	var outline := AABB()
+	for c in cells:
+		if c is Node3D and c.get_meta("bounds", null) is AABB:
+			outline = c.get_meta("bounds") if outline.size == Vector3.ZERO else outline.merge(c.get_meta("bounds"))
+	_check(outline.position.x <= -72.0 and outline.end.x >= 72.0 and outline.position.z <= -92.0 and outline.end.z >= 6.0,
+		"  the block covers x -72..72, z -92..6 (%s)" % [outline])
+	# Main Street hasn't moved.
+	var moved := []
+	for n in MAIN_STREET_POSITIONS:
+		var node := city.find_child(n, true, false) as Node3D
+		if node == null or node.global_position.distance_to(MAIN_STREET_POSITIONS[n]) > 0.001:
+			moved.append("%s %s" % [n, node.global_position if node else "missing"])
+	var pusher := city.find_child("Pusher", true, false)
+	if pusher == null or pusher._post_position.distance_to(Vector3(14.0, 0, -3.5)) > 0.001 \
+			or pusher.stash_position.distance_to(Vector3(21.0, 0, -3.15)) > 0.001 or pusher.hide_position.distance_to(Vector3(14.0, 0, -8.0)) > 0.001:
+		moved.append("Pusher")
+	var C = load("res://world/City3D.gd")
+	if C.MAILBOX_POS != Vector3(-16.1, 0, -3.7) or C.VENDING_POS != Vector3(-19.25, 0, -3.95) \
+			or C.PATROL_START != Vector3(-24.5, 0, -1.3) or C.COLLECTOR_ENTRY != Vector3(27.5, 0, 1.0):
+		moved.append("City3D constants")
+	_check(moved.is_empty(), "  Main Street's doors, spawns and regulars are where they were (%s)" % [moved])
+	# The places people will keep (Task 4's schedules) are on the map.
+	var places: Array = get_nodes_in_group("places").filter(func(m): return city.is_ancestor_of(m) and m is Marker3D)
+	var names: Array = places.map(func(m): return String(m.name))
+	var missing: Array = BLOCK_PLACES.filter(func(n): return not names.has(n))
+	_check(missing.is_empty() and names.all(func(n): return n.begins_with("Place_")), "  %d named places on the block (missing %s)" % [places.size(), missing])
+	_check(get_nodes_in_group("landmark").filter(func(n): return city.is_ancestor_of(n)).size() >= 2, "  a landmark at each end (%d)" % get_nodes_in_group("landmark").size())
+	# Everywhere is reachable from everywhere on foot.
+	var map: RID = city.get_world_3d().navigation_map
+	var broken := []
+	for i in places.size():
+		for j in range(i + 1, places.size()):
+			var a: Vector3 = places[i].global_position
+			var b: Vector3 = places[j].global_position
+			var path := NavigationServer3D.map_get_path(map, a, b, true)
+			if path.is_empty() or path[path.size() - 1].distance_to(b) > 0.5:
+				broken.append("%s->%s (ends %s)" % [places[i].name, places[j].name, path[path.size() - 1] if path.size() > 0 else "nowhere"])
+	_check(places.size() >= BLOCK_PLACES.size() and broken.is_empty(), "  a walkable path between every pair of places (%d pairs; broken %s)" % [places.size() * (places.size() - 1) / 2, broken.slice(0, 6)])
+	# No street runs dead straight and clear for more than MAX_SIGHTLINE.
+	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	var long := []
+	for m in places:
+		for dir in [Vector3.LEFT, Vector3.RIGHT, Vector3.FORWARD, Vector3.BACK]:
+			var from: Vector3 = m.global_position + Vector3(0, 1.5, 0)
+			if not _ray_hits_static(space, from, from + dir * MAX_SIGHTLINE):
+				long.append("%s %s" % [m.name, dir])
+	_check(long.is_empty(), "  no clear sightline over %d m from any place (%s)" % [int(MAX_SIGHTLINE), long])
+	# Baked with the scene: a runtime bake of the whole block was 0.9-1.8 s.
+	var nav := city.get_node("NavRegion") as NavigationRegion3D
+	_check(int(city.get("nav_bake_ms")) == 0 and nav.navigation_mesh.get_polygon_count() > 0,
+		"  the navmesh comes baked, nothing to bake behind the door (%d polygons)" % nav.navigation_mesh.get_polygon_count())
+	# Warm (the loader has it cached, as after any first visit): the time
+	# behind the door's fade.
+	var loader := root.get_node("SceneLoader")
+	loader._scene("res://world/City3D.tscn")
+	await _load("res://world/Apartment3D.tscn")
+	t0 = Time.get_ticks_msec()
+	change_scene_to_file("res://world/City3D.tscn")
+	await process_frame
+	await process_frame
+	var warm := Time.get_ticks_msec() - t0
+	_check(warm <= CITY_LOAD_BUDGET_MS, "  City3D loads in %d ms once cached (budget %d)" % [warm, CITY_LOAD_BUDGET_MS])
+	await _frames(10)
+	gs.start_run()
+
+## A layer-1 static body somewhere along the ray: people and the player
+## (bodies that move) don't count as blocking the view.
+func _ray_hits_static(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1)
+	var exclude: Array[RID] = []
+	for i in 16:
+		q.exclude = exclude
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return false
+		if hit["collider"] is StaticBody3D:
+			return true
+		exclude.append(hit["rid"])
+	return false

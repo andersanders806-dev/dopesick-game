@@ -29,12 +29,28 @@ var _collector_timer: float = COLLECTOR_DELAY
 const PedestrianScript := preload("res://npc/Pedestrian3D.gd")
 const GuardScene := preload("res://npc/Guard3D.tscn")
 const PatrolScript := preload("res://npc/PatrolCop3D.gd")
-## Two sidewalk lanes, one each way. Busier by day.
-const PEDESTRIAN_LANES := [-3.1, -2.2]
-const PEDESTRIANS_NIGHT := 1
-const PEDESTRIANS_DAY := 5
-const PEDESTRIAN_SPAWN_GAP := Vector2(3.0, 8.0)
-const STREET_END_X := 29.5
+## Sidewalk lanes round the block: walk in at `from`, out at `to`. The
+## first two are Main Street's shops, one each way, where they always
+## were; then Main past the juts, both avenues' sidewalks, and Back
+## Street's. Task 4's schedules give people real places to go; these are
+## the passers-by. Busier by day.
+const LANES := [
+	{"from": Vector3(-29.5, 0, -3.1), "to": Vector3(29.5, 0, -3.1)},
+	{"from": Vector3(29.5, 0, -2.2), "to": Vector3(-29.5, 0, -2.2)},
+	{"from": Vector3(-66.0, 0, -2.6), "to": Vector3(-30.0, 0, -2.6)},
+	{"from": Vector3(66.0, 0, -2.6), "to": Vector3(30.0, 0, -2.6)},
+	{"from": Vector3(-66.6, 0, -6.0), "to": Vector3(-66.6, 0, -84.0)},
+	{"from": Vector3(-76.2, 0, -96.0), "to": Vector3(-76.2, 0, 3.5)},
+	{"from": Vector3(76.2, 0, 3.5), "to": Vector3(76.2, 0, -96.0)},
+	{"from": Vector3(66.6, 0, -84.0), "to": Vector3(66.6, 0, -6.0)},
+	{"from": Vector3(-76.0, 0, -95.0), "to": Vector3(76.0, 0, -95.0)},
+	{"from": Vector3(55.0, 0, -85.6), "to": Vector3(-64.0, 0, -85.6)},
+]
+## Half of everyone walks Main Street's shops (lanes 0 and 1).
+const MAIN_LANE_SHARE := 0.5
+const PEDESTRIANS_NIGHT := 2
+const PEDESTRIANS_DAY := 8
+const PEDESTRIAN_SPAWN_GAP := Vector2(2.0, 6.0)
 ## The beat cop walks out of the station; after a chase he's back on the
 ## block a while later.
 const PATROL_START := Vector3(-24.5, 0, -1.3)
@@ -80,11 +96,21 @@ func _check_post() -> void:
 		man.global_position = Vector3(-26.0, 0.0, -2.6)
 		man.reset_physics_interpolation()
 
+## The block's navmesh comes baked with the scene (build_rooms_3d.gd: a
+## runtime bake of the whole block was ~1-1.8 s behind every door); only
+## bake here if it somehow didn't.
+func _bake_navigation() -> void:
+	var nav_region := get_node_or_null("NavRegion") as NavigationRegion3D
+	if nav_region and nav_region.navigation_mesh and nav_region.navigation_mesh.get_polygon_count() > 0:
+		nav_bake_ms = 0
+		return
+	super._bake_navigation()
+
 ## The block's trash bags and parked cars can be searched once a day each
 ## (autoload/Crafting.gd): rags, scrap, tape, a little food or change.
 func _add_scavenge_spots() -> void:
 	for n in ["Trash0", "Trash1", "Trash2", "Trash3", "BarTrash0", "BarTrash1", "CarA", "CarB", "CarC"]:
-		var target := get_node_or_null(n) as Node3D
+		var target := find_child(n, true, false) as Node3D
 		if target == null:
 			continue
 		var car: bool = n.begins_with("Car")
@@ -118,8 +144,12 @@ func _on_scavenge(zone: Area3D, player: Node) -> void:
 ## Against the wall between the police station and the apartment door.
 const VENDING_POS := Vector3(-19.25, 0.0, -3.95)
 
+## How long _ready took (load behind the door's fade; the smoke test reads it).
+var ready_ms := 0
+
 func _ready() -> void:
-	# Before the navmesh bake, so people walk round it.
+	var t0 := Time.get_ticks_msec()
+	# The navmesh was baked round these two too (CityKit.bake_navigation).
 	var vending := StaticBody3D.new()
 	vending.set_script(VendingScript)
 	add_child(vending)
@@ -147,25 +177,25 @@ func _ready() -> void:
 		"moon_color": _sky_light.light_color,
 		"moon_energy": _sky_light.light_energy,
 	}
-	for child in get_children():
-		if child.name.begins_with("Streetlight"):
-			var lamp := child.get_node_or_null("Light") as Light3D
-			if lamp:
-				_night_lights.append([lamp, lamp.light_energy])
-			var head := child.get_node_or_null("Head") as MeshInstance3D
-			if head:
-				_street_lamp_heads.append(head)
-		elif child.name.ends_with("SignGlow") and child is Light3D:
-			_night_lights.append([child, child.light_energy])
+	# Every street's lamps and sign glows, whichever cell they're in.
+	for lamp_post in find_children("Streetlight*", "StaticBody3D", true, false):
+		var lamp := lamp_post.get_node_or_null("Light") as Light3D
+		if lamp:
+			_night_lights.append([lamp, lamp.light_energy])
+		var head := lamp_post.get_node_or_null("Head") as MeshInstance3D
+		if head:
+			_street_lamp_heads.append(head)
+	for glow in find_children("*SignGlow", "Light3D", true, false):
+		_night_lights.append([glow, glow.light_energy])
 	GameState.clock_changed.connect(_on_clock_changed)
 	GameState.weather_changed.connect(_on_weather_changed)
 	_apply_daylight()
 	var life: Node3D = preload("res://world/StreetLife.gd").new()
 	life.name = "StreetLife"
 	for n in ["Manhole1", "Manhole2"]:
-		var m := get_node_or_null(n) as Node3D
+		var m := find_child(n, true, false) as Node3D
 		if m:
-			life.steam_points.append(m.position + Vector3(0, 0.1, 0))
+			life.steam_points.append(m.global_position + Vector3(0, 0.1, 0))
 	add_child(life)
 	_warm_looks()
 	var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
@@ -190,9 +220,10 @@ func _ready() -> void:
 	var booster: Node3D = preload("res://world/Booster.gd").new()
 	booster.name = "Booster"
 	add_child(booster)
-	# Start with the street already populated rather than empty.
+	# Start with the street already populated rather than empty: the first
+	# two on Main Street's shops, where you come out.
 	for i in _pedestrian_target():
-		_spawn_pedestrian(randf_range(-STREET_END_X + 3.0, STREET_END_X - 3.0))
+		_spawn_pedestrian(randf_range(0.05, 0.95), i if i < 2 else -1)
 	if not GameState.wanted:
 		_spawn_patrol(Vector3(randf_range(-22.0, 22.0), 0, PATROL_START.z))
 	for body in get_tree().get_nodes_in_group("car_bodies"):
@@ -201,6 +232,34 @@ func _ready() -> void:
 		mat.metallic = 0.4
 		mat.roughness = 0.35
 		(body as MeshInstance3D).material_override = mat
+	_mute_parked_cars()
+	ready_ms = Time.get_ticks_msec() - t0
+
+## Parked cars in old, dull paint: Kenney's are toy-bright. The builder
+## meant to do this, but changes to nodes inside an instanced model don't
+## save with the scene, so it's done here, once per material and paint.
+const PARKED_PAINT := [Color(0.22, 0.24, 0.27), Color(0.32, 0.29, 0.25), Color(0.18, 0.2, 0.17)]
+static var _muted := {}
+
+func _mute_parked_cars() -> void:
+	for car in find_children("Car*", "StaticBody3D", true, false):
+		var model := car.get_node_or_null("Model")
+		if model == null or String(model.scene_file_path).find("kenney/cars") < 0:
+			continue
+		var paint: Color = PARKED_PAINT[String(car.name).length() % 3]
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			var base := (mi as MeshInstance3D).get_active_material(0) as StandardMaterial3D
+			if base == null:
+				continue
+			var key := [base.get_instance_id(), paint]
+			if not _muted.has(key):
+				var muted := base.duplicate() as StandardMaterial3D
+				# The paint is in Kenney's palette texture, so a tint can only
+				# darken and grey it, not repaint it.
+				muted.albedo_color = muted.albedo_color * paint * 2.0
+				muted.roughness = maxf(muted.roughness, 0.55)
+				_muted[key] = muted
+			(mi as MeshInstance3D).set_surface_override_material(0, _muted[key])
 
 ## Places on the block to crouch out of sight when the police are after
 ## you: in the mouth of the alley by the pusher's corner, behind a stack of
@@ -301,23 +360,27 @@ func _warm_looks() -> void:
 		root3.add_child(model)
 		CharacterLook.apply(model, entry["look"])
 		looks_warmed += 1
+	# The street can be left again within these frames (a door straight
+	# back): stop waiting once it's out of the tree.
 	for i in 3:
+		if not is_inside_tree():
+			break
 		await get_tree().process_frame
 	if is_instance_valid(holder):
 		holder.queue_free()
 
-## `at_x` NAN means walk in from whichever end the lane starts at.
-func _spawn_pedestrian(at_x := NAN) -> void:
+## `at` is how far along the lane to start (0 = walk in at its start);
+## `lane` -1 picks one: half the time Main Street's shops.
+func _spawn_pedestrian(at := 0.0, lane := -1) -> void:
+	if lane < 0:
+		lane = randi() % 2 if randf() < MAIN_LANE_SHARE else 2 + randi() % (LANES.size() - 2)
 	var walker: Area3D = PedestrianScript.new()
-	var lane := randi() % PEDESTRIAN_LANES.size()
-	walker.direction = 1.0 if lane == 0 else -1.0
-	walker.lane_z = PEDESTRIAN_LANES[lane]
-	walker.end_x = STREET_END_X
+	walker.lane_from = LANES[lane]["from"]
+	walker.lane_to = LANES[lane]["to"]
 	walker.speed = randf_range(1.1, 1.5)
 	walker.look_index = randi()
 	add_child(walker)
-	var x: float = at_x if not is_nan(at_x) else -walker.direction * STREET_END_X
-	walker.global_position = Vector3(x, 0, walker.lane_z)
+	walker.place_at(at)
 
 func _spawn_patrol(pos: Vector3) -> void:
 	var cop := GuardScene.instantiate()

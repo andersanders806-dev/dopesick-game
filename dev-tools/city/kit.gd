@@ -498,6 +498,47 @@ static func box_truck(b: Node, parent: Node, n: String, pos: Vector3, yaw: float
 	b._collision(t, b._box_shape(Vector3(6.2, 2.9, 2.3)), Vector3(0, 1.45, 0))
 	return t
 
+## Roadworks taking a lane: a cut in the asphalt with steel plates over
+## it, temporary fencing round it (eye height and solid -- the long view
+## down the lane stops here), orange drums at the corners, a skip and a
+## sign. `rect` is the fenced area in x/z.
+static func roadworks(b: Node, parent: Node, n: String, rect: Rect2) -> void:
+	var w := Node3D.new()
+	w.name = n
+	b._add(parent, w)
+	var c := Vector3(rect.get_center().x, 0, rect.get_center().y)
+	w.position = c
+	var hx := rect.size.x / 2.0
+	var hz := rect.size.y / 2.0
+	b._box_mesh(w, "Cut", Vector3(rect.size.x - 0.4, 0.02, rect.size.y - 0.4), Vector3(0, 0.005, 0), b._color_mat(Color(0.1, 0.09, 0.08), 0.95))
+	var plates := (mat(b, "metal") as StandardMaterial3D).duplicate() as StandardMaterial3D
+	plates.albedo_color = Color(0.45, 0.42, 0.38)
+	b._box_mesh(w, "Plate1", Vector3(1.6, 0.04, 1.2), Vector3(-hx * 0.35, 0.03, 0), plates)
+	b._box_mesh(w, "Plate2", Vector3(1.4, 0.04, 1.1), Vector3(hx * 0.3, 0.03, hz * 0.2), plates).rotation_degrees.y = 8.0
+	var corners := [Vector3(-hx, 0, -hz), Vector3(hx, 0, -hz), Vector3(hx, 0, hz), Vector3(-hx, 0, hz)]
+	for i in 4:
+		fence(b, w, "Fence%d" % i, corners[i], corners[(i + 1) % 4], 2.0)
+	var orange := b._color_mat(Color(0.95, 0.4, 0.08), 0.6) as Material
+	var white := b._color_mat(Color(0.9, 0.9, 0.86), 0.6) as Material
+	for k in 4:
+		var at: Vector3 = corners[k] + corners[k].sign() * 0.45
+		b._cylinder(w, "Drum%d" % k, 0.3, 0.9, at + Vector3(0, 0.45, 0), orange)
+		b._cylinder(w, "DrumBand%d" % k, 0.305, 0.12, at + Vector3(0, 0.6, 0), white)
+	var skip: MeshInstance3D = b._box_mesh(w, "Skip", Vector3(1.8, 1.0, 1.2), Vector3(hx * 0.45, 0.5, -hz * 0.3), b._color_mat(Color(0.75, 0.55, 0.08), 0.7))
+	skip.rotation_degrees.y = 4.0
+	b._box_mesh(skip, "Rubble", Vector3(1.5, 0.15, 0.9), Vector3(0, 0.5, 0), mat(b, "gravel"))
+	var sign := Label3D.new()
+	sign.name = "Sign"
+	sign.text = "ROAD WORK\nAHEAD"
+	sign.font_size = 40
+	sign.pixel_size = 0.006
+	sign.modulate = Color(0.1, 0.08, 0.05)
+	sign.outline_modulate = Color(1.0, 0.6, 0.1, 1.0)
+	sign.outline_size = 24
+	b._add(w, sign)
+	sign.position = Vector3(-hx * 0.6, 1.6, hz + 0.08)
+	b._box_mesh(w, "Lamp", Vector3(0.14, 0.14, 0.14), Vector3(hx, 2.1, hz), b._color_mat(Color(1.0, 0.6, 0.1), 0.4, 3.0))
+
 ## A green-grey electrical cabinet, stickered: solid, chest high-plus.
 static func cabinet(b: Node, parent: Node, n: String, pos: Vector3, yaw: float) -> void:
 	var c: StaticBody3D = b._solid(parent, n, Vector3(1.4, 1.7, 0.7), pos + Vector3(0, 0.85, 0), null)

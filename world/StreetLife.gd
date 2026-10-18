@@ -18,6 +18,12 @@ extends Node3D
 const CARS := ["sedan", "taxi", "van", "suv", "hatchback-sports", "sedan-sports", "police", "suv-luxury"]
 const CAR_SCALE := 1.6
 const LANE_Z := 0.35
+## Roadworks in the driving lane (x from, x to; dev-tools/city/
+## main_street_ext.gd builds them): cars swing out into the parking lane,
+## clear of parked cars there, to get round.
+const ROADWORKS := [Vector2(-45.0, -41.0), Vector2(9.5, 13.5), Vector2(53.5, 57.5)]
+const SWERVE_Z := 2.6
+const SWERVE_RAMP := 2.0
 const LANE_SPEED := Vector2(7.0, 10.0)
 ## Main Street runs between the avenues now: cars turn in off West Ave and
 ## out onto East Ave.
@@ -62,6 +68,14 @@ func _process(delta: float) -> void:
 
 # --- Traffic ---------------------------------------------------------------
 
+## Where in z the lane is at `x`: out round the roadworks, smoothly.
+static func lane_z_at(x: float) -> float:
+	var out := 0.0
+	for w in ROADWORKS:
+		var k := minf(smoothstep(w.x - SWERVE_RAMP, w.x, x), 1.0 - smoothstep(w.y, w.y + SWERVE_RAMP, x))
+		out = maxf(out, k)
+	return lerpf(LANE_Z, SWERVE_Z, out)
+
 func _update_traffic(delta: float) -> void:
 	_car_timer -= delta
 	if _car_timer <= 0.0:
@@ -91,6 +105,7 @@ func _update_traffic(delta: float) -> void:
 		else:
 			car.set_meta("honked", false)
 			car.position.x += speed * delta
+			car.position.z = lane_z_at(car.position.x)
 		if car.position.x > STREET_END:
 			_cars.erase(car)
 			car.queue_free()
@@ -119,7 +134,7 @@ func _spawn_car(x: float) -> void:
 	_mute_paint(model)
 	car.add_child(model)
 	add_child(car)
-	car.position = Vector3(x, 0, LANE_Z)
+	car.position = Vector3(x, 0, lane_z_at(x))
 	car.reset_physics_interpolation()
 	car.set_meta("speed", randf_range(LANE_SPEED.x, LANE_SPEED.y))
 	car.set_meta("honked", false)

@@ -31,7 +31,7 @@ static func build(b: Node, _root: Node3D) -> void:
 	for i in 2:
 		b._streetlight("StreetlightBackS%d" % (i + 1), [-46.0, 50.0][i], -87.7, 40 + i, c, 180.0)
 	# Parked both sides; nobody moves their car on Back Street.
-	var north := [[-63.0, "sedan"], [-44.0, "covered"], [-24.0, "suv"], [-3.0, "hatchback-sports"], [24.5, "sedan"], [43.0, "van"]]
+	var north := [[-63.0, "sedan"], [-44.0, "covered"], [-24.0, "suv"], [7.0, "hatchback-sports"], [24.5, "sedan"], [43.0, "van"]]
 	for i in north.size():
 		b._car("CarBackN%d" % (i + 1), Vector3(north[i][0], 0, -93.0), true, north[i][1], c)
 	var south := [[-54.0, "covered"], [-14.0, "sedan-sports"], [36.0, "suv"]]
@@ -55,6 +55,10 @@ static func build(b: Node, _root: Node3D) -> void:
 	Kit.cabinet(b, c, "CabinetBack2", Vector3(52.0, 0, -85.7), 180.0)
 	Kit.box_truck(b, c, "TruckBackW", Vector3(-25.0, 0, -89.9), 0.0, "MARTINEZ PLUMBING", Color(0.85, 0.85, 0.82))
 	Kit.box_truck(b, c, "TruckBackE", Vector3(25.0, 0, -89.9), 180.0, "CITY LINEN", Color(0.4, 0.5, 0.42))
+	# The trucks take the south lane; roadworks take the north one, in
+	# between.
+	for x in [-50.0, 0.0, 50.0]:
+		Kit.roadworks(b, c, "RoadworksBack%d" % int(x + 100), Rect2(x - 2.0, -93.8, 4.0, 2.4))
 	for i in [1, 4, 8, 11]:
 		Kit.bags(b, c, "StoopBags%d" % i, Vector3(STOOP_X[i] + 2.2, 0, -98.4), 2, 70 + i)
 	b._ph(c, "ManholeBack", "water_manhole_cover", Vector3(-12.0, 0.005, -90.2))

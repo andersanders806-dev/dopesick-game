@@ -8,6 +8,7 @@ extends RefCounted
 ## east, and at the neon pharmacy tower to the west.
 
 const Kit := preload("res://dev-tools/city/kit.gd")
+const StreetLife := preload("res://world/StreetLife.gd")
 
 static func build(b: Node, _root: Node3D) -> void:
 	var main := Kit.cell(b, "Cell_Main")
@@ -19,8 +20,7 @@ static func build(b: Node, _root: Node3D) -> void:
 	# Parked along the far curb, where the middle's are. A van and a box van
 	# stand taller than the cars: the road doesn't read as one long strip.
 	b._car("CarMainW1", Vector3(-58.0, 0, 2.6), false, "van", main)
-	b._car("CarMainW2", Vector3(-44.5, 0, 2.7), true, "sedan", main)
-	b._car("CarMainW3", Vector3(-38.5, 0, 2.6), false, "covered", main)
+	b._car("CarMainW2", Vector3(-52.0, 0, 2.7), true, "sedan", main)
 	b._car("CarMainE1", Vector3(38.5, 0, 2.6), true, "van", main)
 	# What keeps the street from being one 154 m strip at eye level: a
 	# newsstand at each end of the shops (people step round them on the
@@ -30,6 +30,12 @@ static func build(b: Node, _root: Node3D) -> void:
 	Kit.kiosk(b, main, "NewsstandMainE", Vector3(27.7, 0, -2.625), Vector2(1.4, 1.45), Vector3.BACK, Color(0.3, 0.12, 0.1), "DAILY NEWS\nLOTTO\nPHONE CARDS")
 	Kit.box_truck(b, main, "TruckMainW", Vector3(-30.2, 0, 2.6), 0.0, "ACE MOVING", Color(0.75, 0.72, 0.66))
 	Kit.box_truck(b, main, "TruckMainE", Vector3(30.2, 0, 2.6), 180.0, "SUNRISE BAKERY", Color(0.55, 0.62, 0.7))
+	# ...and roadworks in the driving lane, under 55 m apart; the traffic
+	# swings out round them into the parking lane (StreetLife.ROADWORKS,
+	# which is kept clear of parked cars there). They stop short of the
+	# curb, where the beat cop walks.
+	for x in StreetLife.ROADWORKS:
+		Kit.roadworks(b, main, "RoadworksMain%d" % int(x.x), Rect2(x.x, -0.9, x.y - x.x, 2.2))
 	b._car("CarMainE2", Vector3(47.0, 0, 2.7), false, "suv", main)
 	b._ph(main, "ManholeW", "water_manhole_cover", Vector3(-48.0, 0.005, 0.9))
 	b._ph(main, "ManholeE", "water_manhole_cover", Vector3(43.0, 0.005, 1.4))

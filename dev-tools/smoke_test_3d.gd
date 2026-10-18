@@ -4812,11 +4812,15 @@ const MAIN_STREET_BUILT := {
 ## Down every street, at eye level: [axis, the line's other coordinate,
 ## from, to]. Main's three sidewalk lanes and its road, then Back Street's,
 ## the avenues' (inner sidewalk, outer sidewalk, road).
+## Both driving lanes of every road too (Main: the traffic lane and the
+## parking lane; the others both directions).
 const BLOCK_SIGHT_LINES := [
-	["x", -3.0, -70.0, 70.0], ["x", -2.6, -70.0, 70.0], ["x", -2.2, -70.0, 70.0], ["x", 1.5, -70.0, 70.0],
-	["x", -95.0, -70.0, 70.0], ["x", -85.6, -70.0, 70.0], ["x", -91.0, -70.0, 70.0],
-	["z", -66.6, -90.0, 0.0], ["z", -76.2, -90.0, 0.0], ["z", -71.0, -90.0, 0.0],
-	["z", 66.6, -90.0, 0.0], ["z", 76.2, -90.0, 0.0], ["z", 71.0, -90.0, 0.0],
+	["x", -3.0, -70.0, 70.0], ["x", -2.6, -70.0, 70.0], ["x", -2.2, -70.0, 70.0],
+	["x", 0.0, -70.0, 70.0], ["x", 0.35, -70.0, 70.0], ["x", 1.5, -70.0, 70.0], ["x", 2.6, -70.0, 70.0],
+	["x", -95.0, -70.0, 70.0], ["x", -85.6, -70.0, 70.0],
+	["x", -92.5, -70.0, 70.0], ["x", -91.0, -70.0, 70.0], ["x", -89.5, -70.0, 70.0],
+	["z", -66.6, -90.0, 0.0], ["z", -76.2, -90.0, 0.0], ["z", -69.5, -90.0, 0.0], ["z", -71.0, -90.0, 0.0], ["z", -72.5, -90.0, 0.0],
+	["z", 66.6, -90.0, 0.0], ["z", 76.2, -90.0, 0.0], ["z", 69.5, -90.0, 0.0], ["z", 71.0, -90.0, 0.0], ["z", 72.5, -90.0, 0.0],
 ]
 const BLOCK_PLACES := ["Place_BusStop", "Place_ParkBench", "Place_Court", "Place_UnderpassCamp",
 	"Place_AlleyDumpsters", "Place_Stoop1", "Place_Stoop2", "Place_Stoop3", "Place_PoliceStation",
@@ -4830,7 +4834,8 @@ const CITY_LOAD_BUDGET_MS := 2500
 ## A fresh game: the street and its facade kits load in the background
 ## from boot (SceneLoader), and the first time onto the block -- "Continue"
 ## from the title, or the first door -- is only what's left behind the fade.
-## Run from smoke_block.gd, where this is the process's first City3D.
+## In smoke_block.gd this is the process's first City3D; late in the full
+## suite it holds all the more (everything's long in).
 func _block_cold_load_checks(gs: Node) -> void:
 	await _section("The block: the first time onto the street in a fresh game")
 	var loader := root.get_node("SceneLoader")
@@ -4852,6 +4857,7 @@ func _block_cold_load_checks(gs: Node) -> void:
 	await _frames(10)
 
 func _block_layout_checks(gs: Node) -> void:
+	await _block_cold_load_checks(gs)
 	await _section("The block: four streets, an alley loop, a park and an underpass")
 	_close_menus()
 	gs.start_run()

@@ -455,7 +455,8 @@ static func _dome(b: Node, c: Node3D, n: String, pos: Vector3, tarp: String) -> 
 	mi.name = "Mesh"
 	var dome := SphereMesh.new()
 	dome.radius = 1.25
-	dome.height = 2.5
+	# A hemisphere's height is its radius.
+	dome.height = 1.25
 	dome.is_hemisphere = true
 	dome.radial_segments = 16
 	dome.rings = 6

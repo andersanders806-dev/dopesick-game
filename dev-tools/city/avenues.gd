@@ -44,6 +44,9 @@ static func _avenue(b: Node, c: Node3D, n: String, side: float) -> void:
 	Kit.kiosk(b, c, n + "Newsstand", Vector3(76.3 * side, 0, -48.0), Vector2(1.4, 3.0), Vector3(-side, 0, 0), Color(0.12, 0.26, 0.18))
 	Kit.kiosk(b, c, n + "NewsstandIn", Vector3(66.2 * side, 0, -50.0), Vector2(1.4, 3.0), Vector3(side, 0, 0), Color(0.3, 0.12, 0.1), "FLOWERS\nCOFFEE")
 	Kit.box_truck(b, c, n + "Truck", Vector3(71.8 * side, 0, -45.0), 90.0 if side < 0 else -90.0, "DELI SUPPLY" if side < 0 else "QUICK FREIGHT", Color(0.7, 0.68, 0.6))
+	# The truck takes the outer lane; roadworks take the inner one.
+	for z in [-20.0, -70.0]:
+		Kit.roadworks(b, c, n + "Roadworks%d" % int(-z), Rect2(minf(68.2 * side, 70.8 * side), z - 2.0, 2.6, 4.0))
 	# Bins, a hydrant, bags out at the curb.
 	Kit.hydrant(b, c, n + "Hydrant", Vector3(67.5 * side, 0, -24.0))
 	Kit.trash_can(b, c, n + "Bin1", Vector3(67.5 * side, 0, -55.0))

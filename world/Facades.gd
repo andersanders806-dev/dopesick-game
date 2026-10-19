@@ -173,9 +173,35 @@ func _ready() -> void:
 	for m in masses():
 		_build_mass(m)
 	_build_roof_units()
+	_apply_cutaway()
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
+
+const Cutaway := preload("res://world/Cutaway.gd")
+## The buildings the street camera can end up behind: it hangs south of
+## you, so those just south of somewhere you walk -- Main's row (behind it
+## the service lane, the park and the lot) and the four along Back Street's
+## south side. Their walls and roofs dither out between the camera and you
+## (world/Cutaway.gd). Main's own shop fronts face the camera, never stand
+## between, and keep their plain materials.
+const CUT_MASSES := ["NWCorner", "Tenement", "InnerNW", "InnerNE"]
+
+static func cut_mass(m: Dictionary) -> bool:
+	return m["cell"] == "Cell_Main" or m["name"] in CUT_MASSES
+
+func _apply_cutaway() -> void:
+	var cut := {}
+	for m in masses():
+		if cut_mass(m):
+			cut[m["name"]] = true
+	for n in get_children():
+		if n.name.begins_with("Mass") and cut.has(String(n.name).substr(4)):
+			Cutaway.apply(n)
+		elif n.has_meta("mass") and cut.has(n.get_meta("mass")) and n.get_meta("side", "main") not in ["main", "jut"]:
+			Cutaway.apply(n)
+		elif n.name.begins_with("RoofAirCons") and n.get_meta("cell", "") in ["Cell_Main", "Cell_Inner"]:
+			Cutaway.apply(n)
 
 ## The fire escape, air-con, camera and shutter models, kept for the
 ## session for the same reason (half a second a visit).
@@ -204,6 +230,8 @@ static func set_detail(on: bool) -> void:
 				if not m.has_meta("built_normal"):
 					m.set_meta("built_normal", m.normal_enabled)
 				m.normal_enabled = on and m.get_meta("built_normal")
+	# ...and the cutaway copies of them follow.
+	Cutaway.sync_all()
 
 func _mesh(kit: String, piece: String) -> Mesh:
 	if not _meshes.has(kit):
@@ -267,6 +295,7 @@ func _build_front(f: Array) -> void:
 	front.transform = side_transform(side)
 	front.set_meta("side", side)
 	front.set_meta("cell", _cell_of(f[7]) if f.size() > 7 else "Cell_Main")
+	front.set_meta("mass", f[7] if f.size() > 7 else f[0])
 	var kit: String = f[3]
 	var p: Dictionary = KIT_PIECES[kit]
 	var x0: float = local_from(side, f[1], f[2])
@@ -776,6 +805,7 @@ func _on_clock(_minute: int) -> void:
 func refresh() -> void:
 	if _lit_window:
 		_lit_window.emission_energy_multiplier = 1.4 * (1.0 - smoothstep(0.3, 0.7, GameState.daylight()))
+		Cutaway.sync(_lit_window)
 	for front in get_children():
 		var place: String = front.get_meta("place", "")
 		var hours: Array = front.get_meta("hours", [])

@@ -56,6 +56,7 @@ static func external(res: Resource, file: String) -> Resource:
 # --- Cells and places ------------------------------------------------------------
 
 static func make_cells(b: Node) -> void:
+	_mm.clear()
 	for n in CELLS:
 		var c := Node3D.new()
 		c.name = n
@@ -188,7 +189,17 @@ static func dashes(b: Node, parent: Node, n: String, from: Vector3, to: Vector3)
 	var along_x := absf(d.x) > absf(d.z)
 	for i in count:
 		var p := from + d.normalized() * (1.5 + i * 3.0)
-		b._box_mesh(parent, "%s%d" % [n, i], Vector3(1.4, 0.005, 0.1) if along_x else Vector3(0.1, 0.005, 1.4), Vector3(p.x, 0.002, p.z), mat(b, "line"))
+		dash(b, parent, Vector3(p.x, 0.002, p.z), along_x)
+
+## One centre-line dash, into its cell's MultiMesh.
+static func dash(b: Node, parent: Node, pos: Vector3, along_x := true) -> void:
+	var key := "Dash" if along_x else "DashZ"
+	if not _meshes.has(key):
+		var bm := BoxMesh.new()
+		bm.size = Vector3(1.4, 0.005, 0.1) if along_x else Vector3(0.1, 0.005, 1.4)
+		bm.material = mat(b, "line")
+		_meshes[key] = bm
+	instance(b, parent, key, _meshes[key], Transform3D(Basis(), pos))
 
 # --- Buildings -------------------------------------------------------------------
 
@@ -199,8 +210,24 @@ static func building_colliders(b: Node) -> void:
 	for m in Facades.masses():
 		var r: Rect2 = m["rect"]
 		var h: float = m["floors"] * Facades.MODULE + Facades.ROOF_OVER + Facades.COPING.y
-		b._solid(cell(b, m["cell"]), "Building" + m["name"], Vector3(r.size.x, h, r.size.y),
+		var body: StaticBody3D = b._solid(cell(b, m["cell"]), "Building" + m["name"], Vector3(r.size.x, h, r.size.y),
 			Vector3(r.get_center().x, h / 2.0, r.get_center().y), null)
+		# What the building hides behind it isn't drawn (occlusion culling,
+		# project.godot: on the UHD 620 it let the dynamic resolution sit
+		# ~0.05 higher for the same GPU time, and cut draw calls behind
+		# Back Street and the alley by 10-30%). A shade inside the walls,
+		# so a front's relief never shows something it shouldn't.
+		var occ := OccluderInstance3D.new()
+		occ.name = "Occluder"
+		# Kept to its cell (two corner buildings run past theirs), so it
+		# sleeps with what it stands in.
+		var bounds: AABB = CELLS[m["cell"]]
+		var solid := AABB(Vector3(r.position.x + 0.1, 0.1, r.position.y + 0.1), Vector3(r.size.x - 0.2, h - 0.2, r.size.y - 0.2)).intersection(bounds)
+		var box := BoxOccluder3D.new()
+		box.size = solid.size
+		occ.occluder = box
+		b._add(body, occ)
+		occ.position = solid.get_center() - body.position
 
 # --- Navigation -------------------------------------------------------------------
 
@@ -315,8 +342,18 @@ static func fence(b: Node, parent: Node, n: String, a: Vector3, to: Vector3, hei
 ## from or repainted (`paint`) -- the builder's changes to nodes inside an
 ## instanced model aren't saved with the scene.
 static func copy_model(b: Node, parent: Node, n: String, path: String, xform: Transform3D, paint: Material = null, only := "") -> MeshInstance3D:
-	# Merged into one mesh (a surface per material), saved once per model
-	# and pick: every separate resource is another load.
+	var copy := MeshInstance3D.new()
+	copy.name = n
+	copy.mesh = merged_mesh(path, only)
+	copy.material_override = paint
+	b._add(parent, copy)
+	copy.transform = xform
+	return copy
+
+## The meshes of the model at `path` (names containing `only`) merged into
+## one mesh, a surface per material, saved once per model and pick: every
+## separate resource is another load.
+static func merged_mesh(path: String, only := "") -> Mesh:
 	var file := path.get_file().get_basename() + ("_" + only if only != "" else "")
 	if not _meshes.has(file):
 		var scene: Node3D = load(path).instantiate()
@@ -332,18 +369,65 @@ static func copy_model(b: Node, parent: Node, n: String, path: String, xform: Tr
 					by_mat[m] = st
 				(by_mat[m] as SurfaceTool).append_from(mi.mesh, i, _rel(scene, mi))
 		scene.free()
-		var merged := ArrayMesh.new()
+		# With LODs, as the import gave the models: far bins and bags
+		# drawn at a fraction of their thousands of triangles.
+		var im := ImporterMesh.new()
 		for m in by_mat:
-			(by_mat[m] as SurfaceTool).commit(merged)
-			merged.surface_set_material(merged.get_surface_count() - 1, m)
-		_meshes[file] = external(merged, file)
-	var copy := MeshInstance3D.new()
-	copy.name = n
-	copy.mesh = _meshes[file]
-	copy.material_override = paint
-	b._add(parent, copy)
-	copy.transform = xform
-	return copy
+			im.add_surface(Mesh.PRIMITIVE_TRIANGLES, (by_mat[m] as SurfaceTool).commit_to_arrays(), [], {}, m)
+		im.generate_lods(25.0, 60.0, [])
+		_meshes[file] = external(im.get_mesh(), file)
+	return _meshes[file]
+
+# --- Repeated props as MultiMeshes ------------------------------------------------
+
+## cell name + key -> {cell, mesh, xforms}: everything instance() was given.
+static var _mm := {}
+## Metres per MultiMesh tile.
+const MM_TILE := 16.0
+
+## One more of a repeated prop (bags, bins, road dashes): drawn by its
+## cell's MultiMesh for `key` (flush_multimeshes()), not a node of its own
+## -- a few hundred nodes fewer to load, cull and put to sleep. `xform` is
+## in `parent`'s space; `parent` is a cell or something under one.
+static func instance(b: Node, parent: Node, key: String, mesh: Mesh, xform: Transform3D) -> void:
+	var c: Node3D = parent
+	var t := xform
+	while not String(c.name).begins_with("Cell_"):
+		t = c.transform * t
+		c = c.get_parent()
+	# Tiled, so a MultiMesh is culled and LOD'd by what's near: one over a
+	# whole cell would draw every bag in it at full detail.
+	var tile := Vector2i(floori(t.origin.x / MM_TILE), floori(t.origin.z / MM_TILE))
+	var id := "%s|%s|%s" % [c.name, key, tile]
+	if not _mm.has(id):
+		_mm[id] = {"cell": c, "key": key, "mesh": mesh, "xforms": []}
+	(_mm[id]["xforms"] as Array).append(t)
+
+## Turns what instance() collected into a MultiMeshInstance3D per mesh per
+## cell (per 16 m tile of it), "MM_<key>_<n>", sat in the middle of its
+## instances (so it lies in its cell's bounds like everything else there).
+static func flush_multimeshes(b: Node) -> void:
+	for id in _mm:
+		var e: Dictionary = _mm[id]
+		var xforms: Array = e["xforms"]
+		var mid := Vector3.ZERO
+		for t in xforms:
+			mid += (t as Transform3D).origin
+		mid /= xforms.size()
+		var local: Array[Transform3D] = []
+		for t in xforms:
+			local.append(Transform3D((t as Transform3D).basis, (t as Transform3D).origin - mid))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = e["mesh"]
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "MM_%s_%d" % [e["key"], (e["cell"] as Node).get_child_count()]
+		mmi.multimesh = mm
+		mmi.set_script(MultiMeshFill)
+		mmi.set("transforms", local)
+		b._add(e["cell"], mmi)
+		mmi.position = mid
+	_mm.clear()
 
 ## `node`'s transform relative to the root of the (out of tree) scene.
 static func _rel(root: Node3D, node: Node3D) -> Transform3D:
@@ -368,8 +452,12 @@ static func dumpster(b: Node, parent: Node, n: String, pos: Vector3, yaw := 0.0)
 static func bags(b: Node, parent: Node, n: String, pos: Vector3, count: int, seed_value: int) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
+	var bag := merged_mesh("res://assets/polyhaven/trashbag/trashbag.gltf")
 	for i in count:
-		b._ph(parent, "%s%d" % [n, i], "trashbag", pos + Vector3(rng.randf_range(-0.7, 0.7), 0, rng.randf_range(-0.3, 0.3)), rng.randf_range(0.8, 1.05), rng.randf_range(0, 360))
+		var at := pos + Vector3(rng.randf_range(-0.7, 0.7), 0, rng.randf_range(-0.3, 0.3))
+		var size := rng.randf_range(0.8, 1.05)
+		var yaw := rng.randf_range(0, 360)
+		instance(b, parent, "Bags", bag, Transform3D(Basis(Vector3.UP, deg_to_rad(yaw)).scaled(Vector3.ONE * size), at))
 
 static func trash_can(b: Node, parent: Node, n: String, pos: Vector3) -> void:
 	var body := StaticBody3D.new()
@@ -377,10 +465,10 @@ static func trash_can(b: Node, parent: Node, n: String, pos: Vector3) -> void:
 	b._add(parent, body)
 	body.position = pos
 	# The model is a showcase of two cans side by side: the rusted one (and
-	# its lid, leaning on it), centred. Copied out as meshes -- changes to
-	# nodes inside an instanced model don't save.
-	copy_model(b, body, "Model", "res://assets/polyhaven/metal_trash_can/metal_trash_can.gltf",
-		Transform3D(Basis(Vector3.UP, deg_to_rad(n.hash() % 360)), Vector3.ZERO) * Transform3D(Basis(), Vector3(0.5, 0, 0)), null, "rust")
+	# its lid, leaning on it), centred, merged into one mesh and drawn by
+	# the cell's MultiMesh of bins; the body keeps just the collider.
+	instance(b, parent, "Bins", merged_mesh("res://assets/polyhaven/metal_trash_can/metal_trash_can.gltf", "rust"),
+		Transform3D(Basis(), pos) * Transform3D(Basis(Vector3.UP, deg_to_rad(n.hash() % 360)), Vector3.ZERO) * Transform3D(Basis(), Vector3(0.5, 0, 0)))
 	var cyl := CylinderShape3D.new()
 	cyl.radius = 0.3
 	cyl.height = 0.9

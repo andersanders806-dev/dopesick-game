@@ -171,7 +171,18 @@ func _update_camera_rig(delta: float) -> void:
 		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
 	$CameraMount.global_position = _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
 
+## The block's walls between the camera and you dither out
+## (world/Cutaway.gd): its shader reads where you are, every drawn frame,
+## and how wide a hole to open -- none in first person, where the wall in
+## front of your face is meant to be a wall.
+const Cutaway := preload("res://world/Cutaway.gd")
+## What was last set: [player_world_pos, cutaway_radius] (the smoke test).
+var cutaway_globals := [Vector3.ZERO, 0.0]
+
 func _process(delta: float) -> void:
+	cutaway_globals = [get_global_transform_interpolated().origin, 0.0 if _first_person else Cutaway.RADIUS]
+	RenderingServer.global_shader_parameter_set("player_world_pos", cutaway_globals[0])
+	RenderingServer.global_shader_parameter_set("cutaway_radius", cutaway_globals[1])
 	if _first_person:
 		_update_camera_shake(delta)
 		_update_fp_camera()

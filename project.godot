@@ -101,6 +101,8 @@ common/physics_interpolation=true
 
 [rendering]
 
+occlusion_culling/use_occlusion_culling=true
+
 rendering_device/vsync/swapchain_image_count=2
 
 textures/canvas_textures/default_texture_filter=0
@@ -112,3 +114,14 @@ environment/screen_space_reflection/roughness_quality=2
 environment/volumetric_fog/volume_depth=128
 anti_aliasing/quality/screen_space_aa=1
 anti_aliasing/quality/use_taa=true
+
+[shader_globals]
+
+player_world_pos={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+cutaway_radius={
+"type": "float",
+"value": 0.0
+}

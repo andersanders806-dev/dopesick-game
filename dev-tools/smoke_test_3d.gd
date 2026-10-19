@@ -185,6 +185,9 @@ func _run() -> void:
 		for node in scene.find_children("*", "Node", true, false):
 			if not (node is AudioStreamPlayer or node is AudioStreamPlayer3D) or not node.autoplay:
 				continue
+			# A sleeping cell's sounds are paused with it (world/BlockCells.gd).
+			if not node.can_process():
+				continue
 			ambient.append(node.name)
 			var loops: bool = (node.stream is AudioStreamWAV and node.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD) \
 				or (node.stream is AudioStreamOggVorbis and node.stream.loop)
@@ -831,6 +834,7 @@ func _run() -> void:
 	await _smooth_quick_checks(gs)
 	await _one_load_at_a_time_checks()
 	await _block_layout_checks(gs)
+	await _block_cells_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -3508,7 +3512,10 @@ func _perf_checks(gs: Node) -> void:
 	_check(lamps.all(func(l): return not l.shadow_enabled), "  Low: no lamp shadows")
 	gfx.set_preset(gfx.Preset.PS5)
 	await _frames(40)
-	_check(lamps.all(func(l): return l.shadow_enabled), "  PS5: every lamp, as built")
+	# (Every one that's drawn: those in cells asleep this far off are hidden
+	# -- world/BlockCells.gd -- and Graphics gives hidden lamps no shadow.)
+	var drawn := lamps.filter(func(l): return l.is_visible_in_tree())
+	_check(drawn.size() > 2 and drawn.all(func(l): return l.shadow_enabled), "  PS5: every lamp, as built (%d drawn)" % drawn.size())
 	gfx.set_preset(before)
 	# An integrated GPU left on High (or PS5) is moved to Medium, once.
 	_check(gfx.migrate_preset(gfx.Preset.HIGH, 2, true) == gfx.Preset.MEDIUM and gfx.migrate_preset(gfx.Preset.PS5, 2, true) == gfx.Preset.MEDIUM, "  integrated GPU on High: moved to Medium")
@@ -5022,7 +5029,11 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 	gs.clock = 22 * 60
 	gs.advance_clock(1)
 	await _frames(3)
-	_check(night.all(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01), "  ...and on at 22:00")
+	# (Those in cells asleep this far from you stay off: world/BlockCells.gd.)
+	var cells_node := city.get_node("BlockCells")
+	var awake_night := night.filter(func(l): return cells_node.cell_of(l) == null or cells_node.is_awake(cells_node.cell_of(l)))
+	_check(awake_night.size() > 0 and awake_night.all(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01)
+		and night.all(func(l): return l in awake_night or not l.is_visible_in_tree()), "  ...and on at 22:00 (the %d in cells awake; the rest asleep and dark)" % awake_night.size())
 	gs.clock = 17 * 60
 	# No dead ends. Each joint below is a short walk (under 1.4x the straight
 	# line, plus 3 m): both of the pusher's alleys run through to the service
@@ -5072,3 +5083,175 @@ func _ray_hits_static(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vecto
 			return true
 		exclude.append(hit["rid"])
 	return false
+
+# --- The block: cells sleep and wake, walls dither out (open world, task 2) ---
+
+## What a cell holds that BlockCells puts to sleep: its own children (bar
+## the landmarks) and the buildings Facades.gd raises for it at load.
+func _cell_members(city: Node, cell: Node3D) -> Array:
+	var out: Array = cell.get_children().filter(func(n): return n is Node3D and not n.is_in_group("landmark"))
+	for n in city.get_node("Facades").get_children():
+		if n.get_meta("cell", "") == String(cell.name):
+			out.append(n)
+	return out
+
+func _block_cells_checks(gs: Node) -> void:
+	await _section("The block: far cells sleep, near ones wake; walls between you and the camera dither out")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 22 * 60
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	var cells_node := city.get_node_or_null("BlockCells")
+	_check(cells_node != null and cells_node.get("WAKE_MARGIN") == 25.0 and cells_node.has_signal("cell_changed") and cells_node.has_method("is_awake"),
+		"  BlockCells is on the block (margin %s)" % [cells_node.get("WAKE_MARGIN") if cells_node else "-"])
+	if cells_node == null:
+		return
+	var player := _player()
+	var cells: Array = BLOCK_CELLS.map(func(n): return city.get_node(n))
+	# Each cell in turn: stand in it, and it and whatever's within the
+	# margin wake; the rest sleep, landmarks still standing.
+	var wrong := []
+	var spots := {"Cell_Main": Vector3(-17.5, 0, -2.6), "Cell_West": Vector3(-66.6, 0, -47.8), "Cell_East": Vector3(66.6, 0, -47.8),
+		"Cell_Back": Vector3(-20.0, 0, -95.0), "Cell_Inner": Vector3(-7.5, 0, -50.0)}
+	var asleep_seen := 0
+	for cn in spots:
+		player.global_position = spots[cn]
+		player.reset_physics_interpolation()
+		await _frames(BLOCK_SETTLE_FRAMES)
+		var at: Vector3 = spots[cn]
+		for c in cells:
+			var want: bool = (c.get_meta("bounds") as AABB).grow(25.0).has_point(Vector3(at.x, 1.0, at.z))
+			var members := _cell_members(city, c)
+			var ok: bool = cells_node.is_awake(c) == want
+			if want:
+				ok = ok and c.process_mode != Node.PROCESS_MODE_DISABLED and members.all(func(n): return n.visible)
+			else:
+				asleep_seen += 1
+				ok = ok and c.process_mode == Node.PROCESS_MODE_DISABLED and members.all(func(n): return not n.visible)
+			if not ok:
+				var odd := members.filter(func(n): return n.visible != want).map(func(n): return n.name)
+				wrong.append("%s at %s: want %s (awake %s, mode %d, odd %s)" % [c.name, cn, "awake" if want else "asleep", cells_node.is_awake(c), c.process_mode, odd.slice(0, 3)])
+	_check(wrong.is_empty() and asleep_seen >= 5, "  standing in each cell wakes it and its neighbours and sleeps the rest (%d asleep seen; wrong %s)" % [asleep_seen, wrong.slice(0, 4)])
+	print("    (the last switch took %.1f ms over %d frames)" % [cells_node.last_switch_usec / 1000.0, cells_node.last_switch_frames])
+	# From the Back Street corner Main is fast asleep, and the landmarks stand.
+	player.global_position = spots["Cell_Back"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var main := city.get_node("Cell_Main") as Node3D
+	var marks := get_nodes_in_group("landmark").filter(func(n): return city.is_ancestor_of(n))
+	_check(not cells_node.is_awake(main) and marks.size() >= 2 and marks.all(func(n): return n.is_visible_in_tree()),
+		"  from Back Street, Main sleeps and the %d landmarks are still there" % marks.size())
+	# Lights: a sleeping cell's are off; waking it at night brings them back
+	# on, by day it leaves them off.
+	# (Sign glows aside: two of them flicker -- StreetLife.)
+	var main_lights := city.find_children("*", "Light3D", true, false).filter(func(l): return main.is_ancestor_of(l) and (l.is_in_group("night_lights") or String(l.get_parent().name).begins_with("Streetlight")))
+	_check(main_lights.size() > 5 and main_lights.all(func(l): return not l.is_visible_in_tree()), "  Main asleep: its %d after-dark lights are off (on: %s)" % [main_lights.size(), main_lights.filter(func(l): return l.is_visible_in_tree()).map(func(l): return main.get_path_to(l)).slice(0, 4)])
+	player.global_position = spots["Cell_Main"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	_check(main_lights.all(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01), "  ...woken at 22:00, they come back on (off: %s)" % [main_lights.filter(func(l): return not (l.is_visible_in_tree() and l.light_energy > 0.01)).map(func(l): return "%s v%s e%.2f" % [main.get_path_to(l), l.visible, l.light_energy]).slice(0, 4)])
+	var buzz := main.find_children("Buzz", "AudioStreamPlayer3D", true, false)
+	_check(buzz.size() > 3 and buzz.all(func(a): return a.playing), "  ...and its %d lamps buzz again" % buzz.size())
+	player.global_position = spots["Cell_Back"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	gs.clock = 14 * 60
+	gs.advance_clock(1)
+	# A dry afternoon: in the rain the lamps come half on (City3D).
+	gs.raining = false
+	city._apply_daylight()
+	await _frames(3)
+	player.global_position = spots["Cell_Main"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	_check(cells_node.is_awake(main) and main_lights.all(func(l): return not l.is_visible_in_tree() or l.light_energy <= 0.01),
+		"  ...and woken at 14:00 they stay off (on: %s)" % [main_lights.filter(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01).map(func(l): return "%s e%.2f" % [main.get_path_to(l), l.light_energy]).slice(0, 4)])
+	# Anything in "cell_sleepers" stops with its cell.
+	var sleeper := Node3D.new()
+	sleeper.add_to_group("cell_sleepers")
+	city.add_child(sleeper)
+	sleeper.global_position = Vector3(-20.0, 0, -95.0)
+	player.global_position = spots["Cell_Main"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var froze := not sleeper.can_process()
+	player.global_position = spots["Cell_Back"]
+	await _frames(BLOCK_SETTLE_FRAMES)
+	_check(froze and sleeper.can_process(), "  a cell_sleeper on Back Street freezes when it sleeps and runs when it wakes")
+	sleeper.queue_free()
+	# The walls: standing in the service lane behind Main's shops, the shops'
+	# backs are between you and the camera, and they're cutaway material.
+	player.global_position = Vector3(0.0, 0, -17.5)
+	player.reset_physics_interpolation()
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var cam: Camera3D = player.camera
+	var from := cam.global_position
+	var to := player.global_position + Vector3(0, 1.0, 0)
+	var between := []
+	var plain := []
+	for mi in get_nodes_in_group("cutaway"):
+		if not (mi is GeometryInstance3D and city.is_ancestor_of(mi) and mi.is_visible_in_tree()):
+			continue
+		var box: AABB = (mi as GeometryInstance3D).global_transform * (mi as VisualInstance3D).get_aabb()
+		if box.intersects_segment(from, to):
+			between.append(mi)
+	var builds := city.get_node("Cell_Main").find_children("Building*", "StaticBody3D", false, false)
+	var q := PhysicsRayQueryParameters3D.create(from, to, 1)
+	# The camera hangs inside the building's box.
+	q.hit_from_inside = true
+	var hit: Dictionary = city.get_world_3d().direct_space_state.intersect_ray(q)
+	for mi in between:
+		for s in _surface_mats(mi):
+			if not (s is ShaderMaterial and (s as ShaderMaterial).shader and (s as ShaderMaterial).shader.resource_path.begins_with("res://assets/shaders/cutaway")):
+				plain.append("%s" % mi.name)
+				break
+	_check(not hit.is_empty() and hit["collider"] in builds and between.size() > 0 and plain.is_empty(),
+		"  from the lane a Main Street building (%s) stands between camera and you, and its %d meshes there dither (plain: %s)" % [hit["collider"].name if hit else "nothing", between.size(), plain.slice(0, 3)])
+	# The globals as the player last set them (a headless RenderingServer
+	# keeps no values to read back).
+	var pw: Vector3 = player.cutaway_globals[0]
+	var radius: float = player.cutaway_globals[1]
+	_check(pw.distance_to(player.get_global_transform_interpolated().origin) < 0.05 and radius > 0.5,
+		"  player_world_pos follows you (%s vs %s), cutaway radius %.1f m" % [pw, player.global_position, radius])
+	root.get_node("Graphics").set_first_person(true)
+	await _frames(3)
+	radius = player.cutaway_globals[1]
+	_check(radius == 0.0, "  in first person nothing dithers (radius %.1f)" % radius)
+	root.get_node("Graphics").set_first_person(false)
+	await _frames(3)
+	# Static occluders: a box per building, in its cell.
+	var buildings := 0
+	var boxed := 0
+	for cn in BLOCK_CELLS:
+		var c := city.get_node(cn)
+		for body in c.find_children("Building*", "StaticBody3D", false, false):
+			buildings += 1
+			var occ := body.get_node_or_null("Occluder") as OccluderInstance3D
+			if occ and occ.occluder is BoxOccluder3D:
+				boxed += 1
+	_check(buildings > 50 and boxed == buildings, "  every building has its occluder box (%d of %d)" % [boxed, buildings])
+	# Repeated props: a MultiMesh per mesh per cell (per 16 m tile of it,
+	# so they still cull), not a node each.
+	var loose := city.find_children("*Bags*", "Node3D", true, false).filter(func(n): return n.get_parent().name.begins_with("Cell_") and not (n is MultiMeshInstance3D))
+	var mms := city.find_children("MM_*", "MultiMeshInstance3D", true, false).filter(func(n): return n.get_parent().name.begins_with("Cell_"))
+	var instanced := 0
+	for mm in mms:
+		instanced += (mm as MultiMeshInstance3D).multimesh.instance_count
+	_check(loose.is_empty() and mms.size() >= 5 and instanced > 100 and instanced > mms.size() * 3, "  bags, bins and road dashes are %d MultiMeshes in the cells (%d instances; loose: %s)" % [mms.size(), instanced, loose.slice(0, 3)])
+	gs.clock = 17 * 60
+	gs.start_run()
+
+## Frames for every cell to settle after a move (one changes per frame,
+## a big one spread over a few).
+const BLOCK_SETTLE_FRAMES := 40
+
+func _surface_mats(gi: GeometryInstance3D) -> Array:
+	if gi.material_override:
+		return [gi.material_override]
+	var out := []
+	if gi is MeshInstance3D:
+		var mi := gi as MeshInstance3D
+		for i in mi.mesh.get_surface_count():
+			out.append(mi.get_active_material(i))
+	elif gi is MultiMeshInstance3D:
+		var mesh: Mesh = (gi as MultiMeshInstance3D).multimesh.mesh
+		for i in mesh.get_surface_count():
+			out.append(mesh.surface_get_material(i))
+	return out

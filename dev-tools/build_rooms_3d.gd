@@ -2124,6 +2124,10 @@ func _build_city() -> Node3D:
 	# everything finds them.
 	CityKit.make_cells(self)
 	var main := CityKit.cell(self, "Cell_Main")
+	var sleeper := Node.new()
+	sleeper.name = "BlockCells"
+	sleeper.set_script(load("res://world/BlockCells.gd"))
+	_add(_root, sleeper)
 
 	var d := 9.0
 	var street_z := -4.5
@@ -2140,7 +2144,7 @@ func _build_city() -> Node3D:
 	# dashes where they always were, every 3 m from x = -27.5).
 	var road_mid := street_z + 3.0 + (d - 3.0) / 2
 	for i in range(-13, 32):
-		_box_mesh(main, ("LaneDash%d" % i) if i >= 0 else ("LaneDashW%d" % -i), Vector3(1.4, 0.005, 0.1), Vector3(-27.5 + i * 3.0, 0.002, road_mid), CityKit.mat(self, "line"))
+		CityKit.dash(self, main, Vector3(-27.5 + i * 3.0, 0.002, road_mid))
 	_box_mesh(main, "Curb", Vector3(w, 0.14, 0.25), Vector3(0, 0.03, street_z + 3.0), CityKit.mat(self, "curb"))
 
 	var moon := DirectionalLight3D.new()
@@ -2356,6 +2360,7 @@ func _build_city() -> Node3D:
 	CityBackStreet.build(self, _root)
 	CityInner.build(self, _root)
 
+	CityKit.flush_multimeshes(self)
 	_marker("SpawnDefault", Vector3(-17.5, 0, street_z + 1.5))
 	_player_and_hud(Vector3(-17.5, 0, street_z + 1.5))
 	CityKit.bake_navigation(self)

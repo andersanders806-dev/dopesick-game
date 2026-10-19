@@ -84,6 +84,8 @@ var _night := {}
 ## [light, night energy] for everything that only matters after dark:
 ## streetlights and the glow under each shop sign.
 var _night_lights: Array = []
+## world/BlockCells.gd: [light, energy] above also carries the light's cell.
+var _cells: Node
 var _street_lamp_heads: Array[MeshInstance3D] = []
 
 const VendingScript := preload("res://world/VendingMachine3D.gd")
@@ -211,6 +213,13 @@ func _ready() -> void:
 	for light in get_tree().get_nodes_in_group("night_lights"):
 		if is_ancestor_of(light) and not light.name.ends_with("SignGlow"):
 			_night_lights.append([light, light.light_energy])
+	# Which cell each light's in: a sleeping cell's stay off whatever the
+	# hour (BlockCells hid them), and come back to the hour when it wakes.
+	_cells = get_node_or_null("BlockCells")
+	if _cells:
+		for entry in _night_lights:
+			entry.append(_cells.cell_of(entry[0]))
+		_cells.cell_changed.connect(_on_cell_changed)
 	GameState.clock_changed.connect(_on_clock_changed)
 	GameState.weather_changed.connect(_on_weather_changed)
 	_apply_daylight()
@@ -462,6 +471,9 @@ func _update_collector(delta: float) -> void:
 	add_child(collector)
 	collector.global_position = COLLECTOR_ENTRY
 
+func _on_cell_changed(_cell: Node3D, _awake: bool) -> void:
+	_apply_lights()
+
 func _on_weather_changed(_raining: bool) -> void:
 	_apply_daylight()
 
@@ -521,10 +533,15 @@ func _apply_daylight() -> void:
 	_sky_light.light_energy = lerpf(_night["moon_energy"], SUN_ENERGY, d)
 	# Streetlights are on a photocell: fully on until well into dawn, and
 	# back on before dusk is over.
-	var lamps_on := 1.0 - smoothstep(0.35, 0.75, d)
+	_apply_lights()
+
+## The after-dark lights by the hour; a sleeping cell's stay dark.
+func _apply_lights() -> void:
+	var lamps_on := 1.0 - smoothstep(0.35, 0.75, GameState.daylight() * (0.55 if GameState.raining else 1.0))
 	for entry in _night_lights:
+		var cell: Node3D = entry[2] if entry.size() > 2 else null
 		(entry[0] as Light3D).light_energy = entry[1] * lamps_on
-		(entry[0] as Light3D).visible = lamps_on > 0.01
+		(entry[0] as Light3D).visible = lamps_on > 0.01 and (cell == null or _cells.is_awake(cell))
 	for head in _street_lamp_heads:
 		var mat := head.get_active_material(0) as StandardMaterial3D
 		if mat:

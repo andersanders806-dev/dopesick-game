@@ -340,6 +340,12 @@ func _update_flicker(delta: float) -> void:
 
 func _set_sign(f: Dictionary, on: bool) -> void:
 	# Visibility, not energy: City3D owns the energy (it follows daylight).
+	# A sign in a sleeping cell (world/BlockCells.gd) stays dark.
+	var cells := get_parent().get_node_or_null("BlockCells")
+	if on and cells and not f.has("cell"):
+		f["cell"] = cells.cell_of(f["light"])
+	if on and cells and f["cell"] != null and not cells.is_awake(f["cell"]):
+		on = false
 	(f["light"] as Light3D).visible = on
 	if f["sign"]:
 		(f["sign"] as Label3D).modulate.a = 1.0 if on else 0.25

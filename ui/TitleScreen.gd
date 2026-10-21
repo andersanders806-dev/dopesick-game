@@ -17,6 +17,9 @@ var _choosing_view: bool = false
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	get_tree().paused = false
+	# Back from Dead Block (the pause menu's quit, or its game-over screen):
+	# the story's footing again.
+	ZombieMode.leave()
 	var black := ColorRect.new()
 	black.color = Color.BLACK
 	black.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -69,7 +72,8 @@ void fragment() {
 	col.add_child(_buttons)
 	# No Continue: it's a survival run, and every start is a fresh one --
 	# you die, you start over.
-	var first := _button("New run", _on_new_run)
+	var first := _button("New run", _choose_view.bind(_start_run))
+	_button("Zombies", _choose_view.bind(_start_zombies))
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)
@@ -130,10 +134,14 @@ func _label(text: String, size: int, color: Color) -> Label:
 ## New run asks how you want to see it first: through your own eyes, or
 ## the camera up over the room. Back (Esc / circle) returns to the menu.
 func _on_new_run() -> void:
+	_choose_view(_start_run)
+
+## `start` takes whether it's first person.
+func _choose_view(start: Callable) -> void:
 	for b in _buttons.get_children():
 		b.visible = false
-	var fp := _button("First person", _start_run.bind(true))
-	var tp := _button("Third person", _start_run.bind(false))
+	var fp := _button("First person", start.bind(true))
+	var tp := _button("Third person", start.bind(false))
 	var note := _label("Through your own eyes, or from up over the room. Settings can change it later.", 13, Color(0.6, 0.58, 0.54))
 	_buttons.add_child(note)
 	_choosing_view = true
@@ -146,6 +154,12 @@ func _start_run(first_person: bool) -> void:
 	GameState.start_run()
 	_fade_out()
 	get_tree().change_scene_to_file(START_SCENE)
+
+## Dead Block: the block at night, the dead, and rounds (autoload/ZombieMode.gd).
+## Its own save; the story's run is left as it is.
+func _start_zombies(first_person: bool) -> void:
+	_fade_out()
+	ZombieMode.start(first_person)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _choosing_view and event.is_action_pressed("cancel_ui"):

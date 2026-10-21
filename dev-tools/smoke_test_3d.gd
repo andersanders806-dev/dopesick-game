@@ -835,6 +835,7 @@ func _run() -> void:
 	await _one_load_at_a_time_checks()
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
+	await _zombie_shell_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -5255,3 +5256,156 @@ func _surface_mats(gi: GeometryInstance3D) -> Array:
 		for i in mesh.get_surface_count():
 			out.append(mesh.surface_get_material(i))
 	return out
+
+
+# --- Dead Block: the mode shell (autoload/ZombieMode.gd, world/ZombieBlock.gd) ----
+func _story_snapshot(gs: Node) -> String:
+	var d := {}
+	for f in root.get_node("SaveGame").FIELDS:
+		d[f] = gs.get(f)
+	d["wanted"] = gs.wanted
+	d["in_custody"] = gs.in_custody
+	return var_to_str(d)
+
+func _buttons_named(node: Node, text: String) -> Array:
+	return node.find_children("*", "Button", true, false).filter(func(b): return b.text == text)
+
+func _zombie_shell_checks(gs: Node) -> void:
+	await _section("Dead Block: rounds, points, the block, the end -- and the story untouched")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	var sg := root.get_node("SaveGame")
+
+	# Rounds.
+	_check(zm.zombie_health(1) == 150 and zm.zombie_health(9) == 950 and zm.zombie_health(10) == 1045,
+		"  health: 150 at round 1, 950 at 9, 1045 at 10 (%d, %d, %d)" % [zm.zombie_health(1), zm.zombie_health(9), zm.zombie_health(10)])
+	_check(absi(zm.zombie_health(20) - 2710) <= 5, "  health at round 20 is about 2710 (%d)" % zm.zombie_health(20))
+	var counts: Array = [6, 7, 8, 9, 10].map(func(r): return zm.zombies_in_round(r))
+	_check(counts == [27, 28, 28, 29, 33], "  zombies per round 6..10 are 27, 28, 28, 29, 33 (%s)" % [counts])
+	var early: Array = [1, 2, 3, 4, 5].map(func(r): return zm.zombies_in_round(r))
+	var rising := true
+	for i in range(1, early.size()):
+		rising = rising and early[i] > early[i - 1]
+	_check(early[0] == 6 and rising and early[4] < counts[0], "  rounds 1..5 ramp up from 6 and stay under round 6 (%s)" % [early])
+
+	# Points. A run has to be on for earning.
+	zm.begin(false)
+	_check(zm.points == 500 and zm.round == 0, "  a run starts with 500 points")
+	_check(zm.try_spend(500) and zm.points == 0, "  exactly enough buys it, leaving 0")
+	_check(not zm.try_spend(1) and zm.points == 0, "  with 0 points one point is too much, and nothing goes negative")
+	zm.add_points(100, "test")
+	_check(zm.points == 100 and not zm.try_spend(101) and zm.points == 100, "  one short fails and takes nothing")
+	_check(zm.try_spend(100) and zm.points == 0, "  100 buys a 100")
+	zm.double_points = true
+	zm.add_points(60, "kill")
+	_check(zm.points == 120, "  Double Points doubles what a 60 kill pays (%d)" % zm.points)
+	_check(not zm.try_spend(121) and zm.try_spend(120) and zm.points == 0, "  ...but not a price: 120 still buys a 120, 121 does not")
+	zm.double_points = false
+	zm.leave()
+
+	# Starting the mode and dying leave the story exactly as it was.
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	gs.cash = 37
+	var street := await _load("res://world/City3D.tscn")
+	_check(not street.zombie_mode and street.find_child("DoorToBar", true, false) != null, "  the story's block still has its doors")
+	_check(sg.save() and FileAccess.file_exists(sg.PATH), "  a story save exists to compare against")
+	var save_hash := FileAccess.get_sha256(sg.PATH)
+	var before := _story_snapshot(gs)
+	DirAccess.remove_absolute(zm.PATH)
+
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	_check(gs.mode == "zombies" and city.zombie_mode and city.get_node_or_null("ZombieBlock") != null, "  the block loads as the zombie variant")
+	_check(zm.round == 1, "  round 1 has started (%d)" % zm.round)
+	var doors := city.find_children("DoorTo*", "Area3D", true, false)
+	_check(doors.is_empty() and city.find_child("StationDoor", true, false) == null, "  no door leads anywhere (%d left)" % doors.size())
+	_check(city.find_child("Pusher", true, false) == null and city.find_child("Lookout", true, false) == null and city.find_child("Ray", true, false) == null,
+		"  the pusher, lookout and Ray are gone")
+	await _frames(40)
+	var alive := ["pedestrians", "patrol", "collector", "mugger", "postman", "scavenge", "hide_spots"].filter(func(g): return get_nodes_in_group(g).size() > 0)
+	_check(alive.is_empty(), "  no passers-by, cops, collector, post, scavenging or hiding (%s)" % [alive])
+	var life := city.get_node_or_null("StreetLife")
+	_check(life != null and not life.traffic and life._cars.is_empty(), "  no traffic")
+	# Night, dense red fog, a red sky -- whatever the hour was.
+	var env: Environment = city.get_node("WorldEnvironment").environment
+	_check(gs.daylight() == 0.0, "  permanent night (daylight %.2f)" % gs.daylight())
+	_check(env.fog_enabled and env.fog_density >= 0.04, "  dense fog (%.3f)" % env.fog_density)
+	_check(env.background_color.r > env.background_color.b * 2.0 and env.fog_light_color.r > env.fog_light_color.b, "  a red-tinged sky and fog")
+	# Streetlights flicker: some lamp changes its energy over a second or two.
+	var block := city.get_node("ZombieBlock")
+	var lamps: Array = block._flickering.map(func(f): return f[0])
+	var seen := {}
+	for i in 150:
+		await physics_frame
+		for l in lamps:
+			seen[l] = true if seen.has(l) or absf(l.light_energy - block._flickering[lamps.find(l)][1]) > 0.01 else false
+	_check(block.flicker_count >= 3 and seen.values().any(func(v): return v), "  %d streetlights stutter, and some dimmed in 150 frames" % block.flicker_count)
+	# The story's clock does not run.
+	gs.clock_running = true
+	var clock_then: float = gs.clock
+	var craving_then: float = gs.craving
+	await _frames(30)
+	_check(gs.clock == clock_then and gs.craving == craving_then, "  the story's clock and craving stand still")
+	gs.clock_running = false
+	# The HUD.
+	var zhud := get_first_node_in_group("zombie_hud")
+	_check(zhud != null and zhud.round_label.text == "1" and zhud.points_label.text == "500", "  the HUD shows round 1 and 500 points")
+	zm.add_points(70, "neck")
+	_check(zhud.points_label.text == "570", "  ...and follows the points (%s)" % zhud.points_label.text)
+	_check(not (get_first_node_in_group("hud") as CanvasLayer).visible, "  the story's HUD is hidden")
+	# The end.
+	zm.kills = 4
+	zm.headshots = 2
+	zm.game_over()
+	await _frames(2)
+	var screen := root.get_node_or_null("ZombieGameOver")
+	_check(screen != null and paused and zm.over, "  dying shows the game-over screen")
+	zm.game_over()
+	_check(root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")).size() == 1, "  ...once")
+	var text: String = screen.stats_label.text if screen else ""
+	_check(text.contains("Round 1") and text.contains("4 kills, 2 headshots"), "  it shows the round, kills and headshots (%s)" % text.replace("\n", " | "))
+	var cfg := ConfigFile.new()
+	_check(cfg.load(zm.PATH) == OK and cfg.get_value("best", "round", 0) == 1 and cfg.get_value("best", "kills", 0) == 4
+		and cfg.get_value("best", "headshots", 0) == 2, "  the best went to the zombie save")
+	await _frames(40)
+	_check(FileAccess.get_sha256(sg.PATH) == save_hash, "  the story's save file is byte-identical")
+	_check(_story_snapshot(gs) == before, "  the story's GameState is unchanged")
+	# Title: back out through the screen's button.
+	var to_title := _buttons_named(screen, "Title")
+	_check(to_title.size() == 1, "  the screen offers Title")
+	if to_title.size() == 1:
+		to_title[0].pressed.emit()
+	await _frames(15)
+	_check(not paused and not zm.active and gs.mode == "story" and current_scene.scene_file_path.ends_with("TitleScreen.tscn"),
+		"  Title leaves the mode and unpauses")
+	# (Idle on the title, the story's own clock runs again, as it always did.)
+	_check(FileAccess.get_sha256(sg.PATH) == save_hash, "  ...with the story's save still as it was")
+
+	# The title screen's entry, with its view choice.
+	var title := current_scene
+	var entry := _buttons_named(title, "Zombies")
+	_check(entry.size() == 1, "  the title screen has a Zombies button")
+	if entry.size() == 1:
+		entry[0].pressed.emit()
+		await _frames(2)
+		var fp := _buttons_named(title, "First person")
+		_check(not _buttons_named(title, "Third person").is_empty() and fp.size() == 1, "  it asks first person or third")
+		if fp.size() == 1:
+			fp[0].pressed.emit()
+			while root.get_node("SceneLoader").busy():
+				await process_frame
+			await _frames(15)
+			_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
+				"  First person starts the run on the zombie block")
+			zm.game_over()
+			await _frames(2)
+	for s in root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")):
+		s.queue_free()
+	paused = false
+	zm.leave()
+	DirAccess.remove_absolute(zm.PATH)
+	root.get_node("Graphics").set_first_person(false)
+	gs.start_run()

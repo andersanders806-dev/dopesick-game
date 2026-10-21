@@ -40,6 +40,9 @@ func has_save() -> bool:
 	return FileAccess.file_exists(PATH)
 
 func save() -> bool:
+	# The zombie mode (autoload/ZombieMode.gd) has a save of its own.
+	if GameState.mode != "story":
+		return false
 	if GameState.wanted or GameState.in_custody:
 		return false
 	var scene := get_tree().current_scene

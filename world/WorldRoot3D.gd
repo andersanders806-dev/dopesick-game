@@ -20,7 +20,8 @@ func _ready() -> void:
 	var spawn_marker := _place_player_at_spawn()
 	_restore_saved_position()
 	_maybe_continue_chase(spawn_marker)
-	Jobs.decorate(self)
+	if GameState.mode == "story":
+		Jobs.decorate(self)
 	preload("res://world/PlaceAmbience.gd").apply(self)
 	# Autosave on arrival, once the room has settled.
 	SaveGame.save.call_deferred()
@@ -116,7 +117,7 @@ func _restore_saved_position() -> void:
 ## its own. Spawn a fresh one beside wherever the player just walked in, as
 ## long as they're still wanted, so the chase follows them room to room.
 func _maybe_continue_chase(spawn_marker: Marker3D) -> void:
-	if not GameState.wanted or GameState.in_custody:
+	if GameState.mode != "story" or not GameState.wanted or GameState.in_custody:
 		return
 	if get_tree().get_first_node_in_group("police") != null:
 		return

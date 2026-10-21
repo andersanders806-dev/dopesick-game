@@ -1,0 +1,208 @@
+extends Node
+## Dead Block: the zombie mode's own state. Rounds, points, the run's
+## stats and its best, kept in user://zombies.cfg. It never reads or writes
+## the story: not the save (SaveGame refuses while GameState.mode isn't
+## "story"), not GameState's run fields (its clock and meters stand still
+## in this mode), not progress.cfg.
+##
+## begin() sets a run up; start() does that and loads the block. The block
+## (world/ZombieBlock.gd) starts round 1; later tasks' spawner ends each
+## round with advance_round() once the last zombie is down. game_over() ends
+## the run from anywhere (the downed player, tests) and shows the screen.
+
+signal round_started(r: int)
+signal round_ended(r: int)
+## `amount` is what was earned (negative for a purchase).
+signal points_changed(total: int, amount: int, reason: String)
+signal game_over_started(summary: Dictionary)
+
+const CITY_SCENE := "res://world/City3D.tscn"
+const TITLE_SCENE := "res://ui/TitleScreen.tscn"
+const REAL_PATH := "user://zombies.cfg"
+## Tests and bots (Engine meta "sandbox") keep a file of their own.
+const SANDBOX_PATH := "user://zombies_sandbox.cfg"
+var PATH: String:
+	get: return SANDBOX_PATH if Engine.get_meta("sandbox", false) else REAL_PATH
+
+const START_POINTS := 500
+## Alive at once; the rest of a round waits in reserve (UHD 620 budget).
+const MAX_ALIVE := 20
+## What a round's zombies come to before round 6, which the formula takes
+## over from. A gentle ramp, tuned by playtest.
+const EARLY_ROUNDS := [6, 8, 13, 18, 24]
+## What things pay.
+const POINTS_HIT := 10
+const POINTS_KILL_BODY := 60
+const POINTS_KILL_NECK := 70
+const POINTS_KILL_HEAD := 100
+const POINTS_KILL_MELEE := 130
+const POINTS_BOARD := 10
+
+## Whether a zombie run is on (begin() .. leave()).
+var active := false
+var over := false
+var round: int = 0
+var points: int = START_POINTS
+var kills := 0
+var headshots := 0
+## Seconds played this run.
+var run_time := 0.0
+## Power-up state (Double Points doubles what you earn, never a price).
+var double_points := false
+var insta_kill := false
+
+var best_round := 0
+var best_kills := 0
+var best_headshots := 0
+var best_time := 0.0
+## Whether this run beat the saved best round (the screen says so).
+var new_best := false
+
+func _ready() -> void:
+	load_best()
+
+func _process(delta: float) -> void:
+	if active and not over and not get_tree().paused:
+		run_time += delta
+
+# --- The run -------------------------------------------------------------------
+
+## Sets a run up without changing scene (tests load the block themselves).
+func begin(first_person: bool) -> void:
+	_reset()
+	active = true
+	GameState.mode = "zombies"
+	Graphics.set_first_person(first_person)
+
+## begin(), then the block.
+func start(first_person: bool) -> void:
+	begin(first_person)
+	SceneLoader.go(CITY_SCENE)
+
+## Another go, in the view you had.
+func restart() -> void:
+	start(Graphics.first_person)
+
+## Out of the mode, back to the story's footing. Quitting mid-run counts.
+func leave() -> void:
+	if active and not over:
+		save_best()
+	active = false
+	over = false
+	double_points = false
+	insta_kill = false
+	GameState.mode = "story"
+
+func _reset() -> void:
+	over = false
+	new_best = false
+	round = 0
+	points = START_POINTS
+	kills = 0
+	headshots = 0
+	run_time = 0.0
+	double_points = false
+	insta_kill = false
+
+# --- Rounds --------------------------------------------------------------------
+
+## Starts the next round (the first, from the block).
+func start_round() -> void:
+	if not active or over:
+		return
+	round += 1
+	round_started.emit(round)
+
+## The last zombie of the round is down: the round ends, the next begins.
+func advance_round() -> void:
+	if not active or over:
+		return
+	round_ended.emit(round)
+	start_round()
+
+## 150 at round 1, +100 a round to 950 at round 9, then x1.1 a round.
+func zombie_health(r: int) -> int:
+	r = maxi(r, 1)
+	if r <= 9:
+		return 150 + (r - 1) * 100
+	return roundi(950.0 * pow(1.1, r - 9))
+
+## How many come in round `r` (solo).
+func zombies_in_round(r: int) -> int:
+	r = maxi(r, 1)
+	if r <= EARLY_ROUNDS.size():
+		return EARLY_ROUNDS[r - 1]
+	var mult := maxf(1.0, r / 5.0)
+	if r >= 10:
+		mult *= r * 0.15
+	return 24 + int(0.5 * 6.0 * mult)
+
+# --- Points --------------------------------------------------------------------
+
+## Earnings, doubled under Double Points. Never negative: buying goes
+## through try_spend().
+func add_points(n: int, reason: String) -> void:
+	if not active or n <= 0:
+		return
+	if double_points:
+		n *= 2
+	points += n
+	points_changed.emit(points, n, reason)
+
+## Pays `cost` if you have it (exactly enough is enough); otherwise nothing
+## happens. Prices don't change under any power-up.
+func try_spend(cost: int) -> bool:
+	if cost < 0 or cost > points:
+		return false
+	points -= cost
+	if cost > 0:
+		points_changed.emit(points, -cost, "spent")
+	return true
+
+## A zombie down, for the stats (the points come from add_points()).
+func record_kill(headshot := false) -> void:
+	kills += 1
+	if headshot:
+		headshots += 1
+
+# --- The end -------------------------------------------------------------------
+
+func summary() -> Dictionary:
+	return {"round": round, "kills": kills, "headshots": headshots, "time": run_time,
+		"best_round": best_round, "new_best": new_best}
+
+## The run is over: save the best and show the screen. Once per run.
+func game_over() -> void:
+	if not active or over:
+		return
+	over = true
+	new_best = round > best_round
+	save_best()
+	var s := summary()
+	game_over_started.emit(s)
+	var screen := preload("res://ui/ZombieGameOver.gd").new()
+	screen.name = "ZombieGameOver"
+	get_tree().root.add_child(screen)
+	screen.show_summary(s)
+
+func load_best() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(PATH) != OK:
+		return
+	best_round = int(cfg.get_value("best", "round", 0))
+	best_kills = int(cfg.get_value("best", "kills", 0))
+	best_headshots = int(cfg.get_value("best", "headshots", 0))
+	best_time = float(cfg.get_value("best", "time", 0.0))
+
+## Writes the best of each stat, this run's against what's on file.
+func save_best() -> void:
+	best_round = maxi(best_round, round)
+	best_kills = maxi(best_kills, kills)
+	best_headshots = maxi(best_headshots, headshots)
+	best_time = maxf(best_time, run_time)
+	var cfg := ConfigFile.new()
+	cfg.set_value("best", "round", best_round)
+	cfg.set_value("best", "kills", best_kills)
+	cfg.set_value("best", "headshots", best_headshots)
+	cfg.set_value("best", "time", best_time)
+	cfg.save(PATH)

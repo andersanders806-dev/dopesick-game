@@ -164,6 +164,10 @@ var craving: float = 45.0
 ## withdrawal's slowdown and screen effects.
 var no_sickness: bool = "--no-sick" in OS.get_cmdline_user_args()
 var wanted: bool = false
+## "story" (the run) or "zombies" (Dead Block, autoload/ZombieMode.gd). Not
+## in SaveGame.FIELDS: the zombie mode never touches the story's fields, so
+## while it's on the clock, craving and the rest stand still.
+var mode: String = "story"
 var day: int = 1
 ## Minutes since midnight. Crossing midnight starts the next day.
 var clock: float = WAKE_MINUTE
@@ -364,6 +368,7 @@ func _ready() -> void:
 ## Wipes the per-run state and applies whatever the meta upgrades grant at
 ## the start of a run. Called once at boot and again after each run ends.
 func start_run() -> void:
+	mode = "story"
 	MetaProgress.new_run()
 	cash = MetaProgress.starting_cash()
 	inventory.clear()
@@ -458,6 +463,8 @@ func max_strikes() -> int:
 	return STRIKES_PER_RUN + MetaProgress.extra_strikes()
 
 func _process(delta: float) -> void:
+	if mode == "zombies":
+		return
 	run_time += delta
 	if clock_running:
 		advance_clock(MINUTES_PER_SEC * delta)
@@ -483,12 +490,19 @@ func current_craving_decay() -> float:
 const SICKNESS_ONSET := 35.0
 
 func sickness() -> float:
+	if mode == "zombies":
+		return 0.0
 	return clampf(1.0 - craving / SICKNESS_ONSET, 0.0, 1.0)
 
 ## The pusher charges more each day too -- it takes more to get the same
 ## relief, so standing still gets more expensive.
 func current_fix_cost() -> int:
 	return FIX_COST_BASE + (day - 1) * FIX_COST_INCREASE_PER_DAY
+
+## Whether withdrawal has you at or below `threshold` (never, in the zombie
+## mode: the story's meter stands still there).
+func withdrawn(threshold: float) -> bool:
+	return mode != "zombies" and craving <= threshold
 
 ## The cheapest thing on the street that would actually stop the sickness --
 ## what you need on you before it's worth walking down to the pusher.
@@ -614,6 +628,8 @@ func pusher_on_shift() -> bool:
 ## 0 at night, 1 in full daylight, easing through dawn (5-8) and dusk
 ## (18-21). Drives the City's sky, sun, and streetlights.
 func daylight() -> float:
+	if mode == "zombies":
+		return 0.0
 	var h := hour()
 	if h < 5.0 or h >= 21.0:
 		return 0.0

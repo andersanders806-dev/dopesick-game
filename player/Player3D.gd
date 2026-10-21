@@ -232,7 +232,7 @@ func _update_camera_shake(delta: float) -> void:
 
 ## Doubled over by a cramp: rooted for a moment, with a groan.
 func _update_cramps(delta: float) -> void:
-	if GameState.craving > SICK_THRESHOLD:
+	if not GameState.withdrawn(SICK_THRESHOLD):
 		_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
 		return
 	_cramp_timer -= delta
@@ -295,7 +295,7 @@ func _physics_process(delta: float) -> void:
 		dir = dir.rotated(Vector3.UP, _look_yaw)
 
 	var speed := BASE_SPEED
-	var sick := GameState.craving <= SICK_THRESHOLD
+	var sick := GameState.withdrawn(SICK_THRESHOLD)
 	var hurt := GameState.is_hurt()
 	# Hold Shift, or click L3 once and keep going, like COD: a pad sprint
 	# lasts until you let the stick go.
@@ -428,7 +428,7 @@ func play_pickup(target_pos: Vector3) -> float:
 		_facing_angle = atan2(to_target.x, to_target.z)
 		model.rotation.y = _facing_angle
 	var duration := MetaProgress.pickup_duration(PICKUP_DURATION)
-	if GameState.craving <= SICK_THRESHOLD:
+	if GameState.withdrawn(SICK_THRESHOLD):
 		duration *= 1.0 + TREMOR_GRAB_MULT * GameState.sickness()
 	_busy_timer = anim.play_once_timed("pick-up", duration)
 	return _busy_timer

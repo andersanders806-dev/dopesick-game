@@ -99,6 +99,8 @@ const POSTMAN_LEAD := 20.0
 ## A Silk Lane order coming today: the postman walks it to your mailbox
 ## while you're out here; whenever it's due, it's posted, seen or not.
 func _check_post() -> void:
+	if zombie_mode:
+		return
 	var p: Dictionary = GameState.parcel
 	if p.is_empty() or not p.has("arrive_at") or p.get("posted", false) or p.get("fate", "") != "ok":
 		return
@@ -168,20 +170,30 @@ const VENDING_POS := Vector3(-19.25, 0.0, -3.95)
 ## How long _ready took (load behind the door's fade; the smoke test reads it).
 var ready_ms := 0
 
+## Dead Block (autoload/ZombieMode.gd): the same block with the story taken
+## out -- no shops' doors, no people, no traffic, no clock -- and
+## world/ZombieBlock.gd laid over it. Read once, on arrival.
+var zombie_mode := false
+const ZombieBlockScript := preload("res://world/ZombieBlock.gd")
+
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
-	# The navmesh was baked round these two too (CityKit.bake_navigation).
-	var vending := StaticBody3D.new()
-	vending.set_script(VendingScript)
-	add_child(vending)
-	vending.position = VENDING_POS
-	var mailbox := StaticBody3D.new()
-	mailbox.set_script(MailboxScript)
-	add_child(mailbox)
-	mailbox.position = MAILBOX_POS
+	zombie_mode = GameState.mode == "zombies"
+	# The navmesh was baked round these two too (CityKit.bake_navigation);
+	# they're the story's, so the zombie block goes without.
+	if not zombie_mode:
+		var vending := StaticBody3D.new()
+		vending.set_script(VendingScript)
+		add_child(vending)
+		vending.position = VENDING_POS
+		var mailbox := StaticBody3D.new()
+		mailbox.set_script(MailboxScript)
+		add_child(mailbox)
+		mailbox.position = MAILBOX_POS
 	super._ready()
-	_add_scavenge_spots()
-	_check_post()
+	if not zombie_mode:
+		_add_scavenge_spots()
+		_check_post()
 	# The Environment is a sub-resource of the cached PackedScene; blending a
 	# shared copy would leak today's daylight into the next visit's "night"
 	# baseline.
@@ -225,11 +237,16 @@ func _ready() -> void:
 	_apply_daylight()
 	var life: Node3D = preload("res://world/StreetLife.gd").new()
 	life.name = "StreetLife"
+	life.traffic = not zombie_mode
 	for n in ["Manhole1", "Manhole2"]:
 		var m := find_child(n, true, false) as Node3D
 		if m:
 			life.steam_points.append(m.global_position + Vector3(0, 0.1, 0))
 	add_child(life)
+	if zombie_mode:
+		_finish_zombie_block()
+		ready_ms = Time.get_ticks_msec() - t0
+		return
 	_warm_looks()
 	var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
 	atmosphere.name = "Atmosphere"
@@ -269,6 +286,21 @@ func _ready() -> void:
 		(body as MeshInstance3D).material_override = mat
 	_mute_parked_cars()
 	ready_ms = Time.get_ticks_msec() - t0
+
+## The rest of what the street needs in the zombie mode: the parked cars'
+## paint, then the variant itself (world/ZombieBlock.gd).
+func _finish_zombie_block() -> void:
+	for body in get_tree().get_nodes_in_group("car_bodies"):
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = CAR_COLORS.pick_random()
+		mat.metallic = 0.4
+		mat.roughness = 0.35
+		(body as MeshInstance3D).material_override = mat
+	_mute_parked_cars()
+	var block := ZombieBlockScript.new()
+	block.name = "ZombieBlock"
+	add_child(block)
+	block.setup(self)
 
 ## Parked cars in old, dull paint: Kenney's are toy-bright. The builder
 ## meant to do this, but changes to nodes inside an instanced model don't
@@ -358,6 +390,8 @@ func _on_hide_spot(_zone: Area3D, player: Node) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if zombie_mode:
+		return
 	_update_collector(delta)
 	_update_pedestrians(delta)
 	_update_patrol(delta)
@@ -495,7 +529,7 @@ const MuggerScript := preload("res://npc/Mugger3D.gd")
 var _last_hour := -1
 
 func _maybe_mugger() -> void:
-	if not Survival.enabled or GameState.wanted or GameState.in_custody:
+	if zombie_mode or not Survival.enabled or GameState.wanted or GameState.in_custody:
 		return
 	if not GameState.hours_contain(MUGGER_HOURS, GameState.hour()):
 		return

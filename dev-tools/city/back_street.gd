@@ -31,10 +31,10 @@ static func build(b: Node, _root: Node3D) -> void:
 	for i in 2:
 		b._streetlight("StreetlightBackS%d" % (i + 1), [-46.0, 50.0][i], -87.7, 40 + i, c, 180.0)
 	# Parked both sides; nobody moves their car on Back Street.
-	var north := [[-63.0, "sedan"], [-44.0, "covered"], [-24.0, "suv"], [7.0, "hatchback-sports"], [24.5, "sedan"], [43.0, "van"]]
+	var north := [[-63.0, "sedan_generic"], [-44.0, "covered"], [-24.0, "suv_generic"], [7.0, "hatch_generic"], [24.5, "wagon_generic"], [43.0, "van_shvan92"]]
 	for i in north.size():
 		b._car("CarBackN%d" % (i + 1), Vector3(north[i][0], 0, -93.0), true, north[i][1], c)
-	var south := [[-54.0, "covered"], [-14.0, "sedan-sports"], [36.0, "suv"]]
+	var south := [[-54.0, "covered"], [-14.0, "minivan_generic"], [36.0, "suv_generic"]]
 	for i in south.size():
 		b._car("CarBackS%d" % (i + 1), Vector3(south[i][0], 0, -89.0), false, south[i][1], c)
 	# Under the overpass the north side's just a fenced-off patch of weeds.

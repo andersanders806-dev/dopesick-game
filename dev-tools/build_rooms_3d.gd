@@ -17,8 +17,6 @@ extends Node
 ##   InteractZone mask.
 
 const KENNEY := "res://assets/kenney/"
-## Matches world/StreetLife.gd's CAR_SCALE, so parked and passing cars agree.
-const KENNEY_CAR_SCALE := 1.6
 ## Height of old_bed_frame's spring deck (the mattress sits on it).
 const BED_DECK_Y := 0.42
 const WALL_H := 2.4
@@ -2078,6 +2076,7 @@ const CityMainExt := preload("res://dev-tools/city/main_street_ext.gd")
 const CityAvenues := preload("res://dev-tools/city/avenues.gd")
 const CityBackStreet := preload("res://dev-tools/city/back_street.gd")
 const CityInner := preload("res://dev-tools/city/inner.gd")
+const CarPaint := preload("res://world/CarPaint.gd")
 
 ## `yaw` turns the lamp to hang over a road that isn't Main Street's.
 func _streetlight(name: String, x: float, z: float, index: int, parent: Node = null, yaw := 0.0) -> void:
@@ -2097,10 +2096,10 @@ func _streetlight(name: String, x: float, z: float, index: int, parent: Node = n
 	var buzz := _sound(sl, "Buzz", "bulb_buzz_loop.wav", Vector3(0, 3.2, 0), -28.0, 1.5, 8.0)
 	buzz.pitch_scale = 0.88 + 0.04 * index  # detuned so neighbouring lamps don't phase
 
-## A parked car: Poly Haven's covered car (realistic, under a tarp), or a
-## Kenney car in muted paint -- realistic CC0 cars with open downloads
-## don't exist. The collision box is the old one's.
-func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan", parent: Node = null, yaw := 0.0) -> void:
+## A parked car: Poly Haven's covered car (under a tarp), or one of
+## assets/cars/ (real-world size, nose to +X; "sedan_generic", "van_shvan92",
+## "wreck_burnt_b"...). The collision box is the model's, minus mirrors.
+func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan_generic", parent: Node = null, yaw := 0.0) -> void:
 	var car := StaticBody3D.new()
 	car.name = name
 	_add(parent if parent else _root, car)
@@ -2108,11 +2107,14 @@ func _car(name: String, pos: Vector3, facing_left := false, kind := "sedan", par
 	car.rotation_degrees.y = yaw + (180.0 if facing_left else 0.0)
 	if kind == "covered":
 		_ph(car, "Model", "covered_car", Vector3.ZERO, 1.0, 90.0)
+		_collision(car, _box_shape(Vector3(3.8, 1.4, 1.7)), Vector3(0, 0.7, 0))
 	else:
-		# Toy-bright paint: City3D._mute_parked_cars() dulls it at load
-		# (changes to nodes inside an instanced model don't save here).
-		_model(car, "Model", "cars/%s.glb" % kind, Vector3(0, 0.3 * KENNEY_CAR_SCALE, 0), KENNEY_CAR_SCALE, 90.0)
-	_collision(car, _box_shape(Vector3(3.8, 1.4, 1.7)), Vector3(0, 0.7, 0))
+		# Out of the box they're clean and loud: City3D._paint_parked_cars()
+		# repaints them at load (changes to nodes inside an instanced model
+		# don't save here).
+		var model: Node3D = _instance(car, "Model", load("res://assets/cars/%s.glb" % kind))
+		var box: AABB = CarPaint.bounds(model)
+		_collision(car, _box_shape(Vector3(box.size.x, box.size.y, box.size.z - 0.2)), Vector3(0, box.size.y / 2.0, 0))
 
 func _build_city() -> Node3D:
 	_new_root("City3D", "res://world/City3D.gd")
@@ -2234,7 +2236,7 @@ func _build_city() -> Node3D:
 			_door(f["door"], Vector3(x, 0, street_z + 0.45), Vector3.BACK, f["scene"], "SpawnFromCity")
 		_marker(f["spawn"], Vector3(x, 0, street_z + 1.5))
 	# A police cruiser parked out front of the station.
-	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6), false, "police", main)
+	_car("PoliceCruiser", Vector3(-24.0, 0, 2.6), false, "police_crownvic", main)
 
 	# The two alleys at x = 14 and x = 21: the pusher's stash and his
 	# hiding spot. They run through to the service lane behind the shops
@@ -2262,7 +2264,7 @@ func _build_city() -> Node3D:
 		_streetlight("Streetlight%d" % (i + 1), light_xs[i], street_z + 2.7, i, main)
 
 	_car("CarA", Vector3(-12.0, 0, 2.6), false, "covered", main)
-	_car("CarB", Vector3(5.5, 0, 2.6), false, "sedan", main)
+	_car("CarB", Vector3(5.5, 0, 2.6), false, "wagon_generic", main)
 	_car("CarC", Vector3(20.0, 0, 2.8), true, "covered", main)
 
 	var hydrant := StaticBody3D.new()

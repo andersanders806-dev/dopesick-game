@@ -1,9 +1,10 @@
 extends Node3D
 ## Things that move on the block so it doesn't look like a photograph:
 ##
-## - Traffic: cars (Kenney Car Kit, CC0) running the one-way lane between the
-##   curb and the parked cars, more by day. Headlights and tail-lights at
-##   night. They stop for you and lean on the horn.
+## - Traffic: cars (assets/cars/, CC BY: sedans, hatches, wagons, taxis, the
+##   odd cruiser) running the one-way lane between the curb and the parked
+##   cars, more by day, wheels turning. Headlights and tail-lights at night.
+##   They stop for you and lean on the horn.
 ## - Steam coming up out of the manholes.
 ## - Rain (GameState.raining): streaks around the camera, a rain loop, the
 ##   road and sidewalk going wet and shiny, and a darker, greyer sky.
@@ -12,11 +13,15 @@ extends Node3D
 ## Added by City3D.gd (and Backyard3D.gd for the rain). Everything here is
 ## cheap enough for the Low preset: no shadows, small particle counts.
 
-## Kenney Car Kit (CC0). The box truck and garbage truck went: a head
-## taller than the rest, they filled the screen passing under the camera.
-## The kit's sports sedan and luxury SUV took their places.
-const CARS := ["sedan", "taxi", "van", "suv", "hatchback-sports", "sedan-sports", "police", "suv-luxury"]
-const CAR_SCALE := 1.6
+const CarPaint := preload("res://world/CarPaint.gd")
+
+## What drives by (assets/cars/<name>.glb) and how often. The box truck and
+## garbage truck went: a head taller than the rest, they filled the screen
+## passing under the camera. The cruiser is rare.
+const CARS := {
+	"sedan_generic": 4, "hatch_generic": 3, "wagon_generic": 3, "minivan_generic": 2,
+	"suv_generic": 3, "van_shvan92": 2, "taxi_crownvic": 3, "police_crownvic": 1,
+}
 const LANE_Z := 0.35
 ## Roadworks in the driving lane (x from, x to; dev-tools/city/
 ## main_street_ext.gd builds them): cars swing out into the parking lane,
@@ -106,33 +111,38 @@ func _update_traffic(delta: float) -> void:
 			car.set_meta("honked", false)
 			car.position.x += speed * delta
 			car.position.z = lane_z_at(car.position.x)
+			_spin_wheels(car, speed * delta)
 		if car.position.x > STREET_END:
 			_cars.erase(car)
 			car.queue_free()
 
-## Kenney's cars are toy-bright; on this street they're older, dirtier and
-## mostly grey. (Realistic CC0 cars with open downloads don't exist.)
-func _mute_paint(model: Node) -> void:
-	for mi in model.find_children("*", "MeshInstance3D", true, false):
-		var base := (mi as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
-		if base == null:
-			continue
-		var muted := base.duplicate() as StandardMaterial3D
-		# The paint is in Kenney's palette texture: a grey multiply darkens
-		# and dulls it.
-		muted.albedo_color = muted.albedo_color * Color(0.55, 0.55, 0.58)
-		muted.roughness = maxf(muted.roughness, 0.55)
-		(mi as MeshInstance3D).set_surface_override_material(0, muted)
+static func _pick_car() -> String:
+	var total := 0
+	for weight in CARS.values():
+		total += weight
+	var roll := randi() % total
+	for kind in CARS:
+		roll -= CARS[kind]
+		if roll < 0:
+			return kind
+	return CARS.keys()[0]
+
+## The wheels roll as far as the car moved: about their axle, z in the model.
+func _spin_wheels(car: Node3D, dist: float) -> void:
+	var radius: float = car.get_meta("wheel_radius")
+	for w in car.get_meta("wheels"):
+		(w as Node3D).rotate_object_local(Vector3.BACK, -dist / radius)
 
 func _spawn_car(x: float) -> void:
 	var car := Node3D.new()
 	car.name = "TrafficCar"
-	var model: Node3D = load("res://assets/kenney/cars/%s.glb" % CARS.pick_random()).instantiate()
-	model.scale = Vector3.ONE * CAR_SCALE
-	model.position.y = 0.3 * CAR_SCALE
-	model.rotation_degrees.y = 90.0
-	_mute_paint(model)
+	var model: Node3D = load("res://assets/cars/%s.glb" % _pick_car()).instantiate()
+	CarPaint.dress(model, -1, false)
 	car.add_child(model)
+	var box := CarPaint.bounds(model)
+	var wheels := CarPaint.wheels(model)
+	car.set_meta("wheels", wheels)
+	car.set_meta("wheel_radius", (wheels[0] as MeshInstance3D).get_aabb().size.y * 0.5 if not wheels.is_empty() else 0.32)
 	add_child(car)
 	car.position = Vector3(x, 0, lane_z_at(x))
 	car.reset_physics_interpolation()
@@ -160,7 +170,7 @@ func _spawn_car(x: float) -> void:
 		beam.spot_range = 12.0
 		beam.spot_angle = 32.0
 		beam.shadow_enabled = false
-		beam.position = Vector3(2.0, 0.8, 0)
+		beam.position = Vector3(box.end.x - 0.2, box.size.y * 0.42, 0)
 		beam.rotation_degrees = Vector3(-8, -90, 0)
 		car.add_child(beam)
 		var glow := StandardMaterial3D.new()
@@ -171,9 +181,11 @@ func _spawn_car(x: float) -> void:
 		var tail := glow.duplicate() as StandardMaterial3D
 		tail.albedo_color = Color(1.0, 0.1, 0.05)
 		tail.emission = Color(1.0, 0.1, 0.05)
-		for side in [-0.55, 0.55]:
-			_lamp(car, Vector3(2.05, 0.75, side), glow)
-			_lamp(car, Vector3(-2.05, 0.8, side), tail)
+		# At the car's own ends and width, not a fixed spot: the van and the
+		# cruiser are a metre longer than the hatch.
+		for side in [-0.31, 0.31]:
+			_lamp(car, Vector3(box.end.x - 0.03, box.size.y * 0.4, box.size.z * side), glow)
+			_lamp(car, Vector3(box.position.x + 0.03, box.size.y * 0.45, box.size.z * side), tail)
 	_cars.append(car)
 
 func _lamp(car: Node3D, pos: Vector3, mat: Material) -> void:
@@ -286,6 +298,7 @@ func _build_rain() -> void:
 func _on_weather_changed(raining: bool) -> void:
 	if _rain:
 		_rain.emitting = raining
+	CarPaint.set_wet(raining)
 	if raining and not _rain_sound.playing:
 		_rain_sound.play()
 	elif not raining:

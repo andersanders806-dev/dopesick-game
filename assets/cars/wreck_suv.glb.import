@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://sykw8svhs5cl"
-path="res://.godot/imported/hatchback-sports.glb-b27ed15278d25ce3b311381a93b946ae.scn"
+uid="uid://b8sinhmo3qifx"
+path="res://.godot/imported/wreck_suv.glb-7d8e431d43b92ed74a9f21db7d54b1dc.scn"
 
 [deps]
 
-source_file="res://assets/kenney/cars/hatchback-sports.glb"
-dest_files=["res://.godot/imported/hatchback-sports.glb-b27ed15278d25ce3b311381a93b946ae.scn"]
+source_file="res://assets/cars/wreck_suv.glb"
+dest_files=["res://.godot/imported/wreck_suv.glb-7d8e431d43b92ed74a9f21db7d54b1dc.scn"]
 
 [params]
 

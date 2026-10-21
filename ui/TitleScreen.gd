@@ -197,6 +197,8 @@ const CREDITS := """Made with Godot 4.
 
 People: Microsoft Rocketbox avatars (MIT).
 Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits and sounds (CC0).
+Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel Zhabotinsky -- Shvan '92;
+Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.
 Music: OpenGameArt -- omfgdude, Nostromo, Of Far Different Nature (CC-BY), Tsorthan Grove,
 Centurion_of_war, Eldritch Grim (CC0). Room tone: CC0 field recordings.

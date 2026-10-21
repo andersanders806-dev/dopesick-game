@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://be6vhcscdbxqa"
-path="res://.godot/imported/van.glb-0a1a2c5f66bc890ee63e838e0018d6f6.scn"
+uid="uid://bjt5bbde2fx8p"
+path="res://.godot/imported/hatch_generic.glb-36f0eec634e9f287af9fecdd5320e7a7.scn"
 
 [deps]
 
-source_file="res://assets/kenney/cars/van.glb"
-dest_files=["res://.godot/imported/van.glb-0a1a2c5f66bc890ee63e838e0018d6f6.scn"]
+source_file="res://assets/cars/hatch_generic.glb"
+dest_files=["res://.godot/imported/hatch_generic.glb-36f0eec634e9f287af9fecdd5320e7a7.scn"]
 
 [params]
 

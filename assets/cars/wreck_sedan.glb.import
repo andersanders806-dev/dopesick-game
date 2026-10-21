@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ctkphahanbnek"
-path="res://.godot/imported/suv.glb-f8e925e21d18f357cbdc2d0eee5f472d.scn"
+uid="uid://m88w4j4pakju"
+path="res://.godot/imported/wreck_sedan.glb-1f405763e9e3ea47078443d43f04bf66.scn"
 
 [deps]
 
-source_file="res://assets/kenney/cars/suv.glb"
-dest_files=["res://.godot/imported/suv.glb-f8e925e21d18f357cbdc2d0eee5f472d.scn"]
+source_file="res://assets/cars/wreck_sedan.glb"
+dest_files=["res://.godot/imported/wreck_sedan.glb-1f405763e9e3ea47078443d43f04bf66.scn"]
 
 [params]
 

@@ -15,6 +15,7 @@ extends RefCounted
 ##   East Ave has one gap.
 
 const Kit := preload("res://dev-tools/city/kit.gd")
+const CarPaint := preload("res://world/CarPaint.gd")
 
 static func build(b: Node, _root: Node3D) -> void:
 	var c := Kit.cell(b, "Cell_Inner")
@@ -260,15 +261,15 @@ static func _lot(b: Node, c: Node3D) -> void:
 	(box.get_node("Mesh") as MeshInstance3D).material_override = _rust(b, Color(0.52, 0.27, 0.17))
 	var box2: StaticBody3D = b._solid(c, "Container2", Vector3(6.06, 2.59, 2.44), Vector3(41.0, 1.295, -58.0), Kit.mat(b, "corrugated"))
 	(box2.get_node("Mesh") as MeshInstance3D).material_override = _rust(b, Color(0.22, 0.3, 0.38))
-	# A burnt-out car: Kenney's sedan, blackened, on its rims.
+	# A burnt-out car (assets/cars/wreck_burnt_b.glb, a scan of the real thing).
 	var wreck := StaticBody3D.new()
 	wreck.name = "CarLotWreck"
 	b._add(c, wreck)
 	wreck.position = Vector3(50.5, 0, -44.0)
 	wreck.rotation_degrees.y = 30.0
-	Kit.copy_model(b, wreck, "Model", "res://assets/kenney/cars/sedan.glb",
-		Transform3D(Basis(Vector3.UP, PI / 2.0).scaled(Vector3.ONE * 1.6), Vector3(0, 0.3, 0)), b._color_mat(Color(0.08, 0.07, 0.065), 0.95))
-	b._collision(wreck, b._box_shape(Vector3(3.8, 1.2, 1.7)), Vector3(0, 0.6, 0))
+	var wreck_model: Node3D = b._instance(wreck, "Model", load("res://assets/cars/wreck_burnt_b.glb"))
+	var wreck_box: AABB = CarPaint.bounds(wreck_model)
+	b._collision(wreck, b._box_shape(Vector3(wreck_box.size.x, wreck_box.size.y, wreck_box.size.z - 0.2)), Vector3(0, wreck_box.size.y / 2.0, 0))
 	for i in 4:
 		b._ph(c, "LotTyre%d" % i, "old_tyre", Vector3(39.0 + (i % 2) * 0.5, 0.3 + (i / 2) * 0.25, -70.0 + (i % 2) * 0.3), 1.0, i * 40.0)
 	b._ph(c, "LotCrate1", "wooden_crate_01", Vector3(53.2, 0, -66.0), 1.0, 20.0)

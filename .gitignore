@@ -19,3 +19,8 @@ assets/rocketbox/*.png
 assets/rocketbox/*.jpg.import
 assets/rocketbox/*.png.import
 
+# Same for the car models (assets/cars/*.glb).
+assets/cars/*.jpg
+assets/cars/*.png
+assets/cars/*.jpg.import
+assets/cars/*.png.import

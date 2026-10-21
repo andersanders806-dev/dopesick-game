@@ -836,6 +836,7 @@ func _run() -> void:
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
 	await _zombie_shell_checks(gs)
+	await _car_checks(gs)
 	gs.start_run()
 
 func _day_night_checks(gs: Node) -> void:
@@ -2131,14 +2132,8 @@ func _street_life_checks(gs: Node) -> void:
 	# and filled the screen going under the camera; traffic is cars now.
 	var heights := []
 	for kind in life.CARS:
-		var m: Node3D = load("res://assets/kenney/cars/%s.glb" % kind).instantiate()
-		m.scale = Vector3.ONE * life.CAR_SCALE
-		m.position = Vector3(0, 0.3 * life.CAR_SCALE - 50.0, 0)
-		life.add_child(m)
-		var top := -INF
-		for mi in m.find_children("*", "MeshInstance3D", true, false):
-			top = maxf(top, ((mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()).end.y)
-		heights.append([kind, top + 50.0])
+		var m: Node3D = load("res://assets/cars/%s.glb" % kind).instantiate()
+		heights.append([kind, life.CarPaint.bounds(m).size.y])
 		m.free()
 	_check(life.CARS.size() >= 8 and heights.all(func(h): return h[1] <= 2.95), "  traffic is cars, nothing taller than the taxi's roof sign (%s)" % ", ".join(heights.map(func(h): return "%s %.1f m" % h)))
 	_check(life.get_children().filter(func(c): return c is GPUParticles3D and c != life._rain).size() == 2, "  steam rises from both manholes")
@@ -5257,6 +5252,124 @@ func _surface_mats(gi: GeometryInstance3D) -> Array:
 			out.append(mesh.surface_get_material(i))
 	return out
 
+
+# --- Real cars (assets/cars/, world/CarPaint.gd) -----------------------------------
+
+func _car_checks(gs: Node) -> void:
+	await _section("Cars: real models, old paint, wheels that turn, wrecks in Dead Block")
+	_close_menus()
+	var CarPaint := load("res://world/CarPaint.gd")
+	var files: Array = Array(DirAccess.get_files_at("res://assets/cars")).filter(func(f: String): return f.ends_with(".glb"))
+	var bad := []
+	var most := 0
+	var no_wheels := []
+	for f in files:
+		var scene := load("res://assets/cars/" + f) as PackedScene
+		if scene == null:
+			bad.append(f)
+			continue
+		var m: Node3D = scene.instantiate()
+		var tris := 0
+		for mi in m.find_children("*", "MeshInstance3D", true, false):
+			var mesh: Mesh = (mi as MeshInstance3D).mesh
+			for i in mesh.get_surface_count():
+				var arrays := mesh.surface_get_arrays(i)
+				tris += (arrays[Mesh.ARRAY_INDEX] as PackedInt32Array).size() / 3
+		most = maxi(most, tris)
+		if tris > 30000:
+			bad.append("%s (%d tris)" % [f, tris])
+		if not f.begins_with("wreck") and CarPaint.wheels(m).size() != 4:
+			no_wheels.append(f)
+		m.free()
+	_check(files.size() >= 12 and bad.is_empty(), "  all %d car files load, none over 30k triangles (the most: %d) %s" % [files.size(), most, bad])
+	_check(no_wheels.is_empty() and not files.has("sedan_e30.glb"), "  every drivable car has its four wheel_* nodes %s" % [no_wheels])
+
+	# Traffic: the new models, wheels turning, lamps at the car's own ends.
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 22 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	var life := city.get_node("StreetLife")
+	for car in life._cars:
+		car.queue_free()
+	life._cars.clear()
+	life.traffic = false
+	life._spawn_car(-30.0)
+	var car: Node3D = life._cars[0]
+	var model := car.get_child(0) as Node3D
+	_check(String(model.scene_file_path).begins_with("res://assets/cars/") and not String(model.scene_file_path).contains("kenney"),
+		"  a car in traffic is one of the new models (%s)" % model.scene_file_path.get_file())
+	var wheels: Array = car.get_meta("wheels")
+	var spin_before: Basis = (wheels[0] as Node3D).transform.basis
+	life.traffic = true
+	await _frames(20)
+	_check(wheels.size() == 4 and not (wheels[0] as Node3D).transform.basis.is_equal_approx(spin_before), "  its wheels turn as it drives")
+	var box: AABB = CarPaint.bounds(model)
+	var lamp_x := []
+	for lamp in car.get_children():
+		if lamp is MeshInstance3D and (lamp as MeshInstance3D).mesh is BoxMesh:
+			lamp_x.append((lamp as MeshInstance3D).position.x)
+	_check(lamp_x.size() == 4 and absf(lamp_x.max() - (box.end.x - 0.03)) < 0.01 and absf(lamp_x.min() - (box.position.x + 0.03)) < 0.01,
+		"  headlights and tail-lights sit at its own ends (%.2f, %.2f for a %.1f m car)" % [lamp_x.max() if not lamp_x.is_empty() else 0.0, lamp_x.min() if not lamp_x.is_empty() else 0.0, box.size.x])
+	var glass := model.find_child("glass", true, false) as MeshInstance3D
+	_check(glass != null and glass.get_surface_override_material(0) is StandardMaterial3D
+		and (glass.get_surface_override_material(0) as StandardMaterial3D).transparency == BaseMaterial3D.TRANSPARENCY_DISABLED, "  glass is dark and opaque, cheap on Low")
+	life._spawn_car(-20.0)
+	gs.set_raining(true)
+	await _frames(3)
+	var body_mat := (model.find_child("body", true, false) as MeshInstance3D).get_surface_override_material(0) as ShaderMaterial
+	_check(body_mat != null and float(body_mat.get_shader_parameter("wet")) == 1.0, "  rain makes the paint shine")
+	gs.set_raining(false)
+	await _frames(3)
+	_check(float(body_mat.get_shader_parameter("wet")) == 0.0, "  ...and it dries")
+
+	# Parked cars.
+	var parked := city.find_children("Car*", "StaticBody3D", true, false)
+	var real := parked.filter(func(c): return c.get_node_or_null("Model") != null and String(c.get_node("Model").scene_file_path).begins_with("res://assets/cars/"))
+	var scene_text := FileAccess.get_file_as_string("res://world/City3D.tscn")
+	_check(real.size() >= 10 and not scene_text.contains("assets/kenney/cars") and scene_text.contains("assets/cars/"),
+		"  %d parked cars use assets/cars and the scene no longer refers to the Kenney kit" % real.size())
+	var painted := real.filter(func(c): return (c.get_node("Model").find_child("body", true, false) as MeshInstance3D).get_surface_override_material(0) is ShaderMaterial)
+	_check(not painted.is_empty(), "  ...in old paint of their own (%d dressed)" % painted.size())
+	var shapes := real.map(func(c): return c.find_children("*", "CollisionShape3D", false, false)[0].shape)
+	_check(shapes.all(func(sh): return sh is BoxShape3D), "  ...each with a box to bump into, never its mesh")
+
+	# Dead Block: wrecks.
+	var zm := root.get_node("ZombieMode")
+	zm.begin(false)
+	var zcity := await _load("res://world/City3D.tscn")
+	await _frames(3)
+	var block := zcity.get_node("ZombieBlock")
+	var wrecks := get_nodes_in_group("wrecks")
+	_check(block.wreck_count >= 4, "  Dead Block has %d wrecks on the block" % block.wreck_count)
+	var meshy := wrecks.filter(func(w): return not w.find_children("*", "CollisionShape3D", false, false).all(func(c): return c.shape is BoxShape3D))
+	_check(meshy.is_empty() and wrecks.all(func(w): return String(w.get_node("Model").scene_file_path).contains("wreck_")), "  all of them wreck models with box colliders")
+	var space: PhysicsDirectSpaceState3D = zcity.get_world_3d().direct_space_state
+	var overlapping := []
+	for w in wrecks:
+		for cs in w.find_children("*", "CollisionShape3D", false, false):
+			var q := PhysicsShapeQueryParameters3D.new()
+			q.shape = (cs as CollisionShape3D).shape
+			q.transform = (cs as CollisionShape3D).global_transform
+			q.collision_mask = 0xFFFFFFFF & ~16
+			q.exclude = [w.get_rid()]
+			var hit: Array = space.intersect_shape(q, 8)
+			if not hit.is_empty() and not String(w.name).begins_with("Car"):
+				overlapping.append("%s x %s at %s" % [w.name, hit[0]["collider"].get_parent().name if hit[0]["collider"].name == "Solid" else hit[0]["collider"].name, (hit[0]["collider"] as Node3D).global_position.snappedf(0.1)])
+	_check(overlapping.is_empty(), "  none of the new ones is in a wall or a parked car %s" % [overlapping])
+	_check(zcity.find_children("Car*", "StaticBody3D", true, false).filter(func(c): return String(c.get_node("Model").scene_file_path).contains("wreck_")).size() >= 2,
+		"  and some of the parked cars have become wrecks")
+	# Leaving writes the zombie best; it was nothing, so leave no file behind
+	# (the shell checks start from none).
+	zm.leave()
+	DirAccess.remove_absolute(zm.PATH)
+	zm.best_round = 0
+	zm.best_kills = 0
+	zm.best_headshots = 0
+	zm.best_time = 0.0
+	gs.start_run()
+	await _frames(20)
 
 # --- Dead Block: the mode shell (autoload/ZombieMode.gd, world/ZombieBlock.gd) ----
 func _story_snapshot(gs: Node) -> String:

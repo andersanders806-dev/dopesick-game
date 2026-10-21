@@ -5,13 +5,32 @@ extends Node
 ## and the rest of the cast); then permanent night under a dense, red fog,
 ## streetlights that stutter, the zombie HUD, and round 1.
 ##
-## The parked cars stay for now (a later task wrecks them).
+## The street is littered with wrecks (assets/cars/wreck_*.glb): burnt-out
+## and rusted hulks on the roads, and a few of the parked cars swapped for
+## them. They're obstacles like the parked cars were.
 
 const ZombieHudScript := preload("res://ui/ZombieHud.gd")
+const CarPaint := preload("res://world/CarPaint.gd")
 
 ## Scene-placed nodes of the story: the doors to every shop, the people.
 const STORY_NODES := ["StationDoor", "Pusher", "Lookout", "Ray"]
 const STORY_NODE_PREFIXES := ["DoorTo"]
+
+## Wrecks dumped on the roads: [model, cell, position, yaw]. They sit in the
+## parking lanes and at the road's edge, never mid-road, so the player's
+## routes along the block stay open (a metre-wide bottleneck is a death trap
+## here). Cells are the roots world/BlockCells.gd puts to sleep.
+const WRECKS := [
+	["wreck_burnt_a", "Cell_Main", Vector3(-66.0, 0, 3.0), 15.0],
+	["wreck_sedan", "Cell_Main", Vector3(63.0, 0, 2.9), 165.0],
+	["wreck_suv", "Cell_West", Vector3(-73.0, 0, -28.0), 85.0],
+	["wreck_burnt_b", "Cell_East", Vector3(73.0, 0, -25.0), -95.0],
+	["wreck_burnt_a", "Cell_Back", Vector3(-37.0, 0, -92.6), 186.0],
+]
+## Parked cars that become wrecks: [car node, model].
+const SWAPS := [
+	["CarMainW2", "wreck_sedan"], ["CarMainE1", "wreck_suv"], ["CarBackS2", "wreck_burnt_a"],
+]
 
 ## A red-tinged night. The sky is what the fog fades into; the moon is a
 ## dull red wash.
@@ -52,6 +71,7 @@ func setup(block: Node3D) -> void:
 	_set_night()
 	_pick_flickering()
 	_build_camp_fires()
+	_build_wrecks()
 	_hide_story_hud()
 	hud = ZombieHudScript.new()
 	hud.name = "ZombieHud"
@@ -93,6 +113,48 @@ func _pick_flickering() -> void:
 		if i % FLICKER_EVERY == 0:
 			_flickering.append([light, light.light_energy, randf_range(0.0, STEADY_TIME.y), false, false])
 		i += 1
+
+## How many wrecks stand on the block (the smoke test reads it).
+var wreck_count: int:
+	get: return get_tree().get_nodes_in_group("wrecks").size()
+
+func _build_wrecks() -> void:
+	for w in WRECKS:
+		var body := StaticBody3D.new()
+		body.name = "Wreck_%s_%d" % [w[0], hash(w[2]) % 1000]
+		var cell := city.get_node_or_null(w[1] as String) as Node3D
+		(cell if cell else city).add_child(body)
+		body.position = w[2]
+		body.rotation_degrees.y = w[3]
+		_fit_wreck(body, w[0])
+	for swap in SWAPS:
+		var car := city.find_child(swap[0], true, false) as StaticBody3D
+		if car == null:
+			continue
+		var old := car.get_node_or_null("Model")
+		if old:
+			car.remove_child(old)
+			old.queue_free()
+		# The old box stays: the wreck is about the car's size.
+		_add_wreck_model(car, swap[1])
+
+## The wreck's model, and a box round it (never its mesh: scan wrecks are
+## thousands of triangles).
+func _fit_wreck(body: StaticBody3D, kind: String) -> void:
+	var box := _add_wreck_model(body, kind)
+	var shape := CollisionShape3D.new()
+	var bs := BoxShape3D.new()
+	bs.size = Vector3(box.size.x, box.size.y, maxf(box.size.z - 0.2, 1.0))
+	shape.shape = bs
+	shape.position = Vector3(0, box.size.y / 2.0, 0)
+	body.add_child(shape)
+
+func _add_wreck_model(body: StaticBody3D, kind: String) -> AABB:
+	var model: Node3D = load("res://assets/cars/%s.glb" % kind).instantiate()
+	model.name = "Model"
+	body.add_child(model)
+	body.add_to_group("wrecks")
+	return CarPaint.bounds(model)
 
 ## [light, seconds to the next jump, current energy factor]
 var _fires: Array = []

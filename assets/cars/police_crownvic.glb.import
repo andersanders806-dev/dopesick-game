@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://dahfvsx75ssq6"
-path="res://.godot/imported/taxi.glb-f26b6e621c6dd0e57a61c42e5dddaa99.scn"
+uid="uid://dwf54ir26vjw6"
+path="res://.godot/imported/police_crownvic.glb-5053ed63b02e9c1e5ddf5a898ff10bb0.scn"
 
 [deps]
 
-source_file="res://assets/kenney/cars/taxi.glb"
-dest_files=["res://.godot/imported/taxi.glb-f26b6e621c6dd0e57a61c42e5dddaa99.scn"]
+source_file="res://assets/cars/police_crownvic.glb"
+dest_files=["res://.godot/imported/police_crownvic.glb-5053ed63b02e9c1e5ddf5a898ff10bb0.scn"]
 
 [params]
 

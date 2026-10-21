@@ -19,9 +19,9 @@ static func build(b: Node, _root: Node3D) -> void:
 		b._streetlight("StreetlightMain%d" % (i + 1), lamps[i], -1.8, 7 + i, main)
 	# Parked along the far curb, where the middle's are. A van and a box van
 	# stand taller than the cars: the road doesn't read as one long strip.
-	b._car("CarMainW1", Vector3(-58.0, 0, 2.6), false, "van", main)
-	b._car("CarMainW2", Vector3(-52.0, 0, 2.7), true, "sedan", main)
-	b._car("CarMainE1", Vector3(38.5, 0, 2.6), true, "van", main)
+	b._car("CarMainW1", Vector3(-58.0, 0, 2.6), false, "van_shvan92", main)
+	b._car("CarMainW2", Vector3(-52.0, 0, 2.7), true, "sedan_generic", main)
+	b._car("CarMainE1", Vector3(38.5, 0, 2.6), true, "van_shvan92", main)
 	# What keeps the street from being one 154 m strip at eye level: a
 	# newsstand at each end of the shops (people step round them on the
 	# building side) and a box truck unloading at each end of the parking.
@@ -36,7 +36,7 @@ static func build(b: Node, _root: Node3D) -> void:
 	# curb, where the beat cop walks.
 	for x in StreetLife.ROADWORKS:
 		Kit.roadworks(b, main, "RoadworksMain%d" % int(x.x), Rect2(x.x, -0.9, x.y - x.x, 2.2))
-	b._car("CarMainE2", Vector3(47.0, 0, 2.7), false, "suv", main)
+	b._car("CarMainE2", Vector3(47.0, 0, 2.7), false, "suv_generic", main)
 	b._ph(main, "ManholeW", "water_manhole_cover", Vector3(-48.0, 0.005, 0.9))
 	b._ph(main, "ManholeE", "water_manhole_cover", Vector3(43.0, 0.005, 1.4))
 	Kit.hydrant(b, main, "HydrantW", Vector3(-55.5, 0, -1.85))

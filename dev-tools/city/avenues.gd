@@ -33,11 +33,11 @@ static func _avenue(b: Node, c: Node3D, n: String, side: float) -> void:
 		var yaw := (-90.0 if outer else 90.0) * side
 		b._streetlight("Streetlight%s%d" % [n, i + 1], x, zs[i], 20 + i, c, yaw)
 	# Parked cars along the outer curb, facing the way the lane runs.
-	var cars := [[-9.0, "sedan"], [-16.0, "covered"], [-34.0, "hatchback-sports"], [-52.0, "van"], [-58.5, "sedan"], [-71.0, "suv"], [-80.0, "covered"]]
+	var cars := [[-9.0, "sedan_generic"], [-16.0, "covered"], [-34.0, "hatch_generic"], [-52.0, "van_shvan92"], [-58.5, "sedan_generic"], [-71.0, "suv_generic"], [-80.0, "covered"]]
 	for i in cars.size():
 		var kind: String = cars[i][1]
 		if side > 0.0 and kind == "covered":
-			kind = "sedan-sports" if i % 2 == 0 else "covered"
+			kind = "minivan_generic" if i % 2 == 0 else "covered"
 		b._car("Car%sAve%d" % [n, i + 1], Vector3(73.0 * side, 0, cars[i][0] + (0.7 if side > 0 else 0.0)), false, kind, c, 90.0 * -side if side > 0 else 90.0)
 	# A newsstand on each sidewalk and a box truck double-parked, halfway up:
 	# no clean 100 m view down the avenue.

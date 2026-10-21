@@ -1,13 +1,6 @@
 extends "res://world/WorldRoot3D.gd"
 
-const CAR_COLORS := [
-	Color(0.55, 0.08, 0.07),
-	Color(0.12, 0.2, 0.42),
-	Color(0.18, 0.3, 0.16),
-	Color(0.62, 0.5, 0.2),
-	Color(0.75, 0.75, 0.72),
-	Color(0.1, 0.1, 0.1),
-]
+const CarPaint := preload("res://world/CarPaint.gd")
 
 ## Night values are what build_rooms_3d.gd bakes into the scene; day values
 ## are an overcast afternoon, not a postcard -- the block should still look
@@ -287,43 +280,14 @@ func _ready() -> void:
 	_paint_parked_cars()
 	ready_ms = Time.get_ticks_msec() - t0
 
-## Every parked car in a random old paint (see _mute_parked_cars).
+## Every parked car in an old, dull paint of its own (world/CarPaint.gd, the
+## traffic's too). The builder can't do it: changes to nodes inside an
+## instanced model don't save with the scene, so it's done here.
 func _paint_parked_cars() -> void:
-	for body in get_tree().get_nodes_in_group("car_bodies"):
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = CAR_COLORS.pick_random()
-		mat.metallic = 0.4
-		mat.roughness = 0.35
-		(body as MeshInstance3D).material_override = mat
-	_mute_parked_cars()
-
-## Parked cars in old, dull paint: Kenney's are toy-bright. The builder
-## meant to do this, but changes to nodes inside an instanced model don't
-## save with the scene, so it's done here, once per material and paint.
-const PARKED_PAINT := [Color(0.22, 0.24, 0.27), Color(0.32, 0.29, 0.25), Color(0.18, 0.2, 0.17)]
-static var _muted := {}
-
-func _mute_parked_cars() -> void:
 	for car in find_children("Car*", "StaticBody3D", true, false):
-		var model := car.get_node_or_null("Model")
-		if model == null or String(model.scene_file_path).find("kenney/cars") < 0:
-			continue
-		var paint: Color = PARKED_PAINT[String(car.name).length() % 3]
-		for mi in model.find_children("*", "MeshInstance3D", true, false):
-			var base := (mi as MeshInstance3D).get_active_material(0) as StandardMaterial3D
-			if base == null:
-				continue
-			# Keyed by the material itself (held, so it can't be freed and
-			# its id handed to another), then by paint.
-			var by_paint: Dictionary = _muted.get_or_add(base, {})
-			if not by_paint.has(paint):
-				var muted := base.duplicate() as StandardMaterial3D
-				# The paint is in Kenney's palette texture, so a tint can only
-				# darken and grey it, not repaint it.
-				muted.albedo_color = muted.albedo_color * paint * 2.0
-				muted.roughness = maxf(muted.roughness, 0.55)
-				by_paint[paint] = muted
-			(mi as MeshInstance3D).set_surface_override_material(0, by_paint[paint])
+		var model := car.get_node_or_null("Model") as Node3D
+		if model != null and String(model.scene_file_path).begins_with("res://assets/cars/"):
+			CarPaint.dress(model, CarPaint.paint_index(car.name))
 
 ## Places on the block to crouch out of sight when the police are after
 ## you: in the mouth of the alley by the pusher's corner, behind a stack of

@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://hl3vx3qd7c6v"
-path="res://.godot/imported/suv-luxury.glb-bcae41adb1cc9c376e3310bf3402d7ab.scn"
+uid="uid://wgx5ja0rvtaj"
+path="res://.godot/imported/wreck_burnt_b.glb-3c156795e493fb739069ce375cea5835.scn"
 
 [deps]
 
-source_file="res://assets/kenney/cars/suv-luxury.glb"
-dest_files=["res://.godot/imported/suv-luxury.glb-bcae41adb1cc9c376e3310bf3402d7ab.scn"]
+source_file="res://assets/cars/wreck_burnt_b.glb"
+dest_files=["res://.godot/imported/wreck_burnt_b.glb-3c156795e493fb739069ce375cea5835.scn"]
 
 [params]
 

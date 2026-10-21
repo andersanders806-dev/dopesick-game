@@ -1360,7 +1360,13 @@ func collect_debt() -> int:
 const BEATING_HEALTH := 25.0
 
 func is_hurt() -> bool:
-	return now_minutes() < hurt_until
+	# The zombie mode's clock stands still: a story wound would never heal.
+	return mode != "zombies" and now_minutes() < hurt_until
+
+## Whether it's raining where you are (never, in the zombie mode: the
+## story's weather is not part of it).
+func is_raining() -> bool:
+	return raining and mode != "zombies"
 
 func buy_fix() -> bool:
 	if not spend_cash(current_fix_cost()):

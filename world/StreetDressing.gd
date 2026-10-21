@@ -58,7 +58,7 @@ func _ready() -> void:
 		_puddles.append(_ground("puddle", p, rng.randf_range(1.2, 2.6), rng, 1.0, true))
 	_dress_block()
 	GameState.weather_changed.connect(_on_weather)
-	_on_weather(GameState.raining)
+	_on_weather(GameState.is_raining())
 
 ## The rest of the block (dev-tools/city/), its own seed so the middle
 ## above stays exactly as it was: the same wear on every street, walls

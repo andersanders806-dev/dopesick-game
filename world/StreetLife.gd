@@ -49,7 +49,7 @@ func _ready() -> void:
 	_build_rain()
 	_pick_flickering_signs()
 	GameState.weather_changed.connect(_on_weather_changed)
-	_on_weather_changed(GameState.raining)
+	_on_weather_changed(GameState.is_raining())
 	# A car already on its way through when you step outside.
 	if traffic:
 		_spawn_car(randf_range(-20.0, 10.0))

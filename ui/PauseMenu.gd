@@ -46,11 +46,14 @@ func open() -> void:
 	info.add_theme_color_override("font_color", Color(0.6, 0.58, 0.54))
 	col.add_child(info)
 	var resume := _button(col, "Resume", _close)
-	_button(col, "Notebook  (%s)" % GameState.control_name("notebook"), _open_notebook)
+	if GameState.mode == "story":
+		_button(col, "Notebook  (%s)" % GameState.control_name("notebook"), _open_notebook)
 	_button(col, "Settings", _open_settings)
 	_button(col, "Fullscreen on/off  (F11)", Graphics.toggle_fullscreen)
 	_button(col, "Photo mode  (F12)", _open_photo_mode)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"
+	if GameState.mode != "story":
+		quit_label = "Quit to title"
 	_button(col, quit_label, _quit_to_title)
 	resume.grab_focus.call_deferred()
 

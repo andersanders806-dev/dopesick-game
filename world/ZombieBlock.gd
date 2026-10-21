@@ -31,6 +31,13 @@ const STEADY_TIME := Vector2(1.2, 6.0)
 const BURST_TIME := Vector2(0.15, 0.6)
 const DEAD_CHANCE := 0.25
 
+## Burning barrels at the underpass camp (Place_UnderpassCamp), offsets from it.
+const CAMP_FIRES := [Vector3(-1.6, 0, 0.6), Vector3(1.9, 0, -0.9), Vector3(0.3, 0, 2.3)]
+const CAMP_CELL := "Cell_Inner"
+const FIRE_LIGHT := Color(1.0, 0.5, 0.18)
+const FIRE_ENERGY := 2.2
+const FIRE_RANGE := 7.0
+
 var city: Node3D
 var hud: CanvasLayer
 ## [light, full energy, seconds to the next change, in a burst, dead]
@@ -44,6 +51,7 @@ func setup(block: Node3D) -> void:
 	_strip_story()
 	_set_night()
 	_pick_flickering()
+	_build_camp_fires()
 	_hide_story_hud()
 	hud = ZombieHudScript.new()
 	hud.name = "ZombieHud"
@@ -86,6 +94,97 @@ func _pick_flickering() -> void:
 			_flickering.append([light, light.light_energy, randf_range(0.0, STEADY_TIME.y), false, false])
 		i += 1
 
+## [light, seconds to the next jump, current energy factor]
+var _fires: Array = []
+var _fire_root: Node3D
+var _camp_cell: Node3D
+
+## A few burning barrels at the underpass camp: an orange light that jumps
+## about (no shadows), a handful of billboard flames and embers. They sleep
+## with the camp's cell.
+func _build_camp_fires() -> void:
+	var camp := city.find_child("Place_UnderpassCamp", true, false) as Node3D
+	if camp == null:
+		return
+	_fire_root = Node3D.new()
+	_fire_root.name = "CampFires"
+	add_child(_fire_root)
+	var barrel_mat := StandardMaterial3D.new()
+	barrel_mat.albedo_color = Color(0.16, 0.12, 0.1)
+	barrel_mat.metallic = 0.6
+	barrel_mat.roughness = 0.7
+	var flame_tex := GradientTexture2D.new()
+	flame_tex.fill = GradientTexture2D.FILL_RADIAL
+	flame_tex.fill_from = Vector2(0.5, 0.5)
+	flame_tex.fill_to = Vector2(0.5, 0.0)
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1.0, 0.85, 0.4, 1.0))
+	grad.set_color(1, Color(0.9, 0.2, 0.0, 0.0))
+	flame_tex.gradient = grad
+	var flame_mat := StandardMaterial3D.new()
+	flame_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	flame_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	flame_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	flame_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	flame_mat.vertex_color_use_as_albedo = true
+	flame_mat.albedo_texture = flame_tex
+	for off in CAMP_FIRES:
+		var fire := Node3D.new()
+		_fire_root.add_child(fire)
+		fire.global_position = camp.global_position + off
+		var barrel := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.3
+		cyl.bottom_radius = 0.3
+		cyl.height = 0.85
+		barrel.mesh = cyl
+		barrel.material_override = barrel_mat
+		barrel.position.y = 0.425
+		fire.add_child(barrel)
+		var light := OmniLight3D.new()
+		light.light_color = FIRE_LIGHT
+		light.light_energy = FIRE_ENERGY
+		light.omni_range = FIRE_RANGE
+		light.shadow_enabled = false
+		light.position.y = 1.2
+		fire.add_child(light)
+		var flames := GPUParticles3D.new()
+		flames.amount = 14
+		flames.lifetime = 0.9
+		flames.position.y = 0.9
+		flames.local_coords = false
+		flames.visibility_aabb = AABB(Vector3(-1, -0.5, -1), Vector3(2, 3, 2))
+		var pm := ParticleProcessMaterial.new()
+		pm.direction = Vector3.UP
+		pm.spread = 14.0
+		pm.initial_velocity_min = 0.7
+		pm.initial_velocity_max = 1.3
+		pm.gravity = Vector3(0, 0.6, 0)
+		pm.scale_min = 0.5
+		pm.scale_max = 1.0
+		pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		pm.emission_sphere_radius = 0.18
+		var curve := Curve.new()
+		curve.add_point(Vector2(0, 0.7))
+		curve.add_point(Vector2(1, 0.05))
+		var ct := CurveTexture.new()
+		ct.curve = curve
+		pm.scale_curve = ct
+		flames.process_material = pm
+		var quad := QuadMesh.new()
+		quad.size = Vector2(0.55, 0.7)
+		quad.material = flame_mat
+		flames.draw_pass_1 = quad
+		fire.add_child(flames)
+		_fires.append([light, randf_range(0.05, 0.2), 1.0])
+	_camp_cell = city.get_node_or_null(CAMP_CELL) as Node3D
+	var cells: Node = city._cells
+	if cells and _camp_cell:
+		_fire_root.visible = cells.is_awake(_camp_cell)
+		cells.cell_changed.connect(func(c: Node3D, awake: bool):
+			if c == _camp_cell:
+				_fire_root.visible = awake)
+
 ## The story's cash, craving and clock mean nothing here.
 func _hide_story_hud() -> void:
 	var story_hud := get_tree().get_first_node_in_group("hud") as CanvasLayer
@@ -93,6 +192,16 @@ func _hide_story_hud() -> void:
 		story_hud.visible = false
 
 func _process(delta: float) -> void:
+	# Graphics (F3) puts the sky out of the fog again on the lower presets.
+	var env: Environment = city._env
+	if env.fog_sky_affect != 1.0:
+		env.fog_sky_affect = 1.0
+	for fire in _fires:
+		fire[1] -= delta
+		if fire[1] <= 0.0:
+			fire[1] = randf_range(0.04, 0.16)
+			fire[2] = randf_range(0.65, 1.15)
+		(fire[0] as OmniLight3D).light_energy = FIRE_ENERGY * fire[2]
 	for f in _flickering:
 		var light := f[0] as Light3D
 		if not is_instance_valid(light):

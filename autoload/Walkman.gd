@@ -176,6 +176,8 @@ func _set_duck(on: bool) -> void:
 	SFX._update_music.call_deferred()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if GameState.mode != "story":
+		return
 	if not (event is InputEventKey or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
 	if event.is_action("walkman"):

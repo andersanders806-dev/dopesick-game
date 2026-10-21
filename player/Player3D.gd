@@ -391,11 +391,13 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		_try_interact()
 	elif event.is_action_pressed("craft") and not event.is_echo():
-		if not dialogue_active and not get_tree().paused:
+		# Crafting and the notebook are the story's (its inventory and
+		# objectives); Dead Block has neither.
+		if GameState.mode == "story" and not dialogue_active and not get_tree().paused:
 			get_viewport().set_input_as_handled()
 			open_craft_menu()
 	elif event.is_action_pressed("notebook") and not event.is_echo():
-		if not dialogue_active and not get_tree().paused:
+		if GameState.mode == "story" and not dialogue_active and not get_tree().paused:
 			get_viewport().set_input_as_handled()
 			var book := NotebookScript.new()
 			get_tree().root.add_child(book)

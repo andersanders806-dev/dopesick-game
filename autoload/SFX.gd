@@ -147,7 +147,7 @@ func _ready() -> void:
 	_heartbeat_player.stream = HEARTBEAT_STREAM
 	_heartbeat_player.volume_db = -6.0
 	add_child(_heartbeat_player)
-	_heartbeat_player.finished.connect(func(): if GameState.craving <= LOW_CRAVING_THRESHOLD: _heartbeat_player.play())
+	_heartbeat_player.finished.connect(func(): if GameState.withdrawn(LOW_CRAVING_THRESHOLD): _heartbeat_player.play())
 
 	GameState.wanted_changed.connect(_on_wanted_changed)
 	GameState.craving_changed.connect(_on_craving_changed)
@@ -404,7 +404,7 @@ func _update_indoor_rain() -> void:
 		return
 	var scene := get_tree().current_scene
 	var room := String(scene.name) if scene else ""
-	var want: bool = GameState.raining and room != "" and room not in ["City3D", "Backyard3D"] and scene is Node3D
+	var want: bool = GameState.is_raining() and room != "" and room not in ["City3D", "Backyard3D"] and scene is Node3D
 	if want and not _rain_indoor.playing:
 		_rain_indoor.play()
 	elif not want and _rain_indoor.playing:
@@ -414,7 +414,7 @@ func _on_craving_changed(craving: float) -> void:
 	_apply_muffle()
 	if (_music_track == "sick") != (GameState.sickness() >= SICK_MUSIC_AT):
 		_update_music()
-	var should_play := craving <= LOW_CRAVING_THRESHOLD
+	var should_play := GameState.withdrawn(LOW_CRAVING_THRESHOLD)
 	if should_play and not _heartbeat_player.playing:
 		_heartbeat_player.play()
 	elif not should_play and _heartbeat_player.playing:

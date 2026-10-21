@@ -5267,6 +5267,12 @@ func _story_snapshot(gs: Node) -> String:
 	d["in_custody"] = gs.in_custody
 	return var_to_str(d)
 
+func _key_action(action: String) -> InputEventAction:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = true
+	return ev
+
 func _buttons_named(node: Node, text: String) -> Array:
 	return node.find_children("*", "Button", true, false).filter(func(b): return b.text == text)
 
@@ -5310,6 +5316,16 @@ func _zombie_shell_checks(gs: Node) -> void:
 	gs.cash = 37
 	var street := await _load("res://world/City3D.tscn")
 	_check(not street.zombie_mode and street.find_child("DoorToBar", true, false) != null, "  the story's block still has its doors")
+	# The story's craft and notebook keys work on the story's block.
+	var story_player := _player()
+	story_player._unhandled_input(_key_action("craft"))
+	_check(story_player.dialogue_active, "  C opens the craft menu in the story")
+	_close_menus()
+	story_player.dialogue_active = false
+	# Leave it hurt, sick and raining: none of that may follow into Dead Block.
+	gs.hurt_until = gs.now_minutes() + 600.0
+	gs.craving = 5.0
+	gs.raining = true
 	_check(sg.save() and FileAccess.file_exists(sg.PATH), "  a story save exists to compare against")
 	var save_hash := FileAccess.get_sha256(sg.PATH)
 	var before := _story_snapshot(gs)
@@ -5320,6 +5336,15 @@ func _zombie_shell_checks(gs: Node) -> void:
 	await _frames(5)
 	_check(gs.mode == "zombies" and city.zombie_mode and city.get_node_or_null("ZombieBlock") != null, "  the block loads as the zombie variant")
 	_check(zm.round == 1, "  round 1 has started (%d)" % zm.round)
+	_check(not gs.is_hurt() and not gs.withdrawn(20.0) and not gs.is_raining() and gs.sickness() == 0.0,
+		"  the story's wound, craving and weather don't follow you in")
+	var zplayer := _player()
+	zplayer._unhandled_input(_key_action("craft"))
+	var roots_before := root.get_child_count()
+	zplayer._unhandled_input(_key_action("notebook"))
+	_check(not zplayer.dialogue_active and root.get_child_count() == roots_before, "  the craft and notebook keys do nothing in Dead Block")
+	_check(city.get_node_or_null("Facades") != null and city.get_node_or_null("StreetDressing") != null, "  the buildings' faces and the street's wear are still up")
+	_check(city.get_node_or_null("Atmosphere") == null and city.get_node_or_null("StreetScenes") == null, "  but not the story's weather and regulars")
 	var doors := city.find_children("DoorTo*", "Area3D", true, false)
 	_check(doors.is_empty() and city.find_child("StationDoor", true, false) == null, "  no door leads anywhere (%d left)" % doors.size())
 	_check(city.find_child("Pusher", true, false) == null and city.find_child("Lookout", true, false) == null and city.find_child("Ray", true, false) == null,
@@ -5343,6 +5368,22 @@ func _zombie_shell_checks(gs: Node) -> void:
 		for l in lamps:
 			seen[l] = true if seen.has(l) or absf(l.light_energy - block._flickering[lamps.find(l)][1]) > 0.01 else false
 	_check(block.flicker_count >= 3 and seen.values().any(func(v): return v), "  %d streetlights stutter, and some dimmed in 150 frames" % block.flicker_count)
+	var fires: Node = city.get_node("ZombieBlock").get_node_or_null("CampFires")
+	var fire_lights: Array = fires.find_children("*", "OmniLight3D", true, false) if fires else []
+	var fire_flames: Array = fires.find_children("*", "GPUParticles3D", true, false) if fires else []
+	_check(fire_lights.size() >= 3 and fire_flames.size() == fire_lights.size() and fire_lights.all(func(l): return not l.shadow_enabled),
+		"  %d burning barrels at the camp, lit without shadows" % fire_lights.size())
+	var camp_pos: Vector3 = city.find_child("Place_UnderpassCamp", true, false).global_position
+	_check(fire_lights.all(func(l): return l.global_position.distance_to(camp_pos) < 5.0), "  ...at the underpass camp")
+	# F3 through the presets: the fog stays the zombie's.
+	var gfx_node := root.get_node("Graphics")
+	gfx_node.set_preset(gfx_node.Preset.LOW)
+	await _frames(5)
+	var env_low: Environment = city.get_node("WorldEnvironment").environment
+	_check(env_low.fog_sky_affect == 1.0 and env_low.fog_density >= 0.04 and env_low.background_color.r > env_low.background_color.b * 2.0,
+		"  the fog survives a change to Low (sky affect %.1f, density %.3f)" % [env_low.fog_sky_affect, env_low.fog_density])
+	gfx_node.set_preset(gfx_node.Preset.MEDIUM)
+	await _frames(3)
 	# The story's clock does not run.
 	gs.clock_running = true
 	var clock_then: float = gs.clock
@@ -5383,6 +5424,18 @@ func _zombie_shell_checks(gs: Node) -> void:
 		"  Title leaves the mode and unpauses")
 	# (Idle on the title, the story's own clock runs again, as it always did.)
 	_check(FileAccess.get_sha256(sg.PATH) == save_hash, "  ...with the story's save still as it was")
+
+	# Quitting mid-round (the pause menu's way out) keeps the best too.
+	DirAccess.remove_absolute(zm.PATH)
+	zm.load_best()
+	zm.best_round = 0
+	zm.begin(false)
+	zm.start_round()
+	zm.advance_round()
+	zm.advance_round()
+	zm.leave()
+	var cfg2 := ConfigFile.new()
+	_check(cfg2.load(zm.PATH) == OK and int(cfg2.get_value("best", "round", 0)) == 3 and gs.mode == "story", "  leaving mid-round keeps the round reached (3)")
 
 	# The title screen's entry, with its view choice.
 	var title := current_scene

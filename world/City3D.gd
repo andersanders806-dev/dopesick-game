@@ -243,20 +243,26 @@ func _ready() -> void:
 		if m:
 			life.steam_points.append(m.global_position + Vector3(0, 0.1, 0))
 	add_child(life)
-	if zombie_mode:
-		_finish_zombie_block()
-		ready_ms = Time.get_ticks_msec() - t0
-		return
-	_warm_looks()
-	var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
-	atmosphere.name = "Atmosphere"
-	add_child(atmosphere)
+	if not zombie_mode:
+		_warm_looks()
+		var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
+		atmosphere.name = "Atmosphere"
+		add_child(atmosphere)
+	# The buildings' faces and the street's wear are the arena, in either mode.
 	var facades: Node3D = preload("res://world/Facades.gd").new()
 	facades.name = "Facades"
 	add_child(facades)
 	var dressing: Node3D = preload("res://world/StreetDressing.gd").new()
 	dressing.name = "StreetDressing"
 	add_child(dressing)
+	if zombie_mode:
+		_paint_parked_cars()
+		var block := ZombieBlockScript.new()
+		block.name = "ZombieBlock"
+		add_child(block)
+		block.setup(self)
+		ready_ms = Time.get_ticks_msec() - t0
+		return
 	var scenes: Node3D = preload("res://world/StreetScenes.gd").new()
 	scenes.name = "StreetScenes"
 	add_child(scenes)
@@ -278,18 +284,11 @@ func _ready() -> void:
 		_spawn_pedestrian(walk, seg, randf_range(0.05, 0.95))
 	if not GameState.wanted:
 		_spawn_patrol(Vector3(randf_range(-22.0, 22.0), 0, PATROL_START.z))
-	for body in get_tree().get_nodes_in_group("car_bodies"):
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = CAR_COLORS.pick_random()
-		mat.metallic = 0.4
-		mat.roughness = 0.35
-		(body as MeshInstance3D).material_override = mat
-	_mute_parked_cars()
+	_paint_parked_cars()
 	ready_ms = Time.get_ticks_msec() - t0
 
-## The rest of what the street needs in the zombie mode: the parked cars'
-## paint, then the variant itself (world/ZombieBlock.gd).
-func _finish_zombie_block() -> void:
+## Every parked car in a random old paint (see _mute_parked_cars).
+func _paint_parked_cars() -> void:
 	for body in get_tree().get_nodes_in_group("car_bodies"):
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = CAR_COLORS.pick_random()
@@ -297,10 +296,6 @@ func _finish_zombie_block() -> void:
 		mat.roughness = 0.35
 		(body as MeshInstance3D).material_override = mat
 	_mute_parked_cars()
-	var block := ZombieBlockScript.new()
-	block.name = "ZombieBlock"
-	add_child(block)
-	block.setup(self)
 
 ## Parked cars in old, dull paint: Kenney's are toy-bright. The builder
 ## meant to do this, but changes to nodes inside an instanced model don't

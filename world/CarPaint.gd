@@ -20,9 +20,13 @@ const PALETTE := [
 	Color(0.66, 0.65, 0.6),
 	Color(0.5, 0.52, 0.54),
 ]
+## Beyond this many metres a parked car or wreck isn't drawn at all.
+const PARKED_REACH := 60.0
 const LIVERY := ["taxi_crownvic", "police_crownvic"]
 
 static var _bodies := {}
+## Texture -> its paint brightness, read back once.
+static var _brightness := {}
 static var _bounds := {}
 static var _glass: StandardMaterial3D
 static var _wet := false
@@ -31,7 +35,10 @@ static var _wet := false
 ## (a parked car's name hashes to one, so it keeps its colour), random when
 ## negative. Wrecks are left as they burnt. A moving car's shadow isn't worth
 ## the sun's pass over its triangles (`shadows` false), a parked one's grounds it.
-static func dress(model: Node3D, pick := -1, shadows := true) -> void:
+## `reach` > 0 hides the car beyond that many metres (nothing is drawn of a far
+## parked car; the roofs of the block's other end aren't worth their triangles).
+static func dress(model: Node3D, pick := -1, shadows := true, reach := 0.0) -> void:
+	limit_range(model, reach)
 	var kind := model.scene_file_path.get_file().get_basename()
 	if kind.begins_with("wreck"):
 		return
@@ -47,6 +54,14 @@ static func dress(model: Node3D, pick := -1, shadows := true) -> void:
 			var base := (mi as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
 			if base != null:
 				(mi as MeshInstance3D).set_surface_override_material(0, _body_material(base, paint, kind in LIVERY))
+
+## Hides the model's meshes beyond `reach` metres (0: never), no fade.
+static func limit_range(model: Node3D, reach: float) -> void:
+	if reach <= 0.0:
+		return
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).visibility_range_end = reach
+		(mi as MeshInstance3D).visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 static func paint_index(car_name: String) -> int:
 	return absi(car_name.hash()) % PALETTE.size()
@@ -83,6 +98,11 @@ static func _body_material(base: StandardMaterial3D, paint: Color, livery: bool)
 static func _paint_brightness(tex: Texture2D) -> float:
 	if tex == null:
 		return 1.0
+	if not _brightness.has(tex):
+		_brightness[tex] = _measure_brightness(tex)
+	return _brightness[tex]
+
+static func _measure_brightness(tex: Texture2D) -> float:
 	var img := tex.get_image()
 	if img == null:
 		return 1.0

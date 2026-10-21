@@ -17,10 +17,11 @@ const CarPaint := preload("res://world/CarPaint.gd")
 
 ## What drives by (assets/cars/<name>.glb) and how often. The box truck and
 ## garbage truck went: a head taller than the rest, they filled the screen
-## passing under the camera. The cruiser is rare.
+## passing under the camera. The taxi and cruiser (25k triangles each, three
+## times a sedan) are the rarer ones.
 const CARS := {
 	"sedan_generic": 4, "hatch_generic": 3, "wagon_generic": 3, "minivan_generic": 2,
-	"suv_generic": 3, "van_shvan92": 2, "taxi_crownvic": 3, "police_crownvic": 1,
+	"suv_generic": 3, "van_shvan92": 2, "taxi_crownvic": 2, "police_crownvic": 1,
 }
 const LANE_Z := 0.35
 ## Roadworks in the driving lane (x from, x to; dev-tools/city/
@@ -184,14 +185,14 @@ func _spawn_car(x: float) -> void:
 		# At the car's own ends and width, not a fixed spot: the van and the
 		# cruiser are a metre longer than the hatch.
 		for side in [-0.31, 0.31]:
-			_lamp(car, Vector3(box.end.x - 0.03, box.size.y * 0.4, box.size.z * side), glow)
-			_lamp(car, Vector3(box.position.x + 0.03, box.size.y * 0.45, box.size.z * side), tail)
+			_lamp(car, Vector3(box.end.x - 0.05, box.size.y * 0.4, box.size.z * side), glow)
+			_lamp(car, Vector3(box.position.x + 0.05, box.size.y * 0.45, box.size.z * side), tail)
 	_cars.append(car)
 
 func _lamp(car: Node3D, pos: Vector3, mat: Material) -> void:
 	var m := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(0.05, 0.12, 0.28)
+	box.size = Vector3(0.04, 0.1, 0.24)
 	box.material = mat
 	m.mesh = box
 	m.position = pos

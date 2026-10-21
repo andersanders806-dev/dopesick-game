@@ -154,6 +154,7 @@ func _add_wreck_model(body: StaticBody3D, kind: String) -> AABB:
 	model.name = "Model"
 	body.add_child(model)
 	body.add_to_group("wrecks")
+	CarPaint.limit_range(model, CarPaint.PARKED_REACH)
 	return CarPaint.bounds(model)
 
 ## [light, seconds to the next jump, current energy factor]

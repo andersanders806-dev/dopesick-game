@@ -5310,7 +5310,7 @@ func _car_checks(gs: Node) -> void:
 	for lamp in car.get_children():
 		if lamp is MeshInstance3D and (lamp as MeshInstance3D).mesh is BoxMesh:
 			lamp_x.append((lamp as MeshInstance3D).position.x)
-	_check(lamp_x.size() == 4 and absf(lamp_x.max() - (box.end.x - 0.03)) < 0.01 and absf(lamp_x.min() - (box.position.x + 0.03)) < 0.01,
+	_check(lamp_x.size() == 4 and absf(lamp_x.max() - (box.end.x - 0.05)) < 0.01 and absf(lamp_x.min() - (box.position.x + 0.05)) < 0.01,
 		"  headlights and tail-lights sit at its own ends (%.2f, %.2f for a %.1f m car)" % [lamp_x.max() if not lamp_x.is_empty() else 0.0, lamp_x.min() if not lamp_x.is_empty() else 0.0, box.size.x])
 	var glass := model.find_child("glass", true, false) as MeshInstance3D
 	_check(glass != null and glass.get_surface_override_material(0) is StandardMaterial3D
@@ -5334,6 +5334,9 @@ func _car_checks(gs: Node) -> void:
 	_check(not painted.is_empty(), "  ...in old paint of their own (%d dressed)" % painted.size())
 	var shapes := real.map(func(c): return c.find_children("*", "CollisionShape3D", false, false)[0].shape)
 	_check(shapes.all(func(sh): return sh is BoxShape3D), "  ...each with a box to bump into, never its mesh")
+	var cruiser_body := city.find_child("PoliceCruiser", true, false).get_node("Model").find_child("body", true, false) as MeshInstance3D
+	_check(cruiser_body.get_surface_override_material(0) is ShaderMaterial and cruiser_body.visibility_range_end == life.CarPaint.PARKED_REACH,
+		"  the cruiser is dressed too, and parked cars aren't drawn past %.0f m" % life.CarPaint.PARKED_REACH)
 
 	# Dead Block: wrecks.
 	var zm := root.get_node("ZombieMode")
@@ -5342,7 +5345,8 @@ func _car_checks(gs: Node) -> void:
 	await _frames(3)
 	var block := zcity.get_node("ZombieBlock")
 	var wrecks := get_nodes_in_group("wrecks")
-	_check(block.wreck_count >= 4, "  Dead Block has %d wrecks on the block" % block.wreck_count)
+	var placed := wrecks.filter(func(w): return String(w.name).begins_with("Wreck_"))
+	_check(placed.size() >= 4 and block.wreck_count >= placed.size(), "  Dead Block has %d wrecks put on the road (%d with the swapped cars)" % [placed.size(), block.wreck_count])
 	var meshy := wrecks.filter(func(w): return not w.find_children("*", "CollisionShape3D", false, false).all(func(c): return c.shape is BoxShape3D))
 	_check(meshy.is_empty() and wrecks.all(func(w): return String(w.get_node("Model").scene_file_path).contains("wreck_")), "  all of them wreck models with box colliders")
 	var space: PhysicsDirectSpaceState3D = zcity.get_world_3d().direct_space_state

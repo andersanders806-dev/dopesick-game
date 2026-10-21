@@ -159,6 +159,10 @@ const STRIKES_PER_RUN := 3
 var cash: int = 6
 var inventory: Array[String] = []
 var craving: float = 45.0
+## Level check: launching with `-- --no-sick` keeps you fixed, so walking the
+## block to look at it (or a perf probe's walk) isn't cut short or skewed by
+## withdrawal's slowdown and screen effects.
+var no_sickness: bool = "--no-sick" in OS.get_cmdline_user_args()
 var wanted: bool = false
 var day: int = 1
 ## Minutes since midnight. Crossing midnight starts the next day.
@@ -458,7 +462,11 @@ func _process(delta: float) -> void:
 	if clock_running:
 		advance_clock(MINUTES_PER_SEC * delta)
 	resp_load *= pow(0.5, delta / Drugs.LOAD_HALF_LIFE)
-	if craving > 0.0:
+	if no_sickness:
+		if craving < 100.0:
+			craving = 100.0
+			craving_changed.emit(craving)
+	elif craving > 0.0:
 		craving = max(0.0, craving - current_craving_decay() * delta)
 		craving_changed.emit(craving)
 

@@ -18,8 +18,8 @@ const PARTS := ["head", "neck", "torso", "upper_arm_l", "upper_arm_r", "lower_ar
 ## is a bone name, or "a+b" for the middle of two bones.
 const LAYOUT := {
 	"head": ["Bip01 Head", "Bip01 Head", "eyes_up", 0.11],
-	"neck": ["Bip01 Neck", "Bip01 Neck", "Bip01 Head", 0.06],
-	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Neck", 0.18],
+	"neck": ["Bip01 Neck", "Bip01 Spine1+Bip01 Neck", "Bip01 Head", 0.06],
+	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Spine1", 0.18],
 	"upper_arm_l": ["Bip01 L UpperArm", "Bip01 L UpperArm", "Bip01 L Forearm", 0.055],
 	"upper_arm_r": ["Bip01 R UpperArm", "Bip01 R UpperArm", "Bip01 R Forearm", 0.055],
 	"lower_arm_l": ["Bip01 L Forearm", "Bip01 L Forearm", "Bip01 L Hand", 0.05],
@@ -86,4 +86,7 @@ static func _point(sk: Skeleton3D, spec: String) -> Vector3:
 		# From the eyes up to the crown: about half again the way from
 		# the head bone to the eyes.
 		return eyes + Vector3.UP * (eyes.y - h.y) * 0.35
+	if spec.contains("+"):
+		var two := spec.split("+")
+		return (_point(sk, two[0]) + _point(sk, two[1])) * 0.5
 	return sk.get_bone_global_rest(sk.find_bone(spec)).origin

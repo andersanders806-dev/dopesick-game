@@ -6372,39 +6372,65 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 		zz.free()
 # --- Dead Block: guns, wall-buys, the box, the upgrade machine (Task Z3) -----------
 
-const ZDouble := "res://dev-tools/test_zombie_double.gd"
 ## Shots to kill a round-1 zombie (150 health) at 4 m: [torso, head].
 const ZW_SHOTS := {"pistol": [4, 2], "smg": [6, 4], "shotgun": [1, 1], "ar": [4, 2], "sniper": [1, 1],
 	"magnum": [2, 1], "lmg": [4, 3], "wonder": [1, 1]}
 ## The wall's prices (spec): the guns it sells.
 const ZW_PRICES := {"smg": 1000, "shotgun": 1200, "ar": 1400, "sniper": 1500, "magnum": 1000}
 
-## A test zombie `dist` m east of (x, z) on the street, and the aim that shoots at `part`.
+## A real Zombie3D (the block's spawner makes it) `dist` m east of (x, z) on the
+## street: held still (no brain), posed (animation paused), facing west, toward the
+## shooter. It logs its hits in meta "hits" ([part, damage]).
 func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node:
-	var zed: Node = load(ZDouble).make(parent, Vector3(x + dist, 0.0, z), rnd)
-	# A new body is in the physics space a step later: shots can't see it before.
+	var sp: Node = parent.get_node("ZombieBlock").spawner
+	sp.enabled = false
+	sp.round_no = rnd
+	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
+	zed.set_physics_process(false)
+	zed._anim_player.pause()
+	zed._model_root.rotation.y = -PI / 2.0
+	zed.set_meta("hits", [])
+	zed.hit.connect(func(_z, part, dmg, _k): zed.get_meta("hits").append([part, dmg]))
+	# The hit zones ride the skeleton: they are in the physics space a step later.
 	await physics_frame
+	await physics_frame
+	await process_frame
 	await physics_frame
 	return zed
+
+func _zw_hits(zed: Node) -> Array:
+	return zed.get_meta("hits")
+
+## Where the middle of one of the zombie's hit zones is now.
+func _zw_part_at(zed: Node, part: String) -> Vector3:
+	return (zed.hitboxes[part].get_child(0) as Node3D).global_position
+
+## Aim along +X at the middle of `part`, from x = `from_x` (looked up on every shot,
+## so it follows the pose).
+func _zw_aim_part(holder: Node, zed: Node, part: String, from_x := -20.0) -> void:
+	holder.aim_source = func():
+		var c := _zw_part_at(zed, part)
+		return [Vector3(from_x, c.y, c.z), Vector3.RIGHT]
 
 func _zw_aim(holder: Node, x: float, y: float, z: float) -> void:
 	holder.aim_source = func(): return [Vector3(x, y, z), Vector3.RIGHT]
 
-## Fires `data` at a fresh round-1 zombie at `part`'s height until it is dead;
-## returns the shots it took (or -1).
-func _zw_shots_to_kill(holder: Node, data: Resource, city: Node, y: float) -> int:
+## Fires `data` at `part` of a fresh round-1 zombie until it is dead; returns
+## the shots it took (or -1).
+func _zw_shots_to_kill(holder: Node, data: Resource, city: Node, part: String) -> int:
 	holder.give(data)
 	holder.no_spread = true
-	_zw_aim(holder, -20.0, y, -3.0)
 	var zed: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zed, part)
 	var shots := 0
-	while zed.alive and shots < 40:
+	while zed.is_alive() and shots < 40:
 		holder.advance(10.0)
 		holder.refill_current()
 		holder.fire()
 		shots += 1
+	var dead: bool = not zed.is_alive()
 	zed.queue_free()
-	return shots if not zed.alive else -1
+	return shots if dead else -1
 
 func _zombie_weapons_checks(gs: Node) -> void:
 	await _section("Dead Block: guns by part, ammo and reload, points, wall-buys, the box, the upgrade machine")
@@ -6445,6 +6471,10 @@ func _zombie_weapons_checks(gs: Node) -> void:
 			break
 		await physics_frame
 	await _frames(5)
+	# Round 1 has started by itself: park it, the checks bring their own dead.
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
 	var player := _player()
 	var holder: Node = player.get_node_or_null("WeaponHolder")
 	_check(block != null and holder != null and block.purchases_ready, "  the block arms the player and builds its purchases")
@@ -6458,39 +6488,91 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	# Damage by part kills a round-1 zombie in the expected shots, through real raycasts.
 	for id in ids:
 		var d: Resource = load("res://weapons/%s.tres" % id)
-		var body := await _zw_shots_to_kill(holder, d, city, 1.1)
-		var head := await _zw_shots_to_kill(holder, d, city, 1.68)
+		var body := await _zw_shots_to_kill(holder, d, city, "torso")
+		var head := await _zw_shots_to_kill(holder, d, city, "head")
 		_check(body == ZW_SHOTS[id][0] and head == ZW_SHOTS[id][1], "  %s: a round-1 zombie takes %d to the body and %d to the head (%d, %d)" % [id, ZW_SHOTS[id][0], ZW_SHOTS[id][1], body, head])
-	var up_shots := await _zw_shots_to_kill(holder, load("res://weapons/pistol_up.tres"), city, 1.1)
+	var up_shots := await _zw_shots_to_kill(holder, load("res://weapons/pistol_up.tres"), city, "torso")
 	_check(up_shots == 2, "  the upgraded pistol needs 2 to the body, not 4 (%d)" % up_shots)
+
+	# A real round-1 Zombie3D (the spawner's own, with its bone-riding hit zones) and the pistol's head multiplier.
+	var pistol: Resource = load("res://weapons/pistol.tres")
+	holder.give(pistol)
+	holder.no_spread = true
+	zm.points = 0
+	var kills0: int = zm.kills
+	var heads0: int = zm.headshots
+	var zr: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_check(zr.get_script().resource_path == "res://npc/Zombie3D.gd" and zr.max_health == 150.0 and zr.hitboxes.size() == 11,
+		"  the target is a real Zombie3D with 150 health and 11 hit zones")
+	_zw_aim_part(holder, zr, "head")
+	var head_dmg: float = pistol.damage_at("head", 4.0)
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(zr).size() == 1 and _zw_hits(zr)[0][0] == "head" and is_equal_approx(_zw_hits(zr)[0][1], head_dmg) and head_dmg > pistol.damage_at("torso", 4.0) * 1.9
+		and is_equal_approx(zr.health, 150.0 - head_dmg),
+		"  the first pistol shot lands in the head for the head multiplier (%s, %.0f of 150)" % [_zw_hits(zr), 150.0 - zr.health])
+	holder.advance(10.0)
+	holder.fire()
+	_check(not zr.is_alive() and _zw_hits(zr).size() == 2, "  a round-1 zombie is dead after 2 pistol headshots (%d hits)" % _zw_hits(zr).size())
+	_check(zm.kills - kills0 == 1 and zm.headshots - heads0 == 1 and zm.points == 10 + 100,
+		"  the kill is counted once (the spawner's), as a headshot, and pays 10 + 100 (kills +%d, heads +%d, %d points)" % [zm.kills - kills0, zm.headshots - heads0, zm.points])
+	zr.queue_free()
+	zm.points = 0
+
+	# A shotgun at point blank spreads over several parts and still pays once per shot.
+	holder.give(load("res://weapons/shotgun.tres"))
+	holder.no_spread = false
+	var zsp: Node = await _zw_target(city, -20.0, -3.0, 2.0, 40)
+	zsp.health = 1.0e6
+	zsp.max_health = 1.0e6
+	_zw_aim_part(holder, zsp, "neck", -20.0)
+	var parts_seen := {}
+	var paid_ok := true
+	var shots_landed := 0
+	for i in 8:
+		var before: int = zm.points
+		var n0: int = _zw_hits(zsp).size()
+		holder.advance(10.0)
+		holder.refill_current()
+		holder.fire()
+		var landed: int = _zw_hits(zsp).size() - n0
+		for h in _zw_hits(zsp).slice(n0):
+			parts_seen[h[0]] = true
+		if landed > 0:
+			shots_landed += 1
+		paid_ok = paid_ok and zm.points - before == (10 if landed > 0 else 0)
+	_check(shots_landed >= 4 and parts_seen.size() >= 2 and paid_ok,
+		"  shotgun pellets hit %d parts (%s) over %d shots and each shot paid 10 once, %d in all" % [parts_seen.size(), parts_seen.keys(), shots_landed, zm.points])
+	holder.no_spread = true
+	zsp.queue_free()
+	zm.points = 0
 
 	# Parts and what's in the way.
 	holder.give(load("res://weapons/pistol.tres"))
 	holder.no_spread = true
 	var z1: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	_zw_aim(holder, -20.0, 0.2, -3.0)
+	_zw_aim_part(holder, z1, "lower_leg_l")
 	holder.advance(10.0)
 	holder.fire()
-	_check(z1.hits.size() == 1 and z1.hits[0][0] == "lower_leg_l" and absf(z1.hits[0][1] - 40.0 * holder.current.limb_mult) < 0.01,
-		"  a shot at the shin hits the lower leg for the limb share (%s)" % [z1.hits])
+	_check(_zw_hits(z1).size() == 1 and _zw_hits(z1)[0][0] == "lower_leg_l" and absf(_zw_hits(z1)[0][1] - 40.0 * holder.current.limb_mult) < 0.01,
+		"  a shot at the shin hits the lower leg for the limb share (%s)" % [_zw_hits(z1)])
 	z1.queue_free()
-	var wall_z: Node = load(ZDouble).make(city, Vector3(-16.0, 0.0, -6.0), 1)
-	await _frames(2)
+	var wall_z: Node = await _zw_target(city, -16.0, -6.0, 0.0)
 	holder.aim_source = func(): return [Vector3(-16.0, 1.1, -3.0), Vector3(0, 0, -1)]
 	holder.advance(10.0)
 	holder.fire()
-	_check(wall_z.hits.is_empty(), "  a zombie behind a wall can't be shot through it")
+	_check(_zw_hits(wall_z).is_empty(), "  a zombie behind a wall can't be shot through it")
 	wall_z.queue_free()
 	var front: Node = await _zw_target(city, -20.0, -3.0, 4.0)
 	var back: Node = await _zw_target(city, -20.0, -3.0, 6.0)
-	_zw_aim(holder, -20.0, 1.1, -3.0)
+	_zw_aim_part(holder, front, "torso")
 	front.health = 1.0
 	holder.advance(10.0)
 	holder.fire()
-	_check(not front.alive and back.hits.is_empty(), "  a bullet stops at the first zombie")
+	_check(not front.is_alive() and _zw_hits(back).is_empty(), "  a bullet stops at the first zombie")
 	holder.advance(10.0)
 	holder.fire()
-	_check(back.hits.size() == 1, "  with the first one down (its zones switched off), the next in line is hit")
+	_check(_zw_hits(back).size() == 1, "  with the first one down (its zones switched off), the next in line is hit")
 	front.queue_free()
 	back.queue_free()
 
@@ -6562,50 +6644,51 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var hit_log := []
 	holder.hit.connect(func(part: String, killed: bool): hit_log.append([part, killed]))
 	var zh: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	_zw_aim(holder, -20.0, 1.68, -3.0)
+	_zw_aim_part(holder, zh, "head")
 	holder.advance(10.0)
 	holder.fire()
-	_check(zm.points == 10 and zh.alive and hit_log == [["head", false]], "  a hit that doesn't kill pays 10 and says so (%d, %s)" % [zm.points, hit_log])
+	_check(zm.points == 10 and zh.is_alive() and hit_log == [["head", false]], "  a hit that doesn't kill pays 10 and says so (%d, %s)" % [zm.points, hit_log])
 	holder.advance(10.0)
 	holder.fire()
-	_check(not zh.alive and zm.points == 110 and hit_log.back() == ["head", true], "  the killing headshot pays 100 (not 100 + 10): %d" % zm.points)
+	_check(not zh.is_alive() and zm.points == 110 and hit_log.back() == ["head", true], "  the killing headshot pays 100 (not 100 + 10): %d" % zm.points)
 	zh.queue_free()
 	zm.points = 0
 	var zb: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	_zw_aim(holder, -20.0, 1.1, -3.0)
+	_zw_aim_part(holder, zb, "torso")
 	for i in 4:
 		holder.advance(10.0)
 		holder.fire()
-	_check(not zb.alive and zm.points == 3 * 10 + 60, "  three hits and a body kill pay 3 x 10 + 60 (%d)" % zm.points)
+	_check(not zb.is_alive() and zm.points == 3 * 10 + 60, "  three hits and a body kill pay 3 x 10 + 60 (%d)" % zm.points)
 	zb.queue_free()
 	zm.points = 0
 	holder.give(load("res://weapons/magnum.tres"))
 	var zn: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	_zw_aim(holder, -20.0, 1.52, -3.0)
+	_zw_aim_part(holder, zn, "neck")
 	holder.advance(10.0)
 	holder.fire()
-	_check(not zn.alive and zn.last_part == "neck" and zm.points == 70, "  a neck kill pays 70 (%d, %s)" % [zm.points, zn.last_part])
+	_check(not zn.is_alive() and zn.last_part == "neck" and zm.points == 70, "  a neck kill pays 70 (%d, %s)" % [zm.points, zn.last_part])
 	zn.queue_free()
 	zm.points = 0
 	holder.give(load("res://weapons/shotgun.tres"))
 	var zs: Node = await _zw_target(city, -20.0, -3.0, 4.0, 5)
-	_zw_aim(holder, -20.0, 1.1, -3.0)
+	_zw_aim_part(holder, zs, "torso")
 	holder.advance(10.0)
 	holder.fire()
-	_check(zs.hits.size() == 8 and zs.alive and zm.points == 10, "  a shotgun blast lands 8 pellets and pays one hit, 10 (%d pellets, %d)" % [zs.hits.size(), zm.points])
+	_check(_zw_hits(zs).size() == 8 and zs.is_alive() and zm.points == 10, "  a shotgun blast lands 8 pellets and pays one hit, 10 (%d pellets, %d)" % [_zw_hits(zs).size(), zm.points])
 	zs.queue_free()
 	zm.points = 0
 	var zs1: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zs1, "torso")
 	holder.advance(10.0)
 	holder.refill_current()
 	holder.fire()
-	_check(not zs1.alive and zm.points == 60, "  a blast that kills pays the kill once, 60 (%d)" % zm.points)
+	_check(not zs1.is_alive() and zm.points == 60, "  a blast that kills pays the kill once, 60 (%d)" % zm.points)
 	zs1.queue_free()
 	zm.points = 0
 	zm.double_points = true
 	holder.give(load("res://weapons/pistol.tres"))
 	var zd: Node = await _zw_target(city, -20.0, -3.0, 4.0, 5)
-	_zw_aim(holder, -20.0, 1.1, -3.0)
+	_zw_aim_part(holder, zd, "torso")
 	holder.advance(10.0)
 	holder.fire()
 	_check(zm.points == 20, "  Double Points doubles a hit's 10 (%d)" % zm.points)
@@ -6613,19 +6696,20 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	zm.insta_kill = true
 	holder.advance(10.0)
 	holder.fire()
-	_check(not zd.alive, "  Insta-Kill: one hit kills even a round-5 zombie")
+	_check(not zd.is_alive(), "  Insta-Kill: one hit kills even a round-5 zombie")
 	zm.insta_kill = false
 	zd.queue_free()
 	zm.points = 0
 	var zk: Node = await _zw_target(city, -20.0, -3.0, 1.0)
-	_zw_aim(holder, -20.0, 1.1, -3.0)
-	_check(holder.melee() and not zk.alive and zm.points == 130, "  a knife kill pays 130 (%d)" % zm.points)
+	_zw_aim_part(holder, zk, "torso")
+	_check(holder.melee() and not zk.is_alive() and zm.points == 130, "  a knife kill pays 130 (%d)" % zm.points)
 	_check(not holder.melee(), "  the knife has a cooldown")
 	zk.queue_free()
 	var zfar: Node = await _zw_target(city, -20.0, -3.0, 6.0)
+	_zw_aim_part(holder, zfar, "torso")
 	holder.advance(10.0)
 	holder.melee()
-	_check(zfar.hits.is_empty(), "  the knife only reaches what's right in front of you")
+	_check(_zw_hits(zfar).is_empty(), "  the knife only reaches what's right in front of you")
 	zfar.queue_free()
 	zm.points = 0
 	holder.advance(10.0)
@@ -6646,7 +6730,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var zf: Node = await _zw_target(city, -20.0, -3.0, 5.0, 3)
 	holder.advance(10.0)
 	holder.fire()
-	_check(zf.hits.size() == 1 and (zf.hits[0][0] == "head" or zf.hits[0][0] == "neck"), "  first person: the shot goes where the crosshair points (%s)" % [zf.hits])
+	_check(_zw_hits(zf).size() == 1 and (_zw_hits(zf)[0][0] == "head" or _zw_hits(zf)[0][0] == "neck"), "  first person: the shot goes where the crosshair points (%s)" % [_zw_hits(zf)])
 	zf.queue_free()
 	gfx.set_first_person(false)
 	await _frames(4)

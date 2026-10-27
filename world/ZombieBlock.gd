@@ -101,11 +101,57 @@ func setup(block: Node3D) -> void:
 	hud = ZombieHudScript.new()
 	hud.name = "ZombieHud"
 	city.add_child(hud)
+	prewarm_bodies()
+	prewarm_render()
 	spawner = SpawnerScript.new()
 	spawner.holder = city
 	spawner.spawn_points.assign(SPAWN_POINTS)
 	add_child(spawner)
 	ZombieMode.start_round()
+
+## How many bodies setup has loaded ahead of the first round (the tests read it).
+var prewarmed := 0
+const ZombieScript := preload("res://npc/Zombie3D.gd")
+const CharacterCastScript := preload("res://npc/CharacterCast.gd")
+
+## Everything a zombie loads the first time one is spawned, loaded now (behind
+## the loading fade) so that no spawn in a round stalls its frame: the rot
+## noise, and every Rocketbox body the dead can wear (a GLB is 35-45 ms each).
+func prewarm_bodies() -> void:
+	ZombieScript.warm_shared()
+	prewarmed = 0
+	for b in ZombieScript.BODIES:
+		CharacterCastScript.scene_for(ZombieScript.MODEL_DIR + b + ".glb")
+		prewarmed += 1
+
+## Draws every body once, under the street where the camera's frustum still
+## takes them in and the pavement hides them, for a few frames: this is when
+## the rot shader's pipeline compiles and the skins reach the GPU, not in the
+## middle of round 1. They are not in the "zombies" group and don't think.
+func prewarm_render() -> void:
+	var holder := Node3D.new()
+	holder.name = "ZombiePrewarm"
+	city.add_child(holder)
+	var player := city.get_tree().get_first_node_in_group("player") as Node3D
+	var at: Vector3 = player.global_position if player else Vector3.ZERO
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	for i in ZombieScript.BODIES.size():
+		var z: CharacterBody3D = ZombieScript.new()
+		z.configure("walker", 1, rng)
+		z.set_meta("body", ZombieScript.BODIES[i])
+		z.set_meta("prewarm", true)
+		holder.add_child(z)
+		z.global_position = at + Vector3(-5.0 + i * 0.5, -4.0, 0.0)
+	_free_prewarm(holder)
+
+func _free_prewarm(holder: Node3D) -> void:
+	for i in 3:
+		if not is_inside_tree():
+			break
+		await get_tree().process_frame
+	if is_instance_valid(holder):
+		holder.queue_free()
 
 func _strip_story() -> void:
 	for child in city.get_children():

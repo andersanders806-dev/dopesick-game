@@ -14,6 +14,8 @@ extends Node
 
 signal spawned(zombie: Node)
 signal round_cleared(r: int)
+## A stuck one was put back on a spawn point.
+signal relocated(zombie: Node)
 
 const ZombieScript := preload("res://npc/Zombie3D.gd")
 const CORPSE_LIMIT := 12
@@ -47,6 +49,11 @@ var peak_alive := 0
 ## What has been let out, by kind, this round.
 var kind_counts := {"walker": 0, "runner": 0}
 var enabled := true
+## What the last spawn cost (building the zombie and adding it to the tree), and
+## the worst so far: the hitch a spawn adds to its frame (the tests and the
+## perf probe read these).
+var last_spawn_usec := 0
+var worst_spawn_usec := 0
 
 func _ready() -> void:
 	name = "ZombieSpawner"
@@ -119,24 +126,29 @@ func _release() -> void:
 
 ## One zombie of `kind` at a fresh spawn point, now. (The round's budget is
 ## `released`; tests and the horde probe call this directly.)
-func spawn_one(kind: String, at := Vector3.INF) -> CharacterBody3D:
+func spawn_one(kind: String, at := Vector3.INF, body := "") -> CharacterBody3D:
 	if holder == null:
 		return null
+	var t0 := Time.get_ticks_usec()
 	var z = ZombieScript.new()
 	z.configure(kind, maxi(round_no, 1), _rng)
+	if body != "":
+		z.set_meta("body", body)
 	z.position = at if at != Vector3.INF else _pick_point()
 	z.died.connect(_on_died)
 	holder.add_child(z)
 	z.reset_physics_interpolation()
+	last_spawn_usec = Time.get_ticks_usec() - t0
+	worst_spawn_usec = maxi(worst_spawn_usec, last_spawn_usec)
 	peak_alive = maxi(peak_alive, alive())
 	spawned.emit(z)
 	return z
 
 ## A spawn point away from the player and out of their view; failing that,
 ## the farthest one.
-func _pick_point() -> Vector3:
+func _pick_point(strict := false) -> Vector3:
 	if spawn_points.is_empty():
-		return holder.global_position
+		return Vector3.INF if strict else holder.global_position
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	var cam := get_viewport().get_camera_3d()
 	var good: Array[Vector3] = []
@@ -152,7 +164,28 @@ func _pick_point() -> Vector3:
 		if cam and not cam.is_position_behind(p) and cam.is_position_in_frustum(p + Vector3.UP):
 			continue
 		good.append(p)
-	return good[_rng.randi() % good.size()] if not good.is_empty() else farthest
+	if good.is_empty():
+		# (strict: nowhere that doesn't pop in front of the player)
+		return Vector3.INF if strict else farthest
+	return good[_rng.randi() % good.size()]
+
+## Puts a stuck zombie back on a spawn point out of the player's sight.
+## False if there is none right now (it asks again later).
+func relocate(z: Node3D) -> bool:
+	var p := _pick_point(true)
+	if p == Vector3.INF:
+		return false
+	var map := z.get_world_3d().navigation_map
+	if NavigationServer3D.map_get_iteration_id(map) > 0:
+		var snapped := NavigationServer3D.map_get_closest_point(map, p)
+		if snapped.distance_to(p) < 3.0:
+			p = Vector3(snapped.x, p.y, snapped.z)
+	z.global_position = p
+	z.reset_physics_interpolation()
+	if z.has_method("relocated"):
+		z.relocated()
+	relocated.emit(z)
+	return true
 
 func _on_died(zombie: Node, part: String, _melee: bool) -> void:
 	ZombieMode.record_kill(part == "head")

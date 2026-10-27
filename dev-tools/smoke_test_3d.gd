@@ -5903,9 +5903,215 @@ func _zombie_dead_checks(gs: Node) -> void:
 				rot_surfaces += 1
 	_check(rot_surfaces >= 2 and rot_surfaces <= total_surfaces, "  the body and head wear the rot shader (%d of %d surfaces)" % [rot_surfaces, total_surfaces])
 	shaded.free()
+	await _zombie_fix1_checks(city, block, spawner, zm, player)
 	for old in get_nodes_in_group("zombies"):
 		old.free()
 	zm.leave()
 	DirAccess.remove_absolute(zm.PATH)
 	root.get_node("Graphics").set_first_person(false)
 	gs.start_run()
+# --- Dead Block: fix round 1 (spawn hitches, round loop, stuck dead, attack ring) --
+func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, player: Node3D) -> void:
+	await _section("Dead Block: spawn hitches, the round loop, stuck dead, the attack ring")
+	var ZS: GDScript = load("res://npc/Zombie3D.gd")
+	var CC := preload("res://npc/CharacterCast.gd")
+	var Hit := preload("res://npc/ZombieHitboxes.gd")
+	spawner.enabled = false
+	spawner.time_scale = 1.0
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	for old in get_nodes_in_group("corpses"):
+		old.free()
+	spawner._corpses.clear()
+	var home := Vector3(-17.5, 0.0, -3.0)
+	player.global_position = home
+	player.velocity = Vector3.ZERO
+
+	# --- Spawn hitches: nothing loads for the first time inside a round ---
+	_check(city.get_node_or_null("ZombiePrewarm") == null and get_nodes_in_group("zombies").is_empty(),
+		"  the prewarm's offscreen dead are gone again and never counted as alive")
+	_check(block.get("prewarmed") == ZS.BODIES.size(), "  setup prewarmed all %d bodies (%s)" % [ZS.BODIES.size(), block.get("prewarmed")])
+	# Cold caches (as on a first run): drop every body, the noise and the materials, let the block warm
+	# them as its setup does, then each of the 20 bodies must spawn in under 25 ms.
+	ZS._noise = null
+	ZS._materials.clear()
+	for b in ZS.BODIES:
+		CC._scenes.erase(ZS.MODEL_DIR + b + ".glb")
+	if block.has_method("prewarm_bodies"):
+		block.prewarm_bodies()
+	spawner.round_no = 2
+	var worst_ms := 0.0
+	var worst_body := ""
+	for b in ZS.BODIES:
+		var sz = spawner.spawn_one("walker", Vector3(0.0, 0.0, 30.0), b)
+		var ms: float = spawner.last_spawn_usec / 1000.0
+		if ms > worst_ms:
+			worst_ms = ms
+			worst_body = b
+		sz.free()
+	_check(worst_ms < 25.0, "  a zombie of any of the 20 bodies spawns in under 25 ms (worst %.1f ms, %s)" % [worst_ms, worst_body])
+
+	# --- The round loop: all dead -> round_cleared -> next round spawns ---
+	spawner.enabled = true
+	spawner.time_scale = 0.01
+	var cleared := []
+	var on_cleared := func(r): cleared.append(r)
+	spawner.round_cleared.connect(on_cleared)
+	var round_seen := []
+	var on_round := func(r): round_seen.append(r)
+	zm.round_started.connect(on_round)
+	zm.round = 0
+	zm.start_round()
+	var killed := 0
+	var next_spawned := false
+	for i in 3000:
+		await physics_frame
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+			if spawner.round_no == 1:
+				zz.take_hit("torso", 1.0e6, Vector3.FORWARD, null)
+				killed += 1
+			elif spawner.round_no == 2:
+				next_spawned = true
+		if next_spawned:
+			break
+	spawner.enabled = false
+	spawner.round_cleared.disconnect(on_cleared)
+	zm.round_started.disconnect(on_round)
+	_check(killed == zm.zombies_in_round(1) and cleared == [1] and round_seen == [1, 2] and zm.round == 2,
+		"  the last dead of round 1 ends it: cleared %s, rounds started %s, killed %d of %d" % [cleared, round_seen, killed, zm.zombies_in_round(1)])
+	_check(next_spawned and spawner.total == zm.zombies_in_round(2) and spawner.released >= 1,
+		"  ...and round 2 sends its dead (owes %d, out %d)" % [spawner.total, spawner.released])
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	for old in get_nodes_in_group("corpses"):
+		old.free()
+	spawner._corpses.clear()
+	spawner.time_scale = 1.0
+
+	# --- A tear still lands when the swing clip is short ---
+	var bar: Node3D = block.barricades[0]
+	bar.repair_all()
+	await _frames(3)
+	var bx: float = bar.global_position.x
+	player.global_position = Vector3(bx, 0.0, -2.0)
+	spawner.round_no = 3
+	var tearer = spawner.spawn_one("walker", Vector3(bx, 0.0, bar.global_position.z - 2.4))
+	var boards_before: int = bar.boards
+	for i in 900:
+		await physics_frame
+		if tearer.state == tearer.State.TEAR and tearer._anim_player:
+			# a clip a sixth of its length: the swing is over long before the board is due
+			tearer._anim_player.speed_scale = 8.0
+		if bar.boards < boards_before:
+			break
+	_check(bar.boards < boards_before, "  a board is torn even when the attack clip is shorter than 0.55 s (%d -> %d)" % [boards_before, bar.boards])
+	tearer.free()
+	bar.repair_all()
+
+	# --- A torn plank put straight back stays up ---
+	var bar2: Node3D = block.barricades[1]
+	bar2.repair_all()
+	await _frames(3)
+	var idx: int = bar2.boards - 1
+	var plank: Node3D = bar2._planks[idx]
+	bar2.tear_board(null)
+	var up_again: bool = bar2.repair_board(null, false)
+	await create_timer(0.6).timeout
+	var home_xf: Transform3D = bar2._home[idx]
+	_check(up_again and bar2.boards == bar2.BOARD_COUNT and plank.transform.origin.distance_to(home_xf.origin) < 0.01,
+		"  a plank nailed back right after a tear ends up in place, not on the ground (%.2f m off)" % plank.transform.origin.distance_to(home_xf.origin))
+
+	# --- legless is a property ---
+	var lz = spawner.spawn_one("walker", Vector3(0.0, 0.0, 30.0))
+	var cap := lz._shape.shape as CapsuleShape3D
+	lz.legless = true
+	var legs_off: bool = (lz.hitboxes["lower_leg_l"] as Area3D).collision_layer == 0 and (lz.hitboxes["upper_leg_r"] as Area3D).collision_layer == 0
+	var short: bool = cap.height < 1.0
+	lz.legless = false
+	_check(legs_off and short and cap.height > 1.6 and (lz.hitboxes["lower_leg_l"] as Area3D).collision_layer == Hit.HITBOX_LAYER,
+		"  assigning legless shrinks the capsule and turns the leg zones off (and back on) (off %s, short %s)" % [legs_off, short])
+	lz.free()
+
+	# --- Boxed in, out of sight: put back on the map; in sight: left alone ---
+	player.global_position = home
+	player.velocity = Vector3.ZERO
+	await _frames(40)
+	var cam: Camera3D = root.get_viewport().get_camera_3d()
+	var fwd := -cam.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var behind := cam.global_position - fwd * 8.0
+	behind.y = 0.0
+	var ahead := cam.global_position + fwd * 6.0
+	ahead.y = 0.0
+	_check(not cam.is_position_in_frustum(behind + Vector3.UP) and cam.is_position_in_frustum(ahead + Vector3.UP) and not cam.is_position_behind(ahead + Vector3.UP),
+		"  (the test's two spots: one out of the camera's view, one in front of it)")
+	var boxes := []
+	var boxed := {}
+	for spot in [["behind", behind], ["ahead", ahead]]:
+		var at: Vector3 = spot[1]
+		var walls := Node3D.new()
+		city.add_child(walls)
+		for off in [Vector3(1.0, 0, 0), Vector3(-1.0, 0, 0), Vector3(0, 0, 1.0), Vector3(0, 0, -1.0)]:
+			var w := StaticBody3D.new()
+			w.collision_layer = 1
+			var sh := CollisionShape3D.new()
+			var bs := BoxShape3D.new()
+			bs.size = Vector3(0.3, 2.2, 2.3) if off.x != 0.0 else Vector3(2.3, 2.2, 0.3)
+			sh.shape = bs
+			w.add_child(sh)
+			walls.add_child(w)
+			w.global_position = at + off + Vector3(0, 1.1, 0)
+		boxes.append(walls)
+		var bz = spawner.spawn_one("walker", at)
+		bz.set("stuck_limit", 1.0)
+		boxed[spot[0]] = [bz, at]
+	await create_timer(2.8).timeout
+	var bz_behind = boxed["behind"][0]
+	var bz_ahead = boxed["ahead"][0]
+	var moved_behind: float = bz_behind.global_position.distance_to(boxed["behind"][1])
+	var moved_ahead: float = bz_ahead.global_position.distance_to(boxed["ahead"][1])
+	_check(moved_behind > 10.0 and bz_behind.global_position.distance_to(player.global_position) >= spawner.MIN_SPAWN_DISTANCE - 0.5,
+		"  a dead one boxed in out of sight is put back on a spawn point (moved %.1f m, now %.0f m from the player)" % [moved_behind, bz_behind.global_position.distance_to(player.global_position)])
+	_check(moved_ahead < 2.0, "  ...but one boxed in where the player can see it stays put (moved %.1f m)" % moved_ahead)
+	for walls in boxes:
+		walls.queue_free()
+	bz_behind.free()
+	bz_ahead.free()
+
+	# --- 20 dead round the player: a ring, not a pile ---
+	var ring_at := Vector3(-8.0, 0.0, -1.0)
+	player.global_position = ring_at
+	player.velocity = Vector3.ZERO
+	spawner.round_no = 8
+	var horde := []
+	for i in 20:
+		var at := ring_at + Vector3(4.0 + (i % 5) * 1.0, 0.0, -1.5 + (i / 5) * 1.0)
+		horde.append(spawner.spawn_one("runner" if i % 2 == 0 else "walker", at))
+	var closest_pair := 99.0
+	var closest_all := 99.0
+	var attackers_seen := 0
+	var pair_info := ""
+	for f in 1500:
+		await physics_frame
+		if f >= 900 and f % 30 == 0:
+			var near: Array = []
+			for zz in horde:
+				var d: float = Vector2(zz.global_position.x - ring_at.x, zz.global_position.z - ring_at.z).length()
+				if d <= zz.ATTACK_RANGE + 0.35:
+					near.append(zz)
+			attackers_seen = maxi(attackers_seen, near.size())
+			for a in near.size():
+				for b in range(a + 1, near.size()):
+					var pd: float = Vector2(near[a].global_position.x - near[b].global_position.x, near[a].global_position.z - near[b].global_position.z).length()
+					if pd < closest_pair:
+						closest_pair = pd
+						pair_info = "slots %d/%d states %d/%d at (%.1f,%.1f) / (%.1f,%.1f)" % [near[a]._slot, near[b]._slot, near[a].state, near[b].state, near[a].global_position.x - ring_at.x, near[a].global_position.z - ring_at.z, near[b].global_position.x - ring_at.x, near[b].global_position.z - ring_at.z]
+			for a in horde.size():
+				for b in range(a + 1, horde.size()):
+					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
+	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
+	_check(closest_pair >= 0.5, "  no two dead within reach are closer than 0.5 m (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
+	for zz in horde:
+		zz.free()

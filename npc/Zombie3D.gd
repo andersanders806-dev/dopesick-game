@@ -60,14 +60,39 @@ const CORPSE_LIFE := 30.0
 ## so it holds that pose), then it gets up, or drags on if legless.
 const KNEEL_TIME := 1.3
 const BODY_LAYER := 128
+## Attack slots round the target: three rings of eight, so a crowd stands
+## round it (each slot 0.7 m or more from the next) instead of in one pile.
+## The outer ring is out of claw reach and waits its turn.
+const RING_RADII := [1.0, 1.5, 2.0]
+const RING_SLOTS := 8
+## A zombie this close to its target takes a slot; it lets go beyond RELEASE.
+const SLOT_ENGAGE := 7.0
+const SLOT_RELEASE := 10.0
+## Closer than this to another of the dead and it is pushed off.
+const PERSONAL_SPACE := 0.62
+## Seconds without getting nearer (and out of the player's sight) before it
+## is put back on a spawn point.
+const STUCK_TIME := 8.0
+const STUCK_PROGRESS := 0.5
 
 static var _noise: Texture2D
 static var _materials := {}
+## The clip library, held so the cache never drops it between two zombies
+## (reloading it from disk cost 14-20 ms on the next spawn).
+static var _clip_library: Resource
+## Attack slot -> the zombie holding it.
+static var _slots := {}
+static var _horde_frame := -1
+static var _horde_cache: Array = []
+static var _gates_frame := -1
+static var _gates_cache: Array = []
 
 var kind := "walker"
 var max_health := 150.0
 var health := 150.0
-var legless := false
+## Both legs gone: it crawls and its capsule and leg zones shrink with it
+## (set_legless does that; assigning the property does the same).
+var legless := false: set = set_legless
 var state: State = State.CHASE
 var target: Node3D
 var speed := 1.1
@@ -105,6 +130,18 @@ var _facing := 0.0
 ## (true means the next clip blended out of it; the smoke test reads it).
 var kneel_handoff_live := false
 var _rot_amount := 0.6
+## Playback speed of its board-tearing swings (tests squeeze them).
+var swing_speed := 1.0
+var _tear_swung := false
+var _slot := -1
+var _holding := false
+var _slot_check := 0.0
+## How long it may go without getting any nearer to its target.
+var stuck_limit := STUCK_TIME
+var _stuck_t := 0.0
+var _best_remaining := INF
+## Set when it is put back on the map (the spawner's relocate); the tests read it.
+var relocations := 0
 
 ## Sets the kind ("walker" or "runner") and the round's health before it is
 ## added to the tree (npc/ZombieSpawner.gd does this).
@@ -128,7 +165,12 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 	set_meta("seed", rng.randf())
 
 func _ready() -> void:
-	add_to_group("zombies")
+	# A prewarm dummy (world/ZombieBlock.gd draws every body once, out of sight)
+	# is not one of the dead: no group, no brain.
+	var dummy: bool = get_meta("prewarm", false)
+	if not dummy:
+		add_to_group("zombies")
+	set_physics_process(not dummy)
 	collision_layer = BODY_LAYER
 	collision_mask = 1
 	# The block is flat and its floors sit on another layer: like the player,
@@ -168,6 +210,13 @@ func _ready() -> void:
 		_anim_player.seek(randf() * 0.8, true)
 
 # --- The look ------------------------------------------------------------------
+
+## Loads and keeps what every zombie shares (the rot noise, the clip library);
+## ZombieBlock calls it before the first round.
+static func warm_shared() -> void:
+	noise_texture()
+	if ResourceLoader.exists(CharacterAnimator.ZOMBIE_LIBRARY):
+		_clip_library = load(CharacterAnimator.ZOMBIE_LIBRARY)
 
 ## The noise the rot shader reads: four independent channels, tiling.
 static func noise_texture() -> Texture2D:
@@ -261,6 +310,11 @@ func _physics_process(delta: float) -> void:
 			if _kneel_t <= 0.0:
 				state = State.CHASE
 				_repath_in = 0.0
+	if state == State.CHASE:
+		_watch(delta)
+	else:
+		_stuck_t = 0.0
+		_best_remaining = INF
 	_move(want, delta)
 
 ## Where it wants to go this tick (a direction on the ground, zero to hold).
@@ -277,8 +331,23 @@ func _chase(delta: float) -> Vector3:
 	if _stagger > 0.0:
 		return Vector3.ZERO
 	var dir := to.normalized()
-	# Close in, straight at it; further out, along the navmesh.
-	if dist > 3.0:
+	_holding = false
+	# Near the target it takes a slot on the ring round it and goes to that.
+	var slot_goal := _slot_goal(dist, delta)
+	if slot_goal != Vector3.INF:
+		var to_slot := slot_goal - global_position
+		to_slot.y = 0.0
+		if to_slot.length() < 0.3:
+			_holding = true
+			_face(to, delta)
+			if dist < ATTACK_RANGE + 0.35 and _attack_cooldown <= 0.0 and _stagger <= 0.0:
+				_begin_attack(to)
+			return Vector3.ZERO
+		var steer := _around(slot_goal)
+		dir = Vector3(steer.x - global_position.x, 0.0, steer.z - global_position.z).normalized()
+	# Close in, straight at it; further out (or when the straight line is
+	# blocked) along the navmesh.
+	if dist > 3.0 or (slot_goal == Vector3.INF and _blocked(dir)):
 		_repath_in -= delta
 		if _repath_in <= 0.0:
 			_repath_in = randf_range(REPATH.x, REPATH.y)
@@ -307,7 +376,7 @@ func _follow_path(fallback: Vector3) -> Vector3:
 
 ## A barricade with boards left that it is walking into.
 func _gate_ahead(dir: Vector3) -> Node3D:
-	for b in get_tree().get_nodes_in_group("barricades"):
+	for b in _gates():
 		if (b as Node).has_method("blocks") and b.blocks(global_position, dir):
 			return b
 	return null
@@ -317,6 +386,7 @@ func _begin_tear(b: Node3D) -> void:
 	_barricade = b
 	_tear_timer = randf_range(0.2, 0.8)
 	_tear_hit_done = false
+	_tear_swung = false
 
 func _tear(delta: float) -> Vector3:
 	if _barricade == null or not is_instance_valid(_barricade) or not _barricade.intact():
@@ -338,9 +408,11 @@ func _tear(delta: float) -> Vector3:
 	if _tear_timer <= 0.0 and _stagger <= 0.0:
 		_tear_timer = TEAR_PERIOD
 		_tear_hit_done = false
-		_swing(ATTACK_CLIPS[randi() % ATTACK_CLIPS.size()])
-	# The swing lands a little way in.
-	if not _tear_hit_done and _tear_timer < TEAR_PERIOD - 0.55 and _tear_timer > 0.0 and anim.is_playing_once():
+		_tear_swung = true
+		_swing(ATTACK_CLIPS[randi() % ATTACK_CLIPS.size()], swing_speed)
+	# The swing lands a little way in. (On the timer alone: a short clip, or
+	# one that was cut off, must not keep the board up.)
+	if _tear_swung and not _tear_hit_done and _tear_timer < TEAR_PERIOD - 0.55:
 		_tear_hit_done = true
 		if _barricade.has_method("tear_board"):
 			_barricade.tear_board(self)
@@ -355,8 +427,8 @@ func _begin_attack(to: Vector3) -> void:
 	var clip: String = ATTACK_CLIPS[randi() % ATTACK_CLIPS.size()]
 	_attack_len = _swing(clip)
 
-func _swing(clip: String) -> float:
-	var dur := anim.play_once(clip, 1.0)
+func _swing(clip: String, rate := 1.0) -> float:
+	var dur := anim.play_once(clip, rate)
 	return maxf(dur, 0.4)
 
 func _attack(delta: float) -> void:
@@ -388,8 +460,10 @@ func _move(want: Vector3, delta: float) -> void:
 		var pace := CRAWL_SPEED if legless else speed
 		if _slow > 0.0:
 			pace *= 0.5
-		v = want * pace + _separation() * 0.6
+		v = want * pace
 		_face(want, delta)
+	if state == State.CHASE or state == State.ATTACK:
+		v += _separation()
 	velocity.x = move_toward(velocity.x, v.x, 14.0 * delta)
 	velocity.z = move_toward(velocity.z, v.z, 14.0 * delta)
 	velocity.y = 0.0
@@ -402,18 +476,171 @@ func _move(want: Vector3, delta: float) -> void:
 		else:
 			anim.play("z_idle", 1.0)
 
-## A shove off its neighbours so a horde spreads instead of stacking.
+## A shove off its neighbours so a horde spreads instead of stacking (also
+## when standing still: a pile unpicks itself).
 func _separation() -> Vector3:
 	var push := Vector3.ZERO
-	for o in get_tree().get_nodes_in_group("zombies"):
-		if o == self:
+	for o in _horde():
+		if o == self or not is_instance_valid(o) or not o.is_alive():
 			continue
 		var d: Vector3 = global_position - (o as Node3D).global_position
 		d.y = 0.0
 		var l := d.length()
-		if l > 0.001 and l < 0.9:
-			push += d / l * (0.9 - l)
-	return push
+		if l < PERSONAL_SPACE:
+			if l < 0.001:
+				d = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
+				l = 0.001
+			push += d / maxf(l, 0.001) * (PERSONAL_SPACE - l) / PERSONAL_SPACE * 2.2
+	return push.limit_length(2.5)
+
+## The living dead, listed once per physics frame for everyone.
+static func _horde() -> Array:
+	var f := Engine.get_physics_frames()
+	if f != _horde_frame:
+		_horde_frame = f
+		_horde_cache = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("zombies")
+	return _horde_cache
+
+static func _gates() -> Array:
+	var f := Engine.get_physics_frames()
+	if f != _gates_frame:
+		_gates_frame = f
+		_gates_cache = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("barricades")
+	return _gates_cache
+
+## Whether something solid is right in front of it on its way to `dir`.
+func _blocked(dir: Vector3) -> bool:
+	return test_move(global_transform, dir.normalized() * 0.4)
+
+# --- Slots round the target ------------------------------------------------------
+
+static func slot_offset(i: int) -> Vector3:
+	var ring := i / RING_SLOTS
+	var k := i % RING_SLOTS
+	var ang := (float(k) + 0.5 * float(ring % 2)) * TAU / RING_SLOTS
+	return Vector3(cos(ang), 0.0, sin(ang)) * float(RING_RADII[ring])
+
+func _slot_free(i: int) -> bool:
+	if not _slots.has(i):
+		return true
+	var o = _slots[i]
+	return o == self or not is_instance_valid(o) or not o.is_alive() or o._slot != i
+
+func _slot_cost(i: int) -> float:
+	var at: Vector3 = target.global_position + slot_offset(i)
+	return Vector2(at.x - global_position.x, at.z - global_position.z).length() + float(i / RING_SLOTS) * 0.9
+
+## The point it should stand at to claw its target (Vector3.INF: not near
+## enough to need one yet).
+func _slot_goal(dist: float, delta: float) -> Vector3:
+	if target == null:
+		return Vector3.INF
+	if dist > SLOT_RELEASE or (_slot < 0 and dist > SLOT_ENGAGE):
+		_release_slot()
+		return Vector3.INF
+	_slot_check -= delta
+	if _slot < 0 or _slot_check <= 0.0:
+		_slot_check = randf_range(0.4, 0.8)
+		var best := -1
+		var best_cost := INF
+		for i in RING_SLOTS * RING_RADII.size():
+			if not _slot_free(i):
+				continue
+			var c := _slot_cost(i)
+			if c < best_cost:
+				best_cost = c
+				best = i
+		# A better slot has to be clearly better to be worth the walk.
+		if best >= 0 and (_slot < 0 or best_cost < _slot_cost(_slot) - 0.6):
+			_release_slot()
+			_slot = best
+			_slots[best] = self
+	if _slot < 0:
+		return Vector3.INF
+	return target.global_position + slot_offset(_slot)
+
+## A slot on the far side of the target is reached by going round it, outside
+## the ones already standing there, not through them.
+func _around(goal: Vector3) -> Vector3:
+	var c := target.global_position
+	var rel := Vector2(global_position.x - c.x, global_position.z - c.z)
+	var want := Vector2(goal.x - c.x, goal.z - c.z)
+	var r := rel.length()
+	if r > 3.4 or r < 0.01:
+		return goal
+	var diff := angle_difference(rel.angle(), want.angle())
+	if absf(diff) < 0.6:
+		return goal
+	var ang := rel.angle() + signf(diff) * 0.5
+	var rr := maxf(r, float(RING_RADII[RING_RADII.size() - 1]) + 0.45)
+	return Vector3(c.x + cos(ang) * rr, goal.y, c.z + sin(ang) * rr)
+
+func _release_slot() -> void:
+	if _slot >= 0 and _slots.get(_slot) == self:
+		_slots.erase(_slot)
+	_slot = -1
+
+func _exit_tree() -> void:
+	_release_slot()
+
+# --- Stuck ----------------------------------------------------------------------
+
+## How far it still has to go: along its path out in the street, straight
+## when it is close.
+func _remaining() -> float:
+	var to := target.global_position - global_position
+	to.y = 0.0
+	var dist := to.length()
+	if dist <= 3.0 or _path_i >= _path.size():
+		return dist
+	var total := 0.0
+	var at := global_position
+	for i in range(_path_i, _path.size()):
+		total += Vector2(_path[i].x - at.x, _path[i].z - at.z).length()
+		at = _path[i]
+	return total
+
+## The watchdog: no nearer to its target for `stuck_limit` seconds (boxed in
+## by a wreck, a pillar, a pile of the dead...) and out of the player's view,
+## and the spawner puts it back on a spawn point. Tearing a board, clawing,
+## kneeling and queueing at the target's ring all count as getting on.
+func _watch(delta: float) -> void:
+	if target == null or _holding or _stagger > 0.0:
+		_stuck_t = 0.0
+		return
+	var rem := _remaining()
+	if rem < ATTACK_RANGE + 0.8:
+		# At its target.
+		_stuck_t = 0.0
+		_best_remaining = INF
+		return
+	if rem < _best_remaining - STUCK_PROGRESS:
+		_best_remaining = rem
+		_stuck_t = 0.0
+		return
+	_stuck_t += delta
+	if _stuck_t < stuck_limit:
+		return
+	# Never in sight: wait until the player looks away.
+	var cam := get_viewport().get_camera_3d()
+	if cam != null and not cam.is_position_behind(global_position + Vector3.UP) and cam.is_position_in_frustum(global_position + Vector3.UP):
+		_stuck_t = stuck_limit - 0.5
+		return
+	var spawner := get_tree().get_first_node_in_group("zombie_spawner")
+	if spawner != null and spawner.has_method("relocate") and spawner.relocate(self):
+		return
+	_stuck_t = stuck_limit - 1.0
+
+## Called by the spawner after it moved this one: forget the old route.
+func relocated() -> void:
+	relocations += 1
+	_stuck_t = 0.0
+	_best_remaining = INF
+	_path = PackedVector3Array()
+	_path_i = 0
+	_repath_in = 0.0
+	_release_slot()
+	velocity = Vector3.ZERO
 
 # --- Far away: cheaper ---------------------------------------------------------
 
@@ -499,6 +726,7 @@ func is_kneeling() -> bool:
 
 func _die(part: String, melee: bool, _dir: Vector3) -> void:
 	state = State.DYING
+	_release_slot()
 	remove_from_group("zombies")
 	add_to_group("corpses")
 	# Nothing of it can be shot or bumped into any more.
@@ -519,19 +747,21 @@ func _settle() -> void:
 	state = State.DEAD
 	_shape.set_deferred("disabled", true)
 
-## Both legs gone (gore, Z6): it crawls from now on.
+## Both legs gone (gore, Z6): it crawls from now on. `false` gives the legs back.
 func set_legless(on := true) -> void:
 	if legless == on:
 		return
 	legless = on
-	if on:
-		if state == State.STANDUP:
-			state = State.CHASE
-		(_shape.shape as CapsuleShape3D).height = 0.7
-		_shape.position.y = 0.35
-		for p in ["upper_leg_l", "upper_leg_r", "lower_leg_l", "lower_leg_r"]:
-			if hitboxes.has(p):
-				(hitboxes[p] as Area3D).collision_layer = 0
+	if _shape == null:
+		return
+	var cap := _shape.shape as CapsuleShape3D
+	cap.height = 0.7 if on else 1.7
+	_shape.position.y = 0.35 if on else 0.85
+	if on and state == State.STANDUP:
+		state = State.CHASE
+	for p in ["upper_leg_l", "upper_leg_r", "lower_leg_l", "lower_leg_r"]:
+		if hitboxes.has(p) and state < State.DYING:
+			(hitboxes[p] as Area3D).collision_layer = 0 if on else ZombieHitboxes.HITBOX_LAYER
 
 func is_alive() -> bool:
 	return state < State.DYING

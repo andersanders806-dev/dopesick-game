@@ -26,6 +26,9 @@ const InteractableScript := preload("res://interactables/Interactable3D.gd")
 @export var width: float = 2.2
 var boards: int = BOARD_COUNT
 var _planks: Array[MeshInstance3D] = []
+## One running tween per plank: a tear and a repair on the same plank must
+## not both be moving it.
+var _tweens := {}
 var _home: Array[Transform3D] = []
 var _shape: CollisionShape3D
 var _repair_ready := 0.0
@@ -44,7 +47,7 @@ func _ready() -> void:
 	wood.albedo_color = Color(0.36, 0.27, 0.19)
 	wood.roughness = 0.92
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash(position)
+	rng.seed = hash(String(name))
 	for i in BOARD_COUNT:
 		var plank := MeshInstance3D.new()
 		var mesh := BoxMesh.new()
@@ -101,16 +104,11 @@ func tear_board(_by: Node = null) -> bool:
 	if boards <= 0:
 		return false
 	boards -= 1
-	var plank := _planks[boards]
 	# It drops and lies on the ground in front of the gap.
-	var side := signf(plank.position.x + randf_range(-0.3, 0.3))
+	var side := signf(_planks[boards].position.x + randf_range(-0.3, 0.3))
 	var rest := Transform3D(Basis(Vector3.UP, randf_range(-0.6, 0.6)) * Basis(Vector3.RIGHT, PI * 0.5),
 		Vector3(side * randf_range(0.0, 0.6), 0.04, randf_range(0.5, 0.9) * (1.0 if randf() < 0.5 else -1.0)))
-	if is_inside_tree() and plank.is_inside_tree():
-		var tw := create_tween()
-		tw.tween_property(plank, "transform", rest, 0.3)
-	else:
-		plank.transform = rest
+	_move_plank(boards, rest, 0.3)
 	if boards == 0:
 		_shape.set_deferred("disabled", true)
 		cleared.emit(self)
@@ -130,18 +128,27 @@ func repair_board(by: Node3D = null, pay := true) -> bool:
 		if absf(local.z) < 0.45 and absf(local.x) < width * 0.5 + 0.2:
 			return false
 	_repair_ready = now + REPAIR_GAP
-	var plank := _planks[boards]
-	if is_inside_tree():
-		var tw := create_tween()
-		tw.tween_property(plank, "transform", _home[boards], 0.12)
-	else:
-		plank.transform = _home[boards]
+	_move_plank(boards, _home[boards], 0.12)
 	boards += 1
 	_shape.set_deferred("disabled", false)
 	if pay:
 		ZombieMode.add_points(ZombieMode.POINTS_BOARD, "board")
 	board_repaired.emit(self, boards)
 	return true
+
+## Moves plank `i` to `to`, dropping whatever was moving it before.
+func _move_plank(i: int, to: Transform3D, seconds: float) -> void:
+	var plank := _planks[i]
+	var old: Tween = _tweens.get(i)
+	if old != null and old.is_valid():
+		old.kill()
+	_tweens.erase(i)
+	if is_inside_tree() and plank.is_inside_tree():
+		var tw := create_tween()
+		tw.tween_property(plank, "transform", to, seconds)
+		_tweens[i] = tw
+	else:
+		plank.transform = to
 
 ## All the boards back (the Carpenter power-up pays its own flat bonus).
 func repair_all() -> void:

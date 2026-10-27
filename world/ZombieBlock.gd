@@ -10,6 +10,10 @@ extends Node
 ## them. They're obstacles like the parked cars were.
 
 const ZombieHudScript := preload("res://ui/ZombieHud.gd")
+const WeaponHolderScript := preload("res://player/WeaponHolder.gd")
+const WallBuyScript := preload("res://world/WallBuy.gd")
+const MysteryBoxScript := preload("res://world/MysteryBox.gd")
+const UpgradeMachineScript := preload("res://world/UpgradeMachine.gd")
 const CarPaint := preload("res://world/CarPaint.gd")
 const BarricadeScript := preload("res://world/Barricade.gd")
 const SpawnerScript := preload("res://npc/ZombieSpawner.gd")
@@ -53,6 +57,29 @@ const SWAPS := [
 	["CarMainW2", "wreck_sedan"], ["CarMainE1", "wreck_suv"], ["CarBackS2", "wreck_burnt_a"],
 ]
 
+## Where the guns are sold. Each is a probe point at chest height and the
+## direction to look from it: the first wall the ray meets is where the board,
+## the box or the machine goes, facing back along the ray. [gun, from, direction].
+const WALL_BUYS := [
+	["magnum", Vector3(-12, 1.3, -3), Vector3(0, 0, -1)],
+	["smg", Vector3(-21, 1.3, -3), Vector3(0, 0, -1)],
+	["shotgun", Vector3(8, 1.3, -3), Vector3(0, 0, -1)],
+	["ar", Vector3(25, 1.3, -3), Vector3(0, 0, -1)],
+	["sniper", Vector3(-72, 1.3, -36), Vector3(-1, 0, 0)],
+]
+## The mystery box's places, one at a time: it moves between them.
+const BOX_SPOTS := [
+	[Vector3(-4, 1.3, -3), Vector3(0, 0, -1)],
+	[Vector3(72, 1.3, -30), Vector3(1, 0, 0)],
+	[Vector3(-72, 1.3, -66), Vector3(-1, 0, 0)],
+	[Vector3(-12, 1.3, -92), Vector3(0, 0, -1)],
+]
+const MACHINE_SPOT := [Vector3(72, 1.3, -66), Vector3(1, 0, 0)]
+## How far in front of the wall things stand (m).
+const WALL_GAP := 0.02
+const BOX_GAP := 0.55
+const MACHINE_GAP := 0.45
+
 ## A red-tinged night. The sky is what the fog fades into; the moon is a
 ## dull red wash.
 const SKY := Color(0.17, 0.025, 0.03)
@@ -82,6 +109,11 @@ var city: Node3D
 var hud: CanvasLayer
 var spawner: Node
 var barricades: Array[Node3D] = []
+var holder: Node
+var wall_buys: Array = []
+var mystery_box: Area3D
+var upgrade_machine: Area3D
+var purchases_ready := false
 ## [light, full energy, seconds to the next change, in a burst, dead]
 var _flickering: Array = []
 ## How many streetlights stutter (the smoke test reads it).
@@ -107,6 +139,8 @@ func setup(block: Node3D) -> void:
 	spawner.holder = city
 	spawner.spawn_points.assign(SPAWN_POINTS)
 	add_child(spawner)
+	_arm_player()
+	_build_purchases()
 	ZombieMode.start_round()
 
 ## How many bodies setup has loaded ahead of the first round (the tests read it).
@@ -129,9 +163,9 @@ func prewarm_bodies() -> void:
 ## the rot shader's pipeline compiles and the skins reach the GPU, not in the
 ## middle of round 1. They are not in the "zombies" group and don't think.
 func prewarm_render() -> void:
-	var holder := Node3D.new()
-	holder.name = "ZombiePrewarm"
-	city.add_child(holder)
+	var bay := Node3D.new()
+	bay.name = "ZombiePrewarm"
+	city.add_child(bay)
 	var player := city.get_tree().get_first_node_in_group("player") as Node3D
 	var at: Vector3 = player.global_position if player else Vector3.ZERO
 	var rng := RandomNumberGenerator.new()
@@ -141,17 +175,64 @@ func prewarm_render() -> void:
 		z.configure("walker", 1, rng)
 		z.set_meta("body", ZombieScript.BODIES[i])
 		z.set_meta("prewarm", true)
-		holder.add_child(z)
+		bay.add_child(z)
 		z.global_position = at + Vector3(-5.0 + i * 0.5, -4.0, 0.0)
-	_free_prewarm(holder)
+	_free_prewarm(bay)
 
-func _free_prewarm(holder: Node3D) -> void:
+func _free_prewarm(bay: Node3D) -> void:
 	for i in 3:
 		if not is_inside_tree():
 			break
 		await get_tree().process_frame
-	if is_instance_valid(holder):
-		holder.queue_free()
+	if is_instance_valid(bay):
+		bay.queue_free()
+
+## The player gets their guns.
+func _arm_player() -> void:
+	var player := get_tree().get_first_node_in_group("player")
+	if player == null:
+		return
+	holder = WeaponHolderScript.new()
+	player.add_child(holder)
+
+## The wall guns, the box and the upgrade machine, once the walls they stand
+## against are in the physics space to be found.
+func _build_purchases() -> void:
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if not is_inside_tree():
+		return
+	for w in WALL_BUYS:
+		var t := _snap(w[1], w[2], WALL_GAP)
+		var buy: Area3D = WallBuyScript.new()
+		city.add_child(buy)
+		buy.setup(load("res://weapons/%s.tres" % w[0]))
+		buy.transform = t
+		wall_buys.append(buy)
+	var places: Array = []
+	for b in BOX_SPOTS:
+		places.append(_snap(b[0], b[1], BOX_GAP))
+	mystery_box = MysteryBoxScript.new()
+	city.add_child(mystery_box)
+	mystery_box.setup(places)
+	upgrade_machine = UpgradeMachineScript.new()
+	city.add_child(upgrade_machine)
+	upgrade_machine.transform = _snap(MACHINE_SPOT[0], MACHINE_SPOT[1], MACHINE_GAP)
+	purchases_ready = true
+
+## The spot `gap` metres in front of the first wall met looking from `from`
+## along `dir`, turned so +Z faces back along the ray (the street). With no wall
+## in reach, the point 6 m on.
+func _snap(from: Vector3, dir: Vector3, gap: float) -> Transform3D:
+	var space := city.get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 14.0)
+	var r := space.intersect_ray(q)
+	var at := from + dir * 6.0
+	if not r.is_empty():
+		at = r.position - dir * gap
+	at.y = 0.0
+	var facing := Basis.looking_at(dir, Vector3.UP)
+	return Transform3D(facing, at)
 
 func _strip_story() -> void:
 	for child in city.get_children():

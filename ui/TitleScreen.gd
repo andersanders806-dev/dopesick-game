@@ -199,6 +199,8 @@ People: Microsoft Rocketbox avatars (MIT).
 Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits and sounds (CC0).
 Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel Zhabotinsky -- Shvan '92;
 Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.
+Guns (Poly Haven, CC0; Sketchfab, CC BY 4.0): nebula075 -- MPX SMG; TastyTony -- Remington 870; Derek Flanagan -- HK 416;
+austincford -- magnum revolver; MaX3Dd -- DP28 machine gun.
 Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.
 Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model License) through kimodo.cpp (Apache-2.0); built with Meta Llama 3.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.

@@ -5512,6 +5512,16 @@ func _zombie_shell_checks(gs: Node) -> void:
 	# The HUD.
 	var zhud := get_first_node_in_group("zombie_hud")
 	_check(zhud != null and zhud.round_label.text == "1" and zhud.points_label.text == "500", "  the HUD shows round 1 and 500 points")
+	if zhud:
+		var screen := Rect2(Vector2.ZERO, zhud.get_viewport().get_visible_rect().size)
+		zhud.banner.text = "ROUND 104"
+		zhud.round_label.text = "104"
+		await _frames(2)
+		var text_w: float = zhud.banner.get_theme_font("font").get_string_size(zhud.banner.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 72).x
+		var banner_mid: float = zhud.banner.get_global_rect().get_center().x
+		_check(abs(banner_mid - screen.size.x * 0.5) < 2.0 and text_w < zhud.banner.size.x, "  the round banner sits centred, all of it in the window")
+		_check(screen.encloses(zhud.round_label.get_global_rect()) and screen.encloses(zhud.points_label.get_global_rect()), "  the round and points numbers sit inside the window")
+		zhud._refresh()
 	zm.add_points(70, "neck")
 	_check(zhud.points_label.text == "570", "  ...and follows the points (%s)" % zhud.points_label.text)
 	_check(not (get_first_node_in_group("hud") as CanvasLayer).visible, "  the story's HUD is hidden")

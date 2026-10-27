@@ -18,16 +18,21 @@ func _ready() -> void:
 	layer = 12
 	var font := FontVariation.new()
 	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
-	round_label = _label(font, 64, BLOOD, Vector2(28, 590))
-	points_label = _label(font, 30, PAPER, Vector2(32, 552))
+	# Pinned to the bottom-left corner and growing up and right, so a long
+	# round or points number never runs off the window.
+	round_label = _label(font, 64, BLOOD, Vector2.ZERO)
+	_pin_bottom_left(round_label, 28.0, 24.0)
+	points_label = _label(font, 30, PAPER, Vector2.ZERO)
+	_pin_bottom_left(points_label, 32.0, 100.0)
 	_pops = Control.new()
 	_pops.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_pops.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_pops)
-	banner = _label(font, 72, BLOOD, Vector2(0, 150))
-	banner.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	# The full width of the window, text centred in it.
+	banner = _label(font, 72, BLOOD, Vector2.ZERO)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	banner.offset_top = 150.0
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	banner.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	banner.modulate.a = 0.0
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
@@ -46,6 +51,15 @@ func _label(font: Font, size: int, color: Color, at: Vector2) -> Label:
 	l.add_theme_constant_override("shadow_outline_size", 8)
 	add_child(l)
 	return l
+
+func _pin_bottom_left(l: Label, left: float, bottom: float) -> void:
+	l.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	l.offset_left = left
+	l.offset_right = left
+	l.offset_top = -bottom
+	l.offset_bottom = -bottom
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.grow_horizontal = Control.GROW_DIRECTION_END
 
 func _refresh() -> void:
 	round_label.text = str(ZombieMode.round)

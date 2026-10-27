@@ -94,6 +94,11 @@ func _place_player_at_spawn() -> Marker3D:
 	if GameState.pending_spawn == "":
 		return null
 	var marker := find_child(GameState.pending_spawn, true, false) as Marker3D
+	# A walk-in shop's name is a spawn too: just inside its door.
+	if marker == null:
+		var shop := find_child(GameState.pending_spawn, true, false)
+		if shop != null:
+			marker = shop.get_node_or_null("SpawnInside") as Marker3D
 	var player := get_tree().get_first_node_in_group("player")
 	if marker and player:
 		player.global_position = marker.global_position

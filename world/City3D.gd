@@ -169,6 +169,11 @@ var ready_ms := 0
 var zombie_mode := false
 const ZombieBlockScript := preload("res://world/ZombieBlock.gd")
 
+## You walked into / out of one of the walk-in shops on Main Street
+## (world/WalkInShop.gd), by GameState place id.
+signal entered_shop(place: String)
+signal left_shop(place: String)
+
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
 	zombie_mode = GameState.mode == "zombies"

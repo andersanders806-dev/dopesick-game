@@ -388,7 +388,7 @@ func _run() -> void:
 	gs.craving = 45.0
 
 	await _section("City doors all lead somewhere real")
-	for d in ["DoorToHome", "DoorToBar", "DoorToShop", "DoorToPharmacy", "DoorToLiquor", "DoorToSupermarket", "DoorToElectronics"]:
+	for d in ["DoorToHome", "DoorToBar", "DoorToPharmacy", "DoorToSupermarket", "DoorToElectronics"]:
 		var target: String = current_scene.get_node(d).target_scene
 		_check(ResourceLoader.exists(target), "%s -> %s" % [d, target])
 
@@ -488,17 +488,19 @@ func _run() -> void:
 	await _section("Busted: exactly one bust, then a jail cell")
 	current_scene.get_node("DoorToCity").interact(_player())
 	await _transition()
-	current_scene.get_node("DoorToShop").interact(_player())
-	await _transition()
+	# The corner shop is a room on Main Street: walk in through its doorway.
 	var store := current_scene
+	var shop_node := store.get_node("Cell_Main/WalkIn_Convenience")
+	_player().global_position = shop_node.get_node("SpawnInside").global_position
+	_player().reset_physics_interpolation()
+	await _frames(30)
 	gs.cash = 40
 	gs.steal_item("cigs")
 	var busts := [0]
 	var count_bust := func(): busts[0] += 1
 	gs.busted.connect(count_bust)
 	var bp := _player()
-	var clerk := store.get_node("Shopkeeper") as Node3D
-	bp.global_position = Vector3(clerk.global_position.x, 0, -1.95)
+	var clerk := shop_node.get_node("Shopkeeper") as Node3D
 	gs.set_wanted(true)
 	var cop: Node3D = PoliceScene.instantiate()
 	store.add_child(cop)
@@ -510,6 +512,7 @@ func _run() -> void:
 	# check and `clerk_saw` came out false at random, failing a test that is
 	# really about counting busts, not about vision. Solving for the sweep
 	# phase that points at the player makes it deterministic.
+	bp.reset_physics_interpolation()
 	var to_p: Vector3 = bp.global_position - clerk.global_position
 	var want_deg := rad_to_deg(Vector2(to_p.x, to_p.z).angle())
 	var half_arc: float = float(clerk.get("sweep_arc_deg")) * 0.5
@@ -835,6 +838,7 @@ func _run() -> void:
 	await _one_load_at_a_time_checks()
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
+	await _walk_in_checks(gs)
 	await _zombie_shell_checks(gs)
 	await _zombie_anim_checks(gs)
 	await _car_checks(gs)
@@ -862,9 +866,9 @@ func _day_night_checks(gs: Node) -> void:
 	city.get_node("DoorToPharmacy").interact(_player())
 	await _transition()
 	_check(current_scene.name == "City3D", "  the pharmacy is locked at 23:30")
-	current_scene.get_node("DoorToShop").interact(_player())
-	await _transition()
-	_check(current_scene.name == "StoreConvenience3D", "  ...but the 24/7 shop lets you in")
+	var open_shop := current_scene.get_node("Cell_Main/WalkIn_Convenience")
+	var shut_shop := current_scene.get_node("Cell_Main/WalkIn_Liquor")
+	_check((open_shop.get_node("Gate") as CollisionObject3D).collision_layer == 0 and (shut_shop.get_node("Gate") as CollisionObject3D).collision_layer == 1, "  ...but the 24/7 shop's doorway is open (and the liquor store's is shut)")
 
 	gs.clock = 9 * 60
 	city = await _load("res://world/City3D.tscn")
@@ -3632,9 +3636,10 @@ func _world_art_checks(gs: Node) -> void:
 	var names := ["Police", "Home", "Pharmacy", "Bar", "Shop", "Liquor", "Supermarket", "Electronics", "Karts", "Pawn", "Music", "Shelter"]
 	_check(fronts != null and names.all(func(n): return fronts.get_node_or_null("Front" + n) != null), "  every building has a real front")
 	# Gameplay stays: doors and the station door where they were.
-	var doors := ["DoorToHome", "DoorToPharmacy", "DoorToBar", "DoorToShop", "DoorToLiquor", "DoorToSupermarket",
-		"DoorToElectronics", "DoorToKarts", "DoorToPawn", "DoorToMusic", "DoorToShelter", "StationDoor"]
-	_check(doors.all(func(d): return city.find_child(d, true, false) != null), "  every door is still there")
+	var doors := ["DoorToHome", "DoorToPharmacy", "DoorToBar", "DoorToSupermarket",
+		"DoorToElectronics", "DoorToKarts", "DoorToShelter", "StationDoor",
+		"WalkIn_Convenience", "WalkIn_Liquor", "WalkIn_Pawn", "WalkIn_Music"]
+	_check(doors.all(func(d): return city.find_child(d, true, false) != null), "  every door is still there (the four shops' are doorways now)")
 	if fronts:
 		# Fronts sit behind the signs: nothing of a facade pokes in front of
 		# z = -4.5 at sign height or below (fire escapes stand out above it)
@@ -4787,10 +4792,14 @@ func _laptop_street_checks(gs: Node) -> void:
 const MAIN_STREET_POSITIONS := {
 	"DoorToBackyard": Vector3(-21.0, 0.0, -4.05), "DoorToBar": Vector3(-3.5, 0.0, -4.05),
 	"DoorToElectronics": Vector3(24.5, 0.0, -4.05), "DoorToHome": Vector3(-17.5, 0.0, -4.05),
-	"DoorToKarts": Vector3(-14.0, 0.0, -4.05), "DoorToLiquor": Vector3(10.5, 0.0, -4.05),
-	"DoorToMusic": Vector3(-7.0, 0.0, -4.05), "DoorToPawn": Vector3(0.0, 0.0, -4.05),
+	"DoorToKarts": Vector3(-14.0, 0.0, -4.05),
 	"DoorToPharmacy": Vector3(-10.5, 0.0, -4.05), "DoorToShelter": Vector3(7.0, 0.0, -4.05),
-	"DoorToShop": Vector3(3.5, 0.0, -4.05), "DoorToSupermarket": Vector3(17.5, 0.0, -4.05),
+	"DoorToSupermarket": Vector3(17.5, 0.0, -4.05),
+	# The corner shop, liquor store, pawnshop and Tape Deck have no door
+	# node since task 3: their doorways are at the same x, and their shops'
+	# origins (WalkIn_*) are just inside it.
+	"WalkIn_Convenience": Vector3(3.5, 0.0, -4.8), "WalkIn_Liquor": Vector3(10.5, 0.0, -4.8),
+	"WalkIn_Pawn": Vector3(0.0, 0.0, -4.8), "WalkIn_Music": Vector3(-7.0, 0.0, -4.8),
 	"StationDoor": Vector3(-24.5, 0.0, -4.05),
 	"SpawnDefault": Vector3(-17.5, 0.0, -3.0), "SpawnFromBackyard": Vector3(-21.0, 0.0, -3.0),
 	"SpawnFromBar": Vector3(-3.5, 0.0, -3.0), "SpawnFromElectronics": Vector3(24.5, 0.0, -3.0),
@@ -5833,3 +5842,263 @@ func _zombie_anim_checks(gs: Node) -> void:
 	_check(man_anim.resolved_clip("walk") == "walk" and man_anim.resolved_clip("sprint") == "sprint" and man_anim.resolved_clip("idle") == "idle",
 		"  the story's walk, sprint and idle still resolve to the avatar's own clips with the library installed")
 	man.queue_free()
+
+# --- Walk-in shops on Main Street (open world, task 3) ----------------------
+
+## The four shops you walk into from the sidewalk: the node under Cell_Main,
+## the place id GameState keys hours on, the street spawn out front, who
+## watches the shelves ("" = nobody), what to walk up to, the shop's front
+## in world/Facades.gd and its door's x.
+const WALK_INS := [
+	{"node": "WalkIn_Convenience", "place": "convenience", "spawn": "SpawnFromShop", "keeper": "Shopkeeper", "target": "Item1", "front": "Shop", "x": 3.5, "old": "StoreConvenience3D"},
+	{"node": "WalkIn_Liquor", "place": "liquor", "spawn": "SpawnFromLiquor", "keeper": "Clerk", "target": "Item1", "front": "Liquor", "x": 10.5, "old": "StoreLiquor3D"},
+	{"node": "WalkIn_Pawn", "place": "pawn", "spawn": "SpawnFromPawn", "keeper": "", "target": "Pawnbroker", "front": "Pawn", "x": 0.0, "old": "Pawn3D"},
+	{"node": "WalkIn_Music", "place": "music", "spawn": "SpawnFromMusic", "keeper": "Clerk", "target": "Item1", "front": "Music", "x": -7.0, "old": "MusicStore3D"},
+]
+
+## Puts the player on the line x, from z `from` to `to`, a little each
+## frame -- crossing a doorway the way walking does.
+func _step_player(x: float, from: float, to: float, frames := 50) -> void:
+	var p := _player()
+	for i in frames + 1:
+		p.global_position = Vector3(x, 0.0, lerpf(from, to, float(i) / frames))
+		await physics_frame
+
+func _roof_of(city: Node, front: String) -> Node3D:
+	return city.get_node("Facades").get_node_or_null("Roof" + front) as Node3D
+
+func _walk_in_checks(gs: Node) -> void:
+	await _section("Walk-in shops: the corner shop, liquor, pawn and tape shops are rooms on Main Street")
+	_close_menus()
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	await _frames(5)
+	var p := _player()
+	var entered := []
+	var left := []
+	_check(city.has_signal("entered_shop") and city.has_signal("left_shop"), "  City3D announces entered_shop / left_shop")
+	if not (city.has_signal("entered_shop") and city.has_signal("left_shop")):
+		return
+	city.entered_shop.connect(func(place): entered.append(place))
+	city.left_shop.connect(func(place): left.append(place))
+	for w in WALK_INS:
+		var name: String = w["node"]
+		var shop := city.get_node_or_null("Cell_Main/" + name)
+		_check(shop != null and shop.get_meta("place", "") == w["place"], "%s is on Main Street (place '%s')" % [name, shop.get_meta("place", "") if shop else "-"])
+		if shop == null:
+			continue
+		_check(city.find_child("DoorTo" + String(w["front"]), true, false) == null, "  ...with no door to a separate scene any more")
+		var inside := shop.get_node_or_null("Inside") as Area3D
+		_check(inside != null and inside.collision_layer == 0 and (inside.collision_mask & 2) != 0, "  an Inside area that looks for the player and nothing else")
+		var spawn_in := shop.get_node_or_null("SpawnInside") as Marker3D
+		_check(spawn_in != null and inside != null and inside.get_child_count() > 0, "  with a SpawnInside marker")
+		# Out front, then in through the doorway.
+		var street: Vector3 = city.get_node(w["spawn"]).global_position
+		await _step_player(street.x, -2.6, -3.4, 8)
+		var roof := _roof_of(city, w["front"])
+		_check(roof != null and roof.visible, "  the roof is on while you're out on the sidewalk")
+		_check(not shop.player_inside and not entered.has(w["place"]), "  not inside yet")
+		await _step_player(street.x, -3.4, -8.0, 60)
+		await _frames(3)
+		_check(current_scene == city and current_scene.name == "City3D", "  walking in changes no scene (still %s)" % current_scene.name)
+		_check(shop.player_inside and inside.overlaps_body(p), "  Inside reports the player")
+		_check(entered.has(w["place"]), "  entered_shop('%s') fired" % w["place"])
+		_check(roof != null and not roof.visible, "  the building's roof is hidden while you're inside")
+		await _step_player(street.x, -8.0, -2.6, 60)
+		await _frames(3)
+		_check(not shop.player_inside and left.has(w["place"]) and roof != null and roof.visible, "  and back out: left_shop fired, the roof is back")
+
+	await _section("Walk-in shops: real walking through the doorway, to the goods")
+	for w in WALK_INS:
+		var shop := city.get_node_or_null("Cell_Main/" + String(w["node"]))
+		if shop == null:
+			continue
+		p.global_position = city.get_node(w["spawn"]).global_position
+		p.reset_physics_interpolation()
+		await _frames(3)
+		var target := shop.get_node_or_null(w["target"]) as Node3D
+		var arrived := target != null and await _walk_until_nearest(target, 900)
+		_check(arrived and shop.player_inside, "%s: walked from the street to %s" % [w["node"], w["target"]])
+		# Every goods slot is on the navmesh and reachable from the street.
+		var map: RID = city.get_world_3d().navigation_map
+		var slots := shop.find_children("Item*", "Area3D", false, false)
+		var worst := 0.0
+		for slot in slots:
+			var goal: Vector3 = slot.global_position
+			goal.y = 0.0
+			var path := NavigationServer3D.map_get_path(map, city.get_node(w["spawn"]).global_position, goal, true)
+			var end: Vector3 = path[path.size() - 1] if path.size() > 0 else Vector3(1e6, 0, 1e6)
+			worst = maxf(worst, Vector2(end.x - goal.x, end.z - goal.z).length())
+		_check(worst <= 0.9, "  all %d goods are reachable from the street by navmesh (worst %.2f m short)" % [slots.size(), worst])
+
+	await _section("Walk-in shops: stealing under a clerk's eye is the same as in the old rooms")
+	for w in WALK_INS:
+		if w["keeper"] == "":
+			continue
+		gs.set_wanted(false)
+		for cop in get_nodes_in_group("police"):
+			cop.queue_free()
+		await _frames(2)
+		var shop := city.get_node("Cell_Main/" + String(w["node"]))
+		var keeper := shop.get_node(w["keeper"]) as Node3D
+		p.global_position = shop.get_node("SpawnInside").global_position
+		p.reset_physics_interpolation()
+		await _frames(30)
+		_check(shop.player_inside and not gs.wanted, "%s: inside, and the clerk has nothing on you yet" % w["node"])
+		var to_p: Vector3 = p.global_position - keeper.global_position
+		keeper.base_facing_deg = rad_to_deg(Vector2(to_p.x, to_p.z).angle())
+		keeper.sweep_speed = 0.0
+		keeper._sweep_t = 0.0
+		var spotted := false
+		for i in 400:
+			p.is_stealing = true
+			await physics_frame
+			if gs.wanted:
+				spotted = true
+				break
+		p.is_stealing = false
+		_check(spotted, "  GameState.wanted set after being seen mid-theft")
+		_check(current_scene == city and get_first_node_in_group("police") == null, "  no officer the instant the alarm goes up, and still on the street's scene")
+		var police: Node3D = null
+		for i in 300:
+			await physics_frame
+			police = get_first_node_in_group("police") as Node3D
+			if police:
+				break
+		_check(police != null, "  a police officer arrives shortly after")
+		gs.set_wanted(false)
+		for cop in get_nodes_in_group("police"):
+			cop.queue_free()
+		await _frames(2)
+
+	await _section("Walk-in shops: out of the shop mid-theft, the chase follows onto the street")
+	var cw: Dictionary = WALK_INS[0]
+	var cshop := city.get_node("Cell_Main/" + String(cw["node"]))
+	var ckeeper := cshop.get_node(cw["keeper"]) as Node3D
+	p.global_position = cshop.get_node("SpawnInside").global_position
+	p.reset_physics_interpolation()
+	await _frames(30)
+	var cto: Vector3 = p.global_position - ckeeper.global_position
+	ckeeper.base_facing_deg = rad_to_deg(Vector2(cto.x, cto.z).angle())
+	ckeeper.sweep_speed = 0.0
+	for i in 400:
+		p.is_stealing = true
+		await physics_frame
+		if gs.wanted:
+			break
+	p.is_stealing = false
+	_check(gs.wanted, "  seen mid-theft")
+	# Out before the officer is there, and well up the street.
+	await _step_player(cw["x"], -5.9, -2.6, 20)
+	await _step_player(cw["x"], -2.6, -2.6, 2)
+	p.global_position = Vector3(cw["x"] + 7.0, 0, -2.6)
+	p.reset_physics_interpolation()
+	await _frames(2)
+	_check(gs.wanted and not cshop.player_inside and current_scene == city, "  leaving mid-theft keeps you wanted, on the street's scene")
+	var cop2: Node3D = null
+	for i in 300:
+		await physics_frame
+		cop2 = get_first_node_in_group("police") as Node3D
+		if cop2:
+			break
+	_check(cop2 != null and gs.wanted, "  the officer is called to the door all the same")
+	if cop2:
+		var d0 := cop2.global_position.distance_to(p.global_position)
+		p.dialogue_active = true
+		var closed := false
+		for i in 240:
+			await physics_frame
+			if cop2.global_position.distance_to(p.global_position) < d0 - 3.0:
+				closed = true
+				break
+		p.dialogue_active = false
+		_check(closed and cop2.global_position.z > -4.5, "  and comes after you along the street (%.1f m -> %.1f m, z %.1f)" % [d0, cop2.global_position.distance_to(p.global_position), cop2.global_position.z])
+		gs.set_wanted(false)
+		for cop in get_nodes_in_group("police"):
+			cop.queue_free()
+		await _frames(2)
+
+	await _section("Walk-in shops: closing time with you inside shows you out onto Main Street")
+	for w in WALK_INS:
+		var hours: Array = gs.OPENING_HOURS[w["place"]]
+		if hours == [0, 24]:
+			continue
+		gs.set_wanted(false)
+		gs.clock = int(hours[1]) * 60 - 1
+		city = await _load("res://world/City3D.tscn")
+		_clear_patrol(city)
+		p = _player()
+		var shop := city.get_node("Cell_Main/" + String(w["node"]))
+		p.global_position = shop.get_node("SpawnInside").global_position
+		p.reset_physics_interpolation()
+		await _frames(20)
+		_check(shop.player_inside and gs.is_open(w["place"]), "%s: inside a minute before closing" % w["node"])
+		gs.clock = int(hours[1]) * 60 + 1
+		var waited := 0
+		var out := false
+		while waited < int((city.CLOSING_GRACE + 1.0) * 60.0):
+			await _frames(5)
+			waited += 5
+			if p.global_position.z > -4.4:
+				out = true
+				break
+		_check(out and current_scene == city, "  shown out onto the sidewalk within %.0f s of the clock passing closing time (waited %.1f s)" % [city.CLOSING_GRACE + 1.0, waited / 60.0])
+		await _frames(3)
+		_check(not shop.player_inside, "  ...and no longer inside")
+		p.dialogue_active = false
+
+	await _section("Walk-in shops: locked when closed, lights only when you're near")
+	gs.set_wanted(false)
+	gs.clock = 3 * 60
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	p = _player()
+	for w in WALK_INS:
+		var shop := city.get_node("Cell_Main/" + String(w["node"]))
+		var open: bool = gs.is_open(w["place"])
+		var gate := shop.get_node_or_null("Gate") as CollisionObject3D
+		_check(gate != null and (gate.collision_layer & 1 != 0) == (not open), "%s at 03:00: the doorway is %s" % [w["node"], "open" if open else "shut"])
+		if not open:
+			p.global_position = Vector3(city.get_node(w["spawn"]).global_position.x, 0, -3.0)
+			p.reset_physics_interpolation()
+			await _frames(3)
+			Input.action_press("move_up")
+			await _frames(70)
+			Input.action_release("move_up")
+			_check(p.global_position.z > -4.6 and not shop.player_inside, "  you can't walk in (z %.2f)" % p.global_position.z)
+	gs.clock = 17 * 60
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	p = _player()
+	var conv := city.get_node("Cell_Main/WalkIn_Convenience")
+	var lights := conv.find_children("*", "OmniLight3D", true, false).filter(func(l): return l.is_in_group("walk_in_lights"))
+	_check(lights.size() >= 2 and lights.all(func(l): return l.light_cull_mask == 2 and not l.shadow_enabled), "  the corner shop has %d interior lights, no shadows, on the interior-only layer" % lights.size())
+	p.global_position = Vector3(40.0, 0, -2.6)
+	p.reset_physics_interpolation()
+	await _frames(40)
+	_check(lights.all(func(l): return not l.visible), "  all off with you 40 m away")
+	p.global_position = Vector3(3.5, 0, -8.0)
+	p.reset_physics_interpolation()
+	await _frames(40)
+	_check(lights.all(func(l): return l.visible), "  all on when you're inside")
+	p.global_position = Vector3(3.5 + 12.5, 0, -2.6)
+	p.reset_physics_interpolation()
+	await _frames(40)
+	_check(lights.all(func(l): return not l.visible), "  and off again 12 m up the street")
+
+	await _section("Walk-in shops: an old save inside one of the old rooms lands in the walk-in")
+	var Save := load("res://autoload/SaveGame.gd")
+	for w in WALK_INS:
+		_check(Save.walk_in_for_scene("res://world/%s.tscn" % w["old"]) == w["node"], "  %s -> %s" % [w["old"], w["node"]])
+	_check(Save.walk_in_for_scene("res://world/StorePharmacy3D.tscn") == "" and Save.walk_in_for_scene("res://world/City3D.tscn") == "", "  the pharmacy and the street stay as they are")
+	gs.pending_spawn = "WalkIn_Liquor"
+	city = await _load("res://world/City3D.tscn")
+	p = _player()
+	var liquor := city.get_node("Cell_Main/WalkIn_Liquor")
+	await _frames(20)
+	_check(p.global_position.distance_to(liquor.get_node("SpawnInside").global_position) < 0.5 and liquor.player_inside, "  the spawn puts you at the liquor store's SpawnInside, inside")
+	gs.clock = 17 * 60
+	gs.start_run()

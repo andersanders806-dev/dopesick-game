@@ -34,7 +34,7 @@ const MODULE := 3.0
 ## north side, facing south.
 const FRONTS := [
 	["Police", -26.71, -22.29, "apt", 2, ""], ["Home", -19.71, -15.29, "apt", 3, ""],
-	["Pharmacy", -12.60, -8.40, "apt", 3, "pharmacy"], ["Bar", -5.93, -1.07, "apt", 3, "bar"],
+	["Pharmacy", -12.60, -8.40, "apt", 3, "pharmacy"], ["Bar", -5.93, -1.07, "apt", 4, "bar"],
 	["Shop", 1.40, 5.60, "apt", 3, "convenience"], ["Liquor", 8.29, 12.71, "apt", 2, "liquor"],
 	["Supermarket", 14.55, 20.45, "apt", 1, "supermarket"], ["Electronics", 22.29, 26.71, "apt", 3, "electronics"],
 	["Karts", -15.25, -12.75, "factory", 4, "karts"], ["Pawn", -1.25, 1.25, "factory", 4, "pawn"],
@@ -43,6 +43,47 @@ const FRONTS := [
 	["Gate", -22.25, -19.75, "factory", 4, ""], ["WestEnd", -34.60, -26.71, "apt", 2, ""],
 	["EastEnd", 26.71, 29.60, "factory", 3, ""],
 ]
+
+## The shops you can walk into from the sidewalk (dev-tools/city/walk_in.gd
+## builds their rooms, world/WalkInShop.gd runs them), by the name of their
+## front and building: the node under Cell_Main, the place GameState keeps
+## hours for, and the x span of the building behind. Music and Pawn are only
+## 2.5 m across on the street, so their buildings take the Bar's (whose room
+## is its own scene, behind its door) between them; the Bar's front stays,
+## in front of the two rooms' middle.
+const WALK_INS := {
+	"Music": {"node": "WalkIn_Music", "place": "music", "span": [-8.25, -3.5]},
+	"Pawn": {"node": "WalkIn_Pawn", "place": "pawn", "span": [-3.5, 1.4]},
+	"Shop": {"node": "WalkIn_Convenience", "place": "convenience", "span": [1.4, 5.75]},
+	"Liquor": {"node": "WalkIn_Liquor", "place": "liquor", "span": [8.29, 12.71]},
+}
+## Buildings that no longer have a body of their own: a walk-in took their room.
+const MASS_DROP := ["Bar"]
+## Fronts in front of a walk-in room (the Bar's, in front of two): their
+## walls dither out between the camera and you when you're inside.
+const WALK_IN_FRONTS := ["Music", "Pawn", "Shop", "Liquor", "Bar"]
+## Walls round a walk-in room (and in the building's collider).
+const WALL_T := 0.2
+## The front wall is a bit thicker than the sides: brick, between the
+## street and the room.
+const FRONT_WALL_T := 0.25
+## How far the street camera must be from a walk-in for it to be drawn as a
+## lit window rather than as the room.
+const WALK_IN_NEAR := 12.0
+
+## Where a walk-in's door is on the street (the middle of its front).
+static func walk_in_door_x(front_name: String) -> float:
+	for f in FRONTS:
+		if f[0] == front_name:
+			return (f[1] + f[2]) / 2.0
+	return 0.0
+
+## A walk-in front's ground floor: the doorway in the middle, a window
+## either side of it. `gap` is the doorway's width, `pane` each window's.
+static func shop_geometry(width: float) -> Dictionary:
+	var gap := 1.4
+	var pane := maxf(0.4, (width - gap) / 2.0 - 0.25)
+	return {"gap": gap, "pane": pane, "offset": gap / 2.0 + 0.12 + pane / 2.0}
 
 ## Each row of fronts: the way it faces and where its wall line is (z for
 ## rows facing north or south, x for rows facing east or west).
@@ -198,6 +239,11 @@ func _apply_cutaway() -> void:
 	for n in get_children():
 		if n.name.begins_with("Mass") and cut.has(String(n.name).substr(4)):
 			Cutaway.apply(n)
+		elif n.name.begins_with("Roof") and cut.has(String(n.name).substr(4)):
+			Cutaway.apply(n)
+		elif n.name.begins_with("Front") and String(n.name).substr(5) in WALK_IN_FRONTS:
+			# With you inside a shop, its front is the wall between you and the camera.
+			Cutaway.apply(n)
 		elif n.has_meta("mass") and cut.has(n.get_meta("mass")) and n.get_meta("side", "main") not in ["main", "jut"]:
 			Cutaway.apply(n)
 		elif n.name.begins_with("RoofAirCons") and n.get_meta("cell", "") in ["Cell_Main", "Cell_Inner"]:
@@ -305,9 +351,13 @@ func _build_front(f: Array) -> void:
 	var bay_w := MODULE * sx
 	# Ground floor: a flat wall in the same brick behind the shop glass and
 	# the door (the kit's plain wall module is 4,608 triangles of bricks).
-	_flat_wall(front, x0, width, MODULE, kit)
-	for i in bays:
-		_piece(front, kit, p["base"], x0 + i * bay_w, 0.0, sx)
+	var walk_in: bool = f.size() <= 6 and WALK_INS.has(f[0])
+	if walk_in:
+		_open_wall(front, x0, width, kit)
+	else:
+		_flat_wall(front, x0, width, MODULE, kit)
+		for i in bays:
+			_piece(front, kit, p["base"], x0 + i * bay_w, 0.0, sx)
 	# Upper floors: window bays, a band between floors, the crown on top.
 	var win: AABB = _mesh(kit, p["window"]).get_aabb()
 	for floor_i in range(1, f[4]):
@@ -326,7 +376,7 @@ func _build_front(f: Array) -> void:
 		_piece(front, kit, p["crown"], x0 + i * bay_w, f[4] * MODULE, sx)
 	front.set_meta("place", f[5])
 	if f[5] != "":
-		_storefront(front, x0, width)
+		_storefront(front, x0, width, walk_in)
 	_dress(front, f)
 
 ## Fire escapes on the apartment blocks, an air-con unit hung under an upper
@@ -421,6 +471,8 @@ static func masses() -> Array:
 			rows.get_or_add(f[6], []).append([f[0], f[1], f[2], f[3], f[4]])
 	for side in rows:
 		var list: Array = rows[side]
+		if side == "main":
+			list = _main_row(list)
 		list.sort_custom(func(a, b): return a[1] < b[1])
 		var line: float = SIDES[side][1]
 		var back: float = ROW_BACK[side]
@@ -437,6 +489,19 @@ static func masses() -> Array:
 			out.append({"name": list[i][0], "rect": r, "floors": list[i][4], "kit": list[i][3], "cell": ROW_CELL[side]})
 	for m in BLOCK_MASSES:
 		out.append({"name": m[0], "rect": Rect2(m[1], m[2], m[3] - m[1], m[4] - m[2]), "floors": m[5], "kit": m[6], "cell": m[7]})
+	return out
+
+## Main Street's row of buildings with the walk-ins' bodies widened to their
+## rooms (WALK_INS) and the Bar's gone.
+static func _main_row(list: Array) -> Array:
+	var out := []
+	for e in list:
+		if e[0] in MASS_DROP:
+			continue
+		if WALK_INS.has(e[0]):
+			var span: Array = WALK_INS[e[0]]["span"]
+			e = [e[0], span[0], span[1], e[3], e[4]]
+		out.append(e)
 	return out
 
 static var _roof_mat: StandardMaterial3D
@@ -491,7 +556,11 @@ func _build_mass(m: Dictionary) -> void:
 	roof.begin(Mesh.PRIMITIVE_TRIANGLES)
 	_cap(roof, Vector3(r.position.x, h, r.end.y), Vector3(r.end.x, h, r.end.y), Vector3(0, 0, -r.size.y))
 	roof.generate_tangents()
-	roof.commit(mesh)
+	# A walk-in's roof is a node of its own: it comes off while you're
+	# inside (world/WalkInShop.gd), and the room shows.
+	var split: bool = WALK_INS.has(m["name"])
+	var roof_mesh := ArrayMesh.new() if split else mesh
+	roof.commit(roof_mesh)
 	if _roof_mat == null:
 		_roof_mat = StandardMaterial3D.new()
 		_roof_mat.albedo_texture = load("res://assets/pbr/gravel_diff.jpg")
@@ -503,14 +572,24 @@ func _build_mass(m: Dictionary) -> void:
 		_roof_mat.uv1_world_triplanar = true
 		# Roofing gravel is small: the set's 1.5 m tile at half size.
 		_roof_mat.uv1_scale = Vector3.ONE / 0.75
-	mesh.surface_set_material(mesh.get_surface_count() - 1, _roof_mat)
+	roof_mesh.surface_set_material(roof_mesh.get_surface_count() - 1, _roof_mat)
 	var mi := MeshInstance3D.new()
 	mi.name = "Mass" + m["name"]
 	mi.mesh = mesh
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.set_meta("cell", m["cell"])
 	add_child(mi)
-	_roof_clutter(mi, m, h)
+	var roof_holder: MeshInstance3D = mi
+	if split:
+		roof_holder = MeshInstance3D.new()
+		roof_holder.name = "Roof" + m["name"]
+		roof_holder.mesh = roof_mesh
+		roof_holder.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		roof_holder.set_meta("cell", m["cell"])
+		add_child(roof_holder)
+		if not any_wall:
+			mi.queue_free()
+	_roof_clutter(roof_holder, m, h)
 
 ## What's on a flat roof: air-con units, a hatch, vent stacks; the bigger
 ## roofs a water tank. Placed from the building's name, so it's the same
@@ -627,7 +706,9 @@ func _uncovered(mass_name: String, a: Vector3, b: Vector3, normal: Vector3) -> A
 	var covered := []
 	var fronts := FRONTS.map(func(f): return [f[0], f[1], f[2], "", 0, "", "main", f[0]]) + BLOCK_FRONTS
 	for f in fronts:
-		if f[7] != mass_name or Vector3(SIDES[f[6]][0]) != normal:
+		# A walk-in's room runs behind its neighbour's front too.
+		var covers: bool = f[7] == mass_name or (f[6] == "main" and WALK_INS.has(mass_name))
+		if not covers or Vector3(SIDES[f[6]][0]) != normal:
 			continue
 		# The front's span, measured from `a` along the face.
 		var p0 := Vector3(f[1], 0, 0) if absf(normal.z) > 0.5 else Vector3(0, 0, f[1])
@@ -724,7 +805,7 @@ func _flat_wall(front: Node3D, x0: float, width: float, height: float, kit: Stri
 
 ## Shop glass either side of the door, a warm glow behind it while open,
 ## and a roller shutter over the whole front while closed.
-func _storefront(front: Node3D, x0: float, width: float) -> void:
+func _storefront(front: Node3D, x0: float, width: float, walk_in := false) -> void:
 	var glass_mat := StandardMaterial3D.new()
 	glass_mat.albedo_color = Color(0.08, 0.1, 0.12, 0.55)
 	glass_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -744,6 +825,9 @@ func _storefront(front: Node3D, x0: float, width: float) -> void:
 	frame_mat.roughness = 0.45
 	var door_gap := 1.3
 	var pane_w := maxf(0.4, (width - door_gap) / 2.0 - 0.25)
+	if walk_in:
+		door_gap = shop_geometry(width)["gap"]
+		pane_w = shop_geometry(width)["pane"]
 	var glass := Node3D.new()
 	glass.name = "Glass"
 	front.add_child(glass)
@@ -773,6 +857,16 @@ func _storefront(front: Node3D, x0: float, width: float) -> void:
 			_bar(glass, frame_mat, Vector3(0.06, 1.66, 0.04), Vector3(cx + fx, 1.45, FACE_Z - 0.005))
 		_bar(glass, frame_mat, Vector3(pane_w + 0.06, 0.06, 0.04), Vector3(cx, 2.25, FACE_Z - 0.005))
 		_bar(glass, frame_mat, Vector3(pane_w + 0.06, 0.06, 0.04), Vector3(cx, 0.65, FACE_Z - 0.005))
+	if walk_in:
+		# From afar the room behind the doorway is a glow like the windows'.
+		var door_lit := MeshInstance3D.new()
+		var dm := QuadMesh.new()
+		dm.size = Vector2(door_gap, 2.25)
+		dm.material = glow_mat
+		door_lit.mesh = dm
+		door_lit.name = "DoorGlow"
+		glow.add_child(door_lit)
+		door_lit.position = Vector3(x0 + width / 2.0, 1.125, FACE_Z - 0.015)
 	var shutter: Node3D = _scene(SHUTTER).instantiate()
 	shutter.name = "Shutter"
 	front.add_child(shutter)
@@ -788,6 +882,54 @@ func _storefront(front: Node3D, x0: float, width: float) -> void:
 	var ssx := (width - 0.2) / sb.size.x
 	shutter.scale = Vector3(ssx, 2.4 / sb.size.y, 1.0)
 	shutter.position = Vector3(x0 + 0.1 - sb.position.x * ssx, 0.1 - sb.position.y * shutter.scale.y, FACE_Z - sb.end.z)
+
+## The ground floor of a walk-in's front: brick, with a doorway in the middle
+## and a window either side (the glass is _storefront's). Boxes, not the
+## flat quad, so the brick shows from the room too and the openings go
+## right through.
+func _open_wall(front: Node3D, x0: float, width: float, kit: String) -> void:
+	if not _brick.has(kit):
+		_brick[kit] = _mesh(kit, KIT_PIECES[kit]["wall"]).surface_get_material(0)
+	var mat := (_brick[kit] as StandardMaterial3D).duplicate() as StandardMaterial3D
+	mat.uv1_triplanar = true
+	mat.uv1_world_triplanar = true
+	mat.uv1_scale = Vector3.ONE / MODULE
+	var g := shop_geometry(width)
+	var cx := x0 + width / 2.0
+	var gap: float = g["gap"]
+	var pane: float = g["pane"]
+	var win_in: float = cx - gap / 2.0 - 0.12
+	var spans := []
+	for side in [-1.0, 1.0]:
+		# Outermost brick, window sill and head, the post beside the door.
+		var a: float = cx + side * (gap / 2.0 + 0.12 + pane)
+		var b: float = cx + side * (gap / 2.0 + 0.12)
+		var edge: float = x0 if side < 0.0 else x0 + width
+		var post: float = cx + side * (gap / 2.0)
+		spans.append([minf(edge, a), maxf(edge, a), 0.0, MODULE])
+		spans.append([minf(a, b), maxf(a, b), 0.0, 0.65])
+		spans.append([minf(a, b), maxf(a, b), 2.25, MODULE])
+		spans.append([minf(b, post), maxf(b, post), 0.0, MODULE])
+	spans.append([cx - gap / 2.0, cx + gap / 2.0, 2.25, MODULE])
+	for sp in spans:
+		if sp[1] - sp[0] < 0.01:
+			continue
+		var mi := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(sp[1] - sp[0], sp[3] - sp[2], FRONT_WALL_T)
+		bm.material = mat
+		mi.mesh = bm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		front.add_child(mi)
+		mi.position = Vector3((sp[0] + sp[1]) / 2.0, (sp[2] + sp[3]) / 2.0, FACE_Z - 0.02 - FRONT_WALL_T / 2.0)
+	var frame := StandardMaterial3D.new()
+	frame.albedo_color = Color(0.12, 0.12, 0.13)
+	frame.metallic = 0.6
+	frame.roughness = 0.45
+	# The doorway's frame.
+	for side in [-1.0, 1.0]:
+		_bar(front, frame, Vector3(0.07, 2.25, 0.07), Vector3(cx + side * gap / 2.0, 1.125, FACE_Z - 0.03))
+	_bar(front, frame, Vector3(gap + 0.07, 0.07, 0.07), Vector3(cx, 2.25, FACE_Z - 0.03))
 
 func _bar(parent: Node3D, mat: Material, size: Vector3, pos: Vector3) -> void:
 	var mi := MeshInstance3D.new()
@@ -813,4 +955,15 @@ func refresh() -> void:
 			continue
 		var open: bool = GameState.is_open(place) if place != "" else GameState.hours_contain(hours, GameState.hour())
 		front.get_node("Shutter").visible = not open
-		front.get_node("Glow").visible = open
+		# A walk-in near you is the room itself behind the glass: no painted glow.
+		front.get_node("Glow").visible = open and not front.get_meta("near", false)
+
+## A walk-in's window: the painted glow from afar, the lit room (world/
+## WalkInShop.gd turns its lights on) when you're near.
+func set_near(front_name: String, near: bool) -> void:
+	var front := get_node_or_null("Front" + front_name)
+	if front == null or not front.has_node("Glow"):
+		return
+	front.set_meta("near", near)
+	var place: String = front.get_meta("place", "")
+	front.get_node("Glow").visible = GameState.is_open(place) and not near

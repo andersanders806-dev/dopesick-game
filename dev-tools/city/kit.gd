@@ -16,6 +16,7 @@ extends RefCounted
 ## The buildings themselves (fronts and masses) are world/Facades.gd's.
 
 const Facades := preload("res://world/Facades.gd")
+const WalkIn := preload("res://dev-tools/city/walk_in.gd")
 
 const CELLS := {
 	# name: bounds. They overlap at the corners; world/BlockCells.gd (task 2)
@@ -208,6 +209,10 @@ static func dash(b: Node, parent: Node, pos: Vector3, along_x := true) -> void:
 ## Facades.gd's, built at load.
 static func building_colliders(b: Node) -> void:
 	for m in Facades.masses():
+		if Facades.WALK_INS.has(m["name"]):
+			# Hollow, with a room in it (dev-tools/city/walk_in.gd).
+			WalkIn.building(b, cell(b, m["cell"]), m)
+			continue
 		var r: Rect2 = m["rect"]
 		var h: float = m["floors"] * Facades.MODULE + Facades.ROOF_OVER + Facades.COPING.y
 		var body: StaticBody3D = b._solid(cell(b, m["cell"]), "Building" + m["name"], Vector3(r.size.x, h, r.size.y),
@@ -239,7 +244,9 @@ static func building_colliders(b: Node) -> void:
 static func bake_navigation(b: Node) -> void:
 	var source := NavigationMeshSourceGeometryData3D.new()
 	for body in b._root.find_children("*", "StaticBody3D", true, false):
-		if (body.collision_layer & (1 | 16)) == 0 or body.owner != b._root:
+		# Not a shop's gate (it shuts only at closing time) nor its shelves
+		# (WalkInShop puts them somewhere else each visit).
+		if (body.collision_layer & (1 | 16)) == 0 or body.owner != b._root or body.name == "Gate" or body.name.begins_with("Fixture"):
 			continue
 		for cs in body.find_children("*", "CollisionShape3D", false, false):
 			_add_shape(source, cs.shape, _rel(b._root, cs))

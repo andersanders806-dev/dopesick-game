@@ -199,6 +199,8 @@ People: Microsoft Rocketbox avatars (MIT).
 Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits and sounds (CC0).
 Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel Zhabotinsky -- Shvan '92;
 Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.
+Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.
+Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model License) through kimodo.cpp (Apache-2.0); built with Meta Llama 3.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.
 Music: OpenGameArt -- omfgdude, Nostromo, Of Far Different Nature (CC-BY), Tsorthan Grove,
 Centurion_of_war, Eldritch Grim (CC0). Room tone: CC0 field recordings.

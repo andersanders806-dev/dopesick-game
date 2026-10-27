@@ -836,6 +836,7 @@ func _run() -> void:
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
 	await _zombie_shell_checks(gs)
+	await _zombie_anim_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
 
@@ -5579,3 +5580,246 @@ func _zombie_shell_checks(gs: Node) -> void:
 	DirAccess.remove_absolute(zm.PATH)
 	root.get_node("Graphics").set_first_person(false)
 	gs.start_run()
+
+## Clips that have a real source: Quaternius UAL1/UAL2 retargeted onto Bip01, and the
+## Kimodo (SOMA-RP) takes. All 21 of CharacterAnimator.ZOMBIE_CLIPS.
+const ZOMBIE_REAL_CLIPS := ["z_idle", "z_scratch", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl", "z_scream",
+	"z_attack", "z_attack2", "z_attack3", "z_hit_head", "z_hit_chest", "z_hit_leg", "z_hit_knockback",
+	"z_death", "z_death2", "z_standup", "z_climb", "p_stab", "p_kick"]
+
+func _zombie_anim_checks(gs: Node) -> void:
+	await _section("Zombie animations: the library, every alias, the fallbacks")
+	var CA := load("res://npc/CharacterAnimator.gd")
+	var lib := load("res://assets/zombie_anims/zombie_clips.res") as AnimationLibrary
+	_check(lib != null and lib.get_animation_list().size() >= ZOMBIE_REAL_CLIPS.size(), "  the zombie library loads with its clips (%d)" % (lib.get_animation_list().size() if lib else 0))
+	if lib == null:
+		return
+	var untidy := []
+	for clip in lib.get_animation_list():
+		var a := lib.get_animation(clip)
+		var on_bip := a.get_track_count() > 20 and a.length > 0.1
+		for t in a.get_track_count():
+			on_bip = on_bip and String(a.track_get_path(t)).begins_with("Bip01/Skeleton3D:Bip01 ")
+		if not on_bip:
+			untidy.append(clip)
+	_check(untidy.is_empty(), "  every clip is a real animation on Bip01 bones (%s)" % [untidy])
+	_check(ZOMBIE_REAL_CLIPS.all(func(c): return lib.has_animation(c)), "  every clip with a source is in the library")
+
+	# A Rocketbox avatar with the library: every alias plays something.
+	var model := (load("res://assets/rocketbox/Male_Adult_04.glb") as PackedScene).instantiate() as Node3D
+	model.scale = Vector3.ONE * 1.5
+	root.add_child(model)
+	_check(CA.install_zombie_library(model) and CA.install_zombie_library(model), "  the library installs on an avatar (twice is fine)")
+	var anim = CA.new(model)
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var unresolved := []
+	var not_real := []
+	for logical in CA.ZOMBIE_CLIPS:
+		var real: String = anim.resolved_clip(logical)
+		if real == "" or not player.has_animation(real):
+			unresolved.append(logical)
+		elif logical in ZOMBIE_REAL_CLIPS and not real.begins_with("zombie/"):
+			not_real.append("%s->%s" % [logical, real])
+	_check(unresolved.is_empty(), "  every zombie alias resolves to a clip on the avatar (%s)" % [unresolved])
+	_check(not_real.is_empty(), "  every clip with a source plays the library's (%s)" % [not_real])
+	var played := []
+	for logical in CA.ZOMBIE_CLIPS:
+		anim.play(logical)
+		if player.current_animation != anim.resolved_clip(logical):
+			played.append(logical)
+		anim._current = ""
+	_check(played.is_empty(), "  play() starts the resolved clip for each (%s)" % [played])
+	_check(ZOMBIE_REAL_CLIPS.size() == CA.ZOMBIE_CLIPS.size() and CA.ZOMBIE_CLIPS.all(func(c): return c in ZOMBIE_REAL_CLIPS),
+		"  every one of the %d zombie clip names has a real clip behind it" % CA.ZOMBIE_CLIPS.size())
+
+	# A clip really drives the bones, at the avatar's own scale, with planted feet.
+	var sk := model.find_child("Skeleton3D", true, false) as Skeleton3D
+	var thigh := sk.find_bone("Bip01 L Thigh")
+	anim.play("z_walk")
+	player.speed_scale = 0.0
+	player.seek(0.3, true)
+	player.advance(0.0)
+	sk.force_update_all_bone_transforms()
+	var swing := sk.get_bone_pose_rotation(thigh).angle_to(sk.get_bone_rest(thigh).basis.get_rotation_quaternion())
+	_check(swing > 0.15, "  z_walk swings the thigh off its rest pose (%.2f rad)" % swing)
+	player.play("walk")
+	player.seek(0.3, true)
+	player.advance(0.0)
+	sk.force_update_all_bone_transforms()
+	var toes := [sk.find_bone("Bip01 L Toe0"), sk.find_bone("Bip01 R Toe0")]
+	var lowest := func(clip: String) -> float:
+		player.stop()
+		player.play(clip)
+		player.speed_scale = 0.0
+		var low := 99.0
+		for st in 30:
+			player.seek(float(st) / 30.0, true)
+			player.advance(0.0)
+			sk.force_update_all_bone_transforms()
+			for tb in toes:
+				low = minf(low, (sk.global_transform * sk.get_bone_global_pose(tb)).origin.y)
+		return low
+	var low_own: float = lowest.call("walk")
+	var low_new: float = lowest.call("zombie/z_walk")
+	_check(absf(low_new - low_own) < 0.08 and low_new > -0.08, "  the zombie walk's feet reach the floor like the avatar's own (toes %.3f vs %.3f m)" % [low_new, low_own])
+	var fwd := (sk.global_transform * sk.get_bone_global_rest(toes[0])).origin - (sk.global_transform * sk.get_bone_global_rest(sk.find_bone("Bip01 L Foot"))).origin
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	for clip in ["z_walk", "z_walk2", "z_run"]:
+		var speed: float = anim.natural_speed(clip)
+		var slowest := 99.0
+		var prev := {}
+		var real: String = anim.resolved_clip(clip)
+		player.stop()
+		player.play(real)
+		player.speed_scale = 0.0
+		var clip_len := player.get_animation(real).length
+		var steps := int(clip_len * 30.0)
+		for st in steps + 1:
+			player.seek(float(st) / 30.0, true)
+			player.advance(0.0)
+			sk.force_update_all_bone_transforms()
+			for b in ["Bip01 L Foot", "Bip01 R Foot"]:
+				var p := (sk.global_transform * sk.get_bone_global_pose(sk.find_bone(b))).origin
+				if prev.has(b):
+					var v: Vector3 = (p - prev[b]) * 30.0 + fwd * speed
+					v.y = 0.0
+					slowest = minf(slowest, v.length())
+				prev[b] = p
+		_check(speed > 0.5 and slowest < 0.25, "  %s: moving at its own pace (%.2f m/s) a foot stays planted (slowest %.2f m/s)" % [clip, speed, slowest])
+	# The attacks are grabs, not punches: the hands must get well in front of the chest
+	# (z_attack: both at the same moment, shoulder-high), never fists drawn up at the face.
+	var chest := sk.find_bone("Bip01 Spine2")
+	for clip in ["z_attack", "z_attack2", "z_attack3"]:
+		var real: String = anim.resolved_clip(clip)
+		player.stop()
+		player.play(real)
+		player.speed_scale = 0.0
+		var best_both := 0.0
+		var best_each := [0.0, 0.0]
+		var clip_len := player.get_animation(real).length
+		var worst_air := -9.0
+		for st in int(clip_len * 30.0) + 1:
+			player.seek(float(st) / 30.0, true)
+			player.advance(0.0)
+			sk.force_update_all_bone_transforms()
+			var c := (sk.global_transform * sk.get_bone_global_pose(chest)).origin
+			var ahead := []
+			for h in ["Bip01 L Hand", "Bip01 R Hand"]:
+				var hp := (sk.global_transform * sk.get_bone_global_pose(sk.find_bone(h))).origin
+				ahead.append((hp - c).dot(fwd))
+			# Feet on the floor: the lower of the two feet (foot or toe bone) never leaves it.
+			var foot_y := []
+			for side in ["L", "R"]:
+				foot_y.append(minf((sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 %s Foot" % side))).origin.y,
+					(sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 %s Toe0" % side))).origin.y))
+			worst_air = maxf(worst_air, minf(foot_y[0], foot_y[1]))
+			best_both = maxf(best_both, minf(ahead[0], ahead[1]))
+			best_each = [maxf(best_each[0], ahead[0]), maxf(best_each[1], ahead[1])]
+		# The avatar is scaled 1.5 here: a standing toe bone sits about 0.03 m up; a leap goes past 0.2.
+		_check(worst_air < 0.12, "  %s: a foot stays on the floor throughout (lowest foot's peak height %.3f m)" % [clip, worst_air])
+		if clip == "z_attack":
+			_check(best_both > 0.3, "  z_attack: both hands reach out in front of the chest at once (%.2f m)" % best_both)
+		else:
+			_check(minf(best_each[0], best_each[1]) > 0.3, "  %s: each hand gets out in front of the chest (%.2f / %.2f m)" % [clip, best_each[0], best_each[1]])
+	# The legless crawler (Z2b/Z6): lies low, drags itself along in place, and loops without a pop.
+	var crawl_real: String = anim.resolved_clip("z_crawl")
+	var crawl_anim := player.get_animation(crawl_real)
+	player.stop()
+	player.play(crawl_real)
+	player.speed_scale = 0.0
+	var pelvis_b := sk.find_bone("Bip01 Pelvis")
+	var pel_hi := 0.0
+	var pel_min := Vector2(99.0, 99.0)
+	var pel_max := Vector2(-99.0, -99.0)
+	for st in int(crawl_anim.length * 30.0) + 1:
+		player.seek(float(st) / 30.0, true)
+		player.advance(0.0)
+		sk.force_update_all_bone_transforms()
+		var pp := (sk.global_transform * sk.get_bone_global_pose(pelvis_b)).origin
+		pel_hi = maxf(pel_hi, pp.y)
+		pel_min = Vector2(minf(pel_min.x, pp.x), minf(pel_min.y, pp.z))
+		pel_max = Vector2(maxf(pel_max.x, pp.x), maxf(pel_max.y, pp.z))
+	_check(crawl_anim.loop_mode != Animation.LOOP_NONE and crawl_anim.has_meta("in_place"), "  z_crawl loops and is flagged in place")
+	_check(pel_hi < 0.3 and (pel_max - pel_min).length() < 0.4,
+		"  z_crawl lies low and stays in place (pelvis at most %.2f m high, wanders %.2f m)" % [pel_hi, (pel_max - pel_min).length()])
+	var loop_gap := 0.0   # rotation jump from the last key back to the first, against the largest step inside
+	var biggest_step := 0.0
+	for t in crawl_anim.get_track_count():
+		if crawl_anim.track_get_type(t) != Animation.TYPE_ROTATION_3D:
+			continue
+		var n := crawl_anim.track_get_key_count(t)
+		var first: Quaternion = crawl_anim.track_get_key_value(t, 0)
+		var last: Quaternion = crawl_anim.track_get_key_value(t, n - 1)
+		loop_gap = maxf(loop_gap, first.angle_to(last))
+		for k in range(1, n):
+			biggest_step = maxf(biggest_step, (crawl_anim.track_get_key_value(t, k - 1) as Quaternion).angle_to(crawl_anim.track_get_key_value(t, k)))
+	# Prone belly crawl: the chest's front stays facing the floor (no rolling onto the side), and
+	# the hands take turns reaching forward along the body (not both together).
+	var chest_b := sk.find_bone("Bip01 Spine2")
+	var local_front: Vector3 = sk.get_bone_global_rest(chest_b).basis.inverse() * (sk.global_transform.basis.inverse() * fwd).normalized()
+	var worst_off := 0.0
+	var reach_l: Array[float] = []
+	var reach_r: Array[float] = []
+	for st in int(crawl_anim.length * 30.0) + 1:
+		player.seek(float(st) / 30.0, true)
+		player.advance(0.0)
+		sk.force_update_all_bone_transforms()
+		var front_w := (sk.global_transform.basis * sk.get_bone_global_pose(chest_b).basis * local_front).normalized()
+		worst_off = maxf(worst_off, rad_to_deg(acos(clampf(-front_w.y, -1.0, 1.0))))
+		var pelvis_p := (sk.global_transform * sk.get_bone_global_pose(pelvis_b)).origin
+		var axis := (sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 Head"))).origin - pelvis_p
+		axis.y = 0.0
+		axis = axis.normalized()
+		reach_l.append(((sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 L Hand"))).origin - pelvis_p).dot(axis))
+		reach_r.append(((sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 R Hand"))).origin - pelvis_p).dot(axis))
+	_check(worst_off < 25.0 and cos(deg_to_rad(worst_off)) > 0.8, "  z_crawl stays prone: the chest's front is never more than %.0f degrees off straight down (down component %.2f, must stay above 0.8)" % [worst_off, cos(deg_to_rad(worst_off))])
+	var mean_l := 0.0
+	var mean_r := 0.0
+	for k in reach_l.size():
+		mean_l += reach_l[k] / reach_l.size()
+		mean_r += reach_r[k] / reach_r.size()
+	var cov := 0.0
+	var var_l := 0.0
+	var var_r := 0.0
+	for k in reach_l.size():
+		cov += (reach_l[k] - mean_l) * (reach_r[k] - mean_r)
+		var_l += pow(reach_l[k] - mean_l, 2.0)
+		var_r += pow(reach_r[k] - mean_r, 2.0)
+	var corr := cov / maxf(sqrt(var_l * var_r), 0.0001)
+	var span_l: float = reach_l.max() - reach_l.min()
+	var span_r: float = reach_r.max() - reach_r.min()
+	_check(span_l > 0.2 and span_r > 0.2 and corr < 0.5,
+		"  z_crawl: both hands pull forward in turn (reach %.2f / %.2f m, left-right correlation %.2f; in step would be near 1)" % [span_l, span_r, corr])
+	_check(loop_gap <= biggest_step * 1.5 + 0.02, "  z_crawl closes its loop (last key to first: %.3f rad, biggest step inside %.3f)" % [loop_gap, biggest_step])
+	model.queue_free()
+
+	# Fallbacks: no library, and a library missing a clip.
+	var bare := (load("res://assets/rocketbox/Male_Adult_04.glb") as PackedScene).instantiate() as Node3D
+	root.add_child(bare)
+	var bare_anim = CA.new(bare)
+	var bare_player := bare.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	var missing: Array = CA.ZOMBIE_CLIPS.filter(func(c): return bare_anim.resolved_clip(c) == "" or not bare_player.has_animation(bare_anim.resolved_clip(c)) or bare_anim.resolved_clip(c).begins_with("zombie/"))
+	_check(missing.is_empty(), "  without the library every zombie alias falls back to a Rocketbox clip (%s)" % [missing])
+	_check(bare_anim.resolved_clip("z_walk") == "walk_sick" and bare_anim.resolved_clip("z_run") == "sprint" and bare_anim.resolved_clip("z_attack") == "take",
+		"  the fallbacks are the ones meant: walk_sick, sprint, take (%s, %s, %s)" % [bare_anim.resolved_clip("z_walk"), bare_anim.resolved_clip("z_run"), bare_anim.resolved_clip("z_attack")])
+	bare.queue_free()
+	var cut := (load("res://assets/rocketbox/Male_Adult_04.glb") as PackedScene).instantiate() as Node3D
+	root.add_child(cut)
+	var short_lib := lib.duplicate(true) as AnimationLibrary
+	short_lib.remove_animation("z_death")
+	short_lib.remove_animation("z_hit_head")
+	var cut_player := cut.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	cut_player.add_animation_library("zombie", short_lib)
+	var cut_anim = CA.new(cut)
+	_check(cut_anim.resolved_clip("z_hit_head") == "zombie/z_hit_chest" and cut_anim.resolved_clip("z_death") == "crouch" and cut_anim.resolved_clip("z_walk") == "zombie/z_walk",
+		"  a clip missing from the library falls back (hit_head -> %s, death -> %s), the rest stay (%s)" % [cut_anim.resolved_clip("z_hit_head"), cut_anim.resolved_clip("z_death"), cut_anim.resolved_clip("z_walk")])
+	cut.queue_free()
+	# The story's own casting is untouched.
+	var man := (load("res://assets/rocketbox/Male_Adult_04.glb") as PackedScene).instantiate() as Node3D
+	root.add_child(man)
+	CA.install_zombie_library(man)
+	var man_anim = CA.new(man)
+	_check(man_anim.resolved_clip("walk") == "walk" and man_anim.resolved_clip("sprint") == "sprint" and man_anim.resolved_clip("idle") == "idle",
+		"  the story's walk, sprint and idle still resolve to the avatar's own clips with the library installed")
+	man.queue_free()

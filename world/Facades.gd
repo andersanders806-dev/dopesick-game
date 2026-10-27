@@ -452,6 +452,12 @@ static func mass_box(m: Dictionary) -> AABB:
 ## else only as far as that building's wall. A wall merely between you and
 ## a camera that's out in the open is the cutaway's job (world/Cutaway.gd),
 ## not this.
+static func in_building(p: Vector3, pad: float) -> bool:
+	for m in masses():
+		if mass_box(m).grow(pad).has_point(p):
+			return true
+	return false
+
 static func camera_clip(from: Vector3, to: Vector3, pad: float) -> float:
 	for m in masses():
 		var box := mass_box(m)

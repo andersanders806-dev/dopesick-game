@@ -86,6 +86,8 @@ const Facades := preload("res://world/Facades.gd")
 const CAM_CHEST := 1.2
 const CAM_WALL_PAD := 0.6
 const CAM_CLIP_OUT := 3.0
+## Of its height, at least, the camera keeps when a wall has pulled it in.
+const CAM_CLIPPED_HEIGHT := 0.55
 var _user_zoom: float = 1.0
 ## Zoom per second at full right-stick tilt.
 const PAD_ZOOM_RATE := 0.8
@@ -189,7 +191,21 @@ func _update_camera_rig(delta: float) -> void:
 		_cam_clip = clip
 	else:
 		_cam_clip = lerpf(_cam_clip, clip, 1.0 - exp(-CAM_CLIP_OUT * delta))
-	$CameraMount.global_position = chest.lerp(want, _cam_clip)
+	var pos := chest.lerp(want, _cam_clip)
+	var tilt := 0.0
+	if _cam_clip < 0.999:
+		# Not straight in: it keeps most of its height (looking down on
+		# you from just off the wall) when that's clear, and tilts to keep
+		# you in the middle.
+		var off := want - chest
+		var lifted := chest + Vector3(off.x * _cam_clip, off.y * maxf(_cam_clip, CAM_CLIPPED_HEIGHT), off.z * _cam_clip)
+		if not Facades.in_building(lifted, CAM_WALL_PAD * 0.5):
+			pos = lifted
+		var to_you := chest - pos
+		var down := atan2(-to_you.y, Vector2(to_you.x, to_you.z).length())
+		tilt = (-down - _tp_camera_base.basis.get_euler().x) * (1.0 - _cam_clip)
+	$CameraMount.global_position = pos
+	$CameraMount.rotation = Vector3(tilt, 0.0, 0.0)
 
 ## The block's walls between the camera and you dither out
 ## (world/Cutaway.gd): its shader reads where you are, every drawn frame,

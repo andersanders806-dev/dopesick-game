@@ -24,8 +24,47 @@ const SPRINT_NATURAL := 5.6
 const SHUFFLE_NATURAL := 1.0
 const STRIDE_LIMITS := Vector2(0.4, 1.8)
 const MOVING_THRESHOLD := 0.1
-const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"]
-const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"]
+## The dead and the player's finishers (assets/zombie_anims/, built by
+## dev-tools/retarget_to_bip01.py). They live in an AnimationLibrary that
+## install_zombie_library() adds to a Rocketbox avatar's AnimationPlayer
+## *before* the CharacterAnimator is made. A clip nobody has produced yet
+## resolves to the Rocketbox clip next best (see ZOMBIE_ALIASES), so every
+## name below always plays something.
+const ZOMBIE_LIBRARY := "res://assets/zombie_anims/zombie_clips.res"
+const ZOMBIE_LIBRARY_NAME := "zombie"
+const ZOMBIE_CLIPS := ["z_idle", "z_scratch", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl",
+	"z_attack", "z_attack2", "z_attack3", "z_hit_head", "z_hit_chest", "z_hit_leg", "z_hit_knockback",
+	"z_death", "z_death2", "z_standup", "z_scream", "z_climb", "p_kick", "p_stab"]
+const ZOMBIE_LOOPING := ["z_idle", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl"]
+const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_CLIPS
+const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_LOOPING
+
+## Zombie clip -> candidates, best first: its own clip, a sibling that does
+## the same job, then what every Rocketbox avatar ships (walk_sick, idle_sick,
+## crouch, sprint, take, sit). "z_x" is found as the library's "zombie/z_x".
+const ZOMBIE_ALIASES := {
+	"z_idle": ["z_idle", "idle_sick", "idle"],
+	"z_scratch": ["z_scratch", "z_idle", "idle_sick", "idle"],
+	"z_walk": ["z_walk", "walk_sick", "walk"],
+	"z_walk2": ["z_walk2", "z_walk", "walk_sick", "walk"],
+	"z_walk3": ["z_walk3", "z_walk2", "z_walk", "walk_sick", "walk"],
+	"z_run": ["z_run", "sprint", "walk_sick", "walk"],
+	"z_crawl": ["z_crawl", "crouch", "walk_sick"],
+	"z_attack": ["z_attack", "take"],
+	"z_attack2": ["z_attack2", "z_attack", "take"],
+	"z_attack3": ["z_attack3", "z_attack2", "z_attack", "take"],
+	"z_hit_head": ["z_hit_head", "z_hit_chest", "z_hit_knockback", "crouch", "idle_sick"],
+	"z_hit_chest": ["z_hit_chest", "z_hit_head", "z_hit_knockback", "crouch", "idle_sick"],
+	"z_hit_leg": ["z_hit_leg", "z_hit_chest", "z_hit_head", "z_hit_knockback", "crouch", "idle_sick"],
+	"z_hit_knockback": ["z_hit_knockback", "z_hit_chest", "crouch", "idle_sick"],
+	"z_death": ["z_death", "death", "_death", "crouch", "sit"],
+	"z_death2": ["z_death2", "z_death", "death", "_death", "crouch", "sit"],
+	"z_standup": ["z_standup", "crouch", "idle_sick", "idle"],
+	"z_scream": ["z_scream", "z_idle", "idle_sick", "idle"],
+	"z_climb": ["z_climb", "walk_sick", "walk"],
+	"p_kick": ["p_kick", "take"],
+	"p_stab": ["p_stab", "take"],
+}
 
 ## Candidate real clip names per logical clip, best match first. Matched
 ## case-insensitively, first as an exact name and then as a suffix, so
@@ -132,7 +171,7 @@ static func _in_place(a: Animation) -> void:
 ## something like "sidewalk" first.
 func _resolve(logical: String) -> String:
 	var available: Array = _player.get_animation_list()
-	for alias in CLIP_ALIASES.get(logical, [logical]):
+	for alias in ZOMBIE_ALIASES.get(logical, CLIP_ALIASES.get(logical, [logical])):
 		for name in available:
 			if String(name).to_lower() == alias:
 				return String(name)
@@ -198,6 +237,26 @@ func set_clips(moving: String, rest: String) -> void:
 
 func has_clip(logical: String) -> bool:
 	return _resolved.get(logical, "") != ""
+
+## The clip on this model that a logical name plays ("" if none): for a zombie
+## clip, "zombie/z_walk" when produced, else the fallback Rocketbox clip.
+func resolved_clip(logical: String) -> String:
+	return _resolved.get(logical, "")
+
+## Adds the zombie clips to a model's AnimationPlayer (once; the library
+## resource is shared by every zombie). Call before CharacterAnimator.new().
+## Returns false if the model has no player or the library isn't built, in
+## which case every zombie clip still resolves, to its Rocketbox fallback.
+static func install_zombie_library(model: Node) -> bool:
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null:
+		return false
+	if player.has_animation_library(ZOMBIE_LIBRARY_NAME):
+		return true
+	var lib := load(ZOMBIE_LIBRARY) as AnimationLibrary
+	if lib == null:
+		return false
+	return player.add_animation_library(ZOMBIE_LIBRARY_NAME, lib) == OK
 
 func play(clip: String, anim_speed := 1.0) -> void:
 	var real: String = _resolved.get(clip, "")

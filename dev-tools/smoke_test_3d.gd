@@ -836,6 +836,7 @@ func _run() -> void:
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
 	await _zombie_shell_checks(gs)
+	await _zombie_dead_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
 
@@ -5575,6 +5576,335 @@ func _zombie_shell_checks(gs: Node) -> void:
 	for s in root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")):
 		s.queue_free()
 	paused = false
+	zm.leave()
+	DirAccess.remove_absolute(zm.PATH)
+	root.get_node("Graphics").set_first_person(false)
+	gs.start_run()
+
+# --- Dead Block: the dead (npc/Zombie3D.gd, ZombieSpawner.gd, ZombieHitboxes.gd, world/Barricade.gd) --
+func _zombie_dead_checks(gs: Node) -> void:
+	await _section("Dead Block: the dead -- spawning, hit zones, the navmesh, barricades")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	DirAccess.remove_absolute(zm.PATH)
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(5)
+	var block := city.get_node("ZombieBlock")
+	var spawner: Node = block.spawner
+	_check(spawner != null and spawner.is_in_group("zombie_spawner"), "  the block has a spawner")
+	# Round 1 has started by itself; park it while the checks run their own rounds.
+	spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	var player := _player()
+	player.global_position = Vector3(-17.5, 0.0, -3.0)
+	player.velocity = Vector3.ZERO
+	var Hit := preload("res://npc/ZombieHitboxes.gd")
+
+	# --- Health, kinds ---
+	var healths := {}
+	for r in [1, 5, 10, 20]:
+		spawner.round_no = r
+		var hz = spawner.spawn_one("walker", Vector3(0, 0, 30))
+		healths[r] = hz.max_health == float(zm.zombie_health(r)) and hz.health == hz.max_health
+		hz.free()
+	_check(healths.values().all(func(v): return v), "  a zombie's health is zombie_health(round) at rounds 1, 5, 10, 20 (%s)" % [healths])
+	var plan5: Array = spawner._plan_kinds(5, 24)
+	var plan6: Array = spawner._plan_kinds(6, 27)
+	var plan15: Array = spawner._plan_kinds(15, 44)
+	_check(plan5.count("runner") == 0 and plan6.count("runner") >= 1 and plan6.count("runner") < 27 and plan15.count("runner") == 44,
+		"  runners: none by round 5, some from round 6 (%d of 27), all by round 15" % plan6.count("runner"))
+
+	# --- Hit zones ---
+	spawner.round_no = 1
+	var z = spawner.spawn_one("walker", Vector3(0.0, 0.0, 1.5))
+	z.set_physics_process(false)
+	z._anim_player.pause()
+	z._model_root.rotation.y = 0.0
+	await _frames(4)
+	_check(z.hitboxes.size() == 11 and Hit.PARTS.all(func(p): return z.hitboxes.has(p)), "  a zombie has 11 hit zones (%d)" % z.hitboxes.size())
+	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	var head_c: Vector3 = (z.hitboxes["head"].get_child(0) as Node3D).global_position
+	var q := PhysicsRayQueryParameters3D.create(head_c + Vector3(0, 0.1, 3.0), head_c)
+	q.collide_with_areas = true
+	q.collide_with_bodies = false
+	q.collision_mask = Hit.HITBOX_LAYER
+	var res := space.intersect_ray(q)
+	_check(not res.is_empty() and res["collider"].get_meta("part") == "head" and res["collider"].get_meta("zombie") == z,
+		"  a ray at the head hits part == head (%s)" % [res.get("collider")])
+	var wrong := []
+	for p in Hit.PARTS:
+		var c: Vector3 = (z.hitboxes[p].get_child(0) as Node3D).global_position
+		var others: Array[RID] = []
+		for o in Hit.PARTS:
+			if o != p:
+				others.append((z.hitboxes[o] as Area3D).get_rid())
+		var q2 := PhysicsRayQueryParameters3D.create(c + Vector3(0.0, 0.0, 2.0), c)
+		q2.collide_with_areas = true
+		q2.collide_with_bodies = false
+		q2.collision_mask = Hit.HITBOX_LAYER
+		q2.exclude = others
+		var r2 := space.intersect_ray(q2)
+		if r2.is_empty() or r2["collider"].get_meta("part") != p:
+			wrong.append(p)
+	_check(wrong.is_empty(), "  a ray at each zone's centre hits that part (wrong: %s)" % [wrong])
+	var ys := {}
+	for p in Hit.PARTS:
+		ys[p] = (z.hitboxes[p].get_child(0) as Node3D).global_position.y
+	_check(ys["head"] > ys["neck"] and ys["neck"] > ys["torso"] and ys["torso"] > ys["upper_leg_l"] and ys["upper_leg_l"] > ys["lower_leg_l"]
+		and ys["lower_leg_l"] > 0.0 and ys["head"] < 2.0, "  zones stack head over neck over torso over legs, on a person's scale (head %.2f m)" % ys["head"])
+	var hits_seen := []
+	z.hit.connect(func(_zz, part, dmg, killed): hits_seen.append([part, dmg, killed]))
+	var died_log := []
+	z.died.connect(func(_zz, part, melee): died_log.append([part, melee]))
+	z.take_hit("torso", 50.0, Vector3.FORWARD, null)
+	_check(is_equal_approx(z.health, z.max_health - 50.0) and z.is_alive() and z.is_in_group("zombies"), "  take_hit subtracts the damage")
+	z.take_hit("head", z.max_health, Vector3.FORWARD, null)
+	z.take_hit("head", 999.0, Vector3.FORWARD, null)
+	await _frames(2)
+	_check(died_log == [["head", false]] and not z.is_alive() and not z.is_in_group("zombies") and z.is_in_group("corpses"),
+		"  the killing hit emits died once, with the part (%s)" % [died_log])
+	_check(hits_seen.size() == 2 and hits_seen[1][2] == true, "  hit says which blow killed")
+	z.free()
+	# Insta-Kill and a melee flag.
+	z = spawner.spawn_one("walker", Vector3(0.0, 0.0, 1.5))
+	z.set_physics_process(false)
+	zm.insta_kill = true
+	var melee_log := []
+	z.died.connect(func(_zz, part, melee): melee_log.append([part, melee]))
+	z.take_hit("upper_leg_l", 1.0, Vector3.FORWARD, null, true)
+	zm.insta_kill = false
+	_check(melee_log == [["upper_leg_l", true]], "  Insta-Kill kills on any hit, and melee is passed on (%s)" % [melee_log])
+	z.free()
+
+	# --- Spawning ---
+	spawner.time_scale = 0.01
+	for r in [5, 6, 15]:
+		for old in get_nodes_in_group("zombies"):
+			old.free()
+		var made := []
+		var on_spawn := func(zz): made.append(zz.kind)
+		spawner.spawned.connect(on_spawn)
+		zm.round = r - 1
+		spawner.enabled = true
+		zm.start_round()
+		var max_alive := 0
+		var at_cap := false
+		var frames := 0
+		while spawner.released < spawner.total and frames < 3000:
+			await physics_frame
+			frames += 1
+			for zz in get_nodes_in_group("zombies"):
+				zz.set_physics_process(false)
+			max_alive = maxi(max_alive, spawner.alive())
+			if spawner.alive() >= zm.MAX_ALIVE:
+				at_cap = true
+				# Mow down five and let the reserve come out.
+				var live := get_nodes_in_group("zombies")
+				for i in 5:
+					live[i].take_hit("torso", 1.0e6, Vector3.FORWARD, null)
+		spawner.enabled = false
+		var kinds := {"walker": 0, "runner": 0}
+		for k in made:
+			kinds[k] += 1
+		spawner.spawned.disconnect(on_spawn)
+		_check(made.size() == zm.zombies_in_round(r) and max_alive <= zm.MAX_ALIVE and (at_cap or zm.zombies_in_round(r) <= zm.MAX_ALIVE),
+			"  round %d: exactly %d came out, never more than %d alive (made %d, peak %d, capped %s)" % [r, zm.zombies_in_round(r), zm.MAX_ALIVE, made.size(), max_alive, at_cap])
+		if r == 5:
+			_check(kinds["runner"] == 0, "  ...all walkers in round 5 (%s)" % [kinds])
+		elif r == 6:
+			_check(kinds["runner"] >= 1 and kinds["walker"] >= 1, "  ...runners among them from round 6 (%s)" % [kinds])
+		else:
+			_check(kinds["walker"] == 0, "  ...nothing but runners by round 15 (%s)" % [kinds])
+	# Corpses: 20 dead in a row leave 12.
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	for old in get_nodes_in_group("corpses"):
+		old.free()
+	spawner._corpses.clear()
+	var kills_before: int = zm.kills
+	var hs_before: int = zm.headshots
+	for i in 20:
+		var cz = spawner.spawn_one("walker", Vector3(-30.0 + i * 3.0, 0.0, 1.0))
+		cz.set_physics_process(false)
+		cz.take_hit("head" if i % 2 == 0 else "torso", 1.0e6, Vector3.FORWARD, null)
+	await _frames(3)
+	_check(spawner.corpse_count() <= 12, "  at most 12 corpses lie about (%d)" % spawner.corpse_count())
+	_check(zm.kills - kills_before == 20 and zm.headshots - hs_before == 10, "  every kill is counted once, headshots among them (%d, %d)" % [zm.kills - kills_before, zm.headshots - hs_before])
+	for old in get_nodes_in_group("corpses"):
+		old.free()
+	spawner._corpses.clear()
+
+	# --- The navmesh ---
+	var nav := city.get_node("NavRegion") as NavigationRegion3D
+	var map := nav.get_navigation_map()
+	_check(nav.navigation_mesh.resource_path.ends_with("zombie_navmesh.res"), "  zombie mode walks the zombie navmesh")
+	# (A building's inside is an island on the mesh, cut off by its walls: what
+	# matters is that no route goes through one.)
+	var home := Vector3(-17.5, 0.0, -3.0)
+	var into_pawn := NavigationServer3D.map_get_path(map, home, Vector3(0.0, 0.0, -10.0), true)
+	_check(into_pawn.is_empty() or into_pawn[into_pawn.size() - 1].distance_to(Vector3(0.0, 0.0, -10.0)) > 1.0,
+		"  there is no way into a building's mass from the street")
+	var wreck_clear := true
+	for w in block.WRECKS:
+		var wp: Vector3 = w[2]
+		var wpath := NavigationServer3D.map_get_path(map, home, wp, true)
+		if not wpath.is_empty() and wpath[wpath.size() - 1].distance_to(wp) < 0.5:
+			wreck_clear = false
+	_check(wreck_clear, "  ...nor onto a wreck")
+	var stuck := []
+	var through := []
+	var far_route := 0.0
+	var space2: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	for sp in block.SPAWN_POINTS:
+		var path := NavigationServer3D.map_get_path(map, sp, home, true)
+		var plen := 0.0
+		for i in range(1, path.size()):
+			plen += path[i - 1].distance_to(path[i])
+			# Walk the leg: nothing solid at chest height along it.
+			var seg_len: float = path[i - 1].distance_to(path[i])
+			var steps := int(seg_len / 0.5)
+			for k in steps + 1:
+				var pt: Vector3 = path[i - 1].lerp(path[i], float(k) / maxf(steps, 1)) + Vector3(0, 1.0, 0)
+				var pq := PhysicsPointQueryParameters3D.new()
+				pq.position = pt
+				pq.collision_mask = 1
+				var hits := space2.intersect_point(pq, 4).filter(func(h): return not (h["collider"] as Node).is_in_group("barricades"))
+				if not hits.is_empty():
+					through.append(sp)
+					break
+			if through.has(sp):
+				break
+		if path.size() < 2 or path[path.size() - 1].distance_to(home) > 1.0 or plen > sp.distance_to(home) * 4.0 + 20.0:
+			stuck.append(sp)
+		far_route = maxf(far_route, plen)
+	_check(stuck.is_empty(), "  every spawn point has a route to Main Street (unreachable or absurd: %s; longest %.0f m)" % [stuck, far_route])
+	_check(through.is_empty(), "  and no route goes through anything solid (%s)" % [through])
+
+	# --- Walking across the block ---
+	spawner.round_no = 8
+	player.global_position = Vector3(30.0, 0.0, -2.0)
+	player.velocity = Vector3.ZERO
+	var runner = spawner.spawn_one("runner", Vector3(71.0, 0.0, -30.0))
+	var hit_log := []
+	runner.attacked.connect(func(zz, _dmg): hit_log.append(zz.global_position.distance_to(player.global_position)))
+	var start_d: float = runner.global_position.distance_to(player.global_position)
+	var best_d := start_d
+	for i in 2400:
+		await physics_frame
+		best_d = minf(best_d, runner.global_position.distance_to(player.global_position))
+		if not hit_log.is_empty():
+			break
+	_check(not hit_log.is_empty() and hit_log[0] < 2.0 and absf(runner.global_position.y) < 0.3,
+		"  a runner crosses the block (%.0f m, East Ave to Main) and claws the player from %s m (closest %.1f m, y %.2f)" % [start_d, hit_log.map(func(d): return snappedf(d, 0.1)).slice(0, 1), best_d, runner.global_position.y])
+	runner.free()
+
+	# --- Barricades ---
+	var bars: Array = get_nodes_in_group("barricades")
+	_check(bars.size() >= 2 and bars.all(func(b): return b.boards == b.BOARD_COUNT), "  the alley mouths are boarded (%d barricades, all %d boards)" % [bars.size(), 6])
+	var bar: Node3D = block.barricades[0]
+	var bar_z: float = bar.global_position.z
+	player.global_position = Vector3(bar.global_position.x, 0.0, -2.0)
+	player.velocity = Vector3.ZERO
+	var gate_runner = spawner.spawn_one("runner", Vector3(bar.global_position.x, 0.0, -17.5))
+	var crossed_early := false
+	var last_boards: int = bar.boards
+	var monotone := true
+	var open_at := -1
+	for i in 2400:
+		await physics_frame
+		if bar.boards > last_boards:
+			monotone = false
+		last_boards = bar.boards
+		if gate_runner.global_position.z > bar_z + 0.3 and bar.boards > 0:
+			crossed_early = true
+		if bar.boards == 0 and open_at < 0:
+			open_at = i
+		if open_at >= 0 and gate_runner.global_position.z > bar_z + 1.5:
+			break
+	_check(bar.boards == 0 and monotone, "  the dead tear every board off (boards left %d)" % bar.boards)
+	_check(not crossed_early, "  and don't get through before the last is down")
+	_check(gate_runner.global_position.z > bar_z + 1.0, "  then they come through (z %.1f past the boards at %.1f)" % [gate_runner.global_position.z, bar_z])
+	gate_runner.free()
+	# Nailing them back: ten points a board.
+	zm.points = 0
+	player.global_position = Vector3(bar.global_position.x, 0.0, bar.global_position.z + 0.1)
+	_check(not bar.repair_board(player), "  you can't board it up while you stand in the gap")
+	player.global_position = Vector3(bar.global_position.x, 0.0, -3.0)
+	var ok1: bool = bar.repair_board(player)
+	var ok2: bool = bar.repair_board(player)
+	await create_timer(0.6).timeout
+	var ok3: bool = bar.repair_board(player)
+	_check(ok1 and not ok2 and ok3 and bar.boards == 2 and zm.points == 20, "  each board nailed back pays 10 points, one a press (boards %d, points %d)" % [bar.boards, zm.points])
+	zm.double_points = true
+	await create_timer(0.6).timeout
+	bar.repair_board(player)
+	zm.double_points = false
+	_check(zm.points == 40, "  Double Points doubles the 10 (points %d)" % zm.points)
+	await _frames(2)
+	var blocker := bar.get_child(0) as CollisionShape3D
+	_check(blocker != null and not blocker.disabled, "  with boards up it blocks the way again")
+	bar.repair_all()
+	await _frames(2)
+	_check(bar.boards == bar.BOARD_COUNT and zm.points == 40, "  repair_all restores the rest without paying (%d points)" % zm.points)
+
+	# --- A hit to the leg: down on a knee, then up (or on, legless) ---
+	player.global_position = Vector3(-17.5, 0.0, -3.0)
+	var knee = spawner.spawn_one("walker", Vector3(-17.5, 0.0, 14.0))
+	await _frames(10)
+	var knee_from: Vector3 = knee.global_position
+	knee.take_hit("lower_leg_l", knee.max_health * 0.2, Vector3.FORWARD, null)
+	await _frames(3)
+	var knelt: bool = knee.is_kneeling() and knee.anim.current_clip() == "z_hit_leg"
+	await _frames(30)
+	var held: bool = knee.is_kneeling() and knee.global_position.distance_to(knee_from) < 0.5 and Vector2(knee.velocity.x, knee.velocity.z).length() < 0.2
+	await _frames(int(knee.KNEEL_TIME * 60.0))
+	var rose: bool = knee.state == knee.State.STANDUP and knee.anim.current_clip() == "z_standup"
+	await _frames(int(knee.anim.play_once("z_standup", 1.0) * 60.0) + 20)
+	_check(knelt and held and rose and knee.state == knee.State.CHASE and knee.anim.current_clip() in ["z_walk", "z_walk2", "z_walk3"],
+		"  a leg hit drops it to a knee, held, then z_standup, then walking again (knelt %s, held %s, rose %s, now %s %s)" % [knelt, held, rose, knee.state, knee.anim.current_clip()])
+	var knee2 = spawner.spawn_one("walker", Vector3(-17.5, 0.0, 14.0))
+	await _frames(5)
+	knee2.take_hit("lower_leg_r", knee2.max_health * 0.2, Vector3.FORWARD, null)
+	knee2.set_legless(true)
+	await _frames(int(knee2.KNEEL_TIME * 60.0) + 40)
+	_check(knee2.state == knee2.State.CHASE and knee2.anim.current_clip() == "z_crawl", "  a legless one that was kneeling crawls on (%s)" % knee2.anim.current_clip())
+	_check(knee.kneel_handoff_live and knee2.kneel_handoff_live, "  ...both hand the knee over to the next clip while z_hit_leg still plays, so it blends (stand-up %s, crawl %s)" % [knee.kneel_handoff_live, knee2.kneel_handoff_live])
+	knee.free()
+	knee2.free()
+
+	# --- Crawlers and the far ones ---
+	player.global_position = Vector3(-17.5, 0.0, -3.0)
+	var crawler = spawner.spawn_one("walker", Vector3(-17.5, 0.0, 12.0))
+	crawler.set_legless(true)
+	await _frames(40)
+	_check(crawler.legless and crawler.anim.current_clip() == "z_crawl", "  a legless zombie crawls (%s)" % crawler.anim.current_clip())
+	crawler.free()
+	var near_z = spawner.spawn_one("walker", Vector3(-17.5, 0.0, 4.0))
+	var far_z = spawner.spawn_one("walker", Vector3(60.0, 0.0, 1.0))
+	await _frames(30)
+	var shadow_of := func(zz): return (zz.model.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).cast_shadow
+	_check(shadow_of.call(near_z) == GeometryInstance3D.SHADOW_CASTING_SETTING_ON and shadow_of.call(far_z) == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		and far_z._anim_player.callback_mode_process == AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+		and near_z._anim_player.callback_mode_process == AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE,
+		"  far zombies cast no shadow and animate every other frame; near ones do both")
+	near_z.free()
+	far_z.free()
+	# The rot shader is on the body and the head.
+	var shaded = spawner.spawn_one("walker", Vector3(0.0, 0.0, 30.0))
+	var rot_surfaces := 0
+	var total_surfaces := 0
+	for mi in shaded.model.find_children("*", "MeshInstance3D", true, false):
+		for i in (mi as MeshInstance3D).mesh.get_surface_count():
+			total_surfaces += 1
+			var m := (mi as MeshInstance3D).get_surface_override_material(i)
+			if m is ShaderMaterial and (m as ShaderMaterial).shader.resource_path.ends_with("zombie_rot.gdshader"):
+				rot_surfaces += 1
+	_check(rot_surfaces >= 2 and rot_surfaces <= total_surfaces, "  the body and head wear the rot shader (%d of %d surfaces)" % [rot_surfaces, total_surfaces])
+	shaded.free()
+	for old in get_nodes_in_group("zombies"):
+		old.free()
 	zm.leave()
 	DirAccess.remove_absolute(zm.PATH)
 	root.get_node("Graphics").set_first_person(false)

@@ -11,6 +11,27 @@ extends Node
 
 const ZombieHudScript := preload("res://ui/ZombieHud.gd")
 const CarPaint := preload("res://world/CarPaint.gd")
+const BarricadeScript := preload("res://world/Barricade.gd")
+const SpawnerScript := preload("res://npc/ZombieSpawner.gd")
+## The block's navmesh as zombies need it: with the buildings' masses and the
+## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
+const NAVMESH := "res://world/block/zombie_navmesh.res"
+
+## Boards across the alley mouths onto Main Street: [name, position, yaw].
+## The dead come through from the service lane behind the shops.
+const BARRICADES := [
+	["BarricadeAlleyW", Vector3(14.0, 0, -5.6), 0.0],
+	["BarricadeAlleyE", Vector3(21.0, 0, -5.6), 0.0],
+]
+## Where the dead come from: the service lane behind the shops, the avenues,
+## Back Street, the lot and the park. The spawner picks the ones out of sight.
+const SPAWN_POINTS := [
+	Vector3(14.0, 0, -17.5), Vector3(21.0, 0, -17.5),
+	Vector3(71.0, 0, -30.0), Vector3(71.0, 0, -70.0), Vector3(-71.0, 0, -30.0), Vector3(-71.0, 0, -70.0),
+	Vector3(-40.0, 0, -91.0), Vector3(0.0, 0, -91.0), Vector3(40.0, 0, -91.0),
+	Vector3(-72.0, 0, 1.0), Vector3(72.0, 0, 1.0),
+	Vector3(45.0, 0, -45.0), Vector3(-45.0, 0, -45.0),
+]
 
 ## Scene-placed nodes of the story: the doors to every shop, the people.
 const STORY_NODES := ["StationDoor", "Pusher", "Lookout", "Ray"]
@@ -59,6 +80,8 @@ const FIRE_RANGE := 7.0
 
 var city: Node3D
 var hud: CanvasLayer
+var spawner: Node
+var barricades: Array[Node3D] = []
 ## [light, full energy, seconds to the next change, in a burst, dead]
 var _flickering: Array = []
 ## How many streetlights stutter (the smoke test reads it).
@@ -72,10 +95,16 @@ func setup(block: Node3D) -> void:
 	_pick_flickering()
 	_build_camp_fires()
 	_build_wrecks()
+	_use_zombie_navmesh()
+	_build_barricades()
 	_hide_story_hud()
 	hud = ZombieHudScript.new()
 	hud.name = "ZombieHud"
 	city.add_child(hud)
+	spawner = SpawnerScript.new()
+	spawner.holder = city
+	spawner.spawn_points.assign(SPAWN_POINTS)
+	add_child(spawner)
 	ZombieMode.start_round()
 
 func _strip_story() -> void:
@@ -113,6 +142,22 @@ func _pick_flickering() -> void:
 		if i % FLICKER_EVERY == 0:
 			_flickering.append([light, light.light_energy, randf_range(0.0, STEADY_TIME.y), false, false])
 		i += 1
+
+## The navmesh with the buildings and wrecks carved out.
+func _use_zombie_navmesh() -> void:
+	var nav := city.get_node_or_null("NavRegion") as NavigationRegion3D
+	var mesh := load(NAVMESH) as NavigationMesh if ResourceLoader.exists(NAVMESH) else null
+	if nav and mesh:
+		nav.navigation_mesh = mesh
+
+func _build_barricades() -> void:
+	for b in BARRICADES:
+		var bar := BarricadeScript.new()
+		bar.name = b[0]
+		city.add_child(bar)
+		bar.global_position = b[1]
+		bar.rotation_degrees.y = b[2]
+		barricades.append(bar)
 
 ## How many wrecks stand on the block (the smoke test reads it).
 var wreck_count: int:

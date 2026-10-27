@@ -5006,6 +5006,8 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 	_check(low.is_empty(), "  the overpass clears the camera at its highest zoom (%.2f m + 0.5): %s" % [cam_top, low.slice(0, 4)])
 	# By day the block's after-dark lights are off; at night they're on.
 	gs.clock = 14 * 60
+	# A dry afternoon: in the rain the lamps come half on (City3D).
+	gs.raining = false
 	gs.advance_clock(1)
 	await _frames(3)
 	var night := get_nodes_in_group("night_lights").filter(func(l): return city.is_ancestor_of(l))
@@ -5119,7 +5121,14 @@ func _block_cells_checks(gs: Node) -> void:
 		await _frames(BLOCK_SETTLE_FRAMES)
 		var at: Vector3 = spots[cn]
 		for c in cells:
-			var want: bool = (c.get_meta("bounds") as AABB).grow(25.0).has_point(Vector3(at.x, 1.0, at.z))
+			# Within the wake margin it's awake; past the sleep margin, asleep;
+			# in between it keeps whatever it was (hysteresis).
+			var box: AABB = c.get_meta("bounds")
+			var near := box.grow(cells_node.WAKE_MARGIN).has_point(Vector3(at.x, 1.0, at.z))
+			var far := not box.grow(cells_node.SLEEP_MARGIN).has_point(Vector3(at.x, 1.0, at.z))
+			if not near and not far:
+				continue
+			var want := near
 			var members := _cell_members(city, c)
 			var ok: bool = cells_node.is_awake(c) == want
 			if want:
@@ -5173,6 +5182,40 @@ func _block_cells_checks(gs: Node) -> void:
 	await _frames(BLOCK_SETTLE_FRAMES)
 	_check(froze and sleeper.can_process(), "  a cell_sleeper on Back Street freezes when it sleeps and runs when it wakes")
 	sleeper.queue_free()
+	# Hysteresis: a cell wakes at WAKE_MARGIN but sleeps only past
+	# SLEEP_MARGIN, so stepping back and forth over the line is one switch,
+	# not one a frame or two.
+	var back := city.get_node("Cell_Back") as Node3D
+	var back_box: AABB = back.get_meta("bounds")
+	var line_z := back_box.end.z + float(cells_node.get("WAKE_MARGIN"))
+	player.global_position = Vector3(-7.0, 0, line_z + 14.0)
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var flips := [0]
+	var counter := func(c: Node3D, _on: bool):
+		if c == back:
+			flips[0] += 1
+	cells_node.cell_changed.connect(counter)
+	for i in 8:
+		player.global_position = Vector3(-7.0, 0, line_z + (-1.0 if i % 2 == 0 else 1.0))
+		await _frames(6)
+	cells_node.cell_changed.disconnect(counter)
+	var sleep_m: float = float(cells_node.get("SLEEP_MARGIN")) if cells_node.get("SLEEP_MARGIN") != null else 0.0
+	_check(sleep_m > float(cells_node.get("WAKE_MARGIN")) and flips[0] == 1,
+		"  hysteresis: sleep margin %.0f m over wake %.0f m, and 8 steps over the line give %d switch of Back (want exactly the one wake)" % [sleep_m, cells_node.get("WAKE_MARGIN"), flips[0]])
+	# One rule for the rain's dimming: the clock's daylight and the lamps
+	# both read City3D._effective_daylight (0.55 in rain), the lamps off
+	# the value _apply_daylight worked out.
+	gs.clock = 18 * 60 + 40
+	gs.raining = true
+	city._apply_daylight()
+	var eff = city.call("_effective_daylight") if city.has_method("_effective_daylight") else -1.0
+	var lamps = city.get("_lamps_on")
+	var want_lamps := 1.0 - smoothstep(0.35, 0.75, gs.daylight() * 0.55)
+	var src := FileAccess.get_file_as_string("res://world/City3D.gd")
+	_check(is_equal_approx(eff, gs.daylight() * 0.55) and lamps != null and is_equal_approx(lamps, want_lamps) and src.count("GameState.raining") == 1,
+		"  rain dims the sky and the lamps by one rule (effective %.3f, lamps %s want %.3f, %d reads of GameState.raining in City3D.gd)" % [eff, lamps, want_lamps, src.count("GameState.raining")])
+	gs.raining = false
+	city._apply_daylight()
 	# The walls: standing in the service lane behind Main's shops, the shops'
 	# backs are between you and the camera, and they're cutaway material.
 	player.global_position = Vector3(0.0, 0, -17.5)

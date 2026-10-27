@@ -19,6 +19,10 @@ extends Node
 ## sleeps.
 
 const WAKE_MARGIN := 25.0
+## A cell that's awake sleeps again only past this: a few metres more than
+## it took to wake it, so walking back and forth over the line is one
+## switch (and not the lights, buzzes and members toggling every frame).
+const SLEEP_MARGIN := WAKE_MARGIN + 8.0
 ## Per physics frame, for a cell's switch.
 const SWITCH_BUDGET_USEC := 1500
 ## How often loose cell_sleepers are looked at again (they move).
@@ -101,7 +105,7 @@ func _physics_process(delta: float) -> void:
 		return
 	var at := Vector3(player.global_position.x, 1.0, player.global_position.z)
 	for c in _cells:
-		var want := (c.get_meta("bounds") as AABB).grow(WAKE_MARGIN).has_point(at)
+		var want := (c.get_meta("bounds") as AABB).grow(SLEEP_MARGIN if _awake[c] else WAKE_MARGIN).has_point(at)
 		if want != _awake[c]:
 			_set_awake(c, want)
 			return  # one per frame

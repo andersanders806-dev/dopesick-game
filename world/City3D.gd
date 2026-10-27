@@ -509,13 +509,19 @@ func spawn_mugger(knife := false) -> Node3D:
 	mugger.reset_physics_interpolation()
 	return mugger
 
+## Daylight as the sky and the lamps see it: rain makes an overcast, darker
+## day. The one place the rain's dimming is decided.
+func _effective_daylight() -> float:
+	return GameState.daylight() * (RAIN_DAYLIGHT if GameState.raining else 1.0)
+
+const RAIN_DAYLIGHT := 0.55
+## How far the after-dark lights are on, 0..1; set with the daylight.
+var _lamps_on := 0.0
+
 ## Blends the scene between its baked night look and daylight as the clock
 ## moves through dawn and dusk.
 func _apply_daylight() -> void:
-	var d := GameState.daylight()
-	# Rain: an overcast, darker day.
-	if GameState.raining:
-		d *= 0.55
+	var d := _effective_daylight()
 	_env.background_color = (_night["sky"] as Color).lerp(DAY_SKY, d)
 	_env.ambient_light_color = (_night["ambient"] as Color).lerp(DAY_AMBIENT, d)
 	_env.ambient_light_energy = lerpf(_night["ambient_energy"], DAY_AMBIENT_ENERGY, d)
@@ -526,11 +532,12 @@ func _apply_daylight() -> void:
 	_sky_light.light_energy = lerpf(_night["moon_energy"], SUN_ENERGY, d)
 	# Streetlights are on a photocell: fully on until well into dawn, and
 	# back on before dusk is over.
+	_lamps_on = 1.0 - smoothstep(0.35, 0.75, d)
 	_apply_lights()
 
 ## The after-dark lights by the hour; a sleeping cell's stay dark.
 func _apply_lights() -> void:
-	var lamps_on := 1.0 - smoothstep(0.35, 0.75, GameState.daylight() * (0.55 if GameState.raining else 1.0))
+	var lamps_on := _lamps_on
 	for entry in _night_lights:
 		var cell: Node3D = entry[2] if entry.size() > 2 else null
 		(entry[0] as Light3D).light_energy = entry[1] * lamps_on

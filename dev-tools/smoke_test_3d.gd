@@ -5216,9 +5216,26 @@ func _block_cells_checks(gs: Node) -> void:
 		"  rain dims the sky and the lamps by one rule (effective %.3f, lamps %s want %.3f, %d reads of GameState.raining in City3D.gd)" % [eff, lamps, want_lamps, src.count("GameState.raining")])
 	gs.raining = false
 	city._apply_daylight()
-	# The walls: standing in the service lane behind Main's shops, the shops'
-	# backs are between you and the camera, and they're cutaway material.
-	player.global_position = Vector3(0.0, 0, -17.5)
+	# The camera never hangs inside a building: on Back Street's south
+	# sidewalk, with a building right behind you, it comes in instead. The
+	# check asks the physics world, not Facades.
+	var in_wall := []
+	for bx in [-55.0, -40.0, -20.0, 5.0, 25.0]:
+		player.global_position = Vector3(bx, 0, -86.5)
+		player.reset_physics_interpolation()
+		await _frames(BLOCK_SETTLE_FRAMES)
+		var pq := PhysicsPointQueryParameters3D.new()
+		pq.position = player.camera.global_position
+		pq.collision_mask = 1
+		var inside: Array = city.get_world_3d().direct_space_state.intersect_point(pq, 8).filter(func(r): return String(r["collider"].name).begins_with("Building"))
+		var dist: float = player.camera.global_position.distance_to(player.global_position + Vector3(0, 1.2, 0))
+		if not inside.is_empty() or dist < 1.0:
+			in_wall.append("x%.0f %s cam %s %.1f m from you" % [bx, inside.map(func(r): return r["collider"].name), player.camera.global_position, dist])
+	_check(in_wall.is_empty(), "  on Back Street's south sidewalk the camera stays out of the buildings behind you (%s)" % [in_wall.slice(0, 3)])
+	# The walls: standing at the service lane's east end, a shop's roof and
+	# walls are between you and the camera (which is out in the open above
+	# them), and they're cutaway material.
+	player.global_position = Vector3(16.0, 0, -18.0)
 	player.reset_physics_interpolation()
 	await _frames(BLOCK_SETTLE_FRAMES)
 	var cam: Camera3D = player.camera
@@ -5243,7 +5260,7 @@ func _block_cells_checks(gs: Node) -> void:
 				plain.append("%s" % mi.name)
 				break
 	_check(not hit.is_empty() and hit["collider"] in builds and between.size() > 0 and plain.is_empty(),
-		"  from the lane a Main Street building (%s) stands between camera and you, and its %d meshes there dither (plain: %s)" % [hit["collider"].name if hit else "nothing", between.size(), plain.slice(0, 3)])
+		"  from the lane's east end a Main Street building (%s) stands between camera and you, and its %d meshes there dither (plain: %s)" % [hit["collider"].name if hit else "nothing", between.size(), plain.slice(0, 3)])
 	# The globals as the player last set them (a headless RenderingServer
 	# keeps no values to read back).
 	var pw: Vector3 = player.cutaway_globals[0]

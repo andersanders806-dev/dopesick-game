@@ -44,6 +44,7 @@ var _job_usec := 0
 var _job_frames := 0
 
 func _ready() -> void:
+	add_to_group("block_cells")
 	for c in get_parent().get_children():
 		if c is Node3D and String(c.name).begins_with("Cell_"):
 			_cells.append(c)

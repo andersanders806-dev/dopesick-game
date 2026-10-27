@@ -77,6 +77,15 @@ const CAM_ZOOM := 0.75
 const CAM_USER_ZOOM := Vector2(0.7, 1.4)
 var _cam_offset: Vector3
 var _cam_focus: Vector3
+## Where the camera's line to you is cut short by a building behind it
+## (Facades.camera_clip), 0..1, how far of the line it keeps.
+var _cam_clip := 1.0
+const Facades := preload("res://world/Facades.gd")
+## Chest height the camera's line to you starts at, and how far off a wall
+## it stays (its near plane stays clear), and how fast it eases back out.
+const CAM_CHEST := 1.2
+const CAM_WALL_PAD := 0.6
+const CAM_CLIP_OUT := 3.0
 var _user_zoom: float = 1.0
 ## Zoom per second at full right-stick tilt.
 const PAD_ZOOM_RATE := 0.8
@@ -169,7 +178,18 @@ func _update_camera_rig(delta: float) -> void:
 		_cam_ready = true
 	else:
 		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
-	$CameraMount.global_position = _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
+	var want := _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
+	# On the block the camera never goes into a building: it comes in along
+	# its line to you at once, and eases back out.
+	var chest := _cam_focus + Vector3(0, CAM_CHEST, 0)
+	var clip := 1.0
+	if get_tree().get_first_node_in_group("block_cells") != null:
+		clip = Facades.camera_clip(chest, want, CAM_WALL_PAD)
+	if clip < _cam_clip or delta <= 0.0:
+		_cam_clip = clip
+	else:
+		_cam_clip = lerpf(_cam_clip, clip, 1.0 - exp(-CAM_CLIP_OUT * delta))
+	$CameraMount.global_position = chest.lerp(want, _cam_clip)
 
 ## The block's walls between the camera and you dither out
 ## (world/Cutaway.gd): its shader reads where you are, every drawn frame,

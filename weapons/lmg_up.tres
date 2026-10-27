@@ -1,0 +1,36 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "lmg_up"
+display_name = "Meat Grinder"
+base_id = "lmg"
+upgraded = true
+damage = 76.0
+head_mult = 1.5
+neck_mult = 1.25
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 620.0
+auto = true
+mag_size = 150
+reserve_max = 600
+reload_time = 4.76
+spread_hip = 3.6
+spread_ads = 0.96
+recoil = 0.9
+ads_zoom = 1.4
+swap_time = 0.7
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/lmg/scene.gltf"
+model_yaw = 180.0
+model_length = 1.0
+tint = Color(0.3, 1.0, 0.3, 1)

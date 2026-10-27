@@ -1,0 +1,35 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/magnum_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "magnum"
+display_name = "Magnum"
+damage = 110.0
+head_mult = 2.2
+neck_mult = 1.5
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 160.0
+auto = false
+mag_size = 6
+reserve_max = 42
+reload_time = 2.5
+spread_hip = 2.4
+spread_ads = 0.25
+recoil = 3.2
+ads_zoom = 1.35
+swap_time = 0.4
+price = 1000
+ammo_price = 500
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/magnum/scene.gltf"
+model_yaw = 0.0
+model_length = 0.3

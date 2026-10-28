@@ -16,6 +16,7 @@
 - Everything in the open-world plan's Global Constraints applies (`docs/superpowers/plans/2026-10-18-open-world-block.md`): headless test / window probe commands, regenerate scenes with `BuildRooms3D.tscn` and commit the regenerated `.tscn`, axes (x east, z south), floor layer 16, interactables layer 4, Main Street x in [-29, 29] untouched, perf on Low UHD 620: 60 FPS, GPU <= 13 ms, no frame > 25 ms while walking, City3D load <= 2.5 s, nothing loads or instantiates while walking.
 - Tests per project convention: `_<feature>_checks(gs)` in `dev-tools/smoke_test_3d.gd`, called from `_run()`, plus `dev-tools/smoke_<feature>.gd`; full smoke must exit 0 at the end of every task.
 - Walk/perf/render probes run with `-- --no-sick`; never change default gameplay for it.
+- **Nothing outside the world, ever** (user 2026-10-28: "make sure there is nothing outside the world"): from any camera the player can get — shoulder cam orbiting, first person, cutscene/dialogue cameras — in any scene, there is never void, sky-through-a-gap, the underside of a floor, a missing wall/ceiling, an unlit black window or a seam. Every room has four walls and a ceiling; every window shows an outside (backdrop or the real street); no way to fall out of a level.
 - One pier only. Water is entered only from the pier (or by being thrown off it).
 - Look: cold dirty city harbour at night — black-green water, low swell, lamp reflections, fog to the horizon. Never bright/cartoon.
 - New assets: licence + author in `LICENSES.md` and credits; non-commercial OK, EU-excluded tools not.
@@ -50,11 +51,28 @@
 - [ ] **Step 5: Window check** (`--no-sick`): render 4 shots (Main St, alley, park, inside a walk-in shop) to `.pilot/shots/`; perf: `block_walk.gd` full loop day + night with the camera orbiting slowly, report frames > 25 ms and GPU ms per street vs the base commit (>= 3 interleaved runs). Must meet the gate; if more visible geometry breaks it, tune cell wake margins / visibility ranges before continuing.
 - [ ] **Step 6: Commit** `feat(camera): RE4 over-the-shoulder third person`.
 
+### Task H1b: Close every room (nothing outside the world)
+
+**Files:**
+- Modify: `dev-tools/build_rooms_3d.gd` and the per-room builders it uses (ceilings, missing walls, wall backsides, door frames, window backdrops), regenerate `world/Apartment3D.tscn`, `Backyard3D`, `DiveBar3D`, `Jail3D`, `KartCenter3D`, `MusicStore3D`, `Pawn3D`, `Shelter3D`, `StoreConvenience3D`, `StoreElectronics3D`, `StoreLiquor3D`, `StorePharmacy3D`, `StoreSupermarket3D`, and the walk-in interiors in City3D
+- Create: `dev-tools/void_probe.gd` (headless, reusable by H2 and Task 7), `world/WindowBackdrop.gd` (+ shader: a parallax street/night-sky card behind each exterior window, lit by the clock)
+- Test: `_void_checks(gs)` in `smoke_test_3d.gd`, `dev-tools/smoke_void.gd`
+
+**Interfaces:**
+- Consumes: ShoulderCam (H1).
+- Produces: `void_probe.gd` with `func probe_scene(path: String, cams: Array[Transform3D]) -> Array[String]` — returns one line per leak ("<scene> cam#3 ray 12 hit nothing / hit back face / hit sky inside room bounds"). H2 and the open-world Task 7 gate call it.
+
+- [ ] **Step 1: Failing checks**: for every door scene above and every walk-in interior: from 8 player spots (spawn, each door, room corners, room centre) the shoulder cam swept 24 yaws × 3 pitches and first person 24 yaws × 3 pitches — 9 screen rays each must hit a front-facing surface within the room bounds or a window backdrop; no ray hits a back face (`ray.hit_back_faces = true` + face normal check) or nothing; walking into every wall/corner for 3 s keeps the player inside; dropping the player from 1 m above every floor tile lands on a floor. The cutaway still opens walls between camera and player (TP), but a cut-away wall never reveals void: what's behind it is the room or a backdrop.
+- [ ] **Step 2: Run** `smoke_void.gd` → FAIL; save the leak list to the report (it is the to-do list).
+- [ ] **Step 3: Fix** in the builders: ceilings for all rooms (lights hang from them — ceiling-light fittings where lamps are), back walls/door-side walls the top-down camera never needed, closed corners, exterior windows get `WindowBackdrop`; outdoor door scenes (Backyard3D) get walls/fences + a backdrop beyond. Regenerate scenes.
+- [ ] **Step 4: Run** smoke_void → PASS (0 leaks); full smoke → exit 0.
+- [ ] **Step 5: Renders** (`--no-sick`): one shoulder-cam shot facing each wall of the apartment, Dive Bar, jail cell, pharmacy, one walk-in shop; GPU ms per room vs before (ceilings add little; must stay in budget). Commit `fix(world): every room closed — ceilings, walls, window views`.
+
 ### Task H2: The sea, the seawall and the pier
 
 **Files:**
 - Create: `dev-tools/city/harbour.gd` (builder: quay strip, seawall + railing + colliders, ladders, pier, lighthouse), `assets/shaders/sea.gdshader`, `world/Sea.gd` (follows player XZ in steps to keep the sea plane centred; swell/lamp uniforms; lighthouse beam rotation), `world/HarbourAmbience.gd` (waves by distance to seawall, foghorn, gulls by day)
-- Modify: `dev-tools/build_rooms_3d.gd` (`_build_city()` calls harbour builder), `world/BlockCells.gd` (register `Cell_Harbour`), `world/City3D.gd` (fog density toward horizon, day/night tint of the sea), regenerate `world/City3D.tscn`
+- Modify: `dev-tools/build_rooms_3d.gd` (`_build_city()` calls harbour builder); `no_void` check below uses `void_probe.gd` (H1b), `world/BlockCells.gd` (register `Cell_Harbour`), `world/City3D.gd` (fog density toward horizon, day/night tint of the sea), regenerate `world/City3D.tscn`
 - Test: `dev-tools/smoke_harbour.gd`, `_harbour_checks(gs)`
 
 **Interfaces:**

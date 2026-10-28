@@ -11,6 +11,9 @@ var _rows: PackedStringArray = []
 
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
+	await process_frame
+	# Withdrawal slows the walk and shakes the screen; keep it out of the measure.
+	root.get_node("GameState").no_sickness = true
 	var args := OS.get_cmdline_user_args()
 	var preset_name := args[0] if args.size() > 0 else "Low"
 	var secs := float(args[1]) if args.size() > 1 else 6.0

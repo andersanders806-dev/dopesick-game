@@ -11,6 +11,9 @@ extends SceneTree
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var frames := int(args[2]) if args.size() > 2 else 40
+	await process_frame
+	# A look at the level, not at withdrawal: no shaking, no blur.
+	root.get_node("GameState").no_sickness = true
 	if args.size() > 4:
 		# A sandboxed run: don't save over the player's game.
 		Engine.set_meta("sandbox", true)

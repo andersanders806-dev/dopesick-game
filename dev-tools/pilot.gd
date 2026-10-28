@@ -7,6 +7,9 @@ extends "res://dev-tools/playtest_bot.gd"
 ##   flatpak run org.godotengine.Godot --path . -s res://dev-tools/pilot.gd -- \
 ##       "scene City3D" "clock 21:00" "walk Pusher" "talk" "shot pusher"
 ##
+## Withdrawal is off (as with --no-sick) so walking and the scene can be
+## checked; add the step "sick" to turn it back on.
+##
 ## Screenshots and pilot.log go to .pilot/ in the project (gitignored;
 ## flatpak Godot can't write to /tmp). Runs sandboxed: nothing is saved, and
 ## the view starts in third person on Medium whatever settings.cfg says.
@@ -53,6 +56,9 @@ func _initialize() -> void:
 	gs.start_run()
 	gs.intro_pending = false
 	gs.clock_running = false
+	# Walks and looks at the level without withdrawal getting in the way;
+	# the "sick" step turns it back on to check withdrawal itself.
+	gs.no_sickness = true
 	gs.busted.connect(func(): log_line("BUSTED"))
 	var steps := OS.get_cmdline_user_args()
 	if steps.is_empty():
@@ -100,6 +106,9 @@ func _do(step: String) -> bool:
 			if player():
 				player().dialogue_active = false
 			return current_scene != null
+		"sick":
+			root.get_node("GameState").no_sickness = false
+			return true
 		"clock":
 			var hm := arg.split(":")
 			gs.clock = int(hm[0]) * 60 + (int(hm[1]) if hm.size() > 1 else 0)

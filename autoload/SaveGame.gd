@@ -41,14 +41,11 @@ func has_save() -> bool:
 
 ## The four rooms that became shops on Main Street (world/WalkInShop.gd):
 ## a save from inside one of them continues in the walk-in.
-const WALK_IN_OF := {
-	"StoreConvenience3D": "WalkIn_Convenience", "StoreLiquor3D": "WalkIn_Liquor",
-	"Pawn3D": "WalkIn_Pawn", "MusicStore3D": "WalkIn_Music",
-}
+const Facades := preload("res://world/Facades.gd")
 
 ## The walk-in node a saved scene has become, or "".
 static func walk_in_for_scene(scene_path: String) -> String:
-	return WALK_IN_OF.get(scene_path.get_file().get_basename(), "")
+	return Facades.walk_in_for_room(scene_path)
 
 func save() -> bool:
 	# The zombie mode (autoload/ZombieMode.gd) has a save of its own.

@@ -1,6 +1,7 @@
 extends "res://world/WorldRoot3D.gd"
 
 const CarPaint := preload("res://world/CarPaint.gd")
+const PlaceAmbience := preload("res://world/PlaceAmbience.gd")
 
 ## Night values are what build_rooms_3d.gd bakes into the scene; day values
 ## are an overcast afternoon, not a postcard -- the block should still look
@@ -176,6 +177,9 @@ signal left_shop(place: String)
 
 func _ready() -> void:
 	var t0 := Time.get_ticks_msec()
+	GameState.indoors = ""
+	entered_shop.connect(_on_shop_changed.bind(true))
+	left_shop.connect(_on_shop_changed.bind(false))
 	zombie_mode = GameState.mode == "zombies"
 	# The navmesh was baked round these two too (CityKit.bake_navigation);
 	# they're the story's, so the zombie block goes without.
@@ -284,6 +288,16 @@ func _ready() -> void:
 		_spawn_patrol(Vector3(randf_range(-22.0, 22.0), 0, PATROL_START.z))
 	_paint_parked_cars()
 	ready_ms = Time.get_ticks_msec() - t0
+
+## A walk-in shop is indoors: no cold, muffled rain, its own floor and
+## its own recording under the street's.
+func _on_shop_changed(place: String, entered: bool) -> void:
+	GameState.indoors = place if entered else ""
+	SFX.indoors_changed()
+	PlaceAmbience.indoors(self, place if entered else "")
+
+func _exit_tree() -> void:
+	GameState.indoors = ""
 
 ## Every parked car in an old, dull paint of its own (world/CarPaint.gd, the
 ## traffic's too). The builder can't do it: changes to nodes inside an

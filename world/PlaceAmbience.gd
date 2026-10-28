@@ -41,10 +41,51 @@ static func apply(room: Node) -> void:
 		stream.loop = true
 	var p := AudioStreamPlayer.new()
 	p.name = "PlaceAmbience"
+	p.set_meta("track", PLACES[key][0])
+	p.set_meta("street", stream)
+	p.set_meta("street_db", PLACES[key][1])
 	p.stream = stream
 	p.volume_db = PLACES[key][1]
 	p.bus = "Ambience" if AudioServer.get_bus_index("Ambience") >= 0 else "Master"
 	room.add_child(p)
 	# Start somewhere in the loop, so walking back into a room doesn't
 	# restart the same car going past.
+	p.play(randf() * maxf(stream.get_length() - 1.0, 0.0))
+
+## The recordings of the shops you can walk into from the street: preloaded
+## (nothing loads while you walk), looped on first use.
+const SHOP_TRACKS := {
+	"convenience": [preload("res://assets/sfx/places/convenience.ogg"), "convenience.ogg", -10.0],
+	"liquor": [preload("res://assets/sfx/places/liquor.ogg"), "liquor.ogg", -10.0],
+	"pawn": [preload("res://assets/sfx/places/pawn.ogg"), "pawn.ogg", -11.0],
+	"music": [preload("res://assets/sfx/places/music.ogg"), "music.ogg", -11.0],
+}
+static var _looped := {}
+
+## Walking into a shop on the street swaps the street's recording for the
+## shop's; `place` "" swaps it back.
+static func indoors(room: Node, place: String) -> void:
+	var p := room.get_node_or_null("PlaceAmbience") as AudioStreamPlayer
+	# (Not while the street is being torn down: bodies leave its shops then.)
+	if p == null or not p.is_inside_tree():
+		return
+	var stream: AudioStream = p.get_meta("street")
+	var db: float = p.get_meta("street_db")
+	var track := DIR + "city.ogg"
+	if SHOP_TRACKS.has(place):
+		var t: Array = SHOP_TRACKS[place]
+		if not _looped.has(place):
+			var src: AudioStream = t[0]
+			if src is AudioStreamOggVorbis:
+				src = src.duplicate()
+				src.loop = true
+			_looped[place] = src
+		stream = _looped[place]
+		db = t[2]
+		track = DIR + t[1]
+	if String(p.get_meta("track")) == track:
+		return
+	p.set_meta("track", track)
+	p.stream = stream
+	p.volume_db = db
 	p.play(randf() * maxf(stream.get_length() - 1.0, 0.0))

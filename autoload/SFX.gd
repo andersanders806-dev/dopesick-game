@@ -238,7 +238,11 @@ func play(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 ## A random footfall for the floor of the room you're in.
 func footstep_stream() -> AudioStream:
 	var scene := get_tree().current_scene
-	var surface: String = ROOM_SURFACE.get(String(scene.name) if scene else "", "concrete")
+	var room := String(scene.name) if scene else ""
+	# A shop on the street has its own floor.
+	if GameState.indoors != "":
+		room = preload("res://world/Facades.gd").room_for_place(GameState.indoors)
+	var surface: String = ROOM_SURFACE.get(room, "concrete")
 	return FOOTSTEPS[surface].pick_random()
 
 func play_footstep(volume_db: float = 0.0, pitch: float = 1.0) -> void:
@@ -398,13 +402,17 @@ func _apply_muffle() -> void:
 	for f in _muffles:
 		f.cutoff_hz = hz
 
+## City3D tells us you walked into / out of a shop on the street.
+func indoors_changed() -> void:
+	_update_indoor_rain()
+
 ## Raining out and you're indoors: the rain through the walls, low and dull.
 func _update_indoor_rain() -> void:
 	if _rain_indoor == null:
 		return
 	var scene := get_tree().current_scene
 	var room := String(scene.name) if scene else ""
-	var want: bool = GameState.is_raining() and room != "" and room not in ["City3D", "Backyard3D"] and scene is Node3D
+	var want: bool = GameState.is_raining() and room != "" and (room not in ["City3D", "Backyard3D"] or GameState.indoors != "") and scene is Node3D
 	if want and not _rain_indoor.playing:
 		_rain_indoor.play()
 	elif not want and _rain_indoor.playing:

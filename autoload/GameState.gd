@@ -579,6 +579,11 @@ static func hours_contain(hours: Array, h: float) -> bool:
 		return h >= open and h < close
 	return h >= open or h < close
 
+## The walk-in shop (place id) you're standing in on the street's scene, or
+## "": warmth, rain, floors and sound treat it as the indoors it is. Set by
+## City3D from entered_shop / left_shop.
+var indoors := ""
+
 func is_open(place: String) -> bool:
 	var hl := _headlines()
 	if hl and hl.closed_today(place):

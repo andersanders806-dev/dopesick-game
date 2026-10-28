@@ -1,0 +1,11 @@
+Model Information:
+* title:	Fishing Tackle Box
+* source:	https://sketchfab.com/3d-models/fishing-tackle-box-cdadbdff6b2c48c394d0120ec0e2370b
+* author:	Sebastian Webster (https://sketchfab.com/Sebastian.Hamish.Webster)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Fishing Tackle Box" (https://sketchfab.com/3d-models/fishing-tackle-box-cdadbdff6b2c48c394d0120ec0e2370b) by Sebastian Webster (https://sketchfab.com/Sebastian.Hamish.Webster) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

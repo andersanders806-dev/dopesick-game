@@ -1,0 +1,11 @@
+Model Information:
+* title:	Fishing Rod, Rigged and Animated
+* source:	https://sketchfab.com/3d-models/fishing-rod-rigged-and-animated-78991bf44cf54acb8660bef317d72c7a
+* author:	Ergin ERYILDIR (https://sketchfab.com/ergin3d.com)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Fishing Rod, Rigged and Animated" (https://sketchfab.com/3d-models/fishing-rod-rigged-and-animated-78991bf44cf54acb8660bef317d72c7a) by Ergin ERYILDIR (https://sketchfab.com/ergin3d.com) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Atlantic Mackerel
+* source:	https://sketchfab.com/3d-models/atlantic-mackerel-e4a92741c16448e38a0be59845ab369b
+* author:	NewViStudios (https://sketchfab.com/newvistudios)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Atlantic Mackerel" (https://sketchfab.com/3d-models/atlantic-mackerel-e4a92741c16448e38a0be59845ab369b) by NewViStudios (https://sketchfab.com/newvistudios) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

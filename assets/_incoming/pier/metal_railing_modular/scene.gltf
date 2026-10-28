@@ -1,0 +1,403 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 10448,
+      "max": [
+        1.0500011444091797,
+        0.025000005960464478,
+        1.012500286102295
+      ],
+      "min": [
+        0.0002925395965576172,
+        -0.025000005960464478,
+        -1.0124998092651367
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 125376,
+      "componentType": 5126,
+      "count": 10448,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5126,
+      "count": 10448,
+      "max": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0,
+        1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 10448,
+      "max": [
+        0.5907949805259705,
+        0.9959906935691833
+      ],
+      "min": [
+        0.003908216953277588,
+        0.0039046406745910645
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 42048,
+      "type": "SCALAR"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 250752,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        0.03125036880373955,
+        0.0312500074505806,
+        0.0
+      ],
+      "min": [
+        -0.031249867752194405,
+        -0.0312500074505806,
+        -1.4242851734161377
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 251040,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 3,
+      "byteOffset": 167168,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        1.0,
+        1.0,
+        2.8008992103423225e-06,
+        1.0
+      ],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.4004548347656964e-06,
+        1.0
+      ],
+      "type": "VEC4"
+    },
+    {
+      "bufferView": 1,
+      "byteOffset": 83584,
+      "componentType": 5126,
+      "count": 24,
+      "max": [
+        0.12343437969684601,
+        0.7446500658988953
+      ],
+      "min": [
+        0.003904864192008972,
+        0.0039108190685510635
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "byteOffset": 168192,
+      "componentType": 5125,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "Mark Peters (https://sketchfab.com/mark-peters)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/metal-railing-modular-2048px2-fe569b1c83ba4daab50787c9e4bb181f",
+      "title": "Metal Railing Modular - 2048px²"
+    },
+    "generator": "Sketchfab-16.95.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 168336,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 83776,
+      "byteOffset": 168336,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 251328,
+      "byteOffset": 252112,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 167552,
+      "byteOffset": 503440,
+      "byteStride": 16,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 670992,
+      "uri": "scene.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/MetalRailing_MTL_baseColor.png"
+    },
+    {
+      "uri": "textures/MetalRailing_MTL_metallicRoughness.png"
+    },
+    {
+      "uri": "textures/MetalRailing_MTL_normal.png"
+    }
+  ],
+  "materials": [
+    {
+      "name": "MetalRailing_MTL",
+      "normalTexture": {
+        "index": 2
+      },
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicRoughnessTexture": {
+          "index": 1
+        }
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Metal Railing Main_MetalRailing_MTL_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TANGENT": 2,
+            "TEXCOORD_0": 3
+          },
+          "indices": 4,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    },
+    {
+      "name": "Metal Railing Post_MetalRailing_MTL_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 6,
+            "POSITION": 5,
+            "TANGENT": 7,
+            "TEXCOORD_0": 8
+          },
+          "indices": 9,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.220446049250313e-16,
+        -1.0,
+        0.0,
+        0.0,
+        1.0,
+        2.220446049250313e-16,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2
+      ],
+      "matrix": [
+        0.009999999776482582,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.009999999776482582,
+        0.0,
+        0.0,
+        -0.009999999776482582,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "4c74da7a91484a44bfc2fce5457df4f3.fbx"
+    },
+    {
+      "children": [
+        3,
+        5
+      ],
+      "name": "RootNode"
+    },
+    {
+      "children": [
+        4
+      ],
+      "matrix": [
+        3.248443261050227e-05,
+        74.99999999999297,
+        -8.326672684688674e-15,
+        0.0,
+        3.278354246405435e-06,
+        -1.432187701766452e-12,
+        -74.99999999999993,
+        0.0,
+        -74.9999999999929,
+        3.2484432614665604e-05,
+        -3.2783542547321076e-06,
+        0.0,
+        -2.8421709430404007e-12,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Metal Railing Main"
+    },
+    {
+      "mesh": 0,
+      "name": "Metal Railing Main_MetalRailing_MTL_0"
+    },
+    {
+      "children": [
+        6
+      ],
+      "matrix": [
+        -74.9999999999943,
+        2.920607829834089e-05,
+        3.970466940254533e-21,
+        0.0,
+        4.758274126226951e-12,
+        1.2219050987694047e-05,
+        -74.99999999999899,
+        0.0,
+        -2.92060782983405e-05,
+        -74.9999999999933,
+        -1.2219050987694047e-05,
+        0.0,
+        100.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Metal Railing Post"
+    },
+    {
+      "mesh": 1,
+      "name": "Metal Railing Post_MetalRailing_MTL_0"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    }
+  ]
+}

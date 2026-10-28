@@ -1,0 +1,11 @@
+Model Information:
+* title:	Small Wooden Boat
+* source:	https://sketchfab.com/3d-models/small-wooden-boat-099e7e030ef047569595b8697d080390
+* author:	NETRON (https://sketchfab.com/netron2022)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Small Wooden Boat" (https://sketchfab.com/3d-models/small-wooden-boat-099e7e030ef047569595b8697d080390) by NETRON (https://sketchfab.com/netron2022) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

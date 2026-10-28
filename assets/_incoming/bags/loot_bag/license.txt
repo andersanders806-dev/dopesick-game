@@ -1,0 +1,11 @@
+Model Information:
+* title:	loot bag
+* source:	https://sketchfab.com/3d-models/loot-bag-e443fd09539a4470865d0f367d4bfd89
+* author:	koke26of (https://sketchfab.com/koke26of)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "loot bag" (https://sketchfab.com/3d-models/loot-bag-e443fd09539a4470865d0f367d4bfd89) by koke26of (https://sketchfab.com/koke26of) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

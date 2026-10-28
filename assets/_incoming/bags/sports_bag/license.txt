@@ -1,0 +1,11 @@
+Model Information:
+* title:	Sports Bag
+* source:	https://sketchfab.com/3d-models/sports-bag-4f3da061584a4c51be8cb4a54b7586a2
+* author:	Janis Zeps (https://sketchfab.com/Zeps3D)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Sports Bag" (https://sketchfab.com/3d-models/sports-bag-4f3da061584a4c51be8cb4a54b7586a2) by Janis Zeps (https://sketchfab.com/Zeps3D) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

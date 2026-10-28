@@ -1,0 +1,35 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/shotgun_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "shotgun"
+display_name = "Pump Shotgun"
+damage = 30.0
+head_mult = 1.4
+neck_mult = 1.2
+limb_mult = 0.8
+pellets = 8
+falloff_start = 5.0
+falloff_end = 16.0
+falloff_floor = 0.25
+splash_radius = 0.0
+rpm = 72.0
+auto = false
+mag_size = 6
+reserve_max = 54
+reload_time = 3.0
+spread_hip = 5.5
+spread_ads = 4.5
+recoil = 4.0
+ads_zoom = 1.2
+swap_time = 0.4
+price = 1200
+ammo_price = 600
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/shotgun/scene.gltf"
+model_yaw = 90.0
+model_length = 0.95

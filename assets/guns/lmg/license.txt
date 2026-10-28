@@ -1,0 +1,11 @@
+Model Information:
+* title:	DP28 Light Machine Gun Low-poly PBR
+* source:	https://sketchfab.com/3d-models/dp28-light-machine-gun-low-poly-pbr-03978b66f0c646f19e9502634f0ad20a
+* author:	MaX3Dd (https://sketchfab.com/MaX3Dd)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "DP28 Light Machine Gun Low-poly PBR" (https://sketchfab.com/3d-models/dp28-light-machine-gun-low-poly-pbr-03978b66f0c646f19e9502634f0ad20a) by MaX3Dd (https://sketchfab.com/MaX3Dd) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

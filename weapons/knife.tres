@@ -1,0 +1,33 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "knife"
+display_name = "Knife"
+melee = true
+damage = 150.0
+head_mult = 1.0
+neck_mult = 1.0
+limb_mult = 1.0
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 100.0
+auto = false
+mag_size = 1
+reserve_max = 0
+reload_time = 0.1
+spread_hip = 0.0
+spread_ads = 0.0
+recoil = 0.0
+ads_zoom = 1.0
+swap_time = 0.4
+price = 0
+ammo_price = 0
+in_box = false
+model_yaw = 0.0
+model_length = 0.6

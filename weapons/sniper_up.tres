@@ -1,0 +1,37 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "sniper_up"
+display_name = "Long Goodbye"
+base_id = "sniper"
+upgraded = true
+damage = 500.0
+head_mult = 3.0
+neck_mult = 2.0
+limb_mult = 0.9
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 52.0
+auto = false
+mag_size = 8
+reserve_max = 45
+reload_time = 2.72
+spread_hip = 6.0
+spread_ads = 0.016
+recoil = 5.0
+ads_zoom = 3.5
+swap_time = 0.6
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/sniper/bolt_action_rifle_7_62.gltf"
+model_yaw = 90.0
+model_length = 1.15
+model_hide = PackedStringArray("bullet")
+tint = Color(0.6, 0.3, 1.0, 1)

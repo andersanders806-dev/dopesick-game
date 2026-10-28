@@ -1,0 +1,36 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "magnum_up"
+display_name = "Closing Time"
+base_id = "magnum"
+upgraded = true
+damage = 220.0
+head_mult = 2.2
+neck_mult = 1.5
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 160.0
+auto = false
+mag_size = 9
+reserve_max = 63
+reload_time = 2.12
+spread_hip = 2.4
+spread_ads = 0.2
+recoil = 3.2
+ads_zoom = 1.35
+swap_time = 0.4
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/magnum/scene.gltf"
+model_yaw = 0.0
+model_length = 0.3
+tint = Color(1.0, 0.2, 0.5, 1)

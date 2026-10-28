@@ -1,0 +1,36 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "ar_up"
+display_name = "Backbone"
+base_id = "ar"
+upgraded = true
+damage = 90.0
+head_mult = 2.0
+neck_mult = 1.5
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 660.0
+auto = true
+mag_size = 45
+reserve_max = 225
+reload_time = 2.04
+spread_hip = 2.8
+spread_ads = 0.4
+recoil = 1.0
+ads_zoom = 1.8
+swap_time = 0.4
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/ar/scene.gltf"
+model_yaw = 90.0
+model_length = 0.85
+tint = Color(0.2, 0.8, 0.9, 1)

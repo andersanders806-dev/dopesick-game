@@ -1,0 +1,37 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "pistol_up"
+display_name = "Last Word"
+base_id = "pistol"
+upgraded = true
+damage = 80.0
+head_mult = 2.5
+neck_mult = 1.6
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 330.0
+auto = false
+mag_size = 12
+reserve_max = 120
+reload_time = 1.44
+spread_hip = 2.2
+spread_ads = 0.24
+recoil = 1.2
+ads_zoom = 1.3
+swap_time = 0.4
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/pistol/service_pistol.gltf"
+model_yaw = 90.0
+model_length = 0.24
+model_hide = PackedStringArray("_b", "magazine_empty", "bullet")
+tint = Color(1.0, 0.35, 0.1, 1)

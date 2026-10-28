@@ -402,7 +402,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var book := NotebookScript.new()
 			get_tree().root.add_child(book)
 			book.open()
-	elif event is InputEventMouseButton and event.pressed and not _first_person and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+	elif event is InputEventMouseButton and event.pressed and not _first_person and GameState.mode != "zombies" and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		var step := -0.06 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.06
 		_user_zoom = clampf(_user_zoom + step, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
 	elif event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause"):

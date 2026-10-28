@@ -1,0 +1,35 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/ar_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "ar"
+display_name = "Assault Rifle"
+damage = 45.0
+head_mult = 2.0
+neck_mult = 1.5
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 660.0
+auto = true
+mag_size = 30
+reserve_max = 150
+reload_time = 2.4
+spread_hip = 2.8
+spread_ads = 0.5
+recoil = 1.0
+ads_zoom = 1.8
+swap_time = 0.4
+price = 1400
+ammo_price = 700
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/ar/scene.gltf"
+model_yaw = 90.0
+model_length = 0.85

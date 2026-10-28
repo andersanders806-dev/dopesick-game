@@ -838,6 +838,7 @@ func _run() -> void:
 	await _zombie_shell_checks(gs)
 	await _zombie_anim_checks(gs)
 	await _zombie_dead_checks(gs)
+	await _zombie_weapons_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
 
@@ -6369,3 +6370,772 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	_check(closest_pair >= 0.5, "  no two dead within reach are closer than 0.5 m (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:
 		zz.free()
+# --- Dead Block: guns, wall-buys, the box, the upgrade machine (Task Z3) -----------
+
+## Shots to kill a round-1 zombie (150 health) at 4 m: [torso, head].
+const ZW_SHOTS := {"pistol": [4, 2], "smg": [6, 4], "shotgun": [1, 1], "ar": [4, 2], "sniper": [1, 1],
+	"magnum": [2, 1], "lmg": [4, 3], "wonder": [1, 1]}
+## The wall's prices (spec): the guns it sells.
+const ZW_PRICES := {"smg": 1000, "shotgun": 1200, "ar": 1400, "sniper": 1500, "magnum": 1000}
+
+## A real Zombie3D (the block's spawner makes it) `dist` m east of (x, z) on the
+## street: held still (no brain), posed (animation paused), facing west, toward the
+## shooter. It logs its hits in meta "hits" ([part, damage]).
+func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node:
+	var sp: Node = parent.get_node("ZombieBlock").spawner
+	sp.enabled = false
+	sp.round_no = rnd
+	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
+	zed.set_physics_process(false)
+	zed._anim_player.pause()
+	zed._model_root.rotation.y = -PI / 2.0
+	zed.set_meta("hits", [])
+	zed.hit.connect(func(_z, part, dmg, _k): zed.get_meta("hits").append([part, dmg]))
+	# The hit zones ride the skeleton: they are in the physics space a step later.
+	await physics_frame
+	await physics_frame
+	await process_frame
+	await physics_frame
+	return zed
+
+## The world height of a bone of the zombie's skeleton.
+func _zw_bone_y(zed: Node, bone: String) -> float:
+	var sk: Skeleton3D = zed._skeleton
+	return (sk.global_transform * sk.get_bone_global_pose(sk.find_bone(bone))).origin.y
+
+func _zw_hits(zed: Node) -> Array:
+	return zed.get_meta("hits")
+
+## Where the middle of one of the zombie's hit zones is now.
+func _zw_part_at(zed: Node, part: String) -> Vector3:
+	return (zed.hitboxes[part].get_child(0) as Node3D).global_position
+
+## Aim along +X at the middle of `part`, from x = `from_x` (looked up on every shot,
+## so it follows the pose).
+func _zw_aim_part(holder: Node, zed: Node, part: String, from_x := -20.0) -> void:
+	holder.aim_source = func():
+		var c := _zw_part_at(zed, part)
+		return [Vector3(from_x, c.y, c.z), Vector3.RIGHT]
+
+func _zw_aim(holder: Node, x: float, y: float, z: float) -> void:
+	holder.aim_source = func(): return [Vector3(x, y, z), Vector3.RIGHT]
+
+## Fires `data` at `part` of a fresh round-1 zombie until it is dead; returns
+## the shots it took (or -1).
+func _zw_shots_to_kill(holder: Node, data: Resource, city: Node, part: String) -> int:
+	holder.give(data)
+	holder.no_spread = true
+	var zed: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zed, part)
+	var shots := 0
+	while zed.is_alive() and shots < 40:
+		holder.advance(10.0)
+		holder.refill_current()
+		holder.fire()
+		shots += 1
+	var dead: bool = not zed.is_alive()
+	zed.queue_free()
+	return shots if dead else -1
+
+## Every action's events as text ("event@device"), sorted: the story's controls, to compare.
+func _zw_bindings() -> Dictionary:
+	var out := {}
+	for a in InputMap.get_actions():
+		var evs: Array = []
+		for ev in InputMap.action_get_events(a):
+			evs.append("%s@%d" % [ev.as_text(), ev.device])
+		evs.sort()
+		out[String(a)] = evs
+	return out
+
+## The pad Square / Cross events.
+func _zw_pad_button(button: int, pressed: bool) -> InputEventJoypadButton:
+	var ev := InputEventJoypadButton.new()
+	ev.button_index = button
+	ev.pressed = pressed
+	return ev
+
+func _zw_mouse(button: int) -> InputEventMouseButton:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button
+	ev.pressed = true
+	return ev
+
+## Rays along `dir` at the given heights and sideways offsets (round the zone
+## `around`'s middle) that find no zombie at all: [y, offset] pairs.
+func _zw_gaps(holder: Node, zed: Node, heights: Array, offsets: Array, along_x: bool) -> Array:
+	var mid := _zw_part_at(zed, "torso")
+	var gaps := []
+	for y in heights:
+		for o in offsets:
+			var origin := Vector3(mid.x - 4.0, y, mid.z + o) if along_x else Vector3(mid.x + o, y, mid.z - 4.0)
+			var r: Dictionary = holder._cast(origin, Vector3.RIGHT if along_x else Vector3(0, 0, 1), 8.0)
+			if r.get("zombie") == null:
+				gaps.append([snappedf(y, 0.01), snappedf(o, 0.01)])
+	return gaps
+
+func _zombie_weapons_checks(gs: Node) -> void:
+	await _section("Dead Block: guns by part, ammo and reload, points, wall-buys, the box, the upgrade machine")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	var WD := load("res://weapons/WeaponData.gd")
+	var HolderScript := load("res://player/WeaponHolder.gd")
+	# The story's own controls, to compare with after the mode is left.
+	zm.leave()
+	var story_binds := _zw_bindings()
+
+	# The data.
+	var ids := ["pistol", "smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]
+	var all_ok := true
+	for id in ids:
+		var d: Resource = load("res://weapons/%s.tres" % id)
+		var u: Resource = d.upgrade if d else null
+		all_ok = all_ok and d != null and u != null and u.upgraded and u.base_id == id and u.family() == id and d.family() == id \
+			and u.damage > d.damage and u.mag_size > d.mag_size and u.reserve_max > d.reserve_max and u.display_name != d.display_name \
+			and u.tint.a > 0.0 and (d.model == "" or FileAccess.file_exists(d.model))
+	_check(all_ok, "  all 8 guns have an upgraded version: more damage, mag and reserve, a new name and look")
+	_check(load("res://weapons/knife.tres").melee and not load("res://weapons/knife.tres").in_box, "  the knife is its own melee data, not in the box")
+	var prices_ok := true
+	for id in ZW_PRICES:
+		var d: Resource = load("res://weapons/%s.tres" % id)
+		prices_ok = prices_ok and d.price == ZW_PRICES[id] and d.ammo_price == ZW_PRICES[id] / 2
+	_check(prices_ok, "  wall prices are the spec's (SMG 1000, shotgun 1200, AR 1400, sniper 1500, magnum 1000), ammo half")
+	var pd: Resource = load("res://weapons/pistol.tres")
+	_check(pd.damage_at("head") == pd.damage * pd.head_mult and pd.damage_at("torso") == pd.damage and pd.damage_at("upper_leg_l") == pd.damage * pd.limb_mult
+		and pd.damage_at("neck") == pd.damage * pd.neck_mult and pd.damage_at("head", 500.0) < pd.damage_at("head"),
+		"  damage by part: head, neck, torso, limbs, and less at long range")
+	var sg: Resource = load("res://weapons/shotgun.tres")
+	_check(sg.pellets > 1 and sg.damage_at("torso", 4.0) > sg.damage_at("torso", 14.0) * 2.0, "  the shotgun throws pellets and loses most of them at range")
+
+	# Into the block.
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	var block: Node = city.get_node_or_null("ZombieBlock")
+	for i in 90:
+		if block != null and block.purchases_ready:
+			break
+		await physics_frame
+	await _frames(5)
+	# Round 1 has started by itself: park it, the checks bring their own dead.
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	var player := _player()
+	var holder: Node = player.get_node_or_null("WeaponHolder")
+	_check(block != null and holder != null and block.purchases_ready, "  the block arms the player and builds its purchases")
+	if holder == null or not block.purchases_ready:
+		zm.leave()
+		return
+	_check(holder.current != null and holder.current.id == "pistol" and holder.mag == 8 and holder.reserve == 80,
+		"  you start with the pistol, 8 in the mag and 80 in reserve")
+	player.global_position = Vector3(-30, 0, -3)
+
+	# Controls: Call of Duty's layout, no button doing two jobs.
+	var lmb := _zw_mouse(MOUSE_BUTTON_LEFT)
+	var r2 := InputEventJoypadMotion.new()
+	r2.axis = JOY_AXIS_TRIGGER_RIGHT
+	r2.axis_value = 1.0
+	_check(InputMap.event_is_action(lmb, "fire") and InputMap.event_is_action(r2, "fire"), "  the left mouse button and R2 fire")
+	_check(InputMap.event_is_action(_zw_mouse(MOUSE_BUTTON_RIGHT), "aim") and InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_RIGHT_STICK, true), "melee"),
+		"  the right mouse button aims, R3 is the knife")
+	var shared: Array = []
+	var zacts := ["fire", "aim", "interact", "reload", "swap_weapon", "melee", "walkman", "weapon_slot_1", "weapon_slot_2"]
+	for i in zacts.size():
+		for j in range(i + 1, zacts.size()):
+			for e1 in InputMap.action_get_events(zacts[i]):
+				for e2 in InputMap.action_get_events(zacts[j]):
+					if e1.is_match(e2, true):
+						shared.append("%s/%s: %s" % [zacts[i], zacts[j], e1.as_text()])
+	_check(shared.is_empty(), "  no button is bound to two of fire, aim, use, reload, swap, knife, tapes (%s)" % [shared])
+	var all_devices := true
+	for a in zacts + ["walkman_next"]:
+		for ev in InputMap.action_get_events(a):
+			all_devices = all_devices and ev.device == -1
+	_check(all_devices, "  every binding is for any device (-1), not pad 0 only")
+	_check(InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_X, true), "reload") and InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_Y, true), "swap_weapon")
+		and not InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_A, true), "fire") and not InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_X, true), "interact")
+		and not InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_Y, true), "walkman"),
+		"  pad: Square reloads, Triangle swaps; Cross doesn't fire, Square isn't use, Triangle isn't the tapes")
+	_check(InputMap.event_is_action(_zw_mouse(MOUSE_BUTTON_WHEEL_UP), "swap_weapon") and InputMap.action_get_events("weapon_slot_1").size() == 1
+		and InputMap.action_get_events("interact").size() == 1, "  the wheel swaps, 1 and 2 pick a slot, E uses")
+	# The buttons act, through events.
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.give(load("res://weapons/smg.tres"))
+	holder._unhandled_input(_key_action("weapon_slot_1"))
+	_check(holder.current.id == "pistol", "  1 picks the first gun")
+	holder._unhandled_input(_key_action("weapon_slot_2"))
+	_check(holder.current.id == "smg", "  2 picks the second")
+	holder._unhandled_input(_zw_mouse(MOUSE_BUTTON_WHEEL_DOWN))
+	_check(holder.current.id == "pistol", "  a turn of the wheel swaps")
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.mag = 3
+	holder._unhandled_input(_key_action("reload"))
+	_check(holder.reloading, "  R reloads")
+	holder.advance(10.0)
+	holder.mag = 3
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, true))
+	_check(holder.reloading, "  away from anything to buy, Square reloads at once")
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, false))
+	holder.advance(10.0)
+
+	# Damage by part kills a round-1 zombie in the expected shots, through real raycasts.
+	for id in ids:
+		var d: Resource = load("res://weapons/%s.tres" % id)
+		var body := await _zw_shots_to_kill(holder, d, city, "torso")
+		var head := await _zw_shots_to_kill(holder, d, city, "head")
+		_check(body == ZW_SHOTS[id][0] and head == ZW_SHOTS[id][1], "  %s: a round-1 zombie takes %d to the body and %d to the head (%d, %d)" % [id, ZW_SHOTS[id][0], ZW_SHOTS[id][1], body, head])
+	var up_shots := await _zw_shots_to_kill(holder, load("res://weapons/pistol_up.tres"), city, "torso")
+	_check(up_shots == 2, "  the upgraded pistol needs 2 to the body, not 4 (%d)" % up_shots)
+
+	# A real round-1 Zombie3D (the spawner's own, with its bone-riding hit zones) and the pistol's head multiplier.
+	var pistol: Resource = load("res://weapons/pistol.tres")
+	holder.give(pistol)
+	holder.no_spread = true
+	zm.points = 0
+	var kills0: int = zm.kills
+	var heads0: int = zm.headshots
+	var zr: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_check(zr.get_script().resource_path == "res://npc/Zombie3D.gd" and zr.max_health == 150.0 and zr.hitboxes.size() == 11,
+		"  the target is a real Zombie3D with 150 health and 11 hit zones")
+	_zw_aim_part(holder, zr, "head")
+	var head_dmg: float = pistol.damage_at("head", 4.0)
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(zr).size() == 1 and _zw_hits(zr)[0][0] == "head" and is_equal_approx(_zw_hits(zr)[0][1], head_dmg) and head_dmg > pistol.damage_at("torso", 4.0) * 1.9
+		and is_equal_approx(zr.health, 150.0 - head_dmg),
+		"  the first pistol shot lands in the head for the head multiplier (%s, %.0f of 150)" % [_zw_hits(zr), 150.0 - zr.health])
+	holder.advance(10.0)
+	holder.fire()
+	_check(not zr.is_alive() and _zw_hits(zr).size() == 2, "  a round-1 zombie is dead after 2 pistol headshots (%d hits)" % _zw_hits(zr).size())
+	_check(zm.kills - kills0 == 1 and zm.headshots - heads0 == 1 and zm.points == 10 + 100,
+		"  the kill is counted once (the spawner's), as a headshot, and pays 10 + 100 (kills +%d, heads +%d, %d points)" % [zm.kills - kills0, zm.headshots - heads0, zm.points])
+	zr.queue_free()
+	zm.points = 0
+
+	# The hit zones cover the body: rays over its silhouette find no gap, and the
+	# neck is a zone of its own on the neck, between the torso and the head.
+	var zbody: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	var y_torso: float = _zw_part_at(zbody, "torso").y
+	var y_neck: float = _zw_part_at(zbody, "neck").y
+	var y_head: float = _zw_part_at(zbody, "head").y
+	var neck_lo: float = _zw_bone_y(zbody, "Bip01 Neck")
+	var neck_hi: float = _zw_bone_y(zbody, "Bip01 Head")
+	_check(y_neck >= neck_lo - 0.01 and y_neck <= neck_hi + 0.01, "  the neck zone sits on the neck, between the Neck and Head bones (%.2f in %.2f..%.2f)" % [y_neck, neck_lo, neck_hi])
+	var heights := []
+	var yy := y_torso - 0.2
+	while yy <= y_head + 0.05:
+		heights.append(yy)
+		yy += 0.02
+	var core := []
+	var off := -0.04
+	while off <= 0.0401:
+		core.append(off)
+		off += 0.02
+	var shoulders := []
+	off = -0.16
+	while off <= 0.1601:
+		shoulders.append(off)
+		off += 0.02
+	var shoulder_heights := heights.filter(func(h): return h <= y_neck - 0.06)
+	var gaps_front: Array = _zw_gaps(holder, zbody, heights, core, true)
+	var gaps_side: Array = _zw_gaps(holder, zbody, heights, core, false)
+	var gaps_shoulder: Array = _zw_gaps(holder, zbody, shoulder_heights, shoulders, true)
+	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4)])
+	_check(gaps_shoulder.is_empty(), "  no gap across the shoulders (%s)" % [gaps_shoulder.slice(0, 4)])
+	var order := []
+	for h in heights:
+		var r: Dictionary = holder._cast(Vector3(-24.0, h, _zw_part_at(zbody, "torso").z), Vector3.RIGHT, 8.0)
+		var part: String = r.get("part", "")
+		if part != "" and (order.is_empty() or order.back() != part):
+			order.append(part)
+	_check(order.has("neck") and order.find("torso") < order.find("neck") and order.find("neck") < order.find("head"),
+		"  up the centre line the rays meet the torso, then the neck, then the head (%s)" % [order])
+	zbody.queue_free()
+
+	# A shotgun at point blank spreads over several parts and still pays once per shot.
+	holder.give(load("res://weapons/shotgun.tres"))
+	holder.no_spread = false
+	var zsp: Node = await _zw_target(city, -20.0, -3.0, 2.0, 40)
+	zsp.health = 1.0e6
+	zsp.max_health = 1.0e6
+	_zw_aim_part(holder, zsp, "neck", -20.0)
+	var parts_seen := {}
+	var paid_ok := true
+	var shots_landed := 0
+	for i in 8:
+		var before: int = zm.points
+		var n0: int = _zw_hits(zsp).size()
+		holder.advance(10.0)
+		holder.refill_current()
+		holder.fire()
+		var landed: int = _zw_hits(zsp).size() - n0
+		for h in _zw_hits(zsp).slice(n0):
+			parts_seen[h[0]] = true
+		if landed > 0:
+			shots_landed += 1
+		paid_ok = paid_ok and zm.points - before == (10 if landed > 0 else 0)
+	_check(shots_landed >= 4 and parts_seen.size() >= 2 and paid_ok,
+		"  shotgun pellets hit %d parts (%s) over %d shots and each shot paid 10 once, %d in all" % [parts_seen.size(), parts_seen.keys(), shots_landed, zm.points])
+	holder.no_spread = true
+	zsp.queue_free()
+	zm.points = 0
+
+	# Parts and what's in the way.
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.no_spread = true
+	var z1: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, z1, "lower_leg_l")
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(z1).size() == 1 and _zw_hits(z1)[0][0] == "lower_leg_l" and absf(_zw_hits(z1)[0][1] - 40.0 * holder.current.limb_mult) < 0.01,
+		"  a shot at the shin hits the lower leg for the limb share (%s)" % [_zw_hits(z1)])
+	z1.queue_free()
+	var wall_z: Node = await _zw_target(city, -16.0, -6.0, 0.0)
+	holder.aim_source = func(): return [Vector3(-16.0, 1.1, -3.0), Vector3(0, 0, -1)]
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(wall_z).is_empty(), "  a zombie behind a wall can't be shot through it")
+	wall_z.queue_free()
+	var front: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	var back: Node = await _zw_target(city, -20.0, -3.0, 6.0)
+	_zw_aim_part(holder, front, "torso")
+	front.health = 1.0
+	holder.advance(10.0)
+	holder.fire()
+	_check(not front.is_alive() and _zw_hits(back).is_empty(), "  a bullet stops at the first zombie")
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(back).size() == 1, "  with the first one down (its zones switched off), the next in line is hit")
+	front.queue_free()
+	back.queue_free()
+
+	# Ammo, mag, reserve, reload.
+	holder.give(load("res://weapons/ar.tres"))
+	holder.no_spread = true
+	_zw_aim(holder, -20.0, 5.0, -3.0)
+	_check(holder.mag == 30 and holder.reserve == 150, "  the AR comes with 30 + 150")
+	holder.advance(10.0)
+	_check(holder.fire() and holder.mag == 29, "  a shot takes one round")
+	_check(not holder.fire() and holder.mag == 29, "  but not before the gun has cycled (rate of fire)")
+	holder.advance(60.0 / 660.0 + 0.01)
+	_check(holder.fire() and holder.mag == 28, "  after one interval the next shot goes")
+	var fired_n := [0]
+	holder.fired.connect(func(): fired_n[0] += 1)
+	holder.advance(1.0)
+	holder.fire()
+	_check(fired_n[0] == 1, "  the fired signal comes with each shot")
+	_check(holder.reload() and holder.reloading and not holder.fire(), "  reloading starts, and you can't shoot meanwhile")
+	holder.advance(holder.current.reload_time - 0.3)
+	_check(holder.reloading and holder.mag == 27, "  still reloading just before the time is up")
+	holder.advance(0.4)
+	_check(not holder.reloading and holder.mag == 30 and holder.reserve == 147, "  done: a full mag, the three rounds out of reserve (%d + %d)" % [holder.mag, holder.reserve])
+	_check(not holder.reload(), "  a full mag doesn't reload")
+	holder.mag = 0
+	holder.reserve = 2
+	holder.advance(1.0)
+	_check(not holder.fire() and holder.reloading, "  an empty mag won't fire, and starts the reload")
+	holder.advance(10.0)
+	_check(holder.mag == 2 and holder.reserve == 0, "  a short reserve loads what there is")
+	holder.mag = 0
+	_check(not holder.reload() and not holder.fire(), "  no reserve, no reload, no shot")
+	holder.refill_current()
+	holder.mag = 10
+	holder.reload_mult = 0.5
+	holder.reload()
+	holder.advance(holder.current.reload_time * 0.5 + 0.01)
+	_check(not holder.reloading, "  a reload multiplier (Quickhands) shortens the reload")
+	holder.reload_mult = 1.0
+	holder.refill_current()
+	var emptied := load("res://weapons/magnum.tres")
+	holder.give(emptied)
+	holder.mag = 1
+	holder.advance(10.0)
+	holder.fire()
+	_check(holder.mag == 0, "  the magnum fires its last round")
+
+	# Slots and swapping.
+	holder.slots = [null, null]
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.give(load("res://weapons/smg.tres"))
+	_check(holder.slot_data(0) != null and holder.slot_data(1) != null and holder.current.id == "smg", "  a second gun goes in the free slot and into your hands")
+	holder.mag = 12
+	_check(holder.swap() and holder.current.id != "smg" and holder.swap() and holder.current.id == "smg" and holder.mag == 12, "  swap goes between the two and keeps each gun's mag")
+	holder.give(load("res://weapons/shotgun.tres"))
+	_check(holder.has_weapon("shotgun") and holder.has_weapon("pistol") and not holder.has_weapon("smg"), "  a third gun replaces the one in your hands")
+	holder.give(load("res://weapons/shotgun_up.tres"))
+	_check(holder.has_weapon("shotgun") and holder.current.upgraded and holder.slots.filter(func(s): return s != null).size() == 2, "  a gun you carry is never doubled up")
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.give(load("res://weapons/pistol.tres"))
+	var solo = HolderScript.new()
+	_check(not solo.swap(), "  with one gun there is nothing to swap to")
+	solo.free()
+
+	# Points: a hit, a kill, a headshot, a neck, a knife, a shotgun blast.
+	zm.points = 0
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.no_spread = true
+	var hit_log := []
+	holder.hit.connect(func(part: String, killed: bool): hit_log.append([part, killed]))
+	var zh: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zh, "head")
+	holder.advance(10.0)
+	holder.fire()
+	_check(zm.points == 10 and zh.is_alive() and hit_log == [["head", false]], "  a hit that doesn't kill pays 10 and says so (%d, %s)" % [zm.points, hit_log])
+	holder.advance(10.0)
+	holder.fire()
+	_check(not zh.is_alive() and zm.points == 110 and hit_log.back() == ["head", true], "  the killing headshot pays 100 (not 100 + 10): %d" % zm.points)
+	zh.queue_free()
+	zm.points = 0
+	var zb: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zb, "torso")
+	for i in 4:
+		holder.advance(10.0)
+		holder.fire()
+	_check(not zb.is_alive() and zm.points == 3 * 10 + 60, "  three hits and a body kill pay 3 x 10 + 60 (%d)" % zm.points)
+	zb.queue_free()
+	zm.points = 0
+	holder.give(load("res://weapons/magnum.tres"))
+	var zn: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zn, "neck")
+	holder.advance(10.0)
+	holder.fire()
+	_check(not zn.is_alive() and zn.last_part == "neck" and zm.points == 70, "  a neck kill pays 70 (%d, %s)" % [zm.points, zn.last_part])
+	zn.queue_free()
+	zm.points = 0
+	holder.give(load("res://weapons/shotgun.tres"))
+	var zs: Node = await _zw_target(city, -20.0, -3.0, 4.0, 5)
+	_zw_aim_part(holder, zs, "torso")
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(zs).size() == 8 and zs.is_alive() and zm.points == 10, "  a shotgun blast lands 8 pellets and pays one hit, 10 (%d pellets, %d)" % [_zw_hits(zs).size(), zm.points])
+	zs.queue_free()
+	zm.points = 0
+	var zs1: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	_zw_aim_part(holder, zs1, "torso")
+	holder.advance(10.0)
+	holder.refill_current()
+	holder.fire()
+	_check(not zs1.is_alive() and zm.points == 60, "  a blast that kills pays the kill once, 60 (%d)" % zm.points)
+	zs1.queue_free()
+	zm.points = 0
+	zm.double_points = true
+	holder.give(load("res://weapons/pistol.tres"))
+	var zd: Node = await _zw_target(city, -20.0, -3.0, 4.0, 5)
+	_zw_aim_part(holder, zd, "torso")
+	holder.advance(10.0)
+	holder.fire()
+	_check(zm.points == 20, "  Double Points doubles a hit's 10 (%d)" % zm.points)
+	zm.double_points = false
+	zm.insta_kill = true
+	holder.advance(10.0)
+	holder.fire()
+	_check(not zd.is_alive(), "  Insta-Kill: one hit kills even a round-5 zombie")
+	zm.insta_kill = false
+	zd.queue_free()
+	zm.points = 0
+	var zk: Node = await _zw_target(city, -20.0, -3.0, 1.0)
+	_zw_aim_part(holder, zk, "torso")
+	_check(holder.melee() and not zk.is_alive() and zm.points == 130, "  a knife kill pays 130 (%d)" % zm.points)
+	_check(not holder.melee(), "  the knife has a cooldown")
+	zk.queue_free()
+	var zfar: Node = await _zw_target(city, -20.0, -3.0, 6.0)
+	_zw_aim_part(holder, zfar, "torso")
+	holder.advance(10.0)
+	holder.melee()
+	_check(_zw_hits(zfar).is_empty(), "  the knife only reaches what's right in front of you")
+	zfar.queue_free()
+	zm.points = 0
+	holder.advance(10.0)
+	zm.active = false
+	zm.add_points(100, "test")
+	zm.active = true
+	_check(zm.points == 0, "  points are only awarded while a run is on (add_points ignores the rest)")
+
+	# From the player's own view: first person aims through the screen centre.
+	var gfx := root.get_node("Graphics")
+	gfx.set_first_person(true)
+	await _frames(4)
+	_check(holder.viewmodel != null and holder.viewmodel.get_parent() == player.camera, "  in first person the gun is on the camera")
+	player.global_position = Vector3(-20, 0, -3)
+	player.set_look(-PI / 2.0, 0.02)
+	await _frames(3)
+	await process_frame
+	holder.give(load("res://weapons/ar.tres"))
+	holder.aim_source = Callable()
+	holder.no_spread = true
+	var zf: Node = await _zw_target(city, -20.0, -3.0, 5.0, 3)
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(zf).size() == 1 and (_zw_hits(zf)[0][0] == "head" or _zw_hits(zf)[0][0] == "neck"), "  first person: the shot goes where the crosshair points (%s)" % [_zw_hits(zf)])
+	zf.queue_free()
+	gfx.set_first_person(false)
+	await _frames(4)
+	_check(holder.viewmodel == null, "  back in third person the camera carries no gun")
+
+	# Third person: from the chest to what the active camera sees under the crosshair.
+	player.global_position = Vector3(-20, 0, -3)
+	await _frames(10)
+	var cam: Camera3D = player.camera
+	var pistol3: Resource = load("res://weapons/pistol.tres")
+	holder.give(pistol3)
+	holder.aim_source = Callable()
+	holder.no_spread = true
+	zm.points = 0
+	var ztp: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	holder.screen_aim_source = func(): return cam.unproject_position(_zw_part_at(ztp, "head"))
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(ztp).size() == 1 and _zw_hits(ztp)[0][0] == "head" and _zw_hits(ztp)[0][1] > pistol3.damage_at("torso", 4.0) * 1.9,
+		"  third person: aiming the crosshair at the head hits it for the head multiplier (%s)" % [_zw_hits(ztp)])
+	holder.advance(10.0)
+	holder.fire()
+	_check(not ztp.is_alive() and zm.points == 110, "  ...and a third-person headshot kill pays 100 (+10 for the first): %d" % zm.points)
+	ztp.queue_free()
+	var zneck: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	holder.screen_aim_source = func(): return cam.unproject_position(_zw_part_at(zneck, "torso"))
+	holder.advance(10.0)
+	holder.fire()
+	_check(_zw_hits(zneck).size() == 1 and _zw_hits(zneck)[0][0] == "torso", "  ...and where the crosshair is on the torso, the torso (%s)" % [_zw_hits(zneck)])
+	# The pad has no pointer: its crosshair is 6 m ahead of the chest, whatever the mouse did.
+	holder.screen_aim_source = Callable()
+	gs.using_pad = true
+	var ahead: Vector2 = cam.unproject_position(player.global_position + Vector3(0, 1.25, 0) + holder._facing() * 6.0)
+	_check(holder.aim_screen_point().is_equal_approx(ahead), "  with the pad the crosshair is ahead of the player, not at the stale mouse (%s)" % [holder.aim_screen_point()])
+	gs.using_pad = false
+	_check(holder.aim_screen_point().is_equal_approx(root.get_mouse_position()), "  with the mouse it is under the mouse")
+	zneck.queue_free()
+
+	# Wall-buys.
+	_check(block.wall_buys.size() == 5, "  five wall guns on the block (%d)" % block.wall_buys.size())
+	var wall_ok := true
+	for buy in block.wall_buys:
+		var o: Vector3 = buy.global_position
+		# On a wall: a ray from the board straight back at it meets one close behind.
+		var space := player.get_world_3d().direct_space_state
+		var q := PhysicsRayQueryParameters3D.create(o + Vector3(0, 1.3, 0) + buy.global_transform.basis.z * 0.5, o + Vector3(0, 1.3, 0) - buy.global_transform.basis.z * 0.6)
+		var r := space.intersect_ray(q)
+		var good: bool = not r.is_empty() and r.position.distance_to(o + Vector3(0, 1.3, 0)) < 0.2
+		if not good:
+			print("   board ", buy.name, " at ", o, " ray ", r)
+		wall_ok = wall_ok and good
+	_check(wall_ok, "  every board hangs against a wall")
+	var buy_ids: Array = block.wall_buys.map(func(b): return b.data.id)
+	buy_ids.sort()
+	_check(buy_ids == ["ar", "magnum", "shotgun", "smg", "sniper"], "  they sell the AR, magnum, shotgun, SMG and sniper (%s)" % [buy_ids])
+	holder.give(load("res://weapons/pistol.tres"))
+	var smg_buy: Node = block.wall_buys.filter(func(b): return b.data.id == "smg")[0]
+	zm.points = 999
+	_check(smg_buy.try_buy(holder) == "poor" and zm.points == 999 and not holder.has_weapon("smg"), "  one point short of the SMG: nothing bought, nothing taken (%d)" % zm.points)
+	zm.points = 1000
+	_check(smg_buy.try_buy(holder) == "bought" and zm.points == 0 and holder.current.id == "smg", "  exactly enough: the SMG is yours and you have 0, not less")
+	_check(smg_buy.try_buy(holder) == "full" and zm.points == 0, "  a full SMG doesn't buy ammo, and costs nothing")
+	holder.mag = 3
+	holder.reserve = 7
+	zm.points = 499
+	_check(smg_buy.try_buy(holder) == "poor" and holder.reserve == 7 and zm.points == 499, "  one short of half price (500): no ammo")
+	zm.points = 500
+	_check(smg_buy.try_buy(holder) == "ammo" and zm.points == 0 and holder.mag == 30 and holder.reserve == 150, "  the SMG's ammo is 500, half: a full mag and reserve")
+	zm.double_points = true
+	var shotgun_buy: Node = block.wall_buys.filter(func(b): return b.data.id == "shotgun")[0]
+	zm.points = 1199
+	_check(shotgun_buy.try_buy(holder) == "poor" and zm.points == 1199, "  under Double Points the price is the same: 1199 is still short of 1200")
+	zm.points = 1200
+	_check(shotgun_buy.try_buy(holder) == "bought" and zm.points == 0, "  ...and 1200 still buys it (not 2400, not a gain)")
+	zm.double_points = false
+	zm.points = 0
+	var all_nonneg := true
+	for buy in block.wall_buys:
+		buy.try_buy(holder)
+		all_nonneg = all_nonneg and zm.points >= 0
+	_check(all_nonneg and zm.points == 0, "  with 0 points nothing can be bought and points never go negative")
+	# Through the real E key.
+	var ar_buy: Node = block.wall_buys.filter(func(b): return b.data.id == "ar")[0]
+	holder.give(load("res://weapons/pistol.tres"))
+	player.global_position = ar_buy.global_position + ar_buy.global_transform.basis.z * 0.9
+	await _frames(6)
+	zm.points = 1400
+	_check(player._nearest_interactable() == ar_buy and ar_buy.prompt_text().contains("1400"), "  next to a board E finds it and the prompt names the price (%s)" % ar_buy.prompt_text())
+	player._unhandled_input(_key_action("interact"))
+	_check(holder.has_weapon("ar") and zm.points == 0, "  pressing E buys the gun")
+	_check(ar_buy.prompt_text().contains("Refill") and ar_buy.prompt_text().contains("700"), "  once you carry it the board offers its ammo at 700 (%s)" % ar_buy.prompt_text())
+	# The pad's Square is reload and use: a tap at a board reloads, a hold buys.
+	holder.reserve = 5
+	holder.mag = 2
+	zm.points = 700
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, true))
+	holder.advance(0.1)
+	_check(zm.points == 700 and not holder.reloading, "  Square at a board does nothing yet (a tap or a hold: 0.1 s in)")
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, false))
+	_check(holder.reloading and zm.points == 700, "  a tap of Square at a board reloads and buys nothing")
+	holder.advance(10.0)
+	holder.reserve = 5
+	holder.mag = 2
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, true))
+	holder.advance(0.6)
+	_check(zm.points == 0 and holder.reserve == holder.current.reserve_max, "  holding Square at a board buys its ammo (%d points, %d reserve)" % [zm.points, holder.reserve])
+	holder._unhandled_input(_zw_pad_button(JOY_BUTTON_X, false))
+	_check(not holder.reloading, "  ...and letting go afterwards doesn't reload")
+
+	# The mystery box.
+	var box: Node = block.mystery_box
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.give(load("res://weapons/smg.tres"))
+	var pool_ids: Array = box.pool().map(func(d): return d.id)
+	pool_ids.sort()
+	_check(pool_ids == ["ar", "lmg", "magnum", "shotgun", "smg", "sniper", "wonder"], "  the box's pool is every gun but the pistol, with the LMG and the wonder weapon (%s)" % [pool_ids])
+	zm.points = 949
+	_check(box.try_open(holder) == "poor" and zm.points == 949 and box.state == box.State.IDLE, "  one short of 950: the box stays shut and takes nothing")
+	zm.points = 950
+	zm.double_points = true
+	_check(box.try_open(holder) == "opened" and zm.points == 0, "  950 opens it under Double Points too, leaving 0")
+	zm.double_points = false
+	zm.points = 950
+	_check(box.try_open(holder) == "busy" and zm.points == 950, "  while it spins a second go is refused and free")
+	box.advance(box.SPIN_TIME + 0.1)
+	_check(box.state == box.State.OFFER and box.offered != null and not holder.held_families().has(box.offered.family()), "  it holds out a gun you don't have (%s)" % [box.offered.id if box.offered else "-"])
+	var offered_id: String = box.offered.family()
+	_check(box.try_take(holder) == "taken" and holder.has_weapon(offered_id) and holder.current.family() == offered_id, "  taking it puts it in your hands")
+	_check(box.try_take(holder) == "none", "  nothing is held out afterwards")
+	# What it holds out is checked again when you take it.
+	holder.give(load("res://weapons/pistol.tres"))
+	zm.points = 950
+	box.state = box.State.IDLE
+	box.uses = 0
+	box.move_after = 99
+	box.try_open(holder)
+	box.advance(box.SPIN_TIME + 0.1)
+	var held_out: String = box.offered.family()
+	holder.give(load("res://weapons/%s.tres" % held_out))
+	holder.upgrade_current()
+	var up_id: String = holder.current.id
+	_check(box.try_take(holder) == "changed" and box.offered != null and box.offered.family() != held_out and not holder.held_families().has(box.offered.family()),
+		"  a gun you've bought since is not handed out again (%s -> %s)" % [held_out, box.offered.id if box.offered else "-"])
+	_check(holder.has_weapon(held_out) and holder.slot_data(holder.slot_of(held_out)).id == up_id and box.state == box.State.OFFER,
+		"  ...and your upgraded one is still upgraded; the box still holds one out")
+	holder.select(1 - holder.active)
+	var take_result: String = box.try_take(holder)
+	_check(take_result == "taken" and holder.has_weapon(held_out), "  the new offer can be taken (into the other slot), and the other gun stays (%s, %s)" % [take_result, holder.held_families()])
+	zm.points = 950
+	box.state = box.State.IDLE
+	box.uses = 0
+	box.move_after = 99
+	var never_held := true
+	var seen := {}
+	for i in 120:
+		var want := (box.options_for(holder) as Array)
+		var draw: Resource = want[box.rng.randi() % want.size()]
+		seen[draw.id] = true
+		never_held = never_held and not holder.held_families().has(draw.family())
+	_check(never_held and seen.size() >= 4, "  it never offers a gun you carry, whatever else comes (%d different)" % seen.size())
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.give(load("res://weapons/lmg.tres"))
+	var lmg_held := true
+	for i in 40:
+		zm.points = 950
+		box.state = box.State.IDLE
+		box.try_open(holder)
+		lmg_held = lmg_held and box.offered.family() != "lmg" and box.offered.family() != "pistol"
+		box.advance(box.SPIN_TIME + 0.1)
+		box.advance(box.OFFER_TIME + 1.0)
+	_check(lmg_held, "  carrying the LMG, 40 openings never offer it")
+	_check(box.state == box.State.IDLE and box.offered == null, "  a gun left on the box for too long is withdrawn")
+	var spot0: int = box.spot
+	var pos0: Vector3 = box.global_position
+	var moves := []
+	box.moved.connect(func(i: int): moves.append(i))
+	box.uses = 0
+	box.move_after = 3
+	for i in 3:
+		zm.points = 950
+		box.try_open(holder)
+		box.advance(box.SPIN_TIME + 0.1)
+		if i < 2:
+			_check(box.spot == spot0, "  use %d of 3: the box stays where it is" % (i + 1))
+		box.advance(box.OFFER_TIME + 1.0)
+	_check(moves.size() == 1 and box.spot != spot0 and box.global_position.distance_to(pos0) > 5.0 and box.uses == 0, "  after its third use the box moves to another spot (%d -> %s)" % [spot0, moves])
+
+	# The upgrade machine.
+	var mach: Node = block.upgrade_machine
+	holder.give(load("res://weapons/pistol.tres"))
+	holder.advance(10.0)
+	holder.fire()
+	zm.points = 4999
+	_check(mach.try_upgrade(holder) == "poor" and zm.points == 4999 and holder.current.id == "pistol", "  one short of 5000: no upgrade, no charge")
+	zm.points = 5000
+	zm.double_points = true
+	_check(mach.try_upgrade(holder) == "upgraded" and zm.points == 0 and holder.current.id == "pistol_up", "  5000 under Double Points still costs 5000 and swaps to the upgraded data")
+	zm.double_points = false
+	_check(holder.mag == holder.current.mag_size and holder.reserve == holder.current.reserve_max and holder.current.display_name != "Service Pistol",
+		"  the upgraded gun is full with its bigger mag and reserve (%d + %d)" % [holder.mag, holder.reserve])
+	zm.points = 5000
+	_check(mach.try_upgrade(holder) == "already" and zm.points == 5000, "  an upgraded gun can't be upgraded again, for free")
+	zm.points = 0
+	holder.give(load("res://weapons/ar.tres"))
+	_check(mach.try_upgrade(holder) == "poor" and zm.points == 0, "  with 0 points the machine does nothing, and nothing goes negative")
+	player.global_position = mach.global_position + mach.global_transform.basis.z * 0.9
+	await _frames(6)
+	zm.points = 5000
+	_check(player._nearest_interactable() == mach and mach.prompt_text().contains("5000"), "  the machine answers to E, naming its price (%s)" % mach.prompt_text())
+	player._unhandled_input(_key_action("interact"))
+	_check(holder.current.id == "ar_up" and zm.points == 0, "  pressing E upgrades the gun in your hands")
+
+	# The HUD.
+	var hud: Node = block.hud
+	holder.give(load("res://weapons/smg.tres"))
+	holder.mag = 7
+	await _frames(3)
+	await process_frame
+	var vp := root.get_visible_rect().size if root.get_visible_rect().size.x > 0 else Vector2(1280, 720)
+	var rect: Rect2 = hud.ammo_label.get_global_rect()
+	_check(hud.ammo_label.text == "7 / 150", "  the ammo shows mag / reserve bottom-right (%s)" % hud.ammo_label.text)
+	_check(rect.position.x >= 0 and rect.end.x <= vp.x + 0.5 and rect.position.y >= 0 and rect.end.y <= vp.y + 0.5 and rect.position.x > vp.x * 0.5,
+		"  and sits inside the window on the right (%s of %s)" % [rect, vp])
+	var prect: Rect2 = hud.prompt.get_global_rect()
+	_check(hud.prompt.text.contains("5000") and prect.position.x >= 0 and prect.end.x <= vp.x + 0.5 and absf(prect.get_center().x - vp.x * 0.5) < 2.0,
+		"  the prompt over the middle names the machine's price and sits inside the window (%s: %s)" % [hud.prompt.text, prect])
+	holder.mag = 12345
+	holder.reserve = 98765
+	await process_frame
+	await process_frame
+	rect = hud.ammo_label.get_global_rect()
+	_check(rect.end.x <= vp.x + 0.5 and rect.position.x >= 0, "  even a silly number stays inside the window (%s)" % rect)
+	hud.say("Not enough points")
+	_check(hud.message.text == "Not enough points" and hud.message.modulate.a > 0.9, "  a refused purchase puts a word on the screen")
+	hud.visible = true
+
+	# Guns build to size and the right way round.
+	var models_ok := true
+	for id in ids:
+		var d: Resource = load("res://weapons/%s.tres" % id)
+		var gun: Node3D = load("res://weapons/GunModel.gd").build(d)
+		var b: AABB = _zw_bounds(gun)
+		var long_ok: bool = absf(b.size.z - d.model_length) < d.model_length * 0.15 and b.size.z >= b.size.x
+		models_ok = models_ok and long_ok
+		if not long_ok:
+			print("   model ", id, " ", b.size, " wanted ", d.model_length)
+		gun.free()
+	_check(models_ok, "  every gun model is built along -Z at its length")
+
+	zm.leave()
+	_check(_zw_bindings() == story_binds, "  leaving the mode puts the story's controls back exactly (and drops the mode's own actions)")
+	_check(InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_Y, true), "walkman") and InputMap.event_is_action(_zw_pad_button(JOY_BUTTON_A, true), "fire"),
+		"  ...Triangle is the tapes and Cross fires darts again")
+	DirAccess.remove_absolute(zm.PATH)
+	gs.start_run()
+
+func _zw_bounds(n: Node3D) -> AABB:
+	var out := AABB()
+	var first := true
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if not m.visible or m.mesh == null:
+			continue
+		var xf := Transform3D()
+		var c: Node = m
+		while c != null and c != n.get_parent():
+			xf = (c as Node3D).transform * xf
+			c = c.get_parent()
+		var a := xf * m.mesh.get_aabb()
+		out = a if first else out.merge(a)
+		first = false
+	return out

@@ -1,7 +1,9 @@
 extends CanvasLayer
 ## Dead Block's HUD: the round in blood red bottom-left, your points above
 ## it with what each hit paid floating up beside them, and the round's name
-## across the screen as it starts. Added by world/ZombieBlock.gd; the
+## across the screen as it starts; bottom-right the gun in your hands (name,
+## mag and reserve); over the middle what E would do (a wall gun, the box) and
+## a line when something didn't go through. Added by world/ZombieBlock.gd; the
 ## story's HUD is hidden beneath.
 
 const BLOOD := Color(0.72, 0.08, 0.08)
@@ -11,7 +13,13 @@ const POP_TIME := 1.1
 var round_label: Label
 var points_label: Label
 var banner: Label
+var ammo_label: Label
+var gun_label: Label
+var prompt: Label
+var message: Label
 var _pops: Control
+var _message_tween: Tween
+var _holder: Node
 
 func _ready() -> void:
 	add_to_group("zombie_hud")
@@ -34,6 +42,17 @@ func _ready() -> void:
 	banner.offset_top = 150.0
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.modulate.a = 0.0
+	# The gun: pinned to the bottom-right corner, growing up and left.
+	ammo_label = _label(font, 56, PAPER, Vector2.ZERO)
+	_pin_bottom_right(ammo_label, 32.0, 24.0)
+	gun_label = _label(font, 22, BLOOD, Vector2.ZERO)
+	_pin_bottom_right(gun_label, 34.0, 96.0)
+	# What E does, low in the middle; a word of refusal above it.
+	prompt = _label(font, 24, PAPER, Vector2.ZERO)
+	_pin_bottom_centre(prompt, 190.0)
+	message = _label(font, 28, BLOOD, Vector2.ZERO)
+	_pin_bottom_centre(message, 240.0)
+	message.modulate.a = 0.0
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
 	ZombieMode.game_over_started.connect(_on_game_over)
@@ -60,6 +79,64 @@ func _pin_bottom_left(l: Label, left: float, bottom: float) -> void:
 	l.offset_bottom = -bottom
 	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	l.grow_horizontal = Control.GROW_DIRECTION_END
+
+## Pinned to the bottom-right corner, growing up and left.
+func _pin_bottom_right(l: Label, right: float, bottom: float) -> void:
+	l.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	l.offset_left = -right
+	l.offset_right = -right
+	l.offset_top = -bottom
+	l.offset_bottom = -bottom
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
+## The width of the window along the bottom edge, `bottom` px up, text centred
+## in it (so a long line can't run off either side).
+func _pin_bottom_centre(l: Label, bottom: float) -> void:
+	l.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	l.offset_top = -bottom - 30.0
+	l.offset_bottom = -bottom
+	l.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+
+func _process(_delta: float) -> void:
+	_update_gun()
+	_update_prompt()
+
+func _update_gun() -> void:
+	if not is_instance_valid(_holder):
+		_holder = get_tree().get_first_node_in_group("weapon_holder")
+	var d = _holder.current if _holder != null else null
+	if d == null:
+		ammo_label.text = ""
+		gun_label.text = ""
+		return
+	var low: bool = _holder.mag <= maxi(d.mag_size / 4, 1)
+	ammo_label.text = "%d / %d" % [_holder.mag, _holder.reserve]
+	ammo_label.add_theme_color_override("font_color", BLOOD if low else PAPER)
+	gun_label.text = String(d.display_name).to_upper() + ("  RELOADING" if _holder.reloading else "")
+
+func _update_prompt() -> void:
+	var player := get_tree().get_first_node_in_group("player")
+	var text := ""
+	if player != null and not player.dialogue_active and not get_tree().paused:
+		var target = player._nearest_interactable()
+		if target != null and target.has_method("prompt_text"):
+			text = target.prompt_text()
+	# On the pad the use button is also reload: buying is a hold.
+	var key := ("Hold " if GameState.using_pad else "") + GameState.control_name("interact")
+	prompt.text = "%s  %s" % [key, text] if text != "" else ""
+
+## A line of refusal or news over the prompt ("Not enough points"), gone in a moment.
+func say(text: String) -> void:
+	message.text = text
+	message.modulate.a = 1.0
+	if _message_tween != null:
+		_message_tween.kill()
+	_message_tween = create_tween()
+	_message_tween.tween_interval(1.2)
+	_message_tween.tween_property(message, "modulate:a", 0.0, 0.6)
 
 func _refresh() -> void:
 	round_label.text = str(ZombieMode.round)

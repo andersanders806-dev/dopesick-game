@@ -16,6 +16,7 @@ signal round_ended(r: int)
 signal points_changed(total: int, amount: int, reason: String)
 signal game_over_started(summary: Dictionary)
 
+const ZombieControls := preload("res://player/ZombieControls.gd")
 const CITY_SCENE := "res://world/City3D.tscn"
 const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 const REAL_PATH := "user://zombies.cfg"
@@ -72,6 +73,7 @@ func begin(first_person: bool) -> void:
 	_reset()
 	active = true
 	GameState.mode = "zombies"
+	ZombieControls.apply()
 	Graphics.set_first_person(first_person)
 
 ## begin(), then the block.
@@ -92,6 +94,7 @@ func leave() -> void:
 	double_points = false
 	insta_kill = false
 	GameState.mode = "story"
+	ZombieControls.restore()
 
 func _reset() -> void:
 	over = false

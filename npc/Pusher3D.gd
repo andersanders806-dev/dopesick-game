@@ -75,6 +75,14 @@ const HANDOFF_LINES := [
 var anim: CharacterAnimator
 var state: State = State.POST
 var _post_position: Vector3
+## Which of his two posts he's on ("PusherCorner" by day, "PusherNight"
+## under the overpass from 20:00; autoload/Schedules.gd) and where each
+## one's post, stash, hiding place and facing are.
+var _spot := ""
+var _spots := {}
+## Where he stashes and slips off to at the overpass, from the post.
+const NIGHT_STASH := Vector3(0.0, 0.0, 2.4)
+const NIGHT_HIDE := Vector3(0.0, 0.0, -6.0)
 var _glance_t: float = 0.0
 var _timer: float = 0.0
 ## Paid for but not yet handed over (survives him having to hide).
@@ -100,8 +108,12 @@ func _ready() -> void:
 	CharacterLook.tint_clothes(model, clothes_tint)
 	anim = CharacterAnimator.new(model)
 	_post_position = global_position
+	# The corner is where the room put him; the other post is Schedules'.
+	_spots = {"PusherCorner": {"post": _post_position, "stash": stash_position, "hide": hide_position, "facing": street_facing_deg}}
+	_spot = "PusherCorner"
 	_glance_t = randf() * TAU
 	GameState.wanted_changed.connect(_on_wanted_changed)
+	_retarget_spot()
 	if GameState.wanted:
 		# Walked in mid-chase: he's already gone.
 		global_position = hide_position
@@ -111,6 +123,8 @@ func _ready() -> void:
 		global_position = hide_position
 		_set_hidden(true)
 		state = State.OFF_SHIFT
+	else:
+		global_position = _post_position
 
 func is_busy() -> bool:
 	return state != State.POST
@@ -123,7 +137,7 @@ func _physics_process(delta: float) -> void:
 			# Knocks off at the end of his hours -- but only between sales.
 			if not GameState.pusher_on_shift():
 				state = State.TO_HIDE
-			elif _patrol_within(HEAT_RANGE):
+			elif _patrol_within(HEAT_RANGE) or _spot_stale():
 				state = State.TO_HIDE
 		State.TO_STASH:
 			if _walk_to(stash_position, delta):
@@ -154,12 +168,10 @@ func _physics_process(delta: float) -> void:
 		State.HIDDEN:
 			# Hid from the beat cop (not a chase): back once he's gone by.
 			if not GameState.wanted and not _patrol_within(HEAT_CLEAR_RANGE) and (GameState.pusher_on_shift() or _owes_fix):
-				_set_hidden(false)
-				state = State.RETURNING
+				_come_back()
 		State.OFF_SHIFT:
 			if GameState.pusher_on_shift() and not GameState.wanted:
-				_set_hidden(false)
-				state = State.RETURNING
+				_come_back()
 		State.RETURNING:
 			if _walk_to(_post_position, delta):
 				state = State.TO_STASH if _owes_fix else State.POST
@@ -349,10 +361,44 @@ func _on_wanted_changed(is_wanted: bool) -> void:
 			state = State.TO_HIDE
 	elif state in [State.HIDDEN, State.TO_HIDE]:
 		if GameState.pusher_on_shift() or _owes_fix:
-			_set_hidden(false)
-			state = State.RETURNING
+			_come_back()
 		elif state == State.HIDDEN:
 			state = State.OFF_SHIFT
+
+## The post the schedule has him on now (or the one he's on, off shift).
+func _wanted_spot() -> String:
+	return Schedules.pusher_post(int(GameState.clock))
+
+## Moved on at 20:00 (or back to the corner in the morning) while on his post.
+func _spot_stale() -> bool:
+	return GameState.pusher_on_shift() and _spot != _wanted_spot()
+
+## Takes up the post the schedule gives: post, stash, hiding place and
+## facing. Returns whether it changed.
+func _retarget_spot() -> bool:
+	var want := _wanted_spot()
+	if want == _spot or want == "":
+		return false
+	if not _spots.has(want):
+		var at := Schedules.place_position(want)
+		if at == Vector3.INF:
+			return false
+		_spots[want] = {"post": at, "stash": at + NIGHT_STASH, "hide": at + NIGHT_HIDE, "facing": -90.0}
+	_spot = want
+	var sp: Dictionary = _spots[want]
+	_post_position = sp["post"]
+	stash_position = sp["stash"]
+	hide_position = sp["hide"]
+	street_facing_deg = sp["facing"]
+	return true
+
+## Out of hiding. If his post has changed since he went, he comes out of the
+## new post's hiding place -- unseen, since it's not where he went in.
+func _come_back() -> void:
+	if _retarget_spot():
+		global_position = hide_position
+	_set_hidden(false)
+	state = State.RETURNING
 
 func _patrol_within(range_m: float) -> bool:
 	var cop := get_tree().get_first_node_in_group("patrol") as Node3D

@@ -60,15 +60,24 @@ const WALKS := [
 const MAIN_SEGMENT := [5, 5]
 ## Now and then someone goes in at a door even when the street isn't busy.
 const LEAVE_CHANCE := 0.2
-const PEDESTRIANS_NIGHT := 1
-const PEDESTRIANS_DAY := 5
-const PEDESTRIAN_SPAWN_GAP := Vector2(3.0, 8.0)
+## Task 4 replaces the Task 1 values (5 by day, 1 at night, a new one every
+## 3-8 s): they come out of a pool made on arrival, so more of them cost
+## nothing while you walk.
+const PEDESTRIANS_NIGHT := 2
+const PEDESTRIANS_DAY := 7
+const PEDESTRIAN_SPAWN_GAP := Vector2(2.5, 6.0)
 ## The beat cop walks out of the station; after a chase he's back on the
 ## block a while later.
 const PATROL_START := Vector3(-24.5, 0, -1.3)
 const PATROL_RETURN_DELAY := 25.0
 var _pedestrian_timer: float = 0.0
 var _patrol_timer: float = 0.0
+## Passers-by: one body per look, made on arrival (behind the fade) and
+## parked out of the way between walks. Nothing is instantiated while you
+## walk the block.
+var _pedestrian_pool: Array[Area3D] = []
+## The scheduled people (npc/ScheduledPerson.gd), by name.
+var _people: Node3D
 
 var _env: Environment
 @onready var _sky_light: DirectionalLight3D = $Moon
@@ -162,6 +171,8 @@ const VENDING_POS := Vector3(-19.25, 0.0, -3.95)
 
 ## How long _ready took (load behind the door's fade; the smoke test reads it).
 var ready_ms := 0
+## Of which the pool of passers-by and the scheduled people (the smoke test prints it).
+var people_ms := 0
 
 ## Dead Block (autoload/ZombieMode.gd): the same block with the story taken
 ## out -- no shops' doors, no people, no traffic, no clock -- and
@@ -237,7 +248,6 @@ func _ready() -> void:
 			life.steam_points.append(m.global_position + Vector3(0, 0.1, 0))
 	add_child(life)
 	if not zombie_mode:
-		_warm_looks()
 		var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
 		atmosphere.name = "Atmosphere"
 		add_child(atmosphere)
@@ -269,6 +279,10 @@ func _ready() -> void:
 	var booster: Node3D = preload("res://world/Booster.gd").new()
 	booster.name = "Booster"
 	add_child(booster)
+	var t_people := Time.get_ticks_msec()
+	_make_pedestrian_pool()
+	_spawn_scheduled_people()
+	people_ms = Time.get_ticks_msec() - t_people
 	# Start with the street already populated rather than empty: the first
 	# two on Main Street's shops, where you come out, the rest anywhere.
 	for i in _pedestrian_target():
@@ -276,7 +290,7 @@ func _ready() -> void:
 		var seg: int = MAIN_SEGMENT[walk] if i < 2 else randi() % WALKS[walk]["points"].size()
 		_spawn_pedestrian(walk, seg, randf_range(0.05, 0.95))
 	if not GameState.wanted:
-		_spawn_patrol(Vector3(randf_range(-22.0, 22.0), 0, PATROL_START.z))
+		_spawn_patrol(_patrol_start_point())
 	_paint_parked_cars()
 	ready_ms = Time.get_ticks_msec() - t0
 
@@ -351,6 +365,12 @@ func _process(delta: float) -> void:
 	super._process(delta)
 	if zombie_mode:
 		return
+	if not people_pending.is_empty():
+		_build_next_person()
+	_refresh_t -= delta
+	if _refresh_t <= 0.0:
+		_refresh_t = 0.3
+		_refresh_sleepers()
 	_update_collector(delta)
 	_update_pedestrians(delta)
 	_update_patrol(delta)
@@ -366,38 +386,28 @@ func _update_pedestrians(delta: float) -> void:
 	if get_tree().get_nodes_in_group("pedestrians").size() < _pedestrian_target():
 		_spawn_pedestrian()
 
-## Every passerby look, drawn once on arrival -- under the street, where the
-## camera's frustum still takes them in but the pavement hides them, and
-## behind SceneLoader's fade anyway -- then freed. The first of each look to
-## walk on used to cost 42 ms (materials and skins set up mid-walk).
+## Every passerby look, made once on arrival and kept: a pool of
+## PASSERSBY.size() walkers parked under the street. A walker made mid-walk
+## cost 42 ms the first time (materials and skins set up) and a few ms every
+## time after; taking one from the pool costs nothing. Behind SceneLoader's
+## fade anyway.
 var looks_warmed := 0
 const CharacterCast := preload("res://npc/CharacterCast.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
+const PARKED_AT := Vector3(0.0, -40.0, 0.0)
+const ScheduledPersonScript := preload("res://npc/ScheduledPerson.gd")
 
-func _warm_looks() -> void:
-	var holder := Node3D.new()
-	holder.name = "LookWarmup"
-	add_child(holder)
-	var player := get_tree().get_first_node_in_group("player") as Node3D
-	var at: Vector3 = player.global_position if player else Vector3.ZERO
+func _make_pedestrian_pool() -> void:
 	for i in CharacterCast.PASSERSBY.size():
-		var entry: Dictionary = CharacterCast.PASSERSBY[i]
-		var root3 := Node3D.new()
-		root3.scale = Vector3.ONE * 1.5
-		holder.add_child(root3)
-		root3.global_position = at + Vector3(-3.0 + i * 0.6, -4.0, 0)
-		var model: Node = CharacterCast.scene_for(entry["model"]).instantiate()
-		root3.add_child(model)
-		CharacterLook.apply(model, entry["look"])
+		var walker: Area3D = PedestrianScript.new()
+		walker.points = WALKS[0]["points"]
+		walker.look_index = i
+		walker.parkable = true
+		walker.left_street.connect(_on_walker_left.bind(walker))
+		add_child(walker)
+		walker.park()
+		_pedestrian_pool.append(walker)
 		looks_warmed += 1
-	# The street can be left again within these frames (a door straight
-	# back): stop waiting once it's out of the tree.
-	for i in 3:
-		if not is_inside_tree():
-			break
-		await get_tree().process_frame
-	if is_instance_valid(holder):
-		holder.queue_free()
 
 ## Someone on walk `walk`, `at` (0..1) of the way along segment `seg`; by
 ## default coming out of one of its doors.
@@ -406,17 +416,68 @@ func _spawn_pedestrian(walk := -1, seg := -1, at := 0.0) -> void:
 		walk = randi() % WALKS.size()
 	if seg < 0:
 		seg = WALKS[walk]["doors"].pick_random()
-	var walker: Area3D = PedestrianScript.new()
+	if _pedestrian_pool.is_empty():
+		return
+	var walker: Area3D = _pedestrian_pool.pop_at(randi() % _pedestrian_pool.size())
 	walker.points = WALKS[walk]["points"]
 	walker.doors = WALKS[walk]["doors"]
 	walker.leave_here = _walker_leaves
 	walker.speed = randf_range(1.1, 1.5)
-	walker.look_index = randi()
-	add_child(walker)
+	walker.unpark()
 	walker.place_at(seg, at)
+
+func _on_walker_left(walker: Area3D) -> void:
+	walker.park()
+	_pedestrian_pool.append(walker)
 
 func _walker_leaves() -> bool:
 	return get_tree().get_nodes_in_group("pedestrians").size() > _pedestrian_target() or randf() < LEAVE_CHANCE
+
+## Where the beat cop is on his loop at this hour.
+func _patrol_start_point() -> Vector3:
+	return Schedules.patrol_point(GameState.now_minutes(), 1)["pos"]
+
+## Everyone in autoload/Schedules.gd who is out on the block. They are
+## made one a frame in the first frames on the street (_build_next_person),
+## from character scenes the background loader already has: all twelve in
+## _ready was ~2 s of the first visit, and a model that isn't in yet is
+## waited for, never loaded on the spot. Each is put where its schedule has
+## it as it's made, so nobody walks in from the spawn.
+var people_pending: Array = []
+var _refresh_t := 0.0
+var _people_i := 0
+
+func _spawn_scheduled_people() -> void:
+	_people = Node3D.new()
+	_people.name = "People"
+	add_child(_people)
+	for id in Schedules.walkers():
+		if Schedules.position_at(id, 0) != Vector3.INF:
+			people_pending.append(id)
+
+## Makes the next one whose body is in; one a frame.
+func _build_next_person() -> void:
+	for k in people_pending.size():
+		var id: String = people_pending[k]
+		var model := CharacterCast.model_for(Schedules.role_of(id))
+		if not ResourceLoader.has_cached(model):
+			var status := ResourceLoader.load_threaded_get_status(model)
+			if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+				ResourceLoader.load_threaded_request(model)
+				continue
+			if status == ResourceLoader.THREAD_LOAD_LOADED:
+				ResourceLoader.load_threaded_get(model)
+			else:
+				continue
+		people_pending.remove_at(k)
+		var p: CharacterBody3D = ScheduledPersonScript.new()
+		p.name = id
+		p.set("person", id)
+		p.set("look_index", _people_i)
+		_people_i += 1
+		_people.add_child(p)
+		p.call("resync")
+		return
 
 func _spawn_patrol(pos: Vector3) -> void:
 	var cop := GuardScene.instantiate()
@@ -466,6 +527,18 @@ func _update_collector(delta: float) -> void:
 
 func _on_cell_changed(_cell: Node3D, _awake: bool) -> void:
 	_apply_lights()
+	_refresh_sleepers()
+
+## BlockCells freezes the people and the beat cop whose cell sleeps (a poll
+## of its own, so not every change comes with a cell_changed): show or hide
+## them to match, and put the woken ones where their schedule has them.
+func _refresh_sleepers() -> void:
+	if _people != null:
+		for p in _people.get_children():
+			p.refresh()
+	for cop in get_tree().get_nodes_in_group("patrol"):
+		if cop.has_method("refresh"):
+			cop.refresh()
 
 func _on_weather_changed(_raining: bool) -> void:
 	_apply_daylight()

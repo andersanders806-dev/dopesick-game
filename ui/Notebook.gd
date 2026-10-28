@@ -169,7 +169,7 @@ func _draw_hours(c: Control, font: Font) -> void:
 	row += 1
 	var ph: Array = GameState.PUSHER_HOURS
 	_line(c, font, row, "The pusher")
-	_line(c, font, row, "%02d:00 - %02d:00, east end of the block%s" % [ph[0], ph[1], "   there now" if GameState.pusher_on_shift() else ""], RED_INK if GameState.pusher_on_shift() else INK_FADED, 260.0)
+	_line(c, font, row, "%02d:00 - %02d:00, the corner; %02d:00 on, under the overpass%s" % [ph[0], ph[1], GameState.PUSHER_NIGHT_FROM, "   there now" if GameState.pusher_on_shift() else ""], RED_INK if GameState.pusher_on_shift() else INK_FADED, 260.0)
 	row += 1
 	_line(c, font, row, "Shelter meals")
 	_line(c, font, row, "07:00 - 10:00 and 17:00 - 20:00", INK_FADED, 260.0)

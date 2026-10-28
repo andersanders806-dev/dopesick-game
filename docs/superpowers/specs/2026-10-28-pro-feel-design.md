@@ -42,6 +42,7 @@ the open-world perf gate (Low, UHD 620: 60 FPS, GPU <= 13 ms, no frame >
 
 ## Constraints
 
+- **Pro bar** (user 2026-10-28: "do it like you are a pro game maker"). A task is done only when: (1) it plays right — a scripted playthrough of the feature in a real window, recorded as a short capture in `.pilot/`, watched by the controller; (2) it looks right — renders compared side by side with a reference shot from a shipped game of the same kind (RE4 Remake / Dead Space Remake framing, lighting density, prop density), with the gap written down; (3) it sounds right — every new action has a sound, every new place has ambience; (4) it reads right — the player always knows what they can do (prompts, glyphs) and what just happened (feedback); (5) no placeholder art, boxes or debug text left in view; (6) the perf gate holds. Anything short of that is listed as a gap, not called done.
 - Nothing loads while walking; pools for debris; no new addons.
 - Withdrawal stays the core mechanic: grades and sound may lean into it,
   never soften it (only Sal's fishing softens it).

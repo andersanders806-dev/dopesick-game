@@ -147,10 +147,22 @@ func try_open(holder: Node) -> String:
 	uses += 1
 	return _result("opened")
 
-## Takes the gun it holds out: "taken", or "none" if it isn't offering one.
+## Takes the gun it holds out: "taken", or "none" if it isn't offering one. If
+## you got that gun some other way while it was held out (a board, the
+## machine), it holds out another instead ("changed"): taking a copy would top
+## it up, or swap an upgraded one for a plain one.
 func try_take(holder: Node) -> String:
 	if state != State.OFFER or holder == null or offered == null:
 		return _result("none")
+	if holder.has_weapon(offered.family()):
+		var options := options_for(holder)
+		if options.is_empty():
+			_close()
+			return _result("none", "The box has nothing to give you")
+		offered = options[rng.randi() % options.size()]
+		_show(offered)
+		_t = OFFER_TIME
+		return _result("changed", "It holds out another gun")
 	holder.give(offered)
 	_close()
 	return _result("taken")

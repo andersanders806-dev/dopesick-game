@@ -11,6 +11,7 @@ list sits. Credits shown in the game: ui/TitleScreen.gd (CREDITS).
 | Microsoft Rocketbox avatars | github.com/microsoft/Rocketbox | MIT | assets/rocketbox/LICENSE.md |
 | Music | OpenGameArt | CC-BY / CC0 per track | assets/music/CREDITS.txt |
 | Car models (12) | Sketchfab | CC BY 4.0 | assets/cars/LICENSE.md |
+| Gun models: MPX SMG (nebula075), Low-Poly Remington 870 (TastyTony), HK 416 Low Poly (Derek Flanagan), Low Poly Magnum Revolver (austincford), DP28 LMG Low-poly PBR (MaX3Dd) | Sketchfab | CC BY 4.0 | assets/guns/LICENSE.md, assets/guns/*/license.txt |
 | Zombie and finisher animation clips | Quaternius Universal Animation Library 1 and 2 (opengameart.org) | CC0 | assets/zombie_anims/LICENSE.md |
 | Kimodo-generated zombie/player clips (z_attack, z_attack2, z_attack3, z_crawl, z_scream, p_kick, z_walk3, z_hit_leg, z_death2), generated 2026-10-26 | NVIDIA Kimodo SOMA-RP v1.1 (github.com/nv-tlabs/kimodo) run through kimodo.cpp (github.com/localai-org/kimodo.cpp, Apache-2.0) | Weights: NVIDIA Open Model License (commercial use, outputs ours); code Apache-2.0; text encoder LocalAI-io/Llama-3-Kimodo-GGML (Meta Llama 3 Community License, built with Meta Llama 3, dev machine only, not shipped) | assets/zombie_anims/LICENSE.md |
 

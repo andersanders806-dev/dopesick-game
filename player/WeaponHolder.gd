@@ -4,9 +4,10 @@ extends Node
 ## reloading, swapping, the knife -- and the points a hit, a kill, a
 ## headshot and a knife kill pay.
 ##
-## Child of the Player3D (world/ZombieBlock.gd adds it). Input is the
-## "fire", "reload", "swap_weapon", "melee" and "aim" actions, made here so
-## project.godot stays as it is. Everything the input does is a method
+## Child of the Player3D (world/ZombieBlock.gd adds it). Input is the "fire",
+## "aim", "reload", "swap_weapon", "weapon_slot_1/2" and "melee" actions, which
+## player/ZombieControls.gd binds for the mode (Call of Duty's layout, nothing
+## on a button the story uses for something else). Everything the input does is a method
 ## (fire(), reload(), swap(), melee()), which the tests call directly;
 ## advance(delta) is the clock (_process) the cooldowns and the reload run on.
 ##
@@ -17,6 +18,7 @@ extends Node
 
 const WD := preload("res://weapons/WeaponData.gd")
 const GunModel := preload("res://weapons/GunModel.gd")
+const ZombieControls := preload("res://player/ZombieControls.gd")
 
 signal fired
 ## A zombie was hit: the hit zone's part, and whether that killed it.
@@ -38,8 +40,12 @@ const MELEE_RANGE := 1.9
 const MELEE_COOLDOWN := 0.55
 ## How far a bullet goes.
 const RANGE := 120.0
-## Where the third-person shot starts and the height it flies at.
+## Where the third-person shot starts (chest height).
 const TP_MUZZLE_HEIGHT := 1.25
+## With the pad in third person the crosshair is this far ahead of the chest.
+const PAD_CROSSHAIR := 6.0
+## How long the pad's reload button is held at a board, the box or the machine to buy.
+const HOLD_TIME := 0.4
 
 ## [{data, mag, reserve}] with a null for an empty slot.
 var slots: Array = [null, null]
@@ -53,6 +59,8 @@ var rate_mult := 1.0
 var no_spread := false
 ## Tests: where to shoot from and along, instead of the view. () -> [origin, dir]
 var aim_source := Callable()
+## Tests: the screen point third-person aims through, instead of the mouse / pad crosshair. () -> Vector2
+var screen_aim_source := Callable()
 var rng := RandomNumberGenerator.new()
 
 var player: Node3D
@@ -66,6 +74,8 @@ var _trigger_down := false
 ## This shot's zombies hurt but not killed (instance id -> true), paid 10 each when it's over.
 var _wounded: Dictionary = {}
 var _in_melee := false
+## Seconds the pad's reload button has been down at something to buy (-1: not held, -2: bought).
+var _hold := -1.0
 
 var current: WD:
 	get: return slots[active].data if slots[active] != null else null
@@ -86,46 +96,11 @@ func _ready() -> void:
 	rng.randomize()
 	player = get_parent() as Node3D
 	melee_data = load(KNIFE)
-	_make_actions()
+	ZombieControls.apply()
 	if current == null:
 		give(load(START_WEAPON))
 	if Graphics.has_signal("view_changed"):
 		Graphics.view_changed.connect(func(_on: bool): _rebuild_viewmodel())
-
-func _make_actions() -> void:
-	_action("fire", [_mouse(MOUSE_BUTTON_LEFT)], [_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)])
-	_action("aim", [_mouse(MOUSE_BUTTON_RIGHT)], [_axis(JOY_AXIS_TRIGGER_LEFT, 1.0)])
-	_action("reload", [_key(KEY_R)], [_button(JOY_BUTTON_X)])
-	_action("swap_weapon", [_key(KEY_Q)], [_button(JOY_BUTTON_Y)])
-	_action("melee", [_key(KEY_V)], [_button(JOY_BUTTON_RIGHT_STICK)])
-
-func _action(action: String, keys: Array, pads: Array) -> void:
-	if InputMap.has_action(action):
-		return
-	InputMap.add_action(action, 0.3)
-	for e in keys + pads:
-		InputMap.action_add_event(action, e)
-
-func _key(code: Key) -> InputEventKey:
-	var e := InputEventKey.new()
-	e.keycode = code
-	return e
-
-func _mouse(button: MouseButton) -> InputEventMouseButton:
-	var e := InputEventMouseButton.new()
-	e.button_index = button
-	return e
-
-func _button(button: JoyButton) -> InputEventJoypadButton:
-	var e := InputEventJoypadButton.new()
-	e.button_index = button
-	return e
-
-func _axis(axis: JoyAxis, value: float) -> InputEventJoypadMotion:
-	var e := InputEventJoypadMotion.new()
-	e.axis = axis
-	e.axis_value = value
-	return e
 
 # --- The guns you hold -------------------------------------------------------------
 
@@ -227,12 +202,43 @@ func _process(delta: float) -> void:
 		fire()
 	_trigger_down = down
 	aiming = Input.is_action_pressed("aim") and not reloading
-	if Input.is_action_just_pressed("reload"):
-		reload()
-	if Input.is_action_just_pressed("swap_weapon"):
+
+## The one-shot buttons (a press is an event: the mouse wheel has no "held").
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_echo():
+		return
+	if not _can_act():
+		_hold = -1.0
+		return
+	if event.is_action_pressed("reload"):
+		# On the pad Square is also "use": at something to buy, a tap reloads
+		# and a hold buys.
+		if event is InputEventJoypadButton and _purchase_in_reach():
+			_hold = 0.0
+		else:
+			reload()
+	elif event.is_action_released("reload"):
+		if _hold >= 0.0:
+			reload()
+		_hold = -1.0
+	elif event.is_action_pressed("swap_weapon"):
 		swap()
-	if Input.is_action_just_pressed("melee"):
+	elif event.is_action_pressed("weapon_slot_1"):
+		select(0)
+	elif event.is_action_pressed("weapon_slot_2"):
+		select(1)
+	elif event.is_action_pressed("melee"):
 		melee()
+
+func _purchase_in_reach() -> bool:
+	return player != null and player.has_method("_nearest_interactable") and player._nearest_interactable() != null
+
+## The gun in slot `i`, if there is one there and it isn't in your hands.
+func select(i: int) -> bool:
+	if i < 0 or i >= MAX_SLOTS or i == active or slots[i] == null:
+		return false
+	_switch_to(i)
+	return true
 
 func _can_act() -> bool:
 	if get_tree().paused or not ZombieMode.active or ZombieMode.over:
@@ -246,6 +252,12 @@ func advance(delta: float) -> void:
 	_cooldown = maxf(_cooldown - delta, 0.0)
 	_swap_left = maxf(_swap_left - delta, 0.0)
 	_melee_cd = maxf(_melee_cd - delta, 0.0)
+	if _hold >= 0.0:
+		_hold += delta
+		if _hold >= HOLD_TIME:
+			_hold = -2.0
+			if player != null and player.has_method("_try_interact"):
+				player._try_interact()
 	if reloading:
 		_reload_left -= delta
 		if _reload_left <= 0.0:
@@ -464,8 +476,9 @@ func melee() -> bool:
 
 # --- Aim ----------------------------------------------------------------------------
 
-## [origin, direction] of a shot: from the eye through the crosshair in first
-## person; from the chest toward the mouse in third.
+## [origin, direction] of a shot. First person: from the eye through the
+## crosshair. Third person: from the chest to the point the active camera sees
+## under the crosshair, so a zombie's head can be shot at (aim_screen_point).
 func _aim() -> Array:
 	if aim_source.is_valid():
 		var a: Array = aim_source.call()
@@ -476,17 +489,27 @@ func _aim() -> Array:
 	var chest := player.global_position + Vector3(0, TP_MUZZLE_HEIGHT, 0)
 	var dir := _facing()
 	if cam != null:
-		var mouse := get_viewport().get_mouse_position()
-		var ro := cam.project_ray_origin(mouse)
-		var rd := cam.project_ray_normal(mouse)
-		if absf(rd.y) > 0.001:
-			var t := (TP_MUZZLE_HEIGHT - ro.y) / rd.y
-			if t > 0.0:
-				var spot := ro + rd * t
-				var flat := Vector3(spot.x - chest.x, 0, spot.z - chest.z)
-				if flat.length() > 0.3:
-					dir = flat.normalized()
+		var p := aim_screen_point()
+		var ro := cam.project_ray_origin(p)
+		var rd := cam.project_ray_normal(p)
+		# The first thing the camera's ray meets, looking only from just before
+		# it passes the chest (a roof or wall near the lens is not what you aim at).
+		var t0 := maxf((chest - ro).dot(rd) - 1.0, 0.0)
+		var r := _cast(ro + rd * t0, rd, RANGE)
+		var spot: Vector3 = r.position if not r.is_empty() else ro + rd * (t0 + 60.0)
+		if spot.distance_to(chest) > 0.3:
+			dir = (spot - chest).normalized()
 	return [chest, dir]
+
+## Where on the screen the third-person crosshair is: under the mouse, or with
+## the pad (or a captured mouse) a spot 6 m ahead of the chest.
+func aim_screen_point() -> Vector2:
+	if screen_aim_source.is_valid():
+		return screen_aim_source.call()
+	var cam := get_viewport().get_camera_3d()
+	if GameState.using_pad or Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		return cam.unproject_position(player.global_position + Vector3(0, TP_MUZZLE_HEIGHT, 0) + _facing() * PAD_CROSSHAIR)
+	return get_viewport().get_mouse_position()
 
 func _facing() -> Vector3:
 	var m: Node3D = player.get("model") as Node3D if player != null else null

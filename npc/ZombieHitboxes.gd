@@ -18,8 +18,8 @@ const PARTS := ["head", "neck", "torso", "upper_arm_l", "upper_arm_r", "lower_ar
 ## is a bone name, or "a+b" for the middle of two bones.
 const LAYOUT := {
 	"head": ["Bip01 Head", "Bip01 Head", "eyes_up", 0.11],
-	"neck": ["Bip01 Neck", "Bip01 Spine1+Bip01 Neck", "Bip01 Head", 0.06],
-	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Spine1", 0.18],
+	"neck": ["Bip01 Neck", "Bip01 Neck", "Bip01 Head", 0.06],
+	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Neck", 0.17, "cylinder"],
 	"upper_arm_l": ["Bip01 L UpperArm", "Bip01 L UpperArm", "Bip01 L Forearm", 0.055],
 	"upper_arm_r": ["Bip01 R UpperArm", "Bip01 R UpperArm", "Bip01 R Forearm", 0.055],
 	"lower_arm_l": ["Bip01 L Forearm", "Bip01 L Forearm", "Bip01 L Hand", 0.05],
@@ -61,10 +61,21 @@ static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
 		var shape := CollisionShape3D.new()
 		var cap := CapsuleShape3D.new()
 		var radius: float = spec[3] / unit
+		if part == "head":
+			# The skull starts at the head bone, so its round bottom doesn't swallow the neck.
+			a += Vector3.UP * radius
 		var length := a.distance_to(b)
-		cap.radius = radius
-		cap.height = maxf(length + radius * 2.0, radius * 2.0 + 0.01)
-		shape.shape = cap
+		if spec.size() > 4 and spec[4] == "cylinder":
+			# Flat ends: the torso stops where the neck starts instead of
+			# rounding up over it.
+			var cyl := CylinderShape3D.new()
+			cyl.radius = radius
+			cyl.height = maxf(length, 0.01)
+			shape.shape = cyl
+		else:
+			cap.radius = radius
+			cap.height = maxf(length + radius * 2.0, radius * 2.0 + 0.01)
+			shape.shape = cap
 		# Capsule axis is +Y: turn it onto a -> b, in the bone's own frame.
 		var rest := skeleton.get_bone_global_rest(bone)
 		var axis := (b - a).normalized() if length > 0.0001 else Vector3.UP

@@ -124,7 +124,9 @@ func _update_prompt() -> void:
 		var target = player._nearest_interactable()
 		if target != null and target.has_method("prompt_text"):
 			text = target.prompt_text()
-	prompt.text = "%s  %s" % [GameState.control_name("interact"), text] if text != "" else ""
+	# On the pad the use button is also reload: buying is a hold.
+	var key := ("Hold " if GameState.using_pad else "") + GameState.control_name("interact")
+	prompt.text = "%s  %s" % [key, text] if text != "" else ""
 
 ## A line of refusal or news over the prompt ("Not enough points"), gone in a moment.
 func say(text: String) -> void:

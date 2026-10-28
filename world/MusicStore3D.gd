@@ -11,3 +11,9 @@ func _ready() -> void:
 
 func _shuffle_items() -> void:
 	TapeCounter.stock_racks(item_slots)
+
+func interact_zone(zone: Area3D, player: Node) -> void:
+	TapeCounter.interact_zone(self, zone, player)
+
+func _buy(id: String, player: Node, hud: Node) -> void:
+	TapeCounter.buy(id, player, hud)

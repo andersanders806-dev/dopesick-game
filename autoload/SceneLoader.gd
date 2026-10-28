@@ -121,9 +121,13 @@ func cached(path: String) -> bool:
 
 ## The scene at `path` if it has finished loading, else null -- and it's
 ## asked for, at the front of the queue, so it will have.
-func packed(path: String) -> PackedScene:
+## `urgent`: it starts, and is taken off the loader, whether you are walking
+## or not (a player who never stops would otherwise meet a blocking load).
+func packed(path: String, urgent := false) -> PackedScene:
 	if _scenes.has(path):
 		return _scenes[path]
+	if urgent:
+		_urgent[path] = true
 	prefetch(path, true)
 	return null
 
@@ -163,10 +167,12 @@ func _player_walking() -> bool:
 	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D if is_inside_tree() else null
 	return player != null and Vector2(player.velocity.x, player.velocity.z).length() >= 0.5
 
+var _urgent := {}
+
 func _start_next() -> void:
-	if not may_start():
-		return
 	while _loading.is_empty() and not _queue.is_empty():
+		if not may_start() and not _urgent.has(_queue[0]):
+			return
 		var path: String = _queue.pop_front()
 		if _scenes.has(path):
 			continue
@@ -183,10 +189,11 @@ func _process(delta: float) -> void:
 			# Taking it off the loader finishes it on the main thread (a 37 ms
 			# hitch mid-stride in perf.log): wait until you stop walking. A
 			# door needing it now takes it at once (_scene).
-			if not may_finish():
+			if not may_finish() and not _urgent.has(path):
 				continue
 			_scenes[path] = ResourceLoader.load_threaded_get(path)
 			_loading.erase(path)
+			_urgent.erase(path)
 		elif status != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			_loading.erase(path)
 			_failed[path] = true

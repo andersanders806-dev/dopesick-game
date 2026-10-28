@@ -5482,6 +5482,22 @@ func _zombie_shell_checks(gs: Node) -> void:
 	_check(alive.is_empty(), "  no passers-by, cops, collector, post, scavenging or hiding (%s)" % [alive])
 	var life := city.get_node_or_null("StreetLife")
 	_check(life != null and not life.traffic and life._cars.is_empty(), "  no traffic")
+	# The shops' rooms are furnished and empty: built when you come near, with
+	# their floor and walls, but no clerk, no pawnbroker, nothing to lift.
+	var z_shops := WALK_INS.map(func(w): return city.get_node("Cell_Main/" + String(w["node"])))
+	_check(z_shops.all(func(sh): return sh._inert), "  the four walk-in shops are inert (no clerks, no theft)")
+	for w in WALK_INS:
+		var zs := city.get_node("Cell_Main/" + String(w["node"]))
+		zplayer.global_position = Vector3(w["x"], 0, -2.6)
+		zplayer.reset_physics_interpolation()
+		var built := await _wait_loaded(zs)
+		await _frames(3)
+		var lifted: Array = zs.find_children("*", "Area3D", true, false).filter(func(a): return a.name != "Inside" and not a.is_queued_for_deletion())
+		var staff: Array = get_nodes_in_group("guards").filter(func(g): return zs.is_ancestor_of(g) and not g.is_queued_for_deletion())
+		_check(built and zs.get_node_or_null("FloorTiles") != null and zs.get_node_or_null("WallBack") != null and zs.get_node_or_null("Ceiling") != null,
+			"  Dead Block: %s is built when you come near, floor and walls" % w["node"])
+		_check(staff.is_empty() and lifted.is_empty() and zs.get_node_or_null("Pawnbroker") == null and zs.get_node("Gate").collision_layer == 0,
+			"  ...empty (no clerk, no triggers) and the doorway open")
 	# Night, dense red fog, a red sky -- whatever the hour was.
 	var env: Environment = city.get_node("WorldEnvironment").environment
 	_check(gs.daylight() == 0.0, "  permanent night (daylight %.2f)" % gs.daylight())

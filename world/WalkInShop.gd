@@ -20,6 +20,8 @@ const TapeCounter := preload("res://world/TapeCounter.gd")
 const FAR := Facades.WALK_IN_NEAR + 1.5
 ## The room is built when you come this near its door.
 const BUILD_RANGE := 30.0
+## ...and this near, its scene is wanted now, walking or not.
+const URGENT_RANGE := 20.0
 ## What one frame spends on building it (microseconds).
 const BUILD_BUDGET_USEC := 3000
 
@@ -42,6 +44,8 @@ func _ready() -> void:
 		if Facades.WALK_INS[front]["node"] == String(name):
 			_front = front
 	if GameState.mode == "zombies":
+		# Dead Block: furnished and empty. The room is built like any other
+		# (the lazy path), then stripped of its people (_dress_inert).
 		_go_inert()
 		return
 	# The street's scene holds the doorway only: the Inside area, the
@@ -54,20 +58,20 @@ func _ready() -> void:
 
 ## The room's scene, in the background since the title screen (SceneLoader);
 ## null until it is.
-func _packed() -> PackedScene:
+func _packed(urgent := false) -> PackedScene:
 	var loader := get_node_or_null("/root/SceneLoader")
 	var path := Facades.walk_in_scene(_front)
 	if loader != null:
-		return loader.packed(path)
+		return loader.packed(path, urgent)
 	return load(path) as PackedScene
 
 ## Builds the whole room at once -- for a player who is already inside (a
 ## Continue, a teleport), behind the fade, not for walking up to the door.
 func ensure_loaded() -> void:
-	if loaded or _inert:
+	if loaded:
 		return
 	if _room == null:
-		var packed := _packed()
+		var packed := _packed(true)
 		if packed == null:
 			packed = load(Facades.walk_in_scene(_front)) as PackedScene
 		_start_room(packed)
@@ -89,30 +93,32 @@ func _finish_room() -> void:
 	_room = null
 	if _building == self:
 		_building = null
-	_setup_store()
-	_wire_guards()
-	_shuffle_items()
-	if store_id == "music":
-		TapeCounter.wire_zones(self)
 	# Inside, the lamps are on a layer of their own, so a lamp in the shop
 	# never lights the street: everything here is on it as well as layer 1.
 	for n in find_children("*", "VisualInstance3D", true, false):
 		if not (n is Light3D):
 			(n as VisualInstance3D).layers = 3
+	if _inert:
+		_dress_inert()
+		loaded = true
+		return
+	_setup_store()
+	_wire_guards()
+	_shuffle_items()
+	if store_id == "music":
+		TapeCounter.wire_zones(self)
 	for guard in get_tree().get_nodes_in_group("guards"):
 		if is_ancestor_of(guard):
 			_guard_range[guard] = guard.vision_range
 			guard.vision_range = 0.0
 	loaded = true
 	_set_near(false)
-	if player_inside:
-		_inside_changed()
 
 ## A frame of building: the room is instanced one frame, then handed over a
 ## few nodes at a time (a clerk is the slow part), within a small budget.
-func _build_step() -> void:
+func _build_step(urgent := false) -> void:
 	if _room == null:
-		var packed := _packed()
+		var packed := _packed(urgent)
 		if packed == null or (_building != null and _building != self):
 			return
 		_building = self
@@ -127,19 +133,19 @@ func _build_step() -> void:
 ## Dead Block has no shopkeepers: the rooms stand empty and open.
 func _go_inert() -> void:
 	_inert = true
+	if has_node("Gate"):
+		(get_node("Gate") as CollisionObject3D).collision_layer = 0
+
+## What an inert room loses once it is built: its clerks, the pawnbroker and
+## every trigger (nobody to talk to, nothing to lift).
+func _dress_inert() -> void:
 	for n in get_children():
 		if n.is_in_group("guards") or n is Area3D and n.name != "Inside" or n.name.begins_with("Pawnbroker"):
 			n.queue_free()
-	for n in ["Gate"]:
-		if has_node(n):
-			(get_node(n) as CollisionObject3D).collision_layer = 0
-	set_process(false)
 
 ## Frames cost nothing here: the roof, the lamps and the guards change on the
 ## step, not every frame.
 func _process(delta: float) -> void:
-	if _inert:
-		return
 	if not loaded:
 		if _room != null:
 			_build_step()
@@ -148,8 +154,15 @@ func _process(delta: float) -> void:
 			if _poll <= 0.0:
 				_poll = 0.25
 				var player := get_tree().get_first_node_in_group("player") as Node3D
-				if player != null and Vector2(player.global_position.x - global_position.x, player.global_position.z - global_position.z - -5.5).length() < BUILD_RANGE:
-					_build_step()
+				var d := 1e9
+				if player != null:
+					d = Vector2(player.global_position.x - global_position.x, player.global_position.z - global_position.z - -5.5).length()
+				if d < BUILD_RANGE:
+					# Close to the door the load doesn't wait for you to stand
+					# still (SceneLoader): you'd reach it with a blocking one.
+					_build_step(d < URGENT_RANGE)
+		return
+	if _inert:
 		return
 	_poll -= delta
 	if _poll <= 0.0:

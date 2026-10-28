@@ -34,14 +34,18 @@ var _pause_timer: float = 0.0
 var _path := PackedVector3Array()
 var _path_i: int = 0
 var _last_minute: float = -1.0e9
+## In a sleeping cell and out of sight: he stands as he was, not simulated
+## (in sight, down a long street, he just walks on).
+var _frozen := false
+var _frozen_t := 0.0
+var _cells: Node = null
 
 func _ready() -> void:
 	super._ready()
 	add_to_group("patrol")
-	add_to_group("cell_sleepers")
 	_last_minute = GameState.now_minutes()
 
-## BlockCells freezes him in a sleeping cell (he stands as he was -- hiding
+## Frozen in a sleeping cell out of sight (he stands as he was -- hiding
 ## him would pop). Woken after the clock has gone on, he is put back on the
 ## beat by the loop's clock -- but not in front of the player: if that spot
 ## (or where he stands) is in sight he is carried on along the loop until he
@@ -49,7 +53,7 @@ func _ready() -> void:
 func refresh() -> void:
 	if not visible:
 		visible = true
-	if can_process() and absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:
+	if absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:
 		_last_minute = GameState.now_minutes()
 		if Schedules.is_seen(global_position):
 			return
@@ -65,6 +69,14 @@ func refresh() -> void:
 			extra += 6.0
 
 func _physics_process(delta: float) -> void:
+	_frozen_t -= delta
+	if _frozen_t <= 0.0:
+		_frozen_t = 0.25
+		if _cells == null and is_inside_tree():
+			_cells = get_tree().current_scene.get_node_or_null("BlockCells")
+		_frozen = _cells != null and _cells.asleep_at(global_position) and not Schedules.is_seen(global_position)
+	if _frozen:
+		return
 	if absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:
 		refresh()
 	_last_minute = GameState.now_minutes()

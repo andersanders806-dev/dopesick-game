@@ -12,10 +12,11 @@ extends CharacterBody3D
 ##     by the time that has gone by; the model isn't processed, so one the
 ##     camera can see is stepped by hand (a lower frame rate, not a frozen
 ##     pose gliding along).
-##   in a sleeping cell: BlockCells freezes them (group cell_sleepers). They
-##     are not simulated; they stand as they were (hiding a frozen person
-##     would pop). When the cell wakes and the clock has gone on, _catch_up()
-##     puts them where position_at() says -- if neither place is in sight.
+##   in a sleeping cell (BlockCells.asleep_at), out of sight: not simulated;
+##     they stand as they were (hiding them would pop). In sight -- down a
+##     long straight street -- they are simply far people: stepped by hand.
+##     When the clock has gone on, _catch_up() puts them where position_at()
+##     says if neither place is in sight (City3D asks every 0.3 s).
 ##
 ## The rule for all of it: nobody appears, vanishes, teleports or changes
 ## pose while the player could see it (Schedules.is_seen). A change that is
@@ -73,12 +74,15 @@ var _speed := WALK_SPEED
 var _rest_clip := "idle"
 var _phase := 0.0
 var _lift_target := 0.0
+## In a sleeping cell and out of sight: not simulated at all.
+var _frozen := false
+var _frozen_t := 0.0
+var _cells: Node = null
 ## Far from the player but in the camera's view: still animated.
 var _viewed := false
 
 func _ready() -> void:
 	add_to_group("scheduled_people")
-	add_to_group("cell_sleepers")
 	collision_layer = 8
 	collision_mask = 1
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -163,7 +167,7 @@ func refresh() -> void:
 	if visible == indoors:
 		visible = not indoors
 	_model_root.process_mode = Node.PROCESS_MODE_INHERIT if (not indoors and _full) else Node.PROCESS_MODE_DISABLED
-	if can_process() and absf(_now() - _last_minute) > SNAP_GAP:
+	if absf(_now() - _last_minute) > SNAP_GAP:
 		_catch_up()
 
 ## The clock has gone on a long way (a sleeping cell, a load, a night's
@@ -212,6 +216,8 @@ func _face_goal() -> void:
 	_model_root.rotation.y = yaw
 
 func _physics_process(delta: float) -> void:
+	if _is_frozen(delta):
+		return
 	var now := _now()
 	if absf(now - _last_minute) > SNAP_GAP:
 		_catch_up()
@@ -242,6 +248,21 @@ func _physics_process(delta: float) -> void:
 	_move(delta, full, player, dist)
 	if _viewed and not full:
 		anim.advance(delta)
+
+## Out of sight in a cell that sleeps: nothing to do until it wakes or the
+## camera finds them (looked at four times a second).
+func _is_frozen(delta: float) -> bool:
+	_frozen_t -= delta
+	if _frozen_t <= 0.0:
+		_frozen_t = 0.25
+		if _cells == null and get_parent() != null and get_parent().get_parent() != null:
+			_cells = get_parent().get_parent().get_node_or_null("BlockCells")
+		var was := _frozen
+		_frozen = _cells != null and _cells.asleep_at(global_position) and not Schedules.is_seen(global_position)
+		if was and not _frozen:
+			_far_ticks = 0
+			_far_dt = 0.0
+	return _frozen
 
 ## Looks at the clock: has the next entry come up? Goes in, if they are due to
 ## and nobody would see it.

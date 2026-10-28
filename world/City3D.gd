@@ -461,6 +461,17 @@ func _spawn_scheduled_people() -> void:
 			if not ResourceLoader.has_cached(model) and ResourceLoader.load_threaded_get_status(model) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
 				ResourceLoader.load_threaded_request(model)
 
+## Called by SceneLoader behind the black before it fades in: makes the people
+## whose bodies are in (a few a frame); true once everybody is made. A cap on
+## the wait leaves the stragglers to _process.
+func finish_arrival() -> bool:
+	if zombie_mode:
+		return true
+	for i in 3:
+		if not people_pending.is_empty():
+			_build_next_person()
+	return people_pending.is_empty()
+
 ## Makes the next one whose body is in; one a frame.
 func _build_next_person() -> void:
 	for k in people_pending.size():

@@ -12,7 +12,7 @@ extends Area3D
 
 signal sale_completed
 
-enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, HIDDEN, RETURNING, OFF_SHIFT }
+enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, HIDDEN, RETURNING, OFF_SHIFT, RELOCATING }
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
@@ -84,9 +84,16 @@ var _spots := {}
 ## so, unlike running from the cop, he waits at the hiding place for nobody to
 ## be looking before he slips away (Schedules.is_seen, with cover counting).
 var _by_schedule := false
-## Where he stashes and slips off to at the overpass, from the post.
+## Where he stashes and slips off to at the overpass, from the post: the
+## stash is in the middle of the deck, the hiding place is round the back of
+## the east pillar (the post stands between two), so from under the deck he
+## goes behind the concrete and is gone -- never in the open.
 const NIGHT_STASH := Vector3(0.0, 0.0, 2.4)
-const NIGHT_HIDE := Vector3(0.0, 0.0, -6.0)
+const NIGHT_HIDE := Vector3(5.0, 0.0, 0.0)
+## Where he walks, along the navmesh (the way round a pillar or a building).
+var _path := PackedVector3Array()
+var _path_goal := Vector3.INF
+var _path_i := 0
 var _glance_t: float = 0.0
 var _timer: float = 0.0
 ## Paid for but not yet handed over (survives him having to hide).
@@ -143,8 +150,8 @@ func _physics_process(delta: float) -> void:
 				_by_schedule = true
 				state = State.TO_HIDE
 			elif _spot_stale():
-				_by_schedule = true
-				state = State.TO_HIDE
+				# His post has moved on: he walks there, in plain sight.
+				_begin_relocation()
 			elif _patrol_within(HEAT_RANGE):
 				state = State.TO_HIDE
 		State.TO_STASH:
@@ -180,11 +187,11 @@ func _physics_process(delta: float) -> void:
 		State.HIDDEN:
 			# Hid from the beat cop (not a chase): back once he's gone by.
 			if not GameState.wanted and not _patrol_within(HEAT_CLEAR_RANGE) and (GameState.pusher_on_shift() or _owes_fix):
-				_come_back(_spot != _wanted_spot())
+				_come_back()
 		State.OFF_SHIFT:
 			if GameState.pusher_on_shift() and not GameState.wanted:
 				_come_back(true)
-		State.RETURNING:
+		State.RETURNING, State.RELOCATING:
 			if _walk_to(_post_position, delta):
 				state = State.TO_STASH if _owes_fix else State.POST
 
@@ -199,6 +206,9 @@ func interact(player: Node) -> void:
 	_speak()
 	if GameState.wanted:
 		hud.show_dialogue("Pusher", "\"You brought cops with you? Walk away. Now.\"", PORTRAIT)
+		return
+	if state == State.RELOCATING:
+		hud.show_dialogue("Pusher", "\"Not now, I'm moving. Find me by the overpass after dark.\"" if _spot == "PusherNight" else "\"Not now, I'm moving. Find me on the corner.\"", PORTRAIT)
 		return
 	if state != State.POST:
 		hud.show_dialogue("Pusher", "\"I said wait.\"", PORTRAIT)
@@ -404,19 +414,40 @@ func _retarget_spot() -> bool:
 	street_facing_deg = sp["facing"]
 	return true
 
-## Out of hiding. If his post has changed since he went, he comes out of the
-## new post's hiding place -- unseen, since it's not where he went in. When it
-## is the schedule that brings him out (his hours begin, his post has moved
-## on) he waits, hidden, until nobody could see him come: returns false while
-## he does.
+## His post has moved on while he was selling: he takes up the new one and
+## walks to it along the navmesh, in sight of whoever is there.
+func _begin_relocation() -> void:
+	_retarget_spot()
+	_path_goal = Vector3.INF
+	state = State.RELOCATING
+
+## Out of hiding. Hours that begin with his post elsewhere (the morning, after
+## a night at the overpass) bring him out of the new post's hiding place --
+## which is not where he went in, so unseen -- and when the schedule does it
+## he waits, hidden, until nobody could see him come: returns false while he
+## does. Hiding from the cop at a post that has moved on since, he comes out
+## where he went in and walks to the new one.
 func _come_back(by_schedule := false) -> bool:
-	var out_at := _hide_of(_wanted_spot()) if _spot != _wanted_spot() else hide_position
-	if by_schedule and Schedules.is_seen(out_at, true):
+	var stale := _spot != _wanted_spot()
+	var from_off_shift := state == State.OFF_SHIFT
+	if stale and from_off_shift:
+		if by_schedule and Schedules.is_seen(_hide_of(_wanted_spot()), true):
+			return false
+		if _retarget_spot():
+			global_position = hide_position
+		_path_goal = Vector3.INF
+		_set_hidden(false)
+		state = State.RETURNING
+		return true
+	if by_schedule and Schedules.is_seen(hide_position, true):
 		return false
-	if _retarget_spot():
-		global_position = hide_position
 	_set_hidden(false)
-	state = State.RETURNING
+	_path_goal = Vector3.INF
+	if stale and GameState.pusher_on_shift():
+		_retarget_spot()
+		state = State.RELOCATING
+	else:
+		state = State.RETURNING
 	return true
 
 ## The hiding place of one of his posts.
@@ -435,17 +466,34 @@ func _set_hidden(hidden: bool) -> void:
 	talk_shape.set_deferred("disabled", hidden)
 	body_shape.set_deferred("disabled", hidden)
 
-## Moves along the ground toward `target`; true once there.
+## Moves toward `target` along the navmesh (round pillars and buildings;
+## straight where there is no navmesh); true once there.
 func _walk_to(target: Vector3, delta: float) -> bool:
 	var to := target - global_position
 	to.y = 0.0
-	var dist := to.length()
-	if dist < 0.1:
+	if to.length() < 0.1:
 		anim.update(0.0)
 		return true
+	if _path_goal.distance_to(target) > 0.05:
+		_path_goal = target
+		_path = NavigationServer3D.map_get_path(get_world_3d().navigation_map, global_position, target, true)
+		_path_i = 0
+	var next := target
+	while _path_i < _path.size():
+		var d := Vector2(_path[_path_i].x - global_position.x, _path[_path_i].z - global_position.z)
+		if d.length() < 0.15:
+			_path_i += 1
+		else:
+			next = Vector3(_path[_path_i].x, 0.0, _path[_path_i].z)
+			break
+	var leg := next - global_position
+	leg.y = 0.0
+	var dist := leg.length()
+	if dist < 0.01:
+		return false
 	var step := minf(dist, WALK_SPEED * delta)
-	global_position += to / dist * step
-	_face(rad_to_deg(atan2(to.x, to.z)), delta)
+	global_position += leg / dist * step
+	_face(rad_to_deg(atan2(leg.x, leg.z)), delta)
 	anim.update(WALK_SPEED)
 	return false
 

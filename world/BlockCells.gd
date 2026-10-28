@@ -48,6 +48,16 @@ func _ready() -> void:
 func is_awake(cell: Node3D) -> bool:
 	return _awake.get(cell, true)
 
+## Whether a point lies in cells that all sleep (a point in none is awake).
+func asleep_at(p: Vector3) -> bool:
+	var inside := false
+	for c in _cells:
+		if (c.get_meta("bounds") as AABB).has_point(Vector3(p.x, 1.0, p.z)):
+			inside = true
+			if _awake[c]:
+				return false
+	return inside
+
 ## The cell roots, for City3D.
 func cells() -> Array[Node3D]:
 	return _cells

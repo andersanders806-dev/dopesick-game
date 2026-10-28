@@ -6,6 +6,9 @@ extends Node
 
 const FADE_OUT := 0.25
 const FADE_IN := 0.35
+## A room that still has people to make (finish_arrival()) gets this long,
+## in black, to make them: nobody blinks in once the screen is clear.
+const ARRIVAL_HOLD_MSEC := 1500
 const CARD_TIME := 2.5
 ## How close (m) the player gets to a door before its room starts loading.
 const PREFETCH_RANGE := 4.0
@@ -256,6 +259,11 @@ func go(path: String, spawn := "") -> void:
 	await tree.scene_changed
 	# The first frame of a room compiles its shaders; let it pass in black.
 	await tree.process_frame
+	var room := tree.current_scene
+	if not hidden and room != null and room.has_method("finish_arrival"):
+		var t_hold := Time.get_ticks_msec()
+		while not room.finish_arrival() and Time.get_ticks_msec() - t_hold < ARRIVAL_HOLD_MSEC:
+			await tree.process_frame
 	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
 	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]
 	# The room holds still until you can see it: a cop who followed you

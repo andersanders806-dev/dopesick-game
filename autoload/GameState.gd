@@ -158,7 +158,7 @@ const STRIKES_PER_RUN := 3
 
 var cash: int = 6
 var inventory: Array[String] = []
-var craving: float = 45.0
+var craving: float = 100.0
 ## Level check: launching with `-- --no-sick` keeps you fixed, so walking the
 ## block to look at it (or a perf probe's walk) isn't cut short or skewed by
 ## withdrawal's slowdown and screen effects.
@@ -372,7 +372,7 @@ func start_run() -> void:
 	MetaProgress.new_run()
 	cash = MetaProgress.starting_cash()
 	inventory.clear()
-	craving = 45.0
+	craving = 100.0
 	day = 1
 	clock = WAKE_MINUTE
 	raining = false

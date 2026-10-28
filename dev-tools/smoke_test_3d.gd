@@ -4852,7 +4852,8 @@ const CITY_LOAD_BUDGET_MS := 2500
 func _block_cold_load_checks(gs: Node) -> void:
 	await _section("The block: the first time onto the street in a fresh game")
 	var loader := root.get_node("SceneLoader")
-	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM
+	# (The walk-in shops' rooms are part of what loads in the title screen's time.)
+	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM + load("res://world/Facades.gd").walk_in_scenes()
 	var t_boot := Time.get_ticks_msec()
 	while not warm.all(func(p): return loader.cached(p)) and Time.get_ticks_msec() - t_boot < 30000:
 		await process_frame
@@ -5850,10 +5851,10 @@ func _zombie_anim_checks(gs: Node) -> void:
 ## watches the shelves ("" = nobody), what to walk up to, the shop's front
 ## in world/Facades.gd and its door's x.
 const WALK_INS := [
-	{"node": "WalkIn_Convenience", "place": "convenience", "spawn": "SpawnFromShop", "keeper": "Shopkeeper", "target": "Item1", "front": "Shop", "x": 3.5, "old": "StoreConvenience3D"},
-	{"node": "WalkIn_Liquor", "place": "liquor", "spawn": "SpawnFromLiquor", "keeper": "Clerk", "target": "Item1", "front": "Liquor", "x": 10.5, "old": "StoreLiquor3D"},
-	{"node": "WalkIn_Pawn", "place": "pawn", "spawn": "SpawnFromPawn", "keeper": "", "target": "Pawnbroker", "front": "Pawn", "x": 0.0, "old": "Pawn3D"},
-	{"node": "WalkIn_Music", "place": "music", "spawn": "SpawnFromMusic", "keeper": "Clerk", "target": "Item1", "front": "Music", "x": -7.0, "old": "MusicStore3D"},
+	{"node": "WalkIn_Convenience", "place": "convenience", "spawn": "SpawnFromShop", "keeper": "Shopkeeper", "target": "Item1", "front": "Shop", "x": 3.5, "old": "StoreConvenience3D", "track": "convenience.ogg"},
+	{"node": "WalkIn_Liquor", "place": "liquor", "spawn": "SpawnFromLiquor", "keeper": "Clerk", "target": "Item1", "front": "Liquor", "x": 10.5, "old": "StoreLiquor3D", "track": "liquor.ogg"},
+	{"node": "WalkIn_Pawn", "place": "pawn", "spawn": "SpawnFromPawn", "keeper": "", "target": "Pawnbroker", "front": "Pawn", "x": 0.0, "old": "Pawn3D", "track": "pawn.ogg"},
+	{"node": "WalkIn_Music", "place": "music", "spawn": "SpawnFromMusic", "keeper": "Clerk", "target": "Item1", "front": "Music", "x": -7.0, "old": "MusicStore3D", "track": "music.ogg"},
 ]
 
 ## Puts the player on the line x, from z `from` to `to`, a little each
@@ -5867,16 +5868,72 @@ func _step_player(x: float, from: float, to: float, frames := 50) -> void:
 func _roof_of(city: Node, front: String) -> Node3D:
 	return city.get_node("Facades").get_node_or_null("Roof" + front) as Node3D
 
+## Waits (a few seconds at most) for a walk-in's room to be built.
+func _wait_loaded(shop: Node, frames := 1500) -> bool:
+	for i in frames:
+		if shop.loaded:
+			return true
+		await physics_frame
+	return shop.loaded
+
 func _walk_in_checks(gs: Node) -> void:
-	await _section("Walk-in shops: the corner shop, liquor, pawn and tape shops are rooms on Main Street")
+	await _section("Walk-in shops: the rooms are scenes of their own, built when you come near")
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
 	gs.clock = 17 * 60
-	var city := await _load("res://world/City3D.tscn")
+	# City3D.tscn holds the doorways only: the rooms (props, textures, staff)
+	# are world/walkin/*.tscn, so the street loads about as fast as before.
+	var city_path := "res://world/City3D.tscn"
+	var city_file := FileAccess.open(city_path, FileAccess.READ)
+	var city_kb := city_file.get_length() / 1024.0
+	var city_text := FileAccess.get_file_as_string(city_path)
+	_check(city_kb < 740.0 and not city_text.contains("CashRegister_01") and not city_text.contains("Ukulele_01"),
+		"  City3D.tscn is %.0f KB (base 675) and none of the shops' props are in it" % city_kb)
+	var rooms_ok := true
+	for front in ["Shop", "Liquor", "Pawn", "Music"]:
+		rooms_ok = rooms_ok and ResourceLoader.exists("res://world/walkin/%s.tscn" % front)
+	_check(rooms_ok, "  each room is its own scene (world/walkin/<Front>.tscn)")
+	# Far from the shops (the east end) nothing of them is built.
+	var save_node := root.get_node("SaveGame")
+	save_node.pending_position = Vector3(60.0, 0.0, -2.6)
+	var city := await _load(city_path)
+	await _frames(30)
+	var far_shops := WALK_INS.map(func(w): return city.get_node("Cell_Main/" + String(w["node"])))
+	_check(far_shops.all(func(sh): return not sh.loaded and sh.get_child_count() < 12), "  60 m away none of the four rooms is built (%s)" % [far_shops.map(func(sh): return sh.get_child_count())])
 	_clear_patrol(city)
-	await _frames(5)
 	var p := _player()
+	# Their scenes come in with the street's, in the background, from the
+	# title screen on (SceneLoader); a player walking up finds them in.
+	var loader := root.get_node("SceneLoader")
+	var room_paths: Array = load("res://world/Facades.gd").walk_in_scenes()
+	for i in 4000:
+		if room_paths.all(func(rp): return loader.cached(rp)):
+			break
+		await physics_frame
+	_check(room_paths.all(func(rp): return loader.cached(rp)), "  the four rooms' scenes load in the background with the street's")
+	# Walking up the street builds them, one at a time, in small steps.
+	p.global_position = Vector3(1.5, 0.0, -2.6)
+	p.reset_physics_interpolation()
+	var slowest := 0
+	# (The teleport itself wakes cells: not what's measured, so its first
+	# frames are let go by.)
+	await _frames(4)
+	var last := Time.get_ticks_usec()
+	var built_at := []
+	for i in 1500:
+		await physics_frame
+		var now := Time.get_ticks_usec()
+		slowest = maxi(slowest, now - last)
+		last = now
+		var n := far_shops.filter(func(sh): return sh.loaded).size()
+		if built_at.is_empty() or built_at[built_at.size() - 1] != n:
+			built_at.append(n)
+		if n == 4:
+			break
+	_check(far_shops.all(func(sh): return sh.loaded), "  coming near builds all four (steps %s)" % [built_at])
+	_check(slowest < 25000, "  and no frame in between took longer than 25 ms (slowest %.1f ms)" % (slowest / 1000.0))
+	await _frames(5)
 	var entered := []
 	var left := []
 	_check(city.has_signal("entered_shop") and city.has_signal("left_shop"), "  City3D announces entered_shop / left_shop")
@@ -5919,6 +5976,7 @@ func _walk_in_checks(gs: Node) -> void:
 		p.global_position = city.get_node(w["spawn"]).global_position
 		p.reset_physics_interpolation()
 		await _frames(3)
+		await _wait_loaded(shop)
 		var target := shop.get_node_or_null(w["target"]) as Node3D
 		var arrived := target != null and await _walk_until_nearest(target, 900)
 		_check(arrived and shop.player_inside, "%s: walked from the street to %s" % [w["node"], w["target"]])
@@ -6034,6 +6092,7 @@ func _walk_in_checks(gs: Node) -> void:
 		var shop := city.get_node("Cell_Main/" + String(w["node"]))
 		p.global_position = shop.get_node("SpawnInside").global_position
 		p.reset_physics_interpolation()
+		await _wait_loaded(shop)
 		await _frames(20)
 		_check(shop.player_inside and gs.is_open(w["place"]), "%s: inside a minute before closing" % w["node"])
 		gs.clock = int(hours[1]) * 60 + 1
@@ -6074,6 +6133,9 @@ func _walk_in_checks(gs: Node) -> void:
 	_clear_patrol(city)
 	p = _player()
 	var conv := city.get_node("Cell_Main/WalkIn_Convenience")
+	p.global_position = Vector3(3.5, 0, -8.0)
+	p.reset_physics_interpolation()
+	await _wait_loaded(conv)
 	var lights := conv.find_children("*", "OmniLight3D", true, false).filter(func(l): return l.is_in_group("walk_in_lights"))
 	_check(lights.size() >= 2 and lights.all(func(l): return l.light_cull_mask == 2 and not l.shadow_enabled), "  the corner shop has %d interior lights, no shadows, on the interior-only layer" % lights.size())
 	p.global_position = Vector3(40.0, 0, -2.6)
@@ -6098,7 +6160,98 @@ func _walk_in_checks(gs: Node) -> void:
 	city = await _load("res://world/City3D.tscn")
 	p = _player()
 	var liquor := city.get_node("Cell_Main/WalkIn_Liquor")
+	await _wait_loaded(liquor)
 	await _frames(20)
 	_check(p.global_position.distance_to(liquor.get_node("SpawnInside").global_position) < 0.5 and liquor.player_inside, "  the spawn puts you at the liquor store's SpawnInside, inside")
+	await _section("Walk-in shops: the clerks keep their memory of the store (tips and grudges)")
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	p = _player()
+	var liq := city.get_node("Cell_Main/WalkIn_Liquor")
+	p.global_position = liq.get_node("SpawnInside").global_position
+	p.reset_physics_interpolation()
+	await _wait_loaded(liq)
+	await _frames(20)
+	var clerk := liq.get_node("Clerk")
+	gs.store_heat = {}
+	var plain: float = clerk._alertness()
+	gs.set_store_heat("liquor", 1.3, 1)
+	_check(absf(clerk._alertness() - gs.store_alertness("liquor")) < 0.001 and absf(clerk._alertness() - plain) > 0.05,
+		"  a grudge on the liquor store makes its walk-in clerk sharper (%.2f -> %.2f)" % [plain, clerk._alertness()])
+	gs.store_heat = {}
+
+	await _section("Walk-in shops: Continue puts you back inside the shop")
+	# A save made inside a walk-in is a City3D save with a position in the shop.
+	gs.store_heat = {}
+	gs.cash = 77
+	_check(save_node.save() and save_node.has_save(), "  a save made inside the liquor store")
+	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(save_node.PATH))
+	_check(String(data["scene"]).ends_with("City3D.tscn") and data.has("position"), "  is the street's scene with where you stood (%s)" % [data["scene"]])
+	p.global_position = Vector3(60.0, 0, -2.6)
+	p.reset_physics_interpolation()
+	await _frames(5)
+	_check(save_node.continue_run(), "  continue_run()")
+	await _transition()
+	await _frames(20)
+	city = current_scene
+	liq = city.get_node("Cell_Main/WalkIn_Liquor")
+	await _wait_loaded(liq)
+	p = _player()
+	_check(city.name == "City3D" and liq.player_inside and liq.loaded and p.global_position.distance_to(liq.get_node("SpawnInside").global_position) < 1.5 and gs.cash == 77,
+		"  lands inside the liquor store, which reports the player (at %s, cash %d)" % [p.global_position, gs.cash])
+	var roof := _roof_of(city, "Liquor")
+	_check(roof != null and not roof.visible and not p.dialogue_active, "  roof off, nothing stuck on the screen")
+	# A save from before the shops moved onto the street: made in the old room.
+	for w in WALK_INS:
+		data["scene"] = "res://world/%s.tscn" % w["old"]
+		data["position"] = [-4.0, 0.0, 2.0]
+		var fa := FileAccess.open(save_node.PATH, FileAccess.WRITE)
+		fa.store_string(JSON.stringify(data))
+		fa.close()
+		_check(save_node.continue_run(), "  an old save from %s: continue_run()" % w["old"])
+		await _transition()
+		await _frames(20)
+		city = current_scene
+		var shop := city.get_node("Cell_Main/" + String(w["node"]))
+		await _wait_loaded(shop)
+		p = _player()
+		_check(city.name == "City3D" and shop.player_inside and p.global_position.distance_to(shop.get_node("SpawnInside").global_position) < 1.0,
+			"  ...lands at %s's SpawnInside, inside it" % w["node"])
+	save_node.delete()
+
+	await _section("Walk-in shops: a shop is indoors (cold, rain, floor, sound)")
+	gs.clock = 22 * 60
+	gs.raining = true
+	var sv := root.get_node("Survival")
+	var sfx := root.get_node("SFX")
+	city = await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	p = _player()
+	await _frames(10)
+	_check(sv.outside(), "  on the street you are out in the cold")
+	var ambience := city.get_node_or_null("PlaceAmbience")
+	_check(ambience != null and String(ambience.get_meta("track", "")).ends_with("city.ogg"), "  and hear the street")
+	sfx._update_indoor_rain()
+	_check(not sfx._rain_indoor.playing, "  with no muffled rain on top")
+	for w in WALK_INS:
+		var shop := city.get_node("Cell_Main/" + String(w["node"]))
+		p.global_position = shop.get_node("SpawnInside").global_position
+		p.reset_physics_interpolation()
+		await _wait_loaded(shop)
+		await _frames(10)
+		sfx._update_indoor_rain()
+		var wood: bool = w["place"] == "pawn"
+		var steps_ok := true
+		for i in 12:
+			steps_ok = steps_ok and sfx.footstep_stream() in sfx.FOOTSTEPS["wood" if wood else "concrete"]
+		_check(shop.player_inside and not sv.outside() and sfx._rain_indoor.playing and steps_ok,
+			"%s: indoors -- no cold, muffled rain, %s steps" % [w["node"], "wood" if wood else "tile"])
+		_check(ambience != null and String(ambience.get_meta("track", "")).get_file() == String(w["track"]), "  ...and its own ambience (%s)" % ambience.get_meta("track", ""))
+		p.global_position = Vector3(w["x"], 0, -2.6)
+		p.reset_physics_interpolation()
+		await _frames(10)
+		sfx._update_indoor_rain()
+		_check(not shop.player_inside and sv.outside() and not sfx._rain_indoor.playing and String(ambience.get_meta("track", "")).ends_with("city.ogg"), "  ...and back out on the street")
+	gs.raining = false
 	gs.clock = 17 * 60
 	gs.start_run()

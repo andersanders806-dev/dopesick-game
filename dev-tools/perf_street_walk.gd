@@ -38,6 +38,17 @@ func _initialize() -> void:
 	player.reset_physics_interpolation()
 	for i in 30:
 		await process_frame
+	_experiments(args)
+	# The game has the title screen's time to finish SceneLoader's background
+	# prefetch; standing still here is what starts it, so let it finish
+	# (otherwise its main-thread burst lands mid-walk as one 0.4-0.8 s frame).
+	# "noprefetchwait" skips this.
+	var sl := root.get_node_or_null("SceneLoader")
+	if sl != null and not "noprefetchwait" in args:
+		var w0 := Time.get_ticks_usec()
+		while (not sl._queue.is_empty() or not sl._loading.is_empty()) and Time.get_ticks_usec() - w0 < 60e6:
+			await process_frame
+		print("prefetch wait %.1f s" % ((Time.get_ticks_usec() - w0) / 1e6))
 	var vp := root.get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(vp, true)
 	print("== %s %s %.0f s vsync %d  occl %s  nodes %d" % ["night" if night else "day", "FP" if fp else "TP", secs, DisplayServer.window_get_vsync_mode(), root.use_occlusion_culling, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
@@ -51,6 +62,11 @@ func _initialize() -> void:
 	var gpus: Array[float] = []
 	var scales := 0.0
 	var dir := 1.0
+	# "scale=0.75" pins the render scale (the adaptive controller is overridden each frame)
+	var fixed_scale := 0.0
+	for a in args:
+		if str(a).begins_with("scale="):
+			fixed_scale = float(str(a).substr(6))
 	var t0 := Time.get_ticks_usec()
 	var last := t0
 	var slow := 0
@@ -73,6 +89,9 @@ func _initialize() -> void:
 		else:
 			Input.action_press("move_right" if dir > 0 else "move_left")
 		await process_frame
+		if fixed_scale > 0.0:
+			gfx.render_scale = fixed_scale
+			root.scaling_3d_scale = fixed_scale
 		var now := Time.get_ticks_usec()
 		var dt := (now - last) / 1000.0
 		last = now
@@ -99,6 +118,8 @@ func _initialize() -> void:
 			clean.append(dt)
 			clean_gpu.append(g)
 		scales += root.scaling_3d_scale
+		if dt >= 100.0:
+			print("  HITCH %.0f ms at t=%.1f s pos %s" % [dt, (now - t0) / 1e6, player.global_position.snapped(Vector3.ONE)])
 		if dt > 25.0 and dt < 400.0:
 			slow += 1
 			print("  SLOW %.1f ms at %s gpu %.1f cpu_render %.1f proc %.1f" % [dt, player.global_position.snapped(Vector3.ONE), g, RenderingServer.viewport_get_measured_render_time_cpu(vp), Performance.get_monitor(Performance.TIME_PROCESS) * 1000])
@@ -126,3 +147,25 @@ func _initialize() -> void:
 	else:
 		print("CLEAN none")
 	quit()
+
+## Optional cost experiments (extra args): sunshadow off, lampshadow off,
+## lamps off, nofade (props lose visibility_range fades), nolit (no omni/spot).
+func _experiments(args: Array) -> void:
+	var n_l := 0
+	var stack: Array[Node] = [current_scene]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		stack.append_array(n.get_children())
+		if n is DirectionalLight3D and "nosun" in args:
+			n.shadow_enabled = false
+		elif n is Light3D and not n is DirectionalLight3D:
+			if "noshadow" in args:
+				n.shadow_enabled = false
+			if "nolamps" in args:
+				n.visible = false
+			n_l += 1
+		if n is GeometryInstance3D and "nofade" in args:
+			n.visibility_range_begin = 0.0
+			n.visibility_range_end = 0.0
+			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+	print("experiments %s lights %d" % [str(args.slice(3)), n_l])

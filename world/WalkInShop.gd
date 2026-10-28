@@ -18,14 +18,23 @@ const TapeCounter := preload("res://world/TapeCounter.gd")
 ## Past this the shop is a lit window again (a bit more than it took to wake
 ## it, so it doesn't flicker on the line).
 const FAR := Facades.WALK_IN_NEAR + 1.5
+## The room is built when you come this near its door.
+const BUILD_RANGE := 30.0
+## What one frame spends on building it (microseconds).
+const BUILD_BUDGET_USEC := 3000
 
 var place := ""
 var player_inside := false
 var near := false
+## The room (world/walkin/<Front>.tscn) is in.
+var loaded := false
 var _front := ""
 var _guard_range := {}
 var _poll := 0.0
 var _inert := false
+var _room: Node = null
+## Which shop is being built right now: one at a time.
+static var _building: Node = null
 
 func _ready() -> void:
 	place = String(get_meta("place", ""))
@@ -35,6 +44,51 @@ func _ready() -> void:
 	if GameState.mode == "zombies":
 		_go_inert()
 		return
+	# The street's scene holds the doorway only: the Inside area, the
+	# markers, the gate. The room is built into it later (_process).
+	var inside := get_node("Inside") as Area3D
+	inside.body_entered.connect(_on_body_entered)
+	inside.body_exited.connect(_on_body_exited)
+	GameState.clock_changed.connect(func(_m): _refresh_gate())
+	_refresh_gate()
+
+## The room's scene, in the background since the title screen (SceneLoader);
+## null until it is.
+func _packed() -> PackedScene:
+	var loader := get_node_or_null("/root/SceneLoader")
+	var path := Facades.walk_in_scene(_front)
+	if loader != null:
+		return loader.packed(path)
+	return load(path) as PackedScene
+
+## Builds the whole room at once -- for a player who is already inside (a
+## Continue, a teleport), behind the fade, not for walking up to the door.
+func ensure_loaded() -> void:
+	if loaded or _inert:
+		return
+	if _room == null:
+		var packed := _packed()
+		if packed == null:
+			packed = load(Facades.walk_in_scene(_front)) as PackedScene
+		_start_room(packed)
+	while _room.get_child_count() > 0:
+		_adopt_one()
+	_finish_room()
+
+func _start_room(packed: PackedScene) -> void:
+	_room = packed.instantiate()
+
+func _adopt_one() -> void:
+	var c := _room.get_child(0)
+	_room.remove_child(c)
+	c.owner = null
+	add_child(c)
+
+func _finish_room() -> void:
+	_room.free()
+	_room = null
+	if _building == self:
+		_building = null
 	_setup_store()
 	_wire_guards()
 	_shuffle_items()
@@ -49,12 +103,26 @@ func _ready() -> void:
 		if is_ancestor_of(guard):
 			_guard_range[guard] = guard.vision_range
 			guard.vision_range = 0.0
-	var inside := get_node("Inside") as Area3D
-	inside.body_entered.connect(_on_body_entered)
-	inside.body_exited.connect(_on_body_exited)
-	GameState.clock_changed.connect(func(_m): _refresh_gate())
-	_refresh_gate()
+	loaded = true
 	_set_near(false)
+	if player_inside:
+		_inside_changed()
+
+## A frame of building: the room is instanced one frame, then handed over a
+## few nodes at a time (a clerk is the slow part), within a small budget.
+func _build_step() -> void:
+	if _room == null:
+		var packed := _packed()
+		if packed == null or (_building != null and _building != self):
+			return
+		_building = self
+		_start_room(packed)
+		return
+	var t0 := Time.get_ticks_usec()
+	while _room.get_child_count() > 0 and Time.get_ticks_usec() - t0 < BUILD_BUDGET_USEC:
+		_adopt_one()
+	if _room.get_child_count() == 0:
+		_finish_room()
 
 ## Dead Block has no shopkeepers: the rooms stand empty and open.
 func _go_inert() -> void:
@@ -72,6 +140,17 @@ func _go_inert() -> void:
 func _process(delta: float) -> void:
 	if _inert:
 		return
+	if not loaded:
+		if _room != null:
+			_build_step()
+		else:
+			_poll -= delta
+			if _poll <= 0.0:
+				_poll = 0.25
+				var player := get_tree().get_first_node_in_group("player") as Node3D
+				if player != null and Vector2(player.global_position.x - global_position.x, player.global_position.z - global_position.z - -5.5).length() < BUILD_RANGE:
+					_build_step()
+		return
 	_poll -= delta
 	if _poll <= 0.0:
 		_poll = 0.2
@@ -83,6 +162,7 @@ func _on_body_entered(body: Node3D) -> void:
 	if not body.is_in_group("player") or player_inside:
 		return
 	player_inside = true
+	ensure_loaded()
 	_inside_changed()
 	_city_signal("entered_shop")
 
@@ -119,6 +199,8 @@ func roof_node() -> Node3D:
 	return facades.get_node_or_null("Roof" + _front) as Node3D if facades != null else null
 
 func _update_near() -> void:
+	if not loaded:
+		return
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:
 		return

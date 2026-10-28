@@ -52,11 +52,37 @@ const FRONTS := [
 ## is its own scene, behind its door) between them; the Bar's front stays,
 ## in front of the two rooms' middle.
 const WALK_INS := {
-	"Music": {"node": "WalkIn_Music", "place": "music", "span": [-8.25, -3.5]},
-	"Pawn": {"node": "WalkIn_Pawn", "place": "pawn", "span": [-3.5, 1.4]},
-	"Shop": {"node": "WalkIn_Convenience", "place": "convenience", "span": [1.4, 5.75]},
-	"Liquor": {"node": "WalkIn_Liquor", "place": "liquor", "span": [8.29, 12.71]},
+	"Music": {"node": "WalkIn_Music", "place": "music", "room": "MusicStore3D", "span": [-8.25, -3.5]},
+	"Pawn": {"node": "WalkIn_Pawn", "place": "pawn", "room": "Pawn3D", "span": [-3.5, 1.4]},
+	"Shop": {"node": "WalkIn_Convenience", "place": "convenience", "room": "StoreConvenience3D", "span": [1.4, 5.75]},
+	"Liquor": {"node": "WalkIn_Liquor", "place": "liquor", "room": "StoreLiquor3D", "span": [8.29, 12.71]},
 }
+## Where each room's props, staff and lamps are: a scene of its own, built
+## when you come near (world/WalkInShop.gd), loaded in the background from
+## the title screen on (SceneLoader), so City3D.tscn stays the doorways.
+const WALK_IN_DIR := "res://world/walkin/"
+
+static func walk_in_scene(front_name: String) -> String:
+	return WALK_IN_DIR + front_name + ".tscn"
+
+static func walk_in_scenes() -> Array:
+	return WALK_INS.keys().map(func(k): return walk_in_scene(k))
+
+## The old room (scene name) a walk-in's place stands for: the floor and
+## the ambience it had.
+static func room_for_place(place: String) -> String:
+	for front in WALK_INS:
+		if WALK_INS[front]["place"] == place:
+			return WALK_INS[front]["room"]
+	return ""
+
+## The walk-in node a scene (an old room's, "Pawn3D" or its path) became.
+static func walk_in_for_room(scene: String) -> String:
+	var room := scene.get_file().get_basename()
+	for front in WALK_INS:
+		if WALK_INS[front]["room"] == room:
+			return WALK_INS[front]["node"]
+	return ""
 ## Buildings that no longer have a body of their own: a walk-in took their room.
 const MASS_DROP := ["Bar"]
 ## Fronts in front of a walk-in room (the Bar's, in front of two): their
@@ -954,6 +980,9 @@ func refresh() -> void:
 		if (place == "" and hours.is_empty()) or not front.has_node("Glow"):
 			continue
 		var open: bool = GameState.is_open(place) if place != "" else GameState.hours_contain(hours, GameState.hour())
+		# Dead Block's walk-in doorways stand open all night (WalkInShop._go_inert).
+		if GameState.mode == "zombies" and front.name.trim_prefix("Front") in WALK_INS:
+			open = true
 		front.get_node("Shutter").visible = not open
 		# A walk-in near you is the room itself behind the glass: no painted glow.
 		front.get_node("Glow").visible = open and not front.get_meta("near", false)

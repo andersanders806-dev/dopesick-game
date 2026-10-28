@@ -1,0 +1,702 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/WalkInShop.gd" id="1_wqtew"]
+[ext_resource type="Texture2D" path="res://assets/pbr/tiles_beige_diff.jpg" id="2_403xg"]
+[ext_resource type="Texture2D" path="res://assets/pbr/tiles_beige_nor.jpg" id="3_yduwo"]
+[ext_resource type="Texture2D" path="res://assets/pbr/tiles_beige_rough.jpg" id="4_7gx4d"]
+[ext_resource type="Texture2D" path="res://assets/pbr/plaster_painted_diff.jpg" id="5_f6wvs"]
+[ext_resource type="Texture2D" path="res://assets/pbr/plaster_painted_nor.jpg" id="6_gdf6x"]
+[ext_resource type="Texture2D" path="res://assets/pbr/plaster_painted_rough.jpg" id="7_g5b5a"]
+[ext_resource type="AudioStream" path="res://assets/sfx/fluorescent_hum_loop.wav" id="8_fqt3m"]
+[ext_resource type="PackedScene" path="res://assets/polyhaven/security_camera_01/security_camera_01.gltf" id="9_6sq3u"]
+[ext_resource type="PackedScene" path="res://assets/polyhaven/steel_frame_shelves_01/steel_frame_shelves_01.gltf" id="10_ivhui"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/wine-red.glb" id="11_a6gin"]
+[ext_resource type="PackedScene" path="res://assets/kenney/food/soda-bottle.glb" id="12_cp1be"]
+[ext_resource type="PackedScene" path="res://items/StealableItem3D.tscn" id="13_m1402"]
+[ext_resource type="Script" path="res://items/StealableItem3D.gd" id="14_drd63"]
+[ext_resource type="Texture2D" path="res://assets/pbr/metal_brushed_diff.jpg" id="15_ojiym"]
+[ext_resource type="Texture2D" path="res://assets/pbr/metal_brushed_nor.jpg" id="16_8tpn5"]
+[ext_resource type="Texture2D" path="res://assets/pbr/metal_brushed_rough.jpg" id="17_u4fmo"]
+[ext_resource type="PackedScene" path="res://assets/polyhaven/CashRegister_01/CashRegister_01.gltf" id="18_03w7h"]
+[ext_resource type="PackedScene" path="res://assets/polyhaven/wooden_crate_02/wooden_crate_02.gltf" id="19_oo6e7"]
+[ext_resource type="PackedScene" path="res://assets/polyhaven/wine_bottles_01/wine_bottles_01.gltf" id="20_s20wn"]
+[ext_resource type="PackedScene" path="res://npc/Guard3D.tscn" id="21_kfbh1"]
+[ext_resource type="Script" path="res://npc/Guard3D.gd" id="22_j01ij"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tx1jt"]
+albedo_color = Color(0.7, 0.62, 0.55, 1)
+albedo_texture = ExtResource("2_403xg")
+roughness_texture = ExtResource("4_7gx4d")
+normal_enabled = true
+normal_texture = ExtResource("3_yduwo")
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_qygi6"]
+material = SubResource("StandardMaterial3D_tx1jt")
+size = Vector3(4.02, 0.02, 11)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_beg3f"]
+albedo_color = Color(0.5, 0.36, 0.26, 1)
+albedo_texture = ExtResource("5_f6wvs")
+roughness_texture = ExtResource("7_g5b5a")
+normal_enabled = true
+normal_texture = ExtResource("6_gdf6x")
+uv1_scale = Vector3(0.5, 0.5, 0.5)
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_fp15a"]
+material = SubResource("StandardMaterial3D_beg3f")
+size = Vector3(0.2, 3, 11.45)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lmfbc"]
+material = SubResource("StandardMaterial3D_beg3f")
+size = Vector3(4.42, 3, 0.2)
+
+[sub_resource type="QuadMesh" id="QuadMesh_i3ojo"]
+material = SubResource("StandardMaterial3D_beg3f")
+size = Vector2(4.42, 11.45)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_im1sp"]
+albedo_color = Color(0.95, 0.97, 1, 1)
+roughness = 0.3
+emission_enabled = true
+emission = Color(0.95, 0.97, 1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_675vi"]
+material = SubResource("StandardMaterial3D_im1sp")
+size = Vector2(0.16, 1.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tug3x"]
+albedo_color = Color(0.95, 0.97, 1, 1)
+roughness = 0.3
+emission_enabled = true
+emission = Color(0.95, 0.97, 1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_ml3vu"]
+material = SubResource("StandardMaterial3D_tug3x")
+size = Vector2(0.16, 1.6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_q73ga"]
+albedo_color = Color(0.95, 0.97, 1, 1)
+roughness = 0.3
+emission_enabled = true
+emission = Color(0.95, 0.97, 1, 1)
+emission_energy_multiplier = 3.0
+
+[sub_resource type="QuadMesh" id="QuadMesh_kscpa"]
+material = SubResource("StandardMaterial3D_q73ga")
+size = Vector2(0.16, 1.6)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_woryn"]
+size = Vector3(2, 2.2, 0.63)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pmw53"]
+size = Vector3(2, 2.2, 0.63)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_qdmxk"]
+size = Vector3(2, 2.2, 0.63)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_xhc3i"]
+size = Vector3(2, 2.2, 0.63)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_s76a3"]
+albedo_texture = ExtResource("15_ojiym")
+roughness_texture = ExtResource("17_u4fmo")
+normal_enabled = true
+normal_texture = ExtResource("16_8tpn5")
+uv1_triplanar = true
+uv1_world_triplanar = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_8nujy"]
+material = SubResource("StandardMaterial3D_s76a3")
+size = Vector3(3.225, 0.98, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xhj01"]
+albedo_color = Color(0.16, 0.16, 0.17, 1)
+roughness = 0.35
+
+[sub_resource type="BoxMesh" id="BoxMesh_bqh65"]
+material = SubResource("StandardMaterial3D_xhj01")
+size = Vector3(3.265, 0.05, 0.56)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_tgmpo"]
+size = Vector3(3.225, 1.05, 0.53)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_qsois"]
+transparency = 1
+albedo_color = Color(0.85, 0.9, 0.95, 0.2)
+roughness = 0.15
+
+[sub_resource type="BoxMesh" id="BoxMesh_x3kmc"]
+material = SubResource("StandardMaterial3D_qsois")
+size = Vector3(3.3, 1.2, 0.03)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sjrf0"]
+albedo_color = Color(0.3, 0.3, 0.3, 1)
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="BoxMesh_u2udj"]
+material = SubResource("StandardMaterial3D_sjrf0")
+size = Vector3(0.5, 0.15, 0.04)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_anxqu"]
+albedo_color = Color(0.8, 0.8, 0.85, 1)
+metallic = 1.0
+roughness = 0.02
+
+[sub_resource type="SphereMesh" id="SphereMesh_3654e"]
+material = SubResource("StandardMaterial3D_anxqu")
+radius = 0.35
+height = 0.35
+is_hemisphere = true
+
+[node name="WalkIn_Liquor" type="Node3D" unique_id=1769317264]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10.5, 0, -4.8)
+script = ExtResource("1_wqtew")
+store_id = "liquor"
+theft_window = 1.7
+item_ids = Array[String](["whiskey", "vodka", "cognac", "vodka"])
+fixture_layouts = [PackedVector3Array(-1.7, -5.3, 90, -1.7, -7.9, 90, 1.7, -4, -90, 1.7, -6.6, -90), PackedVector3Array(-1.7, -5.8, 90, 1.7, -3.4, -90, 1.7, -6, -90, 1.7, -8.6, -90)]
+metadata/place = "liquor"
+
+[node name="FloorTiles" type="MeshInstance3D" parent="." unique_id=98283750]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, -5.5)
+mesh = SubResource("BoxMesh_qygi6")
+
+[node name="WallWest" type="MeshInstance3D" parent="." unique_id=204678988]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.11, 1.5, -5.475)
+mesh = SubResource("BoxMesh_fp15a")
+
+[node name="WallEast" type="MeshInstance3D" parent="." unique_id=1814995622]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.11, 1.5, -5.475)
+mesh = SubResource("BoxMesh_fp15a")
+
+[node name="WallBack" type="MeshInstance3D" parent="." unique_id=1280248916]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -11.1)
+mesh = SubResource("BoxMesh_lmfbc")
+
+[node name="Ceiling" type="MeshInstance3D" parent="." unique_id=919591305]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 3, -5.475)
+cast_shadow = 0
+mesh = SubResource("QuadMesh_i3ojo")
+
+[node name="Tube0" type="MeshInstance3D" parent="." unique_id=869494587]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.98, -1.8333334)
+cast_shadow = 0
+mesh = SubResource("QuadMesh_675vi")
+
+[node name="Lamp0" type="OmniLight3D" parent="." unique_id=254918695 groups=["always_lit", "walk_in_lights"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.55, -1.8333334)
+light_color = Color(1, 0.88, 0.7, 1)
+light_energy = 1.6
+light_cull_mask = 2
+omni_range = 6.0
+
+[node name="Tube1" type="MeshInstance3D" parent="." unique_id=1599576451]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.98, -5.5)
+cast_shadow = 0
+mesh = SubResource("QuadMesh_ml3vu")
+
+[node name="Lamp1" type="OmniLight3D" parent="." unique_id=1001378220 groups=["always_lit", "walk_in_lights"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.55, -5.5)
+light_color = Color(1, 0.88, 0.7, 1)
+light_energy = 1.6
+light_cull_mask = 2
+omni_range = 6.0
+
+[node name="Tube2" type="MeshInstance3D" parent="." unique_id=1554720281]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 2.98, -9.166667)
+cast_shadow = 0
+mesh = SubResource("QuadMesh_kscpa")
+
+[node name="Lamp2" type="OmniLight3D" parent="." unique_id=1717445394 groups=["always_lit", "walk_in_lights"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.55, -9.166667)
+light_color = Color(1, 0.88, 0.7, 1)
+light_energy = 1.6
+light_cull_mask = 2
+omni_range = 6.0
+
+[node name="FluorescentHum" type="AudioStreamPlayer3D" parent="." unique_id=1771905584]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.3, -5.5)
+stream = ExtResource("8_fqt3m")
+volume_db = -22.0
+unit_size = 5.0
+autoplay = true
+max_distance = 14.0
+
+[node name="Camera" type="Node3D" parent="." unique_id=2046676632 instance=ExtResource("9_6sq3u")]
+transform = Transform3D(-0.7071068, 0, -0.7071067, 0, 1, 0, 0.7071067, 0, -0.7071068, 1.76, 2.55, -10.7)
+
+[node name="Fixture1" type="StaticBody3D" parent="." unique_id=1975672205]
+metadata/item_offset = Vector3(0, 0.45, 0.5)
+
+[node name="SteelL" type="Node3D" parent="Fixture1" unique_id=1647986390 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, -0.5, 0, 0)
+
+[node name="SteelR" type="Node3D" parent="Fixture1" unique_id=1809859711 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, 0.5, 0, 0)
+
+[node name="Bottle0_0" type="Node3D" parent="Fixture1" unique_id=948585028 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 0.62, 0.05)
+
+[node name="Bottle0_1" type="Node3D" parent="Fixture1" unique_id=689350527 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 0.62, 0.05)
+
+[node name="Bottle0_2" type="Node3D" parent="Fixture1" unique_id=252841954 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 0.62, 0.05)
+
+[node name="Bottle0_3" type="Node3D" parent="Fixture1" unique_id=1988272584 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 0.62, 0.05)
+
+[node name="Bottle0_4" type="Node3D" parent="Fixture1" unique_id=34554519 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 0.62, 0.05)
+
+[node name="Bottle0_5" type="Node3D" parent="Fixture1" unique_id=90100975 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 0.62, 0.05)
+
+[node name="Bottle0_6" type="Node3D" parent="Fixture1" unique_id=1522841442 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 0.62, 0.05)
+
+[node name="Bottle0_7" type="Node3D" parent="Fixture1" unique_id=1544337595 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 0.62, 0.05)
+
+[node name="Bottle1_0" type="Node3D" parent="Fixture1" unique_id=1707479040 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.12, 0.05)
+
+[node name="Bottle1_1" type="Node3D" parent="Fixture1" unique_id=1017814964 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.12, 0.05)
+
+[node name="Bottle1_2" type="Node3D" parent="Fixture1" unique_id=2101887164 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.12, 0.05)
+
+[node name="Bottle1_3" type="Node3D" parent="Fixture1" unique_id=180264882 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.12, 0.05)
+
+[node name="Bottle1_4" type="Node3D" parent="Fixture1" unique_id=2014189592 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.12, 0.05)
+
+[node name="Bottle1_5" type="Node3D" parent="Fixture1" unique_id=1242191106 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.12, 0.05)
+
+[node name="Bottle1_6" type="Node3D" parent="Fixture1" unique_id=1707733015 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.12, 0.05)
+
+[node name="Bottle1_7" type="Node3D" parent="Fixture1" unique_id=837556621 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.12, 0.05)
+
+[node name="Bottle2_0" type="Node3D" parent="Fixture1" unique_id=1099561875 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.62, 0.05)
+
+[node name="Bottle2_1" type="Node3D" parent="Fixture1" unique_id=955504689 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.62, 0.05)
+
+[node name="Bottle2_2" type="Node3D" parent="Fixture1" unique_id=1723927426 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.62, 0.05)
+
+[node name="Bottle2_3" type="Node3D" parent="Fixture1" unique_id=983084370 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.62, 0.05)
+
+[node name="Bottle2_4" type="Node3D" parent="Fixture1" unique_id=1578648322 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.62, 0.05)
+
+[node name="Bottle2_5" type="Node3D" parent="Fixture1" unique_id=783208870 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.62, 0.05)
+
+[node name="Bottle2_6" type="Node3D" parent="Fixture1" unique_id=302755076 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.62, 0.05)
+
+[node name="Bottle2_7" type="Node3D" parent="Fixture1" unique_id=700315484 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.62, 0.05)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Fixture1" unique_id=1149478190]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+shape = SubResource("BoxShape3D_woryn")
+
+[node name="Item1" type="Area3D" parent="." unique_id=1760720261 instance=ExtResource("13_m1402")]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("14_drd63")
+
+[node name="Fixture2" type="StaticBody3D" parent="." unique_id=1177760773]
+metadata/item_offset = Vector3(0, 0.45, 0.5)
+
+[node name="SteelL" type="Node3D" parent="Fixture2" unique_id=250536093 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, -0.5, 0, 0)
+
+[node name="SteelR" type="Node3D" parent="Fixture2" unique_id=1629378302 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, 0.5, 0, 0)
+
+[node name="Bottle0_0" type="Node3D" parent="Fixture2" unique_id=1863780849 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 0.62, 0.05)
+
+[node name="Bottle0_1" type="Node3D" parent="Fixture2" unique_id=1702891210 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 0.62, 0.05)
+
+[node name="Bottle0_2" type="Node3D" parent="Fixture2" unique_id=1580089013 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 0.62, 0.05)
+
+[node name="Bottle0_3" type="Node3D" parent="Fixture2" unique_id=320990508 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 0.62, 0.05)
+
+[node name="Bottle0_4" type="Node3D" parent="Fixture2" unique_id=1635470007 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 0.62, 0.05)
+
+[node name="Bottle0_5" type="Node3D" parent="Fixture2" unique_id=648114543 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 0.62, 0.05)
+
+[node name="Bottle0_6" type="Node3D" parent="Fixture2" unique_id=860684906 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 0.62, 0.05)
+
+[node name="Bottle0_7" type="Node3D" parent="Fixture2" unique_id=1129840357 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 0.62, 0.05)
+
+[node name="Bottle1_0" type="Node3D" parent="Fixture2" unique_id=1533448739 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.12, 0.05)
+
+[node name="Bottle1_1" type="Node3D" parent="Fixture2" unique_id=384712703 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.12, 0.05)
+
+[node name="Bottle1_2" type="Node3D" parent="Fixture2" unique_id=1894348452 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.12, 0.05)
+
+[node name="Bottle1_3" type="Node3D" parent="Fixture2" unique_id=345982271 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.12, 0.05)
+
+[node name="Bottle1_4" type="Node3D" parent="Fixture2" unique_id=2006785319 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.12, 0.05)
+
+[node name="Bottle1_5" type="Node3D" parent="Fixture2" unique_id=1490126135 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.12, 0.05)
+
+[node name="Bottle1_6" type="Node3D" parent="Fixture2" unique_id=487519211 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.12, 0.05)
+
+[node name="Bottle1_7" type="Node3D" parent="Fixture2" unique_id=839119042 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.12, 0.05)
+
+[node name="Bottle2_0" type="Node3D" parent="Fixture2" unique_id=562870574 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.62, 0.05)
+
+[node name="Bottle2_1" type="Node3D" parent="Fixture2" unique_id=2135147010 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.62, 0.05)
+
+[node name="Bottle2_2" type="Node3D" parent="Fixture2" unique_id=22409136 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.62, 0.05)
+
+[node name="Bottle2_3" type="Node3D" parent="Fixture2" unique_id=534526168 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.62, 0.05)
+
+[node name="Bottle2_4" type="Node3D" parent="Fixture2" unique_id=1034089037 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.62, 0.05)
+
+[node name="Bottle2_5" type="Node3D" parent="Fixture2" unique_id=1872465644 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.62, 0.05)
+
+[node name="Bottle2_6" type="Node3D" parent="Fixture2" unique_id=2115852278 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.62, 0.05)
+
+[node name="Bottle2_7" type="Node3D" parent="Fixture2" unique_id=680785807 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.62, 0.05)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Fixture2" unique_id=339992233]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+shape = SubResource("BoxShape3D_pmw53")
+
+[node name="Item2" type="Area3D" parent="." unique_id=1701160046 instance=ExtResource("13_m1402")]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("14_drd63")
+
+[node name="Fixture3" type="StaticBody3D" parent="." unique_id=1389456673]
+metadata/item_offset = Vector3(0, 0.45, 0.5)
+
+[node name="SteelL" type="Node3D" parent="Fixture3" unique_id=664987965 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, -0.5, 0, 0)
+
+[node name="SteelR" type="Node3D" parent="Fixture3" unique_id=2122524505 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, 0.5, 0, 0)
+
+[node name="Bottle0_0" type="Node3D" parent="Fixture3" unique_id=2072903432 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 0.62, 0.05)
+
+[node name="Bottle0_1" type="Node3D" parent="Fixture3" unique_id=797600937 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 0.62, 0.05)
+
+[node name="Bottle0_2" type="Node3D" parent="Fixture3" unique_id=562059875 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 0.62, 0.05)
+
+[node name="Bottle0_3" type="Node3D" parent="Fixture3" unique_id=244432768 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 0.62, 0.05)
+
+[node name="Bottle0_4" type="Node3D" parent="Fixture3" unique_id=1559502923 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 0.62, 0.05)
+
+[node name="Bottle0_5" type="Node3D" parent="Fixture3" unique_id=1594715852 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 0.62, 0.05)
+
+[node name="Bottle0_6" type="Node3D" parent="Fixture3" unique_id=1484338811 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 0.62, 0.05)
+
+[node name="Bottle0_7" type="Node3D" parent="Fixture3" unique_id=1061447304 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 0.62, 0.05)
+
+[node name="Bottle1_0" type="Node3D" parent="Fixture3" unique_id=1139559665 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.12, 0.05)
+
+[node name="Bottle1_1" type="Node3D" parent="Fixture3" unique_id=902684263 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.12, 0.05)
+
+[node name="Bottle1_2" type="Node3D" parent="Fixture3" unique_id=536207956 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.12, 0.05)
+
+[node name="Bottle1_3" type="Node3D" parent="Fixture3" unique_id=737733515 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.12, 0.05)
+
+[node name="Bottle1_4" type="Node3D" parent="Fixture3" unique_id=77429545 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.12, 0.05)
+
+[node name="Bottle1_5" type="Node3D" parent="Fixture3" unique_id=1982531563 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.12, 0.05)
+
+[node name="Bottle1_6" type="Node3D" parent="Fixture3" unique_id=939003710 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.12, 0.05)
+
+[node name="Bottle1_7" type="Node3D" parent="Fixture3" unique_id=1215256658 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.12, 0.05)
+
+[node name="Bottle2_0" type="Node3D" parent="Fixture3" unique_id=174823106 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.62, 0.05)
+
+[node name="Bottle2_1" type="Node3D" parent="Fixture3" unique_id=574936431 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.62, 0.05)
+
+[node name="Bottle2_2" type="Node3D" parent="Fixture3" unique_id=845366628 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.62, 0.05)
+
+[node name="Bottle2_3" type="Node3D" parent="Fixture3" unique_id=346923688 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.62, 0.05)
+
+[node name="Bottle2_4" type="Node3D" parent="Fixture3" unique_id=676921404 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.62, 0.05)
+
+[node name="Bottle2_5" type="Node3D" parent="Fixture3" unique_id=811672109 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.62, 0.05)
+
+[node name="Bottle2_6" type="Node3D" parent="Fixture3" unique_id=1507070208 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.62, 0.05)
+
+[node name="Bottle2_7" type="Node3D" parent="Fixture3" unique_id=1511644924 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.62, 0.05)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Fixture3" unique_id=1256328991]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+shape = SubResource("BoxShape3D_qdmxk")
+
+[node name="Item3" type="Area3D" parent="." unique_id=864278388 instance=ExtResource("13_m1402")]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("14_drd63")
+
+[node name="Fixture4" type="StaticBody3D" parent="." unique_id=754672871]
+metadata/item_offset = Vector3(0, 0.45, 0.5)
+
+[node name="SteelL" type="Node3D" parent="Fixture4" unique_id=120145209 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, -0.5, 0, 0)
+
+[node name="SteelR" type="Node3D" parent="Fixture4" unique_id=1842961654 instance=ExtResource("10_ivhui")]
+transform = Transform3D(0.091157705, 0, 0, 0, 0.1, 0, 0, 0, 0.119521916, 0.5, 0, 0)
+
+[node name="Bottle0_0" type="Node3D" parent="Fixture4" unique_id=1335160335 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 0.62, 0.05)
+
+[node name="Bottle0_1" type="Node3D" parent="Fixture4" unique_id=1837800138 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 0.62, 0.05)
+
+[node name="Bottle0_2" type="Node3D" parent="Fixture4" unique_id=460939025 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 0.62, 0.05)
+
+[node name="Bottle0_3" type="Node3D" parent="Fixture4" unique_id=1087499381 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 0.62, 0.05)
+
+[node name="Bottle0_4" type="Node3D" parent="Fixture4" unique_id=490132881 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 0.62, 0.05)
+
+[node name="Bottle0_5" type="Node3D" parent="Fixture4" unique_id=340931538 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 0.62, 0.05)
+
+[node name="Bottle0_6" type="Node3D" parent="Fixture4" unique_id=1201072813 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 0.62, 0.05)
+
+[node name="Bottle0_7" type="Node3D" parent="Fixture4" unique_id=888778477 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 0.62, 0.05)
+
+[node name="Bottle1_0" type="Node3D" parent="Fixture4" unique_id=526555496 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.12, 0.05)
+
+[node name="Bottle1_1" type="Node3D" parent="Fixture4" unique_id=1164476443 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.12, 0.05)
+
+[node name="Bottle1_2" type="Node3D" parent="Fixture4" unique_id=942006518 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.12, 0.05)
+
+[node name="Bottle1_3" type="Node3D" parent="Fixture4" unique_id=1946426076 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.12, 0.05)
+
+[node name="Bottle1_4" type="Node3D" parent="Fixture4" unique_id=1885243394 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.12, 0.05)
+
+[node name="Bottle1_5" type="Node3D" parent="Fixture4" unique_id=843260013 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.12, 0.05)
+
+[node name="Bottle1_6" type="Node3D" parent="Fixture4" unique_id=545795917 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.12, 0.05)
+
+[node name="Bottle1_7" type="Node3D" parent="Fixture4" unique_id=89879865 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.12, 0.05)
+
+[node name="Bottle2_0" type="Node3D" parent="Fixture4" unique_id=239726519 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.88, 1.62, 0.05)
+
+[node name="Bottle2_1" type="Node3D" parent="Fixture4" unique_id=321429162 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.63, 1.62, 0.05)
+
+[node name="Bottle2_2" type="Node3D" parent="Fixture4" unique_id=1777877179 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.38, 1.62, 0.05)
+
+[node name="Bottle2_3" type="Node3D" parent="Fixture4" unique_id=179477350 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, -0.13, 1.62, 0.05)
+
+[node name="Bottle2_4" type="Node3D" parent="Fixture4" unique_id=2003429487 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.12, 1.62, 0.05)
+
+[node name="Bottle2_5" type="Node3D" parent="Fixture4" unique_id=828644625 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.37, 1.62, 0.05)
+
+[node name="Bottle2_6" type="Node3D" parent="Fixture4" unique_id=1367723411 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.62, 1.62, 0.05)
+
+[node name="Bottle2_7" type="Node3D" parent="Fixture4" unique_id=219774657 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.42, 0, 0, 0, 0.42, 0, 0, 0, 0.42, 0.87, 1.62, 0.05)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Fixture4" unique_id=1996548375]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.1, 0)
+shape = SubResource("BoxShape3D_xhc3i")
+
+[node name="Item4" type="Area3D" parent="." unique_id=6811864 instance=ExtResource("13_m1402")]
+collision_layer = 4
+collision_mask = 0
+monitoring = false
+script = ExtResource("14_drd63")
+
+[node name="Counter" type="StaticBody3D" parent="." unique_id=341250584]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -0.7, 0, -0.9)
+
+[node name="Front" type="MeshInstance3D" parent="Counter" unique_id=1779551269]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6125, 0.49, -0.26)
+mesh = SubResource("BoxMesh_8nujy")
+
+[node name="Top" type="MeshInstance3D" parent="Counter" unique_id=525391552]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6125, 1, -0.26)
+mesh = SubResource("BoxMesh_bqh65")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Counter" unique_id=64857260]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6125, 0.52, -0.26)
+shape = SubResource("BoxShape3D_tgmpo")
+
+[node name="Plexiglass" type="MeshInstance3D" parent="Counter" unique_id=209352607]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 1.65, 0)
+mesh = SubResource("BoxMesh_x3kmc")
+
+[node name="PassThrough" type="MeshInstance3D" parent="Counter" unique_id=502468520]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 1.12, 0)
+mesh = SubResource("BoxMesh_u2udj")
+
+[node name="Pint0" type="Node3D" parent="Counter" unique_id=1085190166 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 0.3, 1.05, -0.35)
+
+[node name="Pint1" type="Node3D" parent="Counter" unique_id=605140583 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 0.7, 1.05, -0.35)
+
+[node name="Pint2" type="Node3D" parent="Counter" unique_id=1316808652 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 1.1, 1.05, -0.35)
+
+[node name="Pint3" type="Node3D" parent="Counter" unique_id=581374767 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 1.5, 1.05, -0.35)
+
+[node name="Pint4" type="Node3D" parent="Counter" unique_id=1189284279 instance=ExtResource("11_a6gin")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 1.9, 1.05, -0.35)
+
+[node name="Pint5" type="Node3D" parent="Counter" unique_id=469385917 instance=ExtResource("12_cp1be")]
+transform = Transform3D(0.35, 0, 0, 0, 0.35, 0, 0, 0, 0.35, 2.3, 1.05, -0.35)
+
+[node name="Register" type="Node3D" parent="Counter" unique_id=75590312 instance=ExtResource("18_03w7h")]
+transform = Transform3D(-0.6, 0, -5.2453668e-08, 0, 0.6, 0, 5.2453668e-08, 0, -0.6, 0.6, 1.05, -0.3)
+
+[node name="SecurityMirror" type="MeshInstance3D" parent="." unique_id=1854035731]
+transform = Transform3D(-0.70710677, 0.664463, -0.24184474, 0, -0.34202012, -0.9396926, -0.70710677, -0.664463, 0.24184474, 1.76, 2.3, -10.75)
+mesh = SubResource("SphereMesh_3654e")
+
+[node name="CameraSign" type="Label3D" parent="." unique_id=1126683617]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.61, 2.3, -11.02)
+shaded = true
+modulate = Color(0.9, 0.9, 0.85, 1)
+text = "SMILE, YOU'RE ON CAMERA"
+font_size = 26
+outline_size = 0
+
+[node name="LiquorNeon" type="Label3D" parent="." unique_id=329900880]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.45, -11.02)
+modulate = Color(2.2, 0.44, 0.33, 1)
+text = "COLD BEER & WINE"
+font_size = 40
+outline_size = 0
+
+[node name="LottoNeon" type="Label3D" parent="." unique_id=1186689824]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 1.96, 2.3, -2)
+modulate = Color(2.2, 1.76, 0.22, 1)
+text = "LOTTO"
+font_size = 56
+outline_size = 0
+
+[node name="NeonGlow" type="OmniLight3D" parent="." unique_id=566410275 groups=["always_lit", "walk_in_lights"]]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.2, -10.2)
+light_color = Color(1, 0.25, 0.2, 1)
+light_cull_mask = 2
+omni_range = 4.0
+
+[node name="BeerCrate" type="Node3D" parent="." unique_id=2110374907 instance=ExtResource("19_oo6e7")]
+transform = Transform3D(0.9848077, 0, 0.17364818, 0, 1, 0, -0.17364818, 0, 0.9848077, 1.51, 0, -10.5)
+
+[node name="WineRack" type="Node3D" parent="." unique_id=995091367 instance=ExtResource("20_s20wn")]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -1.66, 0, -10.6)
+
+[node name="Clerk" type="Node3D" parent="." unique_id=370691634 instance=ExtResource("21_kfbh1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.62, 0, -2.5)
+script = ExtResource("22_j01ij")
+vision_range = 9.5
+vision_angle_deg = 70.0
+sweep_arc_deg = 130.0
+talk_name = "Clerk"
+talk_lines = "You buying or browsing?
+I see you in the mirror. I see everybody in the mirror.
+No, I don't do credit.
+Touch the top shelf and I'm calling it in."
+talk_portrait_path = "res://assets/portraits/liquor_clerk.png"
+role = "clerk_liquor"
+
+[node name="MirrorWatch" type="Node3D" parent="." unique_id=247634428 instance=ExtResource("21_kfbh1")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.61, 0, -10.6)
+script = ExtResource("22_j01ij")
+vision_range = 5.0
+vision_angle_deg = 70.0
+sweep_arc_deg = 50.0
+sweep_speed = 0.3
+base_facing_deg = 130.0
+watcher_only = true

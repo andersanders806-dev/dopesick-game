@@ -119,6 +119,14 @@ func busy() -> bool:
 func cached(path: String) -> bool:
 	return _scenes.has(path)
 
+## The scene at `path` if it has finished loading, else null -- and it's
+## asked for, at the front of the queue, so it will have.
+func packed(path: String) -> PackedScene:
+	if _scenes.has(path):
+		return _scenes[path]
+	prefetch(path, true)
+	return null
+
 ## Starts loading `path` in the background, unless it's loaded already.
 ## One at a time, through a queue: the street has a door every few metres,
 ## and nine rooms loading at once on arrival fought the game for the CPU
@@ -202,6 +210,10 @@ func _prefetch_near_doors() -> void:
 		for path in preload("res://world/Facades.gd").WARM:
 			prefetch(path)
 		for path in preload("res://npc/CharacterCast.gd").all_models():
+			prefetch(path)
+		# The walk-in shops' rooms, after the clerks' models they use (built
+		# when you come near them).
+		for path in preload("res://world/Facades.gd").walk_in_scenes():
 			prefetch(path)
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:

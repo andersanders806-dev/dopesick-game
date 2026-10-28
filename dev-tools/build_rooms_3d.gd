@@ -76,7 +76,9 @@ func _new_root(name: String, script_path: String) -> Node3D:
 
 func _add(parent: Node, node: Node) -> Node:
 	parent.add_child(node)
-	node.owner = _root
+	# A walk-in shop's room is saved as a scene of its own (walk_in.gd's
+	# split): what is built into it belongs to the shop, not to the street.
+	node.owner = _shop if _shop != null else _root
 	return node
 
 func _instance(parent: Node, name: String, scene: PackedScene, pos := Vector3.ZERO, scale := 1.0, rot_y_deg := 0.0) -> Node3D:
@@ -760,6 +762,7 @@ const TUNE := {
 	"pharmacy_window": 1.9,
 	"liquor_window": 1.7,
 	"electronics_window": 1.6,
+	"music_window": 0.9,
 	"mirror_range": 5.0,
 }
 
@@ -1442,7 +1445,7 @@ func _build_music_store() -> Node3D:
 		PackedVector2Array([Vector2(-2.2, -1.5), Vector2(1.4, -1.5), Vector2(-3.4, 1.0), Vector2(0.2, 0.9), Vector2(4.3, -0.4)]),
 	]
 	_root.set("store_id", "music")
-	_root.set("theft_window", 0.9)
+	_root.set("theft_window", TUNE["music_window"])
 	var items: Array[String] = ["tape:lofi_loop"]
 	_root.set("item_ids", items)
 	_root.set("fixture_layouts", layouts)
@@ -2378,4 +2381,7 @@ func _build_city() -> Node3D:
 	_marker("SpawnDefault", Vector3(-17.5, 0, street_z + 1.5))
 	_player_and_hud(Vector3(-17.5, 0, street_z + 1.5))
 	CityKit.bake_navigation(self)
+	# Last, once the navmesh has the rooms' counters in it: each room goes
+	# to a scene of its own, and out of the street's.
+	CityWalkIn.split(self)
 	return _root

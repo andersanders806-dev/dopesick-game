@@ -188,6 +188,7 @@ static func _shell(b: Node, shop: Node3D, front: String, xl: float, xr: float, d
 	inside.monitorable = false
 	b._add(shop, inside)
 	b._collision(inside, b._box_shape(Vector3(w, CEIL, DEPTH - 0.4)), Vector3(cx, CEIL / 2.0, -0.4 - (DEPTH - 0.4) / 2.0))
+	_keep(b, inside)
 	var spawn := _marker(b, shop, "SpawnInside", Vector3(0.0, 0.0, -1.1))
 	spawn.set_meta("front", front)
 	# The police come to the doorstep.
@@ -211,14 +212,44 @@ static func _shell(b: Node, shop: Node3D, front: String, xl: float, xr: float, d
 	b._add(shop, locked)
 	locked.position = Vector3(0.0, 0.0, ft + 0.5)
 	b._collision(locked, b._box_shape(Vector3(1.8, 2.2, 1.0)), Vector3(0, 1.1, 0))
+	_keep(b, gate)
+	_keep(b, locked)
 	return spec
 
+## A marker the street keeps whether or not the room is built.
 static func _marker(b: Node, shop: Node3D, name: String, pos: Vector3) -> Marker3D:
 	var m := Marker3D.new()
 	m.name = name
 	b._add(shop, m)
 	m.position = pos
+	m.owner = b._root
 	return m
+
+## What stays in City3D.tscn: the doorway's parts. (Everything else of a
+## shop is owned by the shop, so it saves into the shop's own scene.)
+static func _keep(b: Node, node: Node) -> void:
+	node.owner = b._root
+	for c in node.get_children():
+		_keep(b, c)
+
+## Each shop's room as a scene of its own (world/walkin/<Front>.tscn), and
+## out of the street: world/WalkInShop.gd builds it into the placeholder
+## left in City3D when you come near.
+static func split(b: Node) -> void:
+	DirAccess.make_dir_recursive_absolute(Facades.WALK_IN_DIR)
+	var main: Node3D = _kit().cell(b, "Cell_Main")
+	for front in Facades.WALK_INS:
+		var shop := main.get_node(String(Facades.WALK_INS[front]["node"]))
+		var packed := PackedScene.new()
+		var err := packed.pack(shop)
+		if err != OK:
+			push_error("walk-in %s: pack failed (%d)" % [front, err])
+			continue
+		ResourceSaver.save(packed, Facades.walk_in_scene(front))
+		for c in shop.get_children():
+			if c.owner != b._root:
+				shop.remove_child(c)
+				c.free()
 
 ## What every store of the three that steal tells Store3D.
 static func _stock(shop: Node3D, store_id: String, window: float, items: Array[String], layouts: Array) -> void:
@@ -266,7 +297,7 @@ static func _convenience(b: Node, shop: Node3D, xl: float, xr: float, _spec: Dic
 		PackedVector3Array([Vector3(xl + 0.31, -2.6, 90), Vector3(xl + 0.31, -5.2, 90), Vector3(xr - 0.31, -5.2, -90), Vector3(xr - 0.31, -7.8, -90), Vector3(xl + 0.31, -8.0, 90)]),
 	]
 	var items: Array[String] = ["cigs", "charger", "batteries", "energy", "sunglasses"]
-	_stock(shop, "convenience", 1.6, items, layouts)
+	_stock(shop, "convenience", b.TUNE["convenience_window"], items, layouts)
 
 # --- Liquor store -----------------------------------------------------------------------
 
@@ -311,7 +342,7 @@ static func _liquor(b: Node, shop: Node3D, xl: float, xr: float, _spec: Dictiona
 	b._guard("Clerk", Vector3(-1.62, 0, -2.5), 0.0, 9.5, 70.0, 130.0, 0.6, "Clerk",
 		"You buying or browsing?\nI see you in the mirror. I see everybody in the mirror.\nNo, I don't do credit.\nTouch the top shelf and I'm calling it in.",
 		"res://assets/portraits/liquor_clerk.png", "clerk_liquor")
-	var mirror_eyes: Node3D = b._guard("MirrorWatch", Vector3(xr - 0.4, 0, -DEPTH + 0.4), 130.0, 5.0, 70.0, 50.0, 0.3)
+	var mirror_eyes: Node3D = b._guard("MirrorWatch", Vector3(xr - 0.4, 0, -DEPTH + 0.4), 130.0, b.TUNE["mirror_range"], 70.0, 50.0, 0.3)
 	mirror_eyes.set("watcher_only", true)
 	var w := xr - 0.31
 	var e := xl + 0.31
@@ -320,7 +351,7 @@ static func _liquor(b: Node, shop: Node3D, xl: float, xr: float, _spec: Dictiona
 		PackedVector3Array([Vector3(e, -5.8, 90), Vector3(w, -3.4, -90), Vector3(w, -6.0, -90), Vector3(w, -8.6, -90)]),
 	]
 	var items: Array[String] = ["whiskey", "vodka", "cognac", "vodka"]
-	_stock(shop, "liquor", 1.7, items, layouts)
+	_stock(shop, "liquor", b.TUNE["liquor_window"], items, layouts)
 
 # --- Pawnshop ------------------------------------------------------------------------------
 
@@ -418,4 +449,4 @@ static func _music(b: Node, shop: Node3D, xl: float, xr: float, _spec: Dictionar
 		PackedVector3Array([Vector3(a, -2.8, 90), Vector3(a, -5.4, 90), Vector3(c, -5.6, -90), Vector3(c, -8.2, -90), Vector3(a, -8.0, 90)]),
 	]
 	var items: Array[String] = ["tape:lofi_loop"]
-	_stock(shop, "music", 0.9, items, layouts)
+	_stock(shop, "music", b.TUNE["music_window"], items, layouts)

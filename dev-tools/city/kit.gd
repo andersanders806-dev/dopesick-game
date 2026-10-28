@@ -246,7 +246,9 @@ static func bake_navigation(b: Node) -> void:
 	for body in b._root.find_children("*", "StaticBody3D", true, false):
 		# Not a shop's gate (it shuts only at closing time) nor its shelves
 		# (WalkInShop puts them somewhere else each visit).
-		if (body.collision_layer & (1 | 16)) == 0 or body.owner != b._root or body.name == "Gate" or body.name.begins_with("Fixture"):
+		# (A walk-in room's counters are its own scene's, but belong in the bake.)
+		var in_street: bool = body.owner == b._root or (body.owner != null and String(body.owner.name).begins_with("WalkIn_"))
+		if (body.collision_layer & (1 | 16)) == 0 or not in_street or body.name == "Gate" or body.name.begins_with("Fixture"):
 			continue
 		for cs in body.find_children("*", "CollisionShape3D", false, false):
 			_add_shape(source, cs.shape, _rel(b._root, cs))

@@ -66,7 +66,7 @@ const CAST := {
 	"court_a": {"model": DIR + "Male_Adult_16.glb", "look": {}},
 	"court_b": {"model": DIR + "Male_Adult_10.glb", "look": {}},
 	"commuter_a": {"model": DIR + "Business_Male_07.glb", "look": {}},
-	"commuter_b": {"model": DIR + "Business_Female_02.glb", "look": {}},
+	"commuter_b": {"model": DIR + "Female_Adult_02.glb", "look": {}},
 	"stoop_a": {"model": DIR + "Female_Adult_07.glb", "look": {}},
 	"stoop_b": {"model": DIR + "Male_Adult_05.glb", "look": {}},
 	"stoop_c": {"model": DIR + "Female_Adult_09.glb", "look": {}},

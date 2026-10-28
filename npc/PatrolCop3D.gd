@@ -41,18 +41,28 @@ func _ready() -> void:
 	add_to_group("cell_sleepers")
 	_last_minute = GameState.now_minutes()
 
-## Where the loop says he is now (BlockCells freezes him in a sleeping cell
-## and City3D hides him; waking him puts him back on the beat).
+## BlockCells freezes him in a sleeping cell (he stands as he was -- hiding
+## him would pop). Woken after the clock has gone on, he is put back on the
+## beat by the loop's clock -- but not in front of the player: if that spot
+## (or where he stands) is in sight he is carried on along the loop until he
+## would be out of it, or left where he is and walks from there.
 func refresh() -> void:
-	var live := can_process()
-	if visible != live:
-		visible = live
-	if live and absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:
-		var at: Dictionary = Schedules.patrol_point(GameState.now_minutes(), int(heading))
-		global_position = at["pos"]
-		route_index = at["index"]
-		_path = PackedVector3Array()
+	if not visible:
+		visible = true
+	if can_process() and absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:
 		_last_minute = GameState.now_minutes()
+		if Schedules.is_seen(global_position):
+			return
+		var extra := 0.0
+		while extra < 440.0:
+			var at: Dictionary = Schedules.patrol_point(GameState.now_minutes(), int(heading), extra)
+			if not Schedules.is_seen(at["pos"]):
+				global_position = at["pos"]
+				reset_physics_interpolation()
+				route_index = at["index"]
+				_path = PackedVector3Array()
+				return
+			extra += 6.0
 
 func _physics_process(delta: float) -> void:
 	if absf(GameState.now_minutes() - _last_minute) > SNAP_GAP:

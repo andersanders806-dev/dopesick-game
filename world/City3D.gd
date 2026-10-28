@@ -454,6 +454,12 @@ func _spawn_scheduled_people() -> void:
 	for id in Schedules.walkers():
 		if Schedules.position_at(id, 0) != Vector3.INF:
 			people_pending.append(id)
+			# Their bodies (the boot prefetch leaves the regulars out) are
+			# asked for now, on arrival behind the fade, and built from as
+			# they come in; nothing is requested once the player walks.
+			var model := CharacterCast.model_for(Schedules.role_of(id))
+			if not ResourceLoader.has_cached(model) and ResourceLoader.load_threaded_get_status(model) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+				ResourceLoader.load_threaded_request(model)
 
 ## Makes the next one whose body is in; one a frame.
 func _build_next_person() -> void:
@@ -463,8 +469,11 @@ func _build_next_person() -> void:
 		if not ResourceLoader.has_cached(model):
 			var status := ResourceLoader.load_threaded_get_status(model)
 			if status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
-				ResourceLoader.load_threaded_request(model)
-				continue
+				# Nothing is requested once the player walks: a body that
+				# _spawn_scheduled_people never asked for is left out.
+				push_warning("Schedules: %s's body %s was never requested; skipped" % [id, model])
+				people_pending.remove_at(k)
+				return
 			if status == ResourceLoader.THREAD_LOAD_LOADED:
 				ResourceLoader.load_threaded_get(model)
 			else:
@@ -473,8 +482,6 @@ func _build_next_person() -> void:
 		var p: CharacterBody3D = ScheduledPersonScript.new()
 		p.name = id
 		p.set("person", id)
-		p.set("look_index", _people_i)
-		_people_i += 1
 		_people.add_child(p)
 		p.call("resync")
 		return

@@ -19,8 +19,14 @@ extends Node
 ## (near the player it walks and animates; far off in an awake cell it
 ## steps along its path every 15th tick without animating; in a sleeping
 ## cell it isn't processed at all and is put at position_at() when the cell
-## wakes). City3D.gd and the pusher, beat cop and postman read their places
-## from here.
+## wakes). The pusher and the beat cop read their posts and loop from here;
+## the postman is an errand, not a timetable (City3D sends him to the mailbox
+## when a parcel is due), so he isn't listed.
+##
+## One rule for everybody: nobody appears, vanishes, teleports or changes
+## pose while the player could see it (is_seen(): within SEEN_RANGE, or in
+## the camera's view). A change that is due is put off until it is unseen;
+## people who have to go in at a door walk to it first.
 
 const DAY := 1440
 const ACTIVITIES := ["idle", "sit", "walk_loop", "work", "smoke", "sleep"]
@@ -50,19 +56,19 @@ const PEOPLE := {
 			[17 * 60 + 20, "BusStop", "idle"], [19 * 60, "BusStop", "sleep"]]},
 	# The stoops, in the evening: out for a cigarette, then in. The 0:00
 	# entry is the one that takes them in across midnight.
-	"stoop_a": {"role": "stoop_a", "offset": Vector2(0.0, 0.0),
+	"stoop_a": {"role": "stoop_a", "offset": Vector2(0.0, 0.9),
 		"entries": [[0, "Stoop1", "sleep"], [18 * 60 + 30, "Stoop1", "smoke"]]},
-	"stoop_b": {"role": "stoop_b", "offset": Vector2(0.4, 0.2),
-		"entries": [[0 * 60 + 40, "Stoop2", "sleep"], [19 * 60, "Stoop2", "idle"], [22 * 60, "Stoop3", "smoke"]]},
-	"stoop_c": {"role": "stoop_c", "offset": Vector2(-0.4, 0.2),
+	"stoop_b": {"role": "stoop_b", "offset": Vector2(0.4, 1.0),
+		"entries": [[0 * 60 + 40, "Stoop2", "sleep"], [19 * 60, "Stoop2", "idle"], [22 * 60, "Stoop2", "smoke"]]},
+	"stoop_c": {"role": "stoop_c", "offset": Vector2(-0.4, 1.0),
 		"entries": [[0, "Stoop3", "sleep"], [20 * 60, "Stoop3", "idle"], [23 * 60 + 30, "Stoop3", "sleep"]]},
 	# The camp's residents, from dusk to the morning; one of them works the
 	# dumpsters while the others sleep it off.
-	"camp_a": {"role": "camp_a", "offset": Vector2(-1.0, 0.6),
+	"camp_a": {"role": "camp_a", "offset": Vector2(-0.6, -0.6),
 		"entries": [[0, "UnderpassCamp", "sit"], [7 * 60, "UnderpassCamp", "sleep"], [19 * 60, "UnderpassCamp", "sit"]]},
 	"camp_b": {"role": "camp_b", "offset": Vector2(1.0, -0.4),
 		"entries": [[0, "UnderpassCamp", "idle"], [6 * 60 + 30, "UnderpassCamp", "sleep"], [20 * 60, "UnderpassCamp", "idle"]]},
-	"camp_c": {"role": "camp_c", "offset": Vector2(0.0, 1.3),
+	"camp_c": {"role": "camp_c", "offset": Vector2(0.0, 0.3),
 		"entries": [[0, "UnderpassCamp", "sit"], [8 * 60, "AlleyDumpsters", "work"], [18 * 60, "UnderpassCamp", "sit"]]},
 	# The corner, 10:00 to 20:00; the underpass after that, until 03:00
 	# (GameState.PUSHER_HOURS). npc/Pusher3D.gd works the post it's given.
@@ -71,9 +77,6 @@ const PEOPLE := {
 	# Ray never leaves his crate.
 	"ray": {"role": "homeless", "spawn": false,
 		"entries": [[0, "RayCrate", "sit"]]},
-	# The postman rides the bus in for his round and out again after it.
-	"postman": {"role": "postman", "spawn": false,
-		"entries": [[0, "BusStop", "sleep"], [8 * 60, "BusStop", "work"], [18 * 60, "BusStop", "sleep"]]},
 	# The beat cop's loop is PATROL_ROUTE; he starts it at the station.
 	"beat_cop": {"role": "police", "spawn": false,
 		"entries": [[0, "PoliceStation", "walk_loop"]]},
@@ -223,13 +226,14 @@ func patrol_route() -> Array[Vector3]:
 ## walking at his pace, `dir` +1 or -1: {"pos": Vector3, "index": the
 ## waypoint he is heading for}. Used to put him back on the beat after he has
 ## been frozen in a sleeping cell, or after a load.
-func patrol_point(abs_minute: float, dir := 1) -> Dictionary:
+func patrol_point(abs_minute: float, dir := 1, extra_m := 0.0) -> Dictionary:
 	var n := PATROL_ROUTE.size()
 	var total := 0.0
 	for i in n:
 		total += PATROL_ROUTE[i].distance_to(PATROL_ROUTE[(i + 1) % n])
-	# 1.25 m/s on a clock that runs MINUTES_PER_SEC game minutes a second.
-	var along := fposmod(abs_minute * 1.25 / GameState.MINUTES_PER_SEC, total)
+	# 1.25 m/s on a clock that runs MINUTES_PER_SEC game minutes a second;
+	# `extra_m` is that many metres further on in his heading.
+	var along := fposmod(abs_minute * 1.25 / GameState.MINUTES_PER_SEC + extra_m, total)
 	if dir < 0:
 		along = total - along
 	for i in n:
@@ -241,3 +245,57 @@ func patrol_point(abs_minute: float, dir := 1) -> Dictionary:
 			return {"pos": pos, "index": (i + 1) % n if dir > 0 else i}
 		along -= len
 	return {"pos": PATROL_ROUTE[0], "index": 0}
+
+## --- Who can see what ---------------------------------------------------------------
+
+## Within this many metres of the player anything can be seen (round the
+## corner of a wall included: the player moves, the camera swings).
+const SEEN_RANGE := 30.0
+## For tests: 1 = everything is seen, 0 = nothing is, -1 (the default) = ask
+## the player and the camera.
+var seen_override := -1
+
+## Whether the player could see something standing at `pos`: it is within
+## SEEN_RANGE of them or inside the active camera's view (the real camera,
+## which can swing anywhere). With `behind_cover`, something standing behind
+## a wall or a pillar from the camera doesn't count -- for those who slip
+## away round a corner.
+func is_seen(pos: Vector3, behind_cover := false) -> bool:
+	if seen_override >= 0:
+		return seen_override == 1
+	if not is_inside_tree():
+		return false
+	var cam := get_viewport().get_camera_3d()
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var near := player != null and Vector2(player.global_position.x - pos.x, player.global_position.z - pos.z).length() < SEEN_RANGE
+	if not near and not _framed(cam, pos):
+		return false
+	if behind_cover and cam != null and _covered(cam, pos):
+		return false
+	return true
+
+## Whether `pos` (a person standing there) is inside the camera's view.
+func in_view(pos: Vector3) -> bool:
+	if seen_override >= 0:
+		return seen_override == 1
+	return is_inside_tree() and _framed(get_viewport().get_camera_3d(), pos)
+
+## Feet, waist, head and a hand's breadth either side: any of them in view.
+func _framed(cam: Camera3D, pos: Vector3) -> bool:
+	if cam == null:
+		return false
+	for off in [Vector3(0, 0.1, 0), Vector3(0, 0.9, 0), Vector3(0, 1.8, 0), Vector3(0.4, 0.9, 0), Vector3(-0.4, 0.9, 0), Vector3(0, 0.9, 0.4), Vector3(0, 0.9, -0.4)]:
+		if cam.is_position_in_frustum(pos + off):
+			return true
+	return false
+
+## All of feet, waist and head hidden from the camera by something solid.
+func _covered(cam: Camera3D, pos: Vector3) -> bool:
+	var space := cam.get_world_3d().direct_space_state
+	for h in [0.2, 0.9, 1.7]:
+		var to := pos + Vector3(0, h, 0)
+		var from := cam.global_position
+		var q := PhysicsRayQueryParameters3D.create(from, to + (from - to).normalized() * 0.3, 1)
+		if space.intersect_ray(q).is_empty():
+			return false
+	return true

@@ -9,11 +9,18 @@ extends CharacterBody3D
 ##     navmesh, animated; the NavigationAgent3D steers round the player and
 ##     the others only within AVOID_RANGE.
 ##   far, in an awake cell: every FAR_EVERY-th tick, stepping along the path
-##     by the time that has gone by; no animation (the model isn't
-##     processed).
-##   in a sleeping cell: BlockCells freezes them (group cell_sleepers) and
-##     City3D hides them. They are not simulated: when the cell wakes
-##     resync() puts them where position_at() says they should be.
+##     by the time that has gone by; the model isn't processed, so one the
+##     camera can see is stepped by hand (a lower frame rate, not a frozen
+##     pose gliding along).
+##   in a sleeping cell: BlockCells freezes them (group cell_sleepers). They
+##     are not simulated; they stand as they were (hiding a frozen person
+##     would pop). When the cell wakes and the clock has gone on, _catch_up()
+##     puts them where position_at() says -- if neither place is in sight.
+##
+## The rule for all of it: nobody appears, vanishes, teleports or changes
+## pose while the player could see it (Schedules.is_seen). A change that is
+## due waits until it is unseen; a person who has to go in at a door walks to
+## it first, and one who comes out of a door waits until nobody is looking.
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
@@ -24,6 +31,8 @@ const WALK_SPEED := 1.2
 const FULL_RANGE := 40.0
 const AVOID_RANGE := 10.0
 const FAR_EVERY := 15
+## Far but in the camera's view: logic and animation this often (about 15 Hz).
+const FAR_EVERY_VIEWED := 4
 ## How often the schedule is looked at (seconds).
 const PLAN_PERIOD := 0.5
 ## A clock that has gone this far (game minutes) since the last tick -- a
@@ -32,14 +41,14 @@ const PLAN_PERIOD := 0.5
 const SNAP_GAP := 20.0
 const ARRIVE := 0.35
 const TURN_SPEED := 6.0
-## They don't pop out of, or into, thin air in front of you: where there's
-## no door (the court, the camp) a person only goes in or comes out
-## unseen -- farther than this from the player.
-const SEEN_RANGE := 22.0
 const WANDER_RADIUS := 1.1
 const WANDER_PAUSE := Vector2(2.5, 6.0)
-## Places with a door, a bus or a building to step into.
-const DOORS := ["Stoop1", "Stoop2", "Stoop3", "BusStop", "PoliceStation", "PusherCorner", "RayCrate"]
+## Places with a door to walk into: the last metre is walked, then they go in
+## (in sight or not). Everywhere else (the bench, the court, the camp, the bus
+## stop) they only go in, or come out, where nobody is looking.
+const DOORS := ["Stoop1", "Stoop2", "Stoop3"]
+## How fast a seat is raised or lowered (m/s): standing up isn't a snap.
+const LIFT_SPEED := 0.6
 
 var person := ""
 var look_index := 0
@@ -63,6 +72,9 @@ var _facing := 0.0
 var _speed := WALK_SPEED
 var _rest_clip := "idle"
 var _phase := 0.0
+var _lift_target := 0.0
+## Far from the player but in the camera's view: still animated.
+var _viewed := false
 
 func _ready() -> void:
 	add_to_group("scheduled_people")
@@ -105,11 +117,12 @@ func _minute() -> int:
 	return int(fposmod(_now(), float(Schedules.DAY)))
 
 ## Puts them where the entry in force says they are: used when they are
-## made, after a long time away, and when their cell wakes.
+## made (the room's fade covers it) and by _catch_up() once it is certain
+## nobody could see the move.
 func resync() -> void:
 	_last_minute = _now()
 	var e := Schedules.entry_at(person, _minute())
-	_apply_goal(e)
+	_apply_goal(e, true)
 	if goal_pos != Vector3.INF:
 		global_position = goal_pos
 		reset_physics_interpolation()
@@ -117,36 +130,64 @@ func resync() -> void:
 	_wander_to = Vector3.INF
 	_set_indoors(goal.get("activity", "") == "sleep")
 	_face_goal()
-	_seat()
+	_seat(true)
 
-func _apply_goal(e: Dictionary) -> void:
+func _apply_goal(e: Dictionary, instant := false) -> void:
 	goal = e
 	if e.is_empty():
 		goal_pos = Vector3.INF
 		return
-	goal_pos = Schedules.position_for(person, e["place"])
+	var place: String = e["place"]
+	if e["activity"] == "sleep" and place in DOORS:
+		# Going in: to the door itself.
+		goal_pos = Schedules.place_position(place)
+	else:
+		goal_pos = Schedules.position_for(person, place)
+	# On their way in they keep the pose they have until they're gone:
+	# standing up through a bench is a pop.
+	if e["activity"] == "sleep" and not indoors and not instant:
+		return
 	_rest_clip = "sit" if e["activity"] == "sit" else "idle"
-	_model_root.position.y = 0.0
 	anim.set_rest_clip(_rest_clip)
+	_seat(instant)
 
 func _set_indoors(on: bool) -> void:
 	indoors = on
 	refresh()
 
-## City3D calls this when a cell wakes or sleeps: hidden if indoors or
-## frozen, and put right if they have just been woken.
+## City3D calls this when a cell wakes or sleeps (and every so often): hidden
+## when indoors; and, now that they are running again, brought up to date with
+## a clock that went on while they were frozen. A frozen person is not hidden:
+## they stand as they were.
 func refresh() -> void:
-	var live := can_process()
-	var show := live and not indoors
-	if visible != show:
-		visible = show
-	_model_root.process_mode = Node.PROCESS_MODE_INHERIT if (show and _full) else Node.PROCESS_MODE_DISABLED
-	if live and absf(_now() - _last_minute) > SNAP_GAP:
-		resync()
+	if visible == indoors:
+		visible = not indoors
+	_model_root.process_mode = Node.PROCESS_MODE_INHERIT if (not indoors and _full) else Node.PROCESS_MODE_DISABLED
+	if can_process() and absf(_now() - _last_minute) > SNAP_GAP:
+		_catch_up()
+
+## The clock has gone on a long way (a sleeping cell, a load, a night's
+## sleep). If neither where they are nor where they should be can be seen,
+## they are put there; otherwise they carry on from where they stand and
+## walk (or go in, or wait to come out) like anybody else.
+func _catch_up() -> void:
+	_last_minute = _now()
+	var e := Schedules.entry_at(person, _minute())
+	if e.is_empty():
+		return
+	var there := Schedules.position_for(person, e["place"])
+	var out_there: bool = e["activity"] != "sleep"
+	if there == Vector3.INF:
+		return
+	if (not indoors and Schedules.is_seen(global_position)) or (out_there and Schedules.is_seen(there)):
+		return
+	resync()
 
 ## A sitter's body is raised to a taller seat than the clip's (Schedules `lift`).
-func _seat() -> void:
-	_model_root.position.y = float(Schedules.info(person).get("lift", 0.0)) if goal.get("activity", "") == "sit" else 0.0
+func _seat(instant := false) -> void:
+	_lift_target = float(Schedules.info(person).get("lift", 0.0)) if goal.get("activity", "") == "sit" else 0.0
+	if instant:
+		_model_root.position.y = _lift_target
 
 func _face_goal() -> void:
 	var partner := Schedules.partner_of(person)
@@ -159,16 +200,21 @@ func _face_goal() -> void:
 		yaw = atan2(d.x, d.z)
 	elif goal.get("activity", "") in ["sit", "idle", "smoke", "work"]:
 		yaw = _phase
-		# Sitters and stoop-leaners face the street; the rest anywhere.
-		if goal.get("place", "") in ["ParkBench", "Stoop1", "Stoop2", "Stoop3", "BusStop"]:
+		# Sitters and stoop-leaners face the street (south on Main and the
+		# bench, the stoops' road is south too); the bus stop's open side is
+		# the road, to the north of it.
+		var place: String = goal.get("place", "")
+		if place in ["ParkBench", "Stoop1", "Stoop2", "Stoop3"]:
 			yaw = 0.0
+		elif place == "BusStop":
+			yaw = PI
 	_facing = yaw
 	_model_root.rotation.y = yaw
 
 func _physics_process(delta: float) -> void:
 	var now := _now()
 	if absf(now - _last_minute) > SNAP_GAP:
-		resync()
+		_catch_up()
 	_last_minute = now
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	var dist := 1.0e9
@@ -178,36 +224,45 @@ func _physics_process(delta: float) -> void:
 	if full != _full:
 		_full = full
 		_model_root.process_mode = Node.PROCESS_MODE_INHERIT if (full and visible) else Node.PROCESS_MODE_DISABLED
+	if absf(_model_root.position.y - _lift_target) > 0.0005:
+		_model_root.position.y = move_toward(_model_root.position.y, _lift_target, LIFT_SPEED * delta)
 	if not full:
 		_far_ticks += 1
 		_far_dt += delta
-		if _far_ticks % FAR_EVERY != 0:
+		if _far_ticks % (FAR_EVERY_VIEWED if _viewed else FAR_EVERY) != 0:
 			return
 		delta = _far_dt
 		_far_dt = 0.0
 	_plan_t -= delta
 	if _plan_t <= 0.0:
 		_plan_t = PLAN_PERIOD
-		_plan(player, dist)
+		_plan(dist, full)
 	if indoors:
 		return
 	_move(delta, full, player, dist)
+	if _viewed and not full:
+		anim.advance(delta)
 
-## Looks at the clock: has the next entry come up?
-func _plan(_player: Node3D, dist: float) -> void:
+## Looks at the clock: has the next entry come up? Goes in, if they are due to
+## and nobody would see it.
+func _plan(dist: float, full: bool) -> void:
 	var e := Schedules.entry_at(person, _minute())
 	if e.is_empty():
 		return
 	if goal.is_empty() or e["from"] != goal["from"] or e["place"] != goal["place"] or e["activity"] != goal["activity"]:
-		_begin(e, dist)
+		_begin(e)
 	var close := dist <= AVOID_RANGE
 	if nav_agent.avoidance_enabled != close:
 		nav_agent.avoidance_enabled = close
-	# Going in: where nobody can see it.
-	if not _walking and not indoors and goal.get("activity", "") == "sleep" and _can_vanish(String(goal.get("place", "")), dist):
-		_set_indoors(true)
+	_viewed = not full and not indoors and visible and Schedules.in_view(global_position)
+	# Going in: at a door once they have walked to it, anywhere else only
+	# where nobody can see it.
+	if not _walking and not indoors and goal.get("activity", "") == "sleep":
+		var place := String(goal.get("place", ""))
+		if place in DOORS or not Schedules.is_seen(global_position):
+			_set_indoors(true)
 
-func _begin(e: Dictionary, dist: float) -> void:
+func _begin(e: Dictionary) -> void:
 	var came_from: String = goal.get("place", "")
 	_apply_goal(e)
 	_wander_to = Vector3.INF
@@ -217,24 +272,25 @@ func _begin(e: Dictionary, dist: float) -> void:
 		if e["activity"] == "sleep":
 			# Still not out: only the door they will come out of has changed.
 			return
-		# Out of the door they went in at; the next place is a walk from there.
-		if not _can_vanish(came_from, dist):
-			# Seen: stay in until nobody is looking.
+		# Out of the door they went in at -- when nobody is looking. The next
+		# place is a walk from there.
+		var door := _door_of(came_from)
+		if door == Vector3.INF or Schedules.is_seen(door):
 			goal = {"from": -1, "place": came_from, "activity": "sleep"}
 			return
-		var door := Schedules.position_for(person, came_from)
-		if door != Vector3.INF:
-			global_position = door
-			reset_physics_interpolation()
+		global_position = door
+		reset_physics_interpolation()
 		_set_indoors(false)
+		_seat(true)
 	_walking = global_position.distance_to(goal_pos) > ARRIVE
 	if _walking:
 		nav_agent.target_position = goal_pos
+	else:
+		_face_goal()
 
-## Whether they can step in or out of `place` right now without being
-## watched do it.
-func _can_vanish(place: String, dist: float) -> bool:
-	return place in DOORS or dist > SEEN_RANGE
+## Where they step out of: the stoop's door; anywhere else the spot itself.
+func _door_of(place: String) -> Vector3:
+	return Schedules.place_position(place) if place in DOORS else Schedules.position_for(person, place)
 
 func _move(delta: float, full: bool, player: Node3D, dist: float) -> void:
 	if _walking:
@@ -255,8 +311,9 @@ func _move(delta: float, full: bool, player: Node3D, dist: float) -> void:
 			else:
 				_step_along(delta, _speed * 0.8, full)
 				return
-	if full:
+	if full or _viewed:
 		anim.update(0.0)
+	if full:
 		# Somebody coming up to you: a look, not a conversation.
 		if player != null and dist < 3.0 and activity != "sit":
 			var d := player.global_position - global_position
@@ -278,7 +335,7 @@ func _walk(delta: float, full: bool) -> void:
 		var step := minf(to.length(), _speed * delta)
 		global_position += to.normalized() * step
 		global_position.y = 0.0
-		if full:
+		if full or _viewed:
 			anim.update(_speed)
 			_facing = lerp_angle(_facing, atan2(to.x, to.z), TURN_SPEED * delta)
 			_model_root.rotation.y = _facing
@@ -290,7 +347,7 @@ func _arrive(full: bool) -> void:
 	velocity = Vector3.ZERO
 	_face_goal()
 	_seat()
-	if full:
+	if full or _viewed:
 		anim.update(0.0)
 
 ## One step toward the next point of the agent's path.
@@ -311,10 +368,15 @@ func _step_along(delta: float, speed: float, full: bool) -> void:
 			_facing = lerp_angle(_facing, atan2(velocity.x, velocity.z), TURN_SPEED * delta)
 			_model_root.rotation.y = _facing
 	else:
-		# Far away: along the path by the time that has gone, no collision,
-		# no animation.
+		# Far away: along the path by the time that has gone, no collision;
+		# animated by hand when the camera can see them (see _physics_process).
 		global_position += want * delta
 		global_position.y = 0.0
+		if dir != Vector3.ZERO:
+			_facing = atan2(dir.x, dir.z)
+			_model_root.rotation.y = _facing
+		if _viewed:
+			anim.update(speed)
 
 func _on_safe_velocity(safe: Vector3) -> void:
 	# The agent reports every tick while avoidance is on, even for someone

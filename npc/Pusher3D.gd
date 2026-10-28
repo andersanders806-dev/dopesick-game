@@ -80,6 +80,10 @@ var _post_position: Vector3
 ## one's post, stash, hiding place and facing are.
 var _spot := ""
 var _spots := {}
+## He is going to ground because his hours are up or his post has moved on --
+## so, unlike running from the cop, he waits at the hiding place for nobody to
+## be looking before he slips away (Schedules.is_seen, with cover counting).
+var _by_schedule := false
 ## Where he stashes and slips off to at the overpass, from the post.
 const NIGHT_STASH := Vector3(0.0, 0.0, 2.4)
 const NIGHT_HIDE := Vector3(0.0, 0.0, -6.0)
@@ -136,8 +140,12 @@ func _physics_process(delta: float) -> void:
 			anim.update(0.0)
 			# Knocks off at the end of his hours -- but only between sales.
 			if not GameState.pusher_on_shift():
+				_by_schedule = true
 				state = State.TO_HIDE
-			elif _patrol_within(HEAT_RANGE) or _spot_stale():
+			elif _spot_stale():
+				_by_schedule = true
+				state = State.TO_HIDE
+			elif _patrol_within(HEAT_RANGE):
 				state = State.TO_HIDE
 		State.TO_STASH:
 			if _walk_to(stash_position, delta):
@@ -163,15 +171,19 @@ func _physics_process(delta: float) -> void:
 				state = State.POST
 		State.TO_HIDE:
 			if _walk_to(hide_position, delta):
-				_set_hidden(true)
-				state = State.OFF_SHIFT if not GameState.pusher_on_shift() and not _owes_fix else State.HIDDEN
+				if _by_schedule and Schedules.is_seen(hide_position, true):
+					anim.update(0.0)
+				else:
+					_by_schedule = false
+					_set_hidden(true)
+					state = State.OFF_SHIFT if not GameState.pusher_on_shift() and not _owes_fix else State.HIDDEN
 		State.HIDDEN:
 			# Hid from the beat cop (not a chase): back once he's gone by.
 			if not GameState.wanted and not _patrol_within(HEAT_CLEAR_RANGE) and (GameState.pusher_on_shift() or _owes_fix):
-				_come_back()
+				_come_back(_spot != _wanted_spot())
 		State.OFF_SHIFT:
 			if GameState.pusher_on_shift() and not GameState.wanted:
-				_come_back()
+				_come_back(true)
 		State.RETURNING:
 			if _walk_to(_post_position, delta):
 				state = State.TO_STASH if _owes_fix else State.POST
@@ -393,12 +405,26 @@ func _retarget_spot() -> bool:
 	return true
 
 ## Out of hiding. If his post has changed since he went, he comes out of the
-## new post's hiding place -- unseen, since it's not where he went in.
-func _come_back() -> void:
+## new post's hiding place -- unseen, since it's not where he went in. When it
+## is the schedule that brings him out (his hours begin, his post has moved
+## on) he waits, hidden, until nobody could see him come: returns false while
+## he does.
+func _come_back(by_schedule := false) -> bool:
+	var out_at := _hide_of(_wanted_spot()) if _spot != _wanted_spot() else hide_position
+	if by_schedule and Schedules.is_seen(out_at, true):
+		return false
 	if _retarget_spot():
 		global_position = hide_position
 	_set_hidden(false)
 	state = State.RETURNING
+	return true
+
+## The hiding place of one of his posts.
+func _hide_of(spot: String) -> Vector3:
+	if _spots.has(spot):
+		return _spots[spot]["hide"]
+	var at := Schedules.place_position(spot)
+	return at + NIGHT_HIDE if at != Vector3.INF else hide_position
 
 func _patrol_within(range_m: float) -> bool:
 	var cop := get_tree().get_first_node_in_group("patrol") as Node3D

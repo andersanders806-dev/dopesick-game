@@ -169,7 +169,7 @@ func _draw_hours(c: Control, font: Font) -> void:
 	row += 1
 	var ph: Array = GameState.PUSHER_HOURS
 	_line(c, font, row, "The pusher")
-	_line(c, font, row, "%02d:00 - %02d:00, the corner; %02d:00 on, under the overpass%s" % [ph[0], ph[1], GameState.PUSHER_NIGHT_FROM, "   there now" if GameState.pusher_on_shift() else ""], RED_INK if GameState.pusher_on_shift() else INK_FADED, 260.0)
+	_line(c, font, row, "%02d-%02d the corner, %02d-%02d the overpass%s" % [ph[0], GameState.PUSHER_NIGHT_FROM, GameState.PUSHER_NIGHT_FROM, ph[1], "   there now" if GameState.pusher_on_shift() else ""], RED_INK if GameState.pusher_on_shift() else INK_FADED, 260.0)
 	row += 1
 	_line(c, font, row, "Shelter meals")
 	_line(c, font, row, "07:00 - 10:00 and 17:00 - 20:00", INK_FADED, 260.0)
@@ -203,7 +203,7 @@ func _draw_map(c: Control, font: Font) -> void:
 		c.draw_string(font, Vector2(tx - 4, top + 130), "T", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, INK)
 	var px: float = sx.call(14.0)
 	c.draw_circle(Vector2(px, top + 135), 6.0, RED_INK)
-	c.draw_string(font, Vector2(px + 10, top + 140), "him (4pm on)", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, RED_INK)
+	c.draw_string(font, Vector2(px + 10, top + 140), "him (%02d:00 on)" % GameState.PUSHER_HOURS[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, RED_INK)
 	c.draw_string(font, Vector2(left, top + 200), "road", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, INK_FADED)
 	c.draw_string(font, Vector2(left, top + 330), "The lot out back: through the alley. The supermarket's trucks unload there, early mornings.", HORIZONTAL_ALIGNMENT_LEFT, right - left, 14, INK_FADED)
 	var scene := get_tree().current_scene

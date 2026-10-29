@@ -30,14 +30,21 @@ func _initialize() -> void:
 	gs.clock_running = false
 	gs.clock = (23 * 60) if night else (14 * 60)
 	change_scene_to_file("res://world/City3D.tscn")
+	if "watchmesh" in args:
+		_watch_added = true
+		node_added.connect(func(n: Node): _added.append([Engine.get_process_frames(), str(n.get_path()) + " <" + n.get_class() + ">" + (" mesh=" + str((n as MeshInstance3D).mesh.resource_path.get_file()) if n is MeshInstance3D and (n as MeshInstance3D).mesh != null else "")]))
+		process_frame.connect(_check_mesh)
+	var pre_last := Time.get_ticks_usec()
 	for i in 240:
 		await process_frame
+		pre_last = _pre_hitch(pre_last, "load")
 	var player := get_first_node_in_group("player") as Node3D
 	player.dialogue_active = false
 	player.global_position = Vector3(-60, 0, -2.6)
 	player.reset_physics_interpolation()
 	for i in 30:
 		await process_frame
+		pre_last = _pre_hitch(pre_last, "settle")
 	_experiments(args)
 	# The game has the title screen's time to finish SceneLoader's background
 	# prefetch; standing still here is what starts it, so let it finish
@@ -48,9 +55,11 @@ func _initialize() -> void:
 		var w0 := Time.get_ticks_usec()
 		while (not sl._queue.is_empty() or not sl._loading.is_empty()) and Time.get_ticks_usec() - w0 < 60e6:
 			await process_frame
+			pre_last = _pre_hitch(pre_last, "wait")
 		print("prefetch wait %.1f s" % ((Time.get_ticks_usec() - w0) / 1e6))
 	var vp := root.get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(vp, true)
+	print("taxi model cached: ", ResourceLoader.has_cached("res://assets/cars/taxi_crownvic.glb"))
 	print("== %s %s %.0f s vsync %d  occl %s  nodes %d" % ["night" if night else "day", "FP" if fp else "TP", secs, DisplayServer.window_get_vsync_mode(), root.use_occlusion_culling, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
 	var dts: Array[float] = []
 	var clean: Array[float] = []
@@ -67,6 +76,7 @@ func _initialize() -> void:
 	for a in args:
 		if str(a).begins_with("scale="):
 			fixed_scale = float(str(a).substr(6))
+	var taxi_done := false
 	var t0 := Time.get_ticks_usec()
 	var last := t0
 	var slow := 0
@@ -89,6 +99,14 @@ func _initialize() -> void:
 		else:
 			Input.action_press("move_right" if dir > 0 else "move_left")
 		await process_frame
+		if "taxinow" in args and not taxi_done and Time.get_ticks_usec() - t0 > 3e6:
+			# A taxi model (loaded: the prefetch has run) appears ahead of the player
+			taxi_done = true
+			var tm: Node3D = (load("res://assets/cars/taxi_crownvic.glb") as PackedScene).instantiate()
+			load("res://world/CarPaint.gd").dress(tm, -1, false)
+			current_scene.add_child(tm)
+			tm.global_position = player.global_position + Vector3(10.0 * dir, 0, 2.5)
+			print("  taxi added at t=3 s, frame %d" % Engine.get_process_frames())
 		if fixed_scale > 0.0:
 			gfx.render_scale = fixed_scale
 			root.scaling_3d_scale = fixed_scale
@@ -119,7 +137,7 @@ func _initialize() -> void:
 			clean_gpu.append(g)
 		scales += root.scaling_3d_scale
 		if dt >= 100.0:
-			print("  HITCH %.0f ms at t=%.1f s pos %s" % [dt, (now - t0) / 1e6, player.global_position.snapped(Vector3.ONE)])
+			print("  HITCH frame %d %.0f ms at t=%.1f s pos %s proc %.0f phys %.0f gpu %.0f cpu_render %.0f objs %d res %d pipelines %s" % [Engine.get_process_frames(), dt, (now - t0) / 1e6, player.global_position.snapped(Vector3.ONE), Performance.get_monitor(Performance.TIME_PROCESS) * 1000, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000, g, RenderingServer.viewport_get_measured_render_time_cpu(vp), Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT), _pipelines()])
 		if dt > 25.0 and dt < 400.0:
 			slow += 1
 			print("  SLOW %.1f ms at %s gpu %.1f cpu_render %.1f proc %.1f" % [dt, player.global_position.snapped(Vector3.ONE), g, RenderingServer.viewport_get_measured_render_time_cpu(vp), Performance.get_monitor(Performance.TIME_PROCESS) * 1000])
@@ -169,3 +187,31 @@ func _experiments(args: Array) -> void:
 			n.visibility_range_end = 0.0
 			n.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 	print("experiments %s lights %d" % [str(args.slice(3)), n_l])
+
+## A frame of 100 ms or more before the walk starts (standing still), with the
+## frame number: tells a hitch that belongs to the scene's own timeline from one
+## the walking causes.
+func _pre_hitch(last: int, phase: String) -> int:
+	var now := Time.get_ticks_usec()
+	if (now - last) / 1000.0 >= 100.0 and phase != "load":
+		print("  PREHITCH %s frame %d %.0f ms | pipelines %s" % [phase, Engine.get_process_frames(), (now - last) / 1000.0, _pipelines()])
+	return now
+
+func _pipelines() -> String:
+	var ri := RenderingServer
+	return "mesh %d surface %d draw %d spec %d" % [ri.get_rendering_info(ri.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH), ri.get_rendering_info(ri.RENDERING_INFO_PIPELINE_COMPILATIONS_SURFACE), ri.get_rendering_info(ri.RENDERING_INFO_PIPELINE_COMPILATIONS_DRAW), ri.get_rendering_info(ri.RENDERING_INFO_PIPELINE_COMPILATIONS_SPECIALIZATION)]
+
+var _watch_added := false
+var _added: Array = []
+var _mesh_n := -1
+func _check_mesh() -> void:
+	var n := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_PIPELINE_COMPILATIONS_MESH)
+	var f := Engine.get_process_frames()
+	if _mesh_n >= 0 and n != _mesh_n:
+		print("  MESHPIPE %d -> %d at frame %d; nodes added in the last 4 frames:" % [_mesh_n, n, f])
+		for a in _added:
+			if a[0] >= f - 4:
+				print("     %d %s" % [a[0], a[1]])
+	_mesh_n = n
+	while _added.size() > 0 and _added[0][0] < f - 6:
+		_added.pop_front()

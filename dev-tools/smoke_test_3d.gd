@@ -4859,6 +4859,34 @@ func _block_cold_load_checks(gs: Node) -> void:
 	var first := Time.get_ticks_msec() - t0
 	_check(first <= CITY_LOAD_BUDGET_MS, "  ...so the first time onto it takes %d ms (budget %d; _ready %d ms)" % [first, CITY_LOAD_BUDGET_MS, current_scene.get("ready_ms")])
 	await _frames(10)
+	# Continue / New Game, then walk at once: no frame stalls while the
+	# background prefetch finishes and the traffic spawns (a car model loaded
+	# on the spawn that first picked it, the taxi's, was half a second).
+	var StreetLife := load("res://world/StreetLife.gd")
+	var picks_cached := true
+	for i in 300:
+		if not ResourceLoader.has_cached(StreetLife.car_path(StreetLife._pick_car())):
+			picks_cached = false
+	_check(picks_cached, "  traffic only picks cars whose model is loaded already")
+	var walker := _player()
+	var worst := 0.0
+	var frames := 0
+	var last_usec := Time.get_ticks_usec()
+	var walk_t0 := last_usec
+	Input.action_press("sprint")
+	while Time.get_ticks_usec() - walk_t0 < 20e6:
+		var right := int((Time.get_ticks_usec() - walk_t0) / 5e6) % 2 == 0
+		Input.action_release("move_left" if right else "move_right")
+		Input.action_press("move_right" if right else "move_left")
+		await process_frame
+		var now := Time.get_ticks_usec()
+		worst = maxf(worst, (now - last_usec) / 1000.0)
+		last_usec = now
+		frames += 1
+	Input.action_release("sprint")
+	Input.action_release("move_left")
+	Input.action_release("move_right")
+	_check(walker != null and worst < 100.0, "  walking off at once for 20 s: no frame over 100 ms (%d frames, worst %.0f ms)" % [frames, worst])
 
 func _block_layout_checks(gs: Node) -> void:
 	await _block_cold_load_checks(gs)

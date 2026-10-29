@@ -116,7 +116,7 @@ func _tip() -> String:
 	if GameState.debt > 0:
 		return "\"Big fella in a black jacket was asking after you. Asked nice, if you know what I mean. You square with the man?\""
 	if not GameState.pusher_on_shift():
-		return "\"Your guy? Not till four. He don't do mornings. Nobody sells in the mornings, too many eyes.\""
+		return "\"Your guy? Not till ten. He don't do mornings. Nobody sells in the mornings, too many eyes.\""
 	var h := GameState.hour()
 	var tips := [
 		"\"Cop walks the block now and then. Slow, looks at everybody. Don't be carrying when he goes by, and don't run.\"",

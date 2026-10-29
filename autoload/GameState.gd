@@ -115,9 +115,12 @@ const OPENING_HOURS := {
 }
 ## The shelter's two meal services, [start, end) hours.
 const MEAL_HOURS := [[7, 10], [17, 20]]
-## Street selling picks up in the afternoon and runs through the night; in
-## the morning the corner is empty, which is exactly when you're sickest.
-const PUSHER_HOURS := [16, 5]
+## He works the corner on Main Street through the day and moves under the
+## overpass at PUSHER_NIGHT_FROM, where he stays until he knocks off at 03:00
+## (autoload/Schedules.gd has the same hours as his posts); the early
+## morning is empty, which is exactly when you're sickest.
+const PUSHER_HOURS := [10, 3]
+const PUSHER_NIGHT_FROM := 20
 ## Which place a door leads into, by scene file, for the opening-hours check.
 const SCENE_PLACE := {
 	"StoreConvenience3D": "convenience",

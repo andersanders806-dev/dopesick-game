@@ -12,7 +12,7 @@ extends Area3D
 
 signal sale_completed
 
-enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, HIDDEN, RETURNING, OFF_SHIFT }
+enum State { POST, TO_STASH, AT_STASH, TO_POST, AWAIT_BUYER, HANDOFF, TO_HIDE, HIDDEN, RETURNING, OFF_SHIFT, RELOCATING }
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
@@ -75,6 +75,28 @@ const HANDOFF_LINES := [
 var anim: CharacterAnimator
 var state: State = State.POST
 var _post_position: Vector3
+## Which of his two posts he's on ("PusherCorner" by day, "PusherNight"
+## under the overpass from 20:00; autoload/Schedules.gd) and where each
+## one's post, stash, hiding place and facing are.
+var _spot := ""
+var _spots := {}
+## He is going to ground because his hours are up or his post has moved on --
+## so, unlike running from the cop, he waits at the hiding place for nobody to
+## be looking before he slips away (Schedules.is_seen, with cover counting).
+var _by_schedule := false
+## Where he stashes and slips off to at the overpass, from the post: the
+## stash is in the middle of the deck, the hiding place is round the back of
+## the east pillar (the post stands between two), so from under the deck he
+## goes behind the concrete and is gone -- never in the open.
+const NIGHT_STASH := Vector3(0.0, 0.0, 2.4)
+const NIGHT_HIDE := Vector3(5.0, 0.0, 0.0)
+## He was stopped on his way to a new post and sold on the spot (no stash
+## trip: he's carrying); when it's done he walks on.
+var _moving_on := false
+## Where he walks, along the navmesh (the way round a pillar or a building).
+var _path := PackedVector3Array()
+var _path_goal := Vector3.INF
+var _path_i := 0
 var _glance_t: float = 0.0
 var _timer: float = 0.0
 ## Paid for but not yet handed over (survives him having to hide).
@@ -100,8 +122,12 @@ func _ready() -> void:
 	CharacterLook.tint_clothes(model, clothes_tint)
 	anim = CharacterAnimator.new(model)
 	_post_position = global_position
+	# The corner is where the room put him; the other post is Schedules'.
+	_spots = {"PusherCorner": {"post": _post_position, "stash": stash_position, "hide": hide_position, "facing": street_facing_deg}}
+	_spot = "PusherCorner"
 	_glance_t = randf() * TAU
 	GameState.wanted_changed.connect(_on_wanted_changed)
+	_retarget_spot()
 	if GameState.wanted:
 		# Walked in mid-chase: he's already gone.
 		global_position = hide_position
@@ -111,6 +137,8 @@ func _ready() -> void:
 		global_position = hide_position
 		_set_hidden(true)
 		state = State.OFF_SHIFT
+	else:
+		global_position = _post_position
 
 func is_busy() -> bool:
 	return state != State.POST
@@ -122,7 +150,11 @@ func _physics_process(delta: float) -> void:
 			anim.update(0.0)
 			# Knocks off at the end of his hours -- but only between sales.
 			if not GameState.pusher_on_shift():
+				_by_schedule = true
 				state = State.TO_HIDE
+			elif _spot_stale():
+				# His post has moved on: he walks there, in plain sight.
+				_begin_relocation()
 			elif _patrol_within(HEAT_RANGE):
 				state = State.TO_HIDE
 		State.TO_STASH:
@@ -146,21 +178,24 @@ func _physics_process(delta: float) -> void:
 		State.HANDOFF:
 			_timer -= delta
 			if _timer <= 0.0:
-				state = State.POST
+				state = State.RELOCATING if _moving_on and GameState.pusher_on_shift() else State.POST
+				_moving_on = false
 		State.TO_HIDE:
 			if _walk_to(hide_position, delta):
-				_set_hidden(true)
-				state = State.OFF_SHIFT if not GameState.pusher_on_shift() and not _owes_fix else State.HIDDEN
+				if _by_schedule and Schedules.is_seen(hide_position, true):
+					anim.update(0.0)
+				else:
+					_by_schedule = false
+					_set_hidden(true)
+					state = State.OFF_SHIFT if not GameState.pusher_on_shift() and not _owes_fix else State.HIDDEN
 		State.HIDDEN:
 			# Hid from the beat cop (not a chase): back once he's gone by.
 			if not GameState.wanted and not _patrol_within(HEAT_CLEAR_RANGE) and (GameState.pusher_on_shift() or _owes_fix):
-				_set_hidden(false)
-				state = State.RETURNING
+				_come_back()
 		State.OFF_SHIFT:
 			if GameState.pusher_on_shift() and not GameState.wanted:
-				_set_hidden(false)
-				state = State.RETURNING
-		State.RETURNING:
+				_come_back(true)
+		State.RETURNING, State.RELOCATING:
 			if _walk_to(_post_position, delta):
 				state = State.TO_STASH if _owes_fix else State.POST
 
@@ -176,7 +211,7 @@ func interact(player: Node) -> void:
 	if GameState.wanted:
 		hud.show_dialogue("Pusher", "\"You brought cops with you? Walk away. Now.\"", PORTRAIT)
 		return
-	if state != State.POST:
+	if state != State.POST and state != State.RELOCATING:
 		hud.show_dialogue("Pusher", "\"I said wait.\"", PORTRAIT)
 		return
 	# Late: he takes what you've got before anything else, and sells you
@@ -226,6 +261,7 @@ func _todays_stock() -> Array:
 
 func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
+	var moving := state == State.RELOCATING
 	var cost := GameState.price_of(drug_id)
 	if on_credit:
 		if not GameState.can_front(cost):
@@ -238,8 +274,8 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 		_owes_fix = true
 		if hud:
 			player.dialogue_active = true
-			hud.show_dialogue("Pusher", "He looks you over for a long second. \"$%d. By this time tomorrow. I know where you sleep.\" He walks off down the street." % GameState.debt, PORTRAIT)
-		state = State.TO_STASH
+			hud.show_dialogue("Pusher", "He looks you over for a long second. \"$%d. By this time tomorrow. I know where you sleep.\" %s" % [GameState.debt, "He stops, turns, and reaches into his jacket." if moving else "He walks off down the street."], PORTRAIT)
+		_after_payment(moving)
 		return
 	if not GameState.spend_cash(cost):
 		player.dialogue_active = false
@@ -252,8 +288,14 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 	SFX.play("cash", -6.0, 0.8)
 	if hud:
 		player.dialogue_active = true
-		hud.show_dialogue("Pusher", WAIT_LINES.pick_random() % cost, PORTRAIT)
-	state = State.TO_STASH
+		hud.show_dialogue("Pusher", ("\"$%d. Walk with me. ...No, here's fine.\" He stops, turns, and reaches into his jacket." % cost) if moving else WAIT_LINES.pick_random() % cost, PORTRAIT)
+	_after_payment(moving)
+
+## Paid. At his post he walks off for the stash; on the road he has it on him
+## and hands it over where he stands.
+func _after_payment(moving: bool) -> void:
+	_moving_on = moving
+	state = State.AWAIT_BUYER if moving else State.TO_STASH
 
 func _pay_back(player: Node, amount: int) -> void:
 	var paid := GameState.pay_debt(amount)
@@ -349,10 +391,79 @@ func _on_wanted_changed(is_wanted: bool) -> void:
 			state = State.TO_HIDE
 	elif state in [State.HIDDEN, State.TO_HIDE]:
 		if GameState.pusher_on_shift() or _owes_fix:
-			_set_hidden(false)
-			state = State.RETURNING
+			_come_back()
 		elif state == State.HIDDEN:
 			state = State.OFF_SHIFT
+
+## The post the schedule has him on now (or the one he's on, off shift).
+func _wanted_spot() -> String:
+	return Schedules.pusher_post(int(GameState.clock))
+
+## Moved on at 20:00 (or back to the corner in the morning) while on his post.
+func _spot_stale() -> bool:
+	return GameState.pusher_on_shift() and _spot != _wanted_spot()
+
+## Takes up the post the schedule gives: post, stash, hiding place and
+## facing. Returns whether it changed.
+func _retarget_spot() -> bool:
+	var want := _wanted_spot()
+	if want == _spot or want == "":
+		return false
+	if not _spots.has(want):
+		var at := Schedules.place_position(want)
+		if at == Vector3.INF:
+			return false
+		_spots[want] = {"post": at, "stash": at + NIGHT_STASH, "hide": at + NIGHT_HIDE, "facing": -90.0}
+	_spot = want
+	var sp: Dictionary = _spots[want]
+	_post_position = sp["post"]
+	stash_position = sp["stash"]
+	hide_position = sp["hide"]
+	street_facing_deg = sp["facing"]
+	return true
+
+## His post has moved on while he was selling: he takes up the new one and
+## walks to it along the navmesh, in sight of whoever is there.
+func _begin_relocation() -> void:
+	_retarget_spot()
+	_path_goal = Vector3.INF
+	state = State.RELOCATING
+
+## Out of hiding. Hours that begin with his post elsewhere (the morning, after
+## a night at the overpass) bring him out of the new post's hiding place --
+## which is not where he went in, so unseen -- and when the schedule does it
+## he waits, hidden, until nobody could see him come: returns false while he
+## does. Hiding from the cop at a post that has moved on since, he comes out
+## where he went in and walks to the new one.
+func _come_back(by_schedule := false) -> bool:
+	var stale := _spot != _wanted_spot()
+	var from_off_shift := state == State.OFF_SHIFT
+	if stale and from_off_shift:
+		if by_schedule and Schedules.is_seen(_hide_of(_wanted_spot()), true):
+			return false
+		if _retarget_spot():
+			global_position = hide_position
+		_path_goal = Vector3.INF
+		_set_hidden(false)
+		state = State.RETURNING
+		return true
+	if by_schedule and Schedules.is_seen(hide_position, true):
+		return false
+	_set_hidden(false)
+	_path_goal = Vector3.INF
+	if stale and GameState.pusher_on_shift():
+		_retarget_spot()
+		state = State.RELOCATING
+	else:
+		state = State.RETURNING
+	return true
+
+## The hiding place of one of his posts.
+func _hide_of(spot: String) -> Vector3:
+	if _spots.has(spot):
+		return _spots[spot]["hide"]
+	var at := Schedules.place_position(spot)
+	return at + NIGHT_HIDE if at != Vector3.INF else hide_position
 
 func _patrol_within(range_m: float) -> bool:
 	var cop := get_tree().get_first_node_in_group("patrol") as Node3D
@@ -363,17 +474,34 @@ func _set_hidden(hidden: bool) -> void:
 	talk_shape.set_deferred("disabled", hidden)
 	body_shape.set_deferred("disabled", hidden)
 
-## Moves along the ground toward `target`; true once there.
+## Moves toward `target` along the navmesh (round pillars and buildings;
+## straight where there is no navmesh); true once there.
 func _walk_to(target: Vector3, delta: float) -> bool:
 	var to := target - global_position
 	to.y = 0.0
-	var dist := to.length()
-	if dist < 0.1:
+	if to.length() < 0.1:
 		anim.update(0.0)
 		return true
+	if _path_goal.distance_to(target) > 0.05:
+		_path_goal = target
+		_path = NavigationServer3D.map_get_path(get_world_3d().navigation_map, global_position, target, true)
+		_path_i = 0
+	var next := target
+	while _path_i < _path.size():
+		var d := Vector2(_path[_path_i].x - global_position.x, _path[_path_i].z - global_position.z)
+		if d.length() < 0.15:
+			_path_i += 1
+		else:
+			next = Vector3(_path[_path_i].x, 0.0, _path[_path_i].z)
+			break
+	var leg := next - global_position
+	leg.y = 0.0
+	var dist := leg.length()
+	if dist < 0.01:
+		return false
 	var step := minf(dist, WALK_SPEED * delta)
-	global_position += to / dist * step
-	_face(rad_to_deg(atan2(to.x, to.z)), delta)
+	global_position += leg / dist * step
+	_face(rad_to_deg(atan2(leg.x, leg.z)), delta)
 	anim.update(WALK_SPEED)
 	return false
 

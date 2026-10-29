@@ -192,6 +192,17 @@ func update(horizontal_speed: float, anim_speed := -1.0) -> void:
 	else:
 		play(_rest_clip, anim_speed if anim_speed >= 0.0 else _idle_rate)
 
+## Steps the clip on by hand, for a body whose node isn't processing (a far
+## walker the camera can still see: animated at a lower rate instead of
+## gliding in a frozen pose).
+func advance(seconds: float) -> void:
+	if _player != null and _player.is_inside_tree():
+		_player.advance(seconds)
+
+## Where in its clip the player is, seconds (for tests).
+func clip_position() -> float:
+	return _player.current_animation_position if _player != null else 0.0
+
 func stride_rate(clip: String, ground_speed: float) -> float:
 	return clampf(ground_speed / natural_speed(clip), STRIDE_LIMITS.x, STRIDE_LIMITS.y)
 

@@ -26,6 +26,6 @@ func _on_wanted_changed(is_wanted: bool) -> void:
 ## to come back -- the only way to learn the pusher keeps hours at all.
 func _flavor_interact(hud: Node) -> void:
 	if not GameState.pusher_on_shift():
-		hud.show_dialogue(npc_name, "He ain't out yet. Four o'clock, maybe. Come back then.", _portrait())
+		hud.show_dialogue(npc_name, "He ain't out yet. Ten o'clock, maybe. After dark he works under the overpass, east side. Come back then.", _portrait())
 		return
 	super._flavor_interact(hud)

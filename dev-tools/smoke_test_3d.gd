@@ -7,6 +7,7 @@ extends SceneTree
 ##   godot --headless --path . -s res://dev-tools/smoke_test_3d.gd
 ## Exit code 0 = all checks passed.
 
+const CharacterCast := preload("res://npc/CharacterCast.gd")
 var _failures := 0
 var PoliceScene: PackedScene
 
@@ -315,11 +316,19 @@ func _run() -> void:
 	# The beat cop gets his own section; here he'd just chase the pusher off.
 	_clear_patrol(current_scene)
 	var pusher := current_scene.get_node("Pusher") as Area3D
-	await _until_pusher_on_post(pusher)
+	# Earlier checks have left the clock at night, when he's under the
+	# overpass: make it his afternoon and let him come back to the corner.
+	gs.clock = 17 * 60
+	var corner_wait := 0
+	while corner_wait < 1800 and not (pusher.state == pusher.State.POST and pusher.global_position.distance_to(Vector3(14.0, 0, -3.5)) < 3.0):
+		await _frames(10)
+		corner_wait += 10
 	var city_player := _player()
 	city_player.global_position = current_scene.get_node("SpawnFromShop").global_position
 	await _frames(3)
-	_check(await _walk_until_nearest(pusher), "can walk up to the pusher from the shop door")
+	var reached := await _walk_until_nearest(pusher)
+	var nearest = city_player._nearest_interactable()
+	_check(reached, "can walk up to the pusher from the shop door (pusher %s state %d, nearest %s, player %s)" % [pusher.global_position, pusher.state, nearest.name if nearest else "-", city_player.global_position])
 	gs.cash = 0
 	gs.craving = 10.0
 	await _frames(1)
@@ -839,6 +848,7 @@ func _run() -> void:
 	await _block_layout_checks(gs)
 	await _block_cells_checks(gs)
 	await _walk_in_checks(gs)
+	await _schedules_checks(gs)
 	await _zombie_shell_checks(gs)
 	await _zombie_anim_checks(gs)
 	await _zombie_dead_checks(gs)
@@ -877,9 +887,12 @@ func _day_night_checks(gs: Node) -> void:
 	_clear_patrol(city)
 	var pusher := city.get_node("Pusher")
 	_check(pusher.state == pusher.State.OFF_SHIFT and not pusher.model_root.visible, "  no pusher on the corner at 09:00")
-	gs.clock = 16 * 60 + 30
+	# (He steps out of hiding when nobody could see him do it.)
+	root.get_node("Schedules").seen_override = 0
+	gs.clock = 10 * 60 + 30
 	await _frames(240)
-	_check(pusher.state != pusher.State.OFF_SHIFT and pusher.model_root.visible, "  he's back on his spot by 16:30")
+	root.get_node("Schedules").seen_override = -1
+	_check(pusher.state != pusher.State.OFF_SHIFT and pusher.model_root.visible, "  he's back on his spot by 10:30")
 
 	gs.clock = 14 * 60
 	var market := await _load("res://world/StoreSupermarket3D.tscn")
@@ -1070,8 +1083,9 @@ func _street_checks(gs: Node) -> void:
 	_check(not cold_tip.contains("black jacket") and hud.text_label.text.contains("black jacket"), "  ...and then he warns you who's been asking after you")
 	gs.debt = 0
 
-	# The beat cop: watching a hand-to-hand at the pusher's corner calls it in.
-	gs.clock = 22 * 60
+	# The beat cop: watching a hand-to-hand at the pusher's corner calls it in
+	# (the corner is his post until 20:00; after that he works the overpass).
+	gs.clock = 18 * 60
 	city = await _load("res://world/City3D.tscn")
 	_clear_patrol(city)
 	var pusher := city.get_node("Pusher")
@@ -2449,7 +2463,9 @@ func _search_checks(gs: Node) -> void:
 	_close_menus()
 	gs.start_run()
 	gs.clock_running = false
-	gs.clock = 13 * 60
+	# Morning: the pusher isn't on his corner yet (he'd be standing in the
+	# alley mouth this hides in) and the street is busy.
+	gs.clock = 9 * 60
 	var city := await _load("res://world/City3D.tscn")
 	var p := _player()
 	_check(city.find_child("AlleyHide", true, false) != null and get_nodes_in_group("hide_spots").size() >= 2, "  hiding spots on the block (%d)" % get_nodes_in_group("hide_spots").size())
@@ -4856,6 +4872,9 @@ func _block_cold_load_checks(gs: Node) -> void:
 	var loader := root.get_node("SceneLoader")
 	# (The walk-in shops' rooms are part of what loads in the title screen's time.)
 	var warm: Array = ["res://world/City3D.tscn"] + load("res://world/Facades.gd").WARM + load("res://world/Facades.gd").walk_in_scenes()
+	# ...and the cast's bodies, which SceneLoader queues after them: "Continue"
+	# is a few seconds after boot, long enough for those too.
+	warm += load("res://npc/CharacterCast.gd").all_models()
 	var t_boot := Time.get_ticks_msec()
 	while not warm.all(func(p): return loader.cached(p)) and Time.get_ticks_msec() - t_boot < 30000:
 		await process_frame
@@ -4869,7 +4888,7 @@ func _block_cold_load_checks(gs: Node) -> void:
 	await process_frame
 	await process_frame
 	var first := Time.get_ticks_msec() - t0
-	_check(first <= CITY_LOAD_BUDGET_MS, "  ...so the first time onto it takes %d ms (budget %d; _ready %d ms)" % [first, CITY_LOAD_BUDGET_MS, current_scene.get("ready_ms")])
+	_check(first <= CITY_LOAD_BUDGET_MS, "  ...so the first time onto it takes %d ms (budget %d; _ready %d ms, of which the people %d ms)" % [first, CITY_LOAD_BUDGET_MS, current_scene.get("ready_ms"), current_scene.get("people_ms")])
 	await _frames(10)
 	# Continue / New Game, then walk at once: no frame stalls while the
 	# background prefetch finishes and the traffic spawns (a car model loaded
@@ -5049,6 +5068,8 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 	# A dry afternoon: in the rain the lamps come half on (City3D).
 	gs.raining = false
 	gs.advance_clock(1)
+	# (A random hour's rain would leave the lamps half on.)
+	gs.set_raining(false)
 	await _frames(3)
 	var night := get_nodes_in_group("night_lights").filter(func(l): return city.is_ancestor_of(l))
 	var lit_by_day := night.filter(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01).map(func(l): return l.name)
@@ -5069,7 +5090,7 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 	gs.advance_clock(1)
 	await _frames(3)
 	# (Those in cells asleep this far from you stay off: world/BlockCells.gd.)
-	var cells_node := city.get_node("BlockCells")
+	var cells_node: Node = city.get_node("BlockCells")
 	var awake_night := night.filter(func(l): return cells_node.cell_of(l) == null or cells_node.is_awake(cells_node.cell_of(l)))
 	_check(awake_night.size() > 0 and awake_night.all(func(l): return l.is_visible_in_tree() and l.light_energy > 0.01)
 		and night.all(func(l): return l in awake_night or not l.is_visible_in_tree()), "  ...and on at 22:00 (the %d in cells awake; the rest asleep and dark)" % awake_night.size())
@@ -7702,4 +7723,664 @@ func _walk_in_checks(gs: Node) -> void:
 		_check(not shop.player_inside and sv.outside() and not sfx._rain_indoor.playing and String(ambience.get_meta("track", "")).ends_with("city.ogg"), "  ...and back out on the street")
 	gs.raining = false
 	gs.clock = 17 * 60
+
+
+# --- Open world, task 4: people with somewhere to be --------------------------------
+
+func _sched_person(city: Node, id: String) -> Node3D:
+	return city.get_node_or_null("People/" + id) as Node3D
+
+## Stands the player `away` metres off the spot and lets the cells around
+## settle (and the people in them run a tick or two).
+func _sched_visit(spot: Vector3, away := 6.0) -> void:
+	var p := _player()
+	p.global_position = spot + Vector3(away, 0, away)
+	p.reset_physics_interpolation()
+	await _frames(BLOCK_SETTLE_FRAMES + 40)
+
+## The block loaded, and the people it makes a frame at a time all made.
+func _sched_load() -> Node:
+	var c := await _load("res://world/City3D.tscn")
+	var frames := 10
+	var t0 := Time.get_ticks_msec()
+	# Their bodies load in the background (threads), a frame's wait each.
+	while not c.people_pending.is_empty() and Time.get_ticks_msec() - t0 < 60000:
+		await _frames(1)
+		frames += 1
+	c.set_meta("people_frames", frames)
+	return c
+
+
+## Stands the player `away` metres off a place, in a fresh block at `minute`.
+func _sched_scene(gs: Node, minute: int, place: String, away := 6.0) -> Node:
+	gs.clock = minute
+	var c := await _sched_load()
+	_clear_patrol(c)
+	await _frames(5)
+	await _sched_visit(root.get_node("Schedules").place_position(place), away)
+	return c
+
+## Plays `frames` physics frames at the real pace of the clock with the real
+## camera and reports anything that, while it could be seen, appeared,
+## vanished, jumped more than a metre in a tick, changed its seat height by
+## more than 3 cm in one, or changed its pose in place (a clip change with no
+## walking and no new entry or state within the last two seconds: standing
+## up out of a chair is fine when they walk off). A person walking into her
+## door in sight is the one vanishing that's fine. With `orbit` the camera
+## swings once round the player while the clock runs. `until`, if given, ends
+## the run early when it returns true.
+func _sched_watch(city: Node, frames: int, orbit := false, until := Callable()) -> Array:
+	var sch := root.get_node("Schedules")
+	var gs := _gs()
+	var prev := {}
+	var bad: Array = []
+	var player := _player()
+	var pitch: float = player.get("_look_pitch")
+	for f in frames:
+		await _frames(1)
+		gs.advance_clock(gs.MINUTES_PER_SEC / 60.0)
+		if orbit:
+			player.set_look(TAU * float(f) / float(frames) - PI, pitch)
+		var subjects: Array = []
+		for n in get_nodes_in_group("scheduled_people"):
+			if city.is_ancestor_of(n):
+				subjects.append(n)
+		for n in get_nodes_in_group("patrol"):
+			subjects.append(n)
+		var pusher := city.get_node_or_null("Pusher")
+		if pusher != null:
+			subjects.append(pusher)
+		for n in subjects:
+			if not is_instance_valid(n):
+				continue
+			var is_pusher: bool = n == pusher
+			var is_person: bool = n.is_in_group("scheduled_people")
+			var vis: bool = pusher.model_root.visible if is_pusher else n.visible
+			var pos: Vector3 = n.global_position
+			var lift := 0.0
+			var clip := ""
+			var key := ""
+			if is_person:
+				lift = float(n.get("_model_root").position.y)
+				clip = n.anim.current_clip()
+				key = "%s/%s" % [n.goal.get("place", ""), n.goal.get("activity", "")]
+			elif is_pusher:
+				clip = pusher.anim.current_clip()
+				key = str(pusher.state)
+			var rec := {"vis": vis, "pos": pos, "lift": lift, "clip": clip, "moved": -999, "changed": -999}
+			if prev.has(n):
+				var was: Dictionary = prev[n]
+				rec["moved"] = f if pos.distance_to(was["pos"]) > 0.004 else was["moved"]
+				rec["changed"] = f if key != was.get("key", key) else was["changed"]
+				if sch.is_seen(was["pos"], is_pusher) or sch.is_seen(pos, is_pusher):
+					var what := ""
+					if vis != was["vis"]:
+						var at_door := false
+						if is_person and was["vis"] and not vis:
+							var pl := String(n.goal.get("place", ""))
+							at_door = pl.begins_with("Stoop") and pos.distance_to(sch.place_position(pl)) < 0.8
+						if not at_door:
+							what = "%s %s" % ["appeared" if vis else "vanished", n.name]
+					elif vis and pos.distance_to(was["pos"]) > 1.0:
+						what = "%s jumped %.1f m" % [n.name, pos.distance_to(was["pos"])]
+					elif absf(lift - was["lift"]) > 0.03:
+						what = "%s's seat height jumped %.2f" % [n.name, lift - was["lift"]]
+					elif vis and clip != was["clip"] and clip != "" and f - rec["moved"] > 20 and f - rec["changed"] > 120 \
+							and not (clip == "walk" or was["clip"] == "walk" or is_pusher and (is_playing_once_clip(clip) or is_playing_once_clip(was["clip"]))):
+						what = "%s changed pose in place (%s -> %s)" % [n.name, was["clip"], clip]
+					if what != "" and bad.size() < 12:
+						bad.append("%s (frame %d)" % [what, f])
+			rec["key"] = key
+			prev[n] = rec
+		if until.is_valid() and until.call():
+			break
+	return bad
+
+## Pusher one-shots (picking up the stash, the hand-off) are his own business.
+func is_playing_once_clip(clip: String) -> bool:
+	return clip in ["pick-up", "interact", "take"]
+
+func _schedules_checks(gs: Node) -> void:
+	await _section("People with somewhere to be: schedules, passers-by, the beat cop's loop, the pusher's two posts")
+	_close_menus()
+	var sch := root.get_node_or_null("Schedules")
+	_check(sch != null, "  Schedules is an autoload")
+	if sch == null:
+		return
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 8 * 60
+	# --- the data
+	var need := ["beat_cop", "pusher", "ray", "shop_convenience", "shop_liquor", "shop_pawn", "shop_music"]
+	var have: PackedStringArray = sch.people()
+	_check(need.all(func(n): return have.has(n)) and sch.walkers().size() >= 10 and not have.has("postman"),
+		"  beat cop, pusher, Ray, the four shopkeepers and %d regulars are scheduled (the postman is an errand, not a timetable)" % sch.walkers().size())
+	var bad := []
+	for id in have:
+		var last := -1
+		for e in sch.info(id)["entries"]:
+			if e[0] <= last or e[0] < 0 or e[0] >= 1440 or not (e[2] in sch.ACTIVITIES):
+				bad.append(id)
+			last = e[0]
+	_check(bad.is_empty(), "  every entry is in order of time, in the day, with a known activity (%s)" % [bad])
+	_check(sch.entry_at("stoop_a", 23 * 60 + 59)["activity"] == "smoke" and sch.entry_at("stoop_a", 1)["activity"] == "sleep"
+		and sch.entry_at("stoop_a", 24 * 60 + 1)["activity"] == "sleep" and sch.entry_at("stoop_b", 30)["place"] == "Stoop2",
+		"  across midnight the entry switches (23:59 smoke, 00:01 in), and before a day's first entry yesterday's last still holds")
+	var nx: Dictionary = sch.next_entry("stoop_a", 23 * 60 + 59)
+	_check(nx["activity"] == "sleep" and nx["in"] == 1, "  next_entry looks across midnight (in %s min)" % nx.get("in"))
+	var shops_ok := true
+	for id in ["shop_liquor", "shop_pawn", "shop_music", "shop_convenience"]:
+		var shop: String = sch.info(id)["shop"]
+		for h in range(0, 24):
+			gs.clock = h * 60 + 30
+			var open_now: bool = gs.is_open(shop)
+			var works: bool = sch.entry_at(id, h * 60 + 30)["activity"] == "work"
+			shops_ok = shops_ok and open_now == works
+	gs.clock = 8 * 60
+	_check(shops_ok, "  the shopkeepers are at the counter exactly when GameState.is_open says the shop is")
+	var ph: Array = gs.PUSHER_HOURS
+	var pusher_ok := true
+	for h in range(0, 24):
+		var sleeping: bool = sch.entry_at("pusher", h * 60 + 30)["activity"] == "sleep"
+		pusher_ok = pusher_ok and sleeping == (not gs.hours_contain(ph, h + 0.5))
+		var night: bool = sch.pusher_post(h * 60 + 30) == "PusherNight"
+		if not sleeping:
+			pusher_ok = pusher_ok and night == (h + 0.5 >= gs.PUSHER_NIGHT_FROM or h + 0.5 < ph[1])
+	_check(pusher_ok, "  the pusher's posts follow GameState.PUSHER_HOURS: the corner by day, the overpass from %02d:00" % gs.PUSHER_NIGHT_FROM)
+
+	# --- people on the block at the hours asked
+	var city := await _sched_load()
+	_clear_patrol(city)
+	await _frames(5)
+	var guard: int = city.get_meta("people_frames", 0)
+	var people := get_nodes_in_group("scheduled_people").filter(func(n): return city.is_ancestor_of(n))
+	_check(people.size() == sch.walkers().size(), "  %d people are on the block, made one a frame in the first %d frames (%d scheduled to be)" % [people.size(), guard, sch.walkers().size()])
+	var missing: Array = Array(sch.walkers()).filter(func(id): return sch.position_at(id, 12 * 60) == Vector3.INF)
+	_check(missing.is_empty(), "  every one of their places is a marker on the block (%s missing)" % [missing])
+	var count_before := people.size()
+	var nodes_before := city.get_child_count()
+	var sample := ["chess_a", "commuter_a", "stoop_b", "camp_c", "court_a"]
+	var wrong := []
+	for t in [8 * 60, 14 * 60, 23 * 60 + 30, 30]:
+		gs.clock = t
+		for id in sample:
+			var spot: Vector3 = sch.position_for(id, sch.entry_at(id, t)["place"])
+			# A clock that jumps puts people in their places only where nobody
+			# can see it happen: here, nobody is looking.
+			sch.seen_override = 0
+			await _sched_visit(spot)
+			sch.seen_override = -1
+			var person := _sched_person(city, id)
+			var e: Dictionary = sch.entry_at(id, t)
+			var want_out: bool = e["activity"] != "sleep"
+			var near: float = person.global_position.distance_to(sch.position_at(id, t)) if person else 99.0
+			var ok: bool = person != null and person.visible == want_out and (not want_out or near <= 2.0)
+			if not ok:
+				wrong.append("%s at %02d:%02d (%s %s, visible %s, %.1f m off)" % [id, t / 60, t % 60, e["place"], e["activity"], person.visible if person else "-", near])
+	_check(wrong.is_empty(), "  at 08:00, 14:00, 23:30 and 00:30 (the clock jumped, unseen) they are where Schedules.position_at says, or indoors (%s)" % [wrong.slice(0, 4)])
+	_check(get_nodes_in_group("scheduled_people").size() == count_before and city.get_child_count() == nodes_before,
+		"  nobody was made while the clock ran: %d people, %d nodes under the block throughout" % [count_before, nodes_before])
+
+	# --- across midnight, live
+	gs.clock = 23 * 60 + 58
+	sch.seen_override = 0
+	await _sched_visit(sch.place_position("Stoop1"))
+	sch.seen_override = -1
+	var smoker := _sched_person(city, "stoop_a")
+	_check(smoker.visible and smoker.global_position.distance_to(sch.position_at("stoop_a", 23 * 60 + 58)) <= 2.0, "  23:58, the stoop sitter's out on Stoop1")
+	gs.advance_clock(3.0)
+	await _frames(200)
+	_check(not smoker.visible, "  ...and at 00:01 she has walked to the door and gone in (in plain sight, on foot)")
+
+	# --- the walk between two places
+	gs.clock = 7 * 60 + 55
+	var camp: Vector3 = sch.position_at("camp_c", 7 * 60 + 55)
+	sch.seen_override = 0
+	await _sched_visit(sch.place_position("AlleyDumpsters"), 3.0)
+	await _sched_visit(camp, 6.0)
+	sch.seen_override = -1
+	var scav := _sched_person(city, "camp_c")
+	var home_d: float = scav.global_position.distance_to(camp)
+	gs.advance_clock(10.0)
+	# The way round to the alley is a hundred metres and more: at four times his pace.
+	scav.set("_speed", 4.0)
+	var start := scav.global_position
+	# Stay close enough that the cell is awake and he is walking in full.
+	var dumpsters: Vector3 = sch.position_at("camp_c", 12 * 60)
+	var arrived := false
+	var moved_by_steps := 0.0
+	var prev := scav.global_position
+	for i in 90:
+		await _frames(60)
+		moved_by_steps += scav.global_position.distance_to(prev)
+		prev = scav.global_position
+		(_player() as Node3D).global_position = scav.global_position + Vector3(6, 0, 6)
+		if scav.global_position.distance_to(dumpsters) < 1.5:
+			arrived = true
+			break
+	_check(home_d <= 2.0 and moved_by_steps > 20.0 and arrived, "  at 08:00 the camp's scavenger sets off for the dumpsters and gets there on foot (%.0f m walked, arrived %s)" % [moved_by_steps, arrived])
+
+	# --- a sleeping cell does nothing; woken, the clock is caught up unseen
+	gs.clock = 21 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	var sitter := _sched_person(city, "stoop_a")
+	var stoop: Vector3 = sch.place_position("Stoop1")
+	_check(sitter != null and sitter.global_position.distance_to(sch.position_at("stoop_a", 21 * 60)) <= 2.0, "  21:00, loaded from scratch: she is on Stoop1 (not at the spawn)")
+	# (Nobody in the camera's view, to keep the camera out of it.)
+	sch.seen_override = 0
+	_player().global_position = Vector3(-17.5, 0, -2.6)
+	await _frames(BLOCK_SETTLE_FRAMES + 10)
+	_check(sitter.get("_frozen") and sitter.visible, "  from Main Street Back Street's cell sleeps and, out of sight, so does she (frozen %s), but she is not made to vanish (shown %s)" % [sitter.get("_frozen"), sitter.visible])
+	var frozen_at := sitter.global_position
+	await _frames(40)
+	_check(sitter.global_position == frozen_at and sitter.get("_frozen"), "  ...and she stands as she was while nobody is looking")
+	gs.clock = 3 * 60
+	await _frames(40)
+	_check(not sitter.visible and sitter.get("_frozen"), "  ...a clock that moves on puts her away unseen (the 0.3 s poll), no one watching")
+	await _sched_visit(stoop)
+	sch.seen_override = -1
+	_check(not sitter.get("_frozen") and not sitter.visible, "  walk down to Back Street at 03:00 and, unseen, she's already gone in (caught up on waking)")
+	_player().global_position = Vector3(-17.5, 0, -2.6)
+	await _frames(BLOCK_SETTLE_FRAMES + 10)
+	gs.clock = 21 * 60
+	sch.seen_override = 0
+	await _sched_visit(stoop)
+	sch.seen_override = -1
+	_check(sitter.visible and sitter.global_position.distance_to(sch.position_at("stoop_a", 21 * 60)) <= 2.0, "  ...and back at 21:00 she is on the stoop again")
+	# In plain sight nobody is moved: she is where she was, and does what her
+	# entry says on foot.
+	_player().global_position = Vector3(-17.5, 0, -2.6)
+	await _frames(BLOCK_SETTLE_FRAMES + 10)
+	gs.clock = 3 * 60
+	await _sched_visit(stoop)
+	await _frames(200)
+	_check(not sitter.visible, "  woken in sight at 03:00 she is still on the stoop, then walks in rather than blinking out")
+	var bench: Vector3 = sch.place_position("ParkBench")
+	sitter = _sched_person(city, "chess_a")
+
+	# --- avoidance only up close
+	var near_p := _player()
+	near_p.global_position = bench + Vector3(4, 0, 4)
+	await _frames(45)
+	var near_av: bool = sitter.nav_agent.avoidance_enabled
+	near_p.global_position = bench + Vector3(0, 0, -20)
+	await _frames(45)
+	var far_av: bool = sitter.nav_agent.avoidance_enabled
+	_check(near_av and not far_av, "  navigation avoidance is on within 10 m of the player and off beyond (near %s, 20 m %s)" % [near_av, far_av])
+
+	# --- the pusher's two posts
+	gs.clock = 12 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _frames(10)
+	var pusher := city.get_node("Pusher")
+	var corner: Vector3 = sch.place_position("PusherCorner")
+	var night_spot: Vector3 = sch.place_position("PusherNight")
+	_check(pusher.state == pusher.State.POST and pusher.global_position.distance_to(corner) < 3.0, "  12:00: the pusher is on the corner (%.1f m from it)" % pusher.global_position.distance_to(corner))
+	gs.clock = 22 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _frames(10)
+	pusher = city.get_node("Pusher")
+	_check(pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0, "  22:00: he is under the overpass (%.1f m from it)" % pusher.global_position.distance_to(night_spot))
+	var lanes_clear := true
+	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	var pmap: RID = _player().get_world_3d().navigation_map
+	for target in [pusher.stash_position, pusher.hide_position]:
+		var wp := NavigationServer3D.map_get_path(pmap, pusher.global_position, target, true)
+		var wlen := 0.0
+		for k in range(1, wp.size()):
+			wlen += wp[k].distance_to(wp[k - 1])
+		lanes_clear = lanes_clear and wp.size() > 0 and Vector2(wp[wp.size() - 1].x - target.x, wp[wp.size() - 1].z - target.z).length() < 0.5 and wlen < 14.0
+	_check(lanes_clear and pusher.stash_position.distance_to(night_spot) < 8.0, "  ...with his stash and his hiding place a short walk away on the navmesh")
+	var open_to: Array = []
+	for eye in [Vector3(-3.0, 1.6, 0.0), Vector3(0.0, 1.6, 3.0), Vector3(-2.0, 1.6, -3.0)]:
+		var rq := PhysicsRayQueryParameters3D.create(night_spot + eye, pusher.hide_position + Vector3(0, 0.9, 0), 1)
+		if space.intersect_ray(rq).is_empty():
+			open_to.append(eye)
+	_check(open_to.is_empty(), "  ...and the hiding place is round the pillar, out of sight from the deck (open from %s)" % [open_to])
+	gs.clock = 5 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _frames(10)
+	pusher = city.get_node("Pusher")
+	_check(pusher.state == pusher.State.OFF_SHIFT and not pusher.model_root.visible, "  05:00: nobody on either post")
+	# --- passers-by come out of a pool; the cop walks a loop
+	gs.clock = 13 * 60
+	city = await _sched_load()
+	await _frames(10)
+	var kids_before := city.get_child_count()
+	var walkers_before := get_nodes_in_group("pedestrians").size()
+	for i in 6:
+		city._spawn_pedestrian()
+	await _frames(3)
+	_check(city.get_child_count() == kids_before, "  spawning passers-by while the block is live makes no new nodes (%d -> %d)" % [kids_before, city.get_child_count()])
+	_check(get_nodes_in_group("pedestrians").size() >= walkers_before, "  ...but they are out (%d -> %d)" % [walkers_before, get_nodes_in_group("pedestrians").size()])
+	var xs: Array = []
+	var zs: Array = []
+	for walk in city.WALKS:
+		for v in walk["points"]:
+			xs.append(v.x)
+			zs.append(v.z)
+	var lanes_ok: bool = xs.min() < -60.0 and xs.max() > 60.0 and zs.min() < -90.0 and zs.max() > -5.0
+	_check(lanes_ok, "  passers-by walk all four streets (both loops go round the block)")
+	for c in get_nodes_in_group("patrol"):
+		c.remove_from_group("patrol")
+		c.queue_free()
+	city.set("_patrol_timer", 99999.0)
+	await _frames(3)
+	var route: Array = sch.patrol_route()
+	var map: RID = _player().get_world_3d().navigation_map
+	var joined := true
+	for i in route.size():
+		var a: Vector3 = route[i]
+		var b: Vector3 = route[(i + 1) % route.size()]
+		var path := NavigationServer3D.map_get_path(map, a, b, true)
+		joined = joined and path.size() > 0 and path[path.size() - 1].distance_to(b) < 0.8 and path[0].distance_to(a) < 0.8
+	_check(route.size() >= 12 and joined, "  the beat cop's loop (%d waypoints) is one unbroken walk on the navmesh" % route.size())
+	city._spawn_patrol(route[0])
+	var cop := get_first_node_in_group("patrol") as Node3D
+	cop.heading = 1.0
+	var walked := 0.0
+	var last := cop.global_position
+	var off_mesh := 0.0
+	for i in 40:
+		await _frames(60)
+		walked += cop.global_position.distance_to(last)
+		last = cop.global_position
+		var snap := NavigationServer3D.map_get_closest_point(map, cop.global_position)
+		off_mesh = maxf(off_mesh, Vector2(snap.x - cop.global_position.x, snap.z - cop.global_position.z).length())
+		_player().global_position = Vector3(-17.5, 0, -2.6)
+	_check(walked > 25.0 and off_mesh < 1.2 and cop.get("route_index") != null, "  the beat cop walks his loop (%.0f m in 40 s, never more than %.1f m off the navmesh)" % [walked, off_mesh])
+	_check(sch.patrol_route()[0].distance_to(sch.place_position("PoliceStation")) < 3.0, "  ...which starts at the police station")
+
+	# --- places are clear of walls and on the navmesh; every walk fits its time
+	gs.clock = 12 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _frames(10)
+	var phys: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	var navmap: RID = _player().get_world_3d().navigation_map
+	var min_speed: float = load("res://npc/ScheduledPerson.gd").WALK_SPEED * 0.9
+	var blocked: Array = []
+	var unmeshed: Array = []
+	var too_far: Array = []
+	var cut_off: Array = []
+	for id in sch.walkers():
+		var ent: Array = sch.info(id)["entries"]
+		for i in ent.size():
+			var e: Array = ent[i]
+			var here: Vector3 = sch.position_for(id, e[1])
+			var door: bool = e[2] == "sleep" and e[1].begins_with("Stoop")
+			if door:
+				here = sch.place_position(e[1])
+			if e[2] != "sleep":
+				var q := PhysicsShapeQueryParameters3D.new()
+				var ball := SphereShape3D.new()
+				ball.radius = 0.4
+				q.shape = ball
+				q.transform = Transform3D(Basis(), here + Vector3(0, 0.6, 0))
+				q.collision_mask = 1
+				var names: Array = []
+				for h in phys.intersect_shape(q, 8):
+					var nm := String(h["collider"].name)
+					if not (e[2] == "sit" and nm.begins_with("ParkBench")):
+						names.append(nm)
+				if not names.is_empty():
+					blocked.append("%s at %s (%s)" % [id, e[1], names])
+				var snapped := NavigationServer3D.map_get_closest_point(navmap, here)
+				if Vector2(snapped.x - here.x, snapped.z - here.z).length() > 0.5 and not (e[2] == "sit" and e[1] == "ParkBench"):
+					unmeshed.append("%s at %s" % [id, e[1]])
+			var before: Array = ent[posmod(i - 1, ent.size())]
+			if before[1] == e[1]:
+				continue
+			var from: Vector3 = sch.position_for(id, before[1])
+			if before[1].begins_with("Stoop") and before[2] == "sleep":
+				from = sch.place_position(before[1])
+			var path := NavigationServer3D.map_get_path(navmap, from, here, true)
+			var length := 0.0
+			for k in range(1, path.size()):
+				length += path[k].distance_to(path[k - 1])
+			if path.size() == 0 or Vector2(path[path.size() - 1].x - here.x, path[path.size() - 1].z - here.z).length() > 0.6:
+				cut_off.append("%s %s -> %s" % [id, before[1], e[1]])
+			# Until the next entry that is somewhere else.
+			var window := 0
+			for j in range(1, ent.size()):
+				var nxt: Array = ent[(i + j) % ent.size()]
+				if nxt[1] != e[1]:
+					window = posmod(nxt[0] - e[0] - 1, 1440) + 1
+					break
+			if window > 0 and length / min_speed * gs.MINUTES_PER_SEC > window:
+				too_far.append("%s %s -> %s: %.0f m needs %.0f min, has %d" % [id, before[1], e[1], length, length / min_speed * gs.MINUTES_PER_SEC, window])
+	_check(blocked.is_empty(), "  nobody's place is inside a wall, a barrel or a crate (%s)" % [blocked])
+	_check(unmeshed.is_empty() and cut_off.is_empty(), "  every place is on the navmesh and every walk between them ends there (%s %s)" % [unmeshed, cut_off])
+	_check(too_far.is_empty(), "  every walk fits the time it has, at the slowest walker's pace (%s)" % [too_far])
+	var passer_models: Array = CharacterCast.PASSERSBY.map(func(en): return en["model"])
+	var twins: Array = Array(sch.walkers()).filter(func(id): return passer_models.has(CharacterCast.model_for(sch.role_of(id))))
+	_check(twins.is_empty(), "  none of the regulars is a passer-by's twin (%s)" % [twins])
+
+	# --- nobody pops, jumps or changes pose in view, played live
+	# The bench: at 16:30 and 17:00 the chess players' entries end, with the
+	# player six metres off. They sit on, seat height and all, until nobody looks.
+	city = await _sched_scene(gs, 16 * 60 + 20, "ParkBench", 4.0)
+	var chess := [_sched_person(city, "chess_a"), _sched_person(city, "chess_b")]
+	var popped: Array = await _sched_watch(city, 1300)
+	_check(popped.is_empty(), "  the bench (live, 16:20 to 17:45): nothing popped, jumped or changed pose in view (%s)" % [popped.slice(0, 3)])
+	_check(chess.all(func(c): return c.visible and absf(c.get("_model_root").position.y - 0.1) < 0.011),
+		"  ...both still sit, at their seat height, after their entries ended")
+	sch.seen_override = 0
+	await _frames(150)
+	sch.seen_override = -1
+	_check(chess.all(func(c): return not c.visible), "  ...and go in once nobody could see it")
+	# The camp: the sleepers' entries end at 6:30 and 7:00; the scavenger stands up at 8:00.
+	city = await _sched_scene(gs, 6 * 60 + 20, "UnderpassCamp", 4.0)
+	var camp_pair := [_sched_person(city, "camp_a"), _sched_person(city, "camp_b")]
+	popped = await _sched_watch(city, 1250)
+	_check(popped.is_empty(), "  the camp (live, 06:20 to 07:43): nothing popped in view (%s)" % [popped.slice(0, 3)])
+	_check(camp_pair.all(func(c): return c.visible), "  ...the two who should be asleep wait, in sight, until nobody is looking")
+	sch.seen_override = 0
+	await _frames(150)
+	sch.seen_override = -1
+	_check(camp_pair.all(func(c): return not c.visible), "  ...then go")
+	city = await _sched_scene(gs, 7 * 60 + 50, "UnderpassCamp", 4.0)
+	var scav2 := _sched_person(city, "camp_c")
+	var scav_start := scav2.global_position
+	popped = await _sched_watch(city, 450)
+	_check(popped.is_empty() and scav2.global_position.distance_to(scav_start) > 3.0,
+		"  the scavenger gets up and walks off at 08:00 (%.0f m), no snap in view (%s)" % [scav2.global_position.distance_to(scav_start), popped.slice(0, 3)])
+	# The stoops: she walks in at midnight; she doesn't come out in front of you.
+	city = await _sched_scene(gs, 23 * 60 + 50, "Stoop1", 4.0)
+	var door_sitter := _sched_person(city, "stoop_a")
+	popped = await _sched_watch(city, 650)
+	_check(popped.is_empty() and not door_sitter.visible, "  the stoop at midnight (live): she walks in (%s)" % [popped.slice(0, 3)])
+	city = await _sched_scene(gs, 18 * 60 + 20, "Stoop1", 4.0)
+	door_sitter = _sched_person(city, "stoop_a")
+	popped = await _sched_watch(city, 700)
+	_check(popped.is_empty() and not door_sitter.visible, "  ...and at 18:30 she doesn't step out while the stoop is in view (%s)" % [popped.slice(0, 3)])
+	sch.seen_override = 0
+	await _frames(250)
+	sch.seen_override = -1
+	_check(door_sitter.visible and door_sitter.global_position.distance_to(sch.position_at("stoop_a", 19 * 60)) <= 2.0, "  ...she comes out when nobody is looking, and stands on the stoop")
+	# The bus stop: the two appear only unseen, and face the road.
+	city = await _sched_scene(gs, 7 * 60, "BusStop", 4.0)
+	var commuters := [_sched_person(city, "commuter_a"), _sched_person(city, "commuter_b")]
+	popped = await _sched_watch(city, 700)
+	_check(popped.is_empty() and commuters.all(func(c): return not c.visible), "  the bus stop (live, 07:00 to 07:47): nobody materialises in view (%s)" % [popped.slice(0, 3)])
+	sch.seen_override = 0
+	await _frames(150)
+	sch.seen_override = -1
+	var facing_road: bool = commuters.all(func(c): return c.visible and absf(wrapf(c.get("_model_root").rotation.y - PI, -PI, PI)) < 0.3)
+	_check(facing_road, "  ...they turn up when nobody looks, and face the road (north)")
+	var cm_rot: Array = commuters.map(func(c): return snappedf(c.get("_model_root").rotation.y, 0.01))
+	gs.advance_clock(78.0)
+	await _frames(200)
+	_check(commuters.all(func(c): return c.visible), "  ...and past 09:00 they wait in sight to go in (%s)" % [cm_rot])
+	# The beat cop, woken after a while, is not put in front of the player.
+	gs.clock = 12 * 60
+	city = await _sched_load()
+	await _frames(10)
+	city.set("_patrol_timer", 99999.0)
+	var cop2 := get_first_node_in_group("patrol") as Node3D
+	var loop_pts: Array = sch.patrol_route()
+	var cop_at := Vector3.INF
+	for w in loop_pts:
+		_player().global_position = loop_pts[3] + Vector3(0, 0, 3)
+		if not sch.is_seen(w):
+			cop_at = w
+			break
+	cop2.global_position = cop_at if cop_at != Vector3.INF else cop2.global_position
+	await _frames(5)
+	var jump_to := -1
+	for k in range(30, 1440):
+		var pt: Dictionary = sch.patrol_point(gs.now_minutes() + k, int(cop2.heading))
+		if (pt["pos"] as Vector3).distance_to(loop_pts[3]) < 6.0:
+			jump_to = k
+			break
+	if cop_at != Vector3.INF and jump_to > 0:
+		gs.advance_clock(float(jump_to))
+		await _frames(6)
+		_check(not sch.is_seen(cop2.global_position) and cop2.visible,
+			"  the beat cop, caught up after %d min, isn't set down in the player's sight (%.0f m off)" % [jump_to, cop2.global_position.distance_to(_player().global_position)])
+	else:
+		_check(true, "  (no unseen spot on the loop from here to test the cop's wake: %s %s)" % [cop_at, jump_to])
+	# The pusher walks to the overpass at 20:00, along the navmesh, with the
+	# corner in view; nobody pops.
+	city = await _sched_scene(gs, 19 * 60 + 40, "PusherCorner", 6.0)
+	_clear_patrol(city)
+	pusher = city.get_node("Pusher")
+	popped = await _sched_watch(city, 700)
+	var dist_off: float = pusher.global_position.distance_to(corner)
+	_check(popped.is_empty() and pusher.state == pusher.State.RELOCATING and pusher.model_root.visible and dist_off > 15.0,
+		"  the pusher's change of post (live, 19:40 to 20:27, corner in view): he walks off in plain sight, %.0f m so far (%s)" % [dist_off, popped.slice(0, 3)])
+	popped += await _sched_watch(city, 4000, false, func(): return pusher.state == pusher.State.POST)
+	_check(popped.is_empty() and pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0 and pusher.model_root.visible,
+		"  ...and gets to the overpass on foot, at %02d:%02d (%s)" % [int(gs.clock) / 60, int(gs.clock) % 60, popped.slice(0, 3)])
+	# And a player waiting under the overpass sees him come.
+	city = await _sched_scene(gs, 19 * 60 + 55, "PusherNight", 4.0)
+	_clear_patrol(city)
+	pusher = city.get_node("Pusher")
+	popped = await _sched_watch(city, 4200, false, func(): return pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0)
+	_check(popped.is_empty() and pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0 and pusher.model_root.visible and gs.clock < 24 * 60,
+		"  a player waiting 4 m from the overpass post at 19:55 sees him arrive on foot, ready to sell, at %02d:%02d (%s)" % [int(gs.clock) / 60, int(gs.clock) % 60, popped.slice(0, 3)])
+	# A player who catches him on the road at 20:30 can buy there: he stops,
+	# turns, hands it over (he has it on him), and walks on.
+	city = await _sched_scene(gs, 19 * 60 + 40, "PusherCorner", 6.0)
+	_clear_patrol(city)
+	pusher = city.get_node("Pusher")
+	popped = await _sched_watch(city, 780)
+	var on_road: bool = pusher.state == pusher.State.RELOCATING and pusher.global_position.distance_to(corner) > 10.0
+	var road_at: Vector3 = pusher.global_position
+	var shopper := _player()
+	gs.cash = 100
+	gs.craving = 5.0
+	gs.scored_this_run = true
+	shopper.global_position = pusher.global_position + Vector3(-1.2, 0, 0.6)
+	await _frames(3)
+	pusher._stock = ["heroin", "naloxone"]
+	pusher._stock_day = gs.day
+	pusher.interact(shopper)
+	await _frames(2)
+	var road_menu := get_tree_menu()
+	var fix_cost2: int = gs.price_of("heroin")
+	var had_menu: bool = road_menu != null
+	if road_menu:
+		road_menu.chosen.emit("heroin")
+		road_menu._close()
+	await _frames(2)
+	var paid_road: bool = gs.cash == 100 - fix_cost2
+	get_first_node_in_group("hud").advance_or_close_dialogue()
+	var stopped := false
+	var handed_road := false
+	for i in 400:
+		await _frames(1)
+		stopped = stopped or pusher.state in [pusher.State.AWAIT_BUYER, pusher.State.HANDOFF]
+		if gs.craving > 90.0:
+			handed_road = true
+			break
+	get_first_node_in_group("hud").advance_or_close_dialogue()
+	_check(on_road and had_menu and paid_road and stopped and handed_road,
+		"  at 20:30 a player who catches him on the road buys there: menu %s, paid %s, he stopped %s, handed over %s (%.0f m from the corner)" % [had_menu, paid_road, stopped, handed_road, road_at.distance_to(corner)])
+	popped = await _sched_watch(city, 4200, false, func(): return pusher.state == pusher.State.POST)
+	_check(pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0,
+		"  ...then he walks on to the overpass and takes his post at %02d:%02d" % [int(gs.clock) / 60, int(gs.clock) % 60])
+	# The commuters, watched from 45 m while the camera makes a full turn.
+	city = await _sched_scene(gs, 7 * 60, "BusStop", 4.0)
+	_player().global_position = sch.place_position("BusStop") + Vector3(-45.0, 0.0, 0.7)
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var ring := [_sched_person(city, "commuter_a"), _sched_person(city, "commuter_b")]
+	popped = await _sched_watch(city, 800, true)
+	_check(popped.is_empty() and ring.all(func(c): return c.visible),
+		"  the bus stop from 45 m with the camera turning a full circle: they came out only when it faced away (%s)" % [popped.slice(0, 3)])
+
+	# --- a real save, mid-schedule
+	var save := root.get_node("SaveGame")
+	gs.start_run()
+	gs.clock_running = false
+	gs.clock = 21 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _sched_visit(sch.place_position("Stoop1"), 5.0)
+	_check(save.save(), "  saved at 21:00 beside the stoop")
+	gs.start_run()
+	gs.clock_running = false
+	save.continue_run()
+	await _transition()
+	var back := current_scene
+	var waited_pending := 0
+	while back.get("people_pending") != null and not back.people_pending.is_empty() and waited_pending < 600:
+		await _frames(1)
+		waited_pending += 1
+	await _frames(20)
+	var smoker2 := _sched_person(back, "stoop_a")
+	_check(back.name == "City3D" and absf(gs.clock - 21 * 60) < 2.0 and smoker2 != null and smoker2.visible
+		and smoker2.global_position.distance_to(sch.position_at("stoop_a", int(gs.clock))) <= 2.0,
+		"  Continue puts the stoop sitter on the stoop (not at the spawn) at the saved 21:00")
+	save.delete()
+
+	# --- far but in view: a lower frame rate, not a frozen pose
+	gs.clock = 8 * 60
+	city = await _sched_load()
+	_clear_patrol(city)
+	await _sched_visit(sch.place_position("Stoop1"), 1.0)
+	sch.seen_override = 1
+	_player().global_position = sch.place_position("Stoop1") + Vector3(2, 0, 2)
+	await _frames(BLOCK_SETTLE_FRAMES + 30)
+	var far_one := _sched_person(city, "commuter_a")
+	var far_d: float = far_one.global_position.distance_to(_player().global_position)
+	var skel := far_one.find_children("*", "Skeleton3D", true, false)[0] as Skeleton3D
+	var pose_sum := func() -> Vector3:
+		var t := Vector3.ZERO
+		for b in skel.get_bone_count():
+			t += skel.get_bone_global_pose(b).origin
+		return t
+	var clip_a: float = far_one.anim.clip_position()
+	var pose_a: Vector3 = pose_sum.call()
+	await _frames(60)
+	var clip_b: float = far_one.anim.clip_position()
+	var pose_b: Vector3 = pose_sum.call()
+	var was_viewed: bool = far_one.get("_viewed")
+	var far_ok: bool = far_d > 40.0 and far_one.can_process()
+	# Now from Main Street: Back Street's cell sleeps, but the camera sees her.
+	_player().global_position = Vector3(-17.5, 0, -2.6)
+	await _frames(BLOCK_SETTLE_FRAMES + 30)
+	var cells_node: Node = city.get_node("BlockCells")
+	var in_sleeping: bool = cells_node.asleep_at(far_one.global_position)
+	var clip_c: float = far_one.anim.clip_position()
+	await _frames(90)
+	var clip_d: float = far_one.anim.clip_position()
+	_check(in_sleeping and not far_one.get("_frozen") and absf(clip_d - clip_c) > 0.05,
+		"  a person in a sleeping cell the camera can see is animated, not a statue (asleep %s, frozen %s, clip %.2f -> %.2f)" % [in_sleeping, far_one.get("_frozen"), clip_c, clip_d])
+	sch.seen_override = -1
+	_check(far_ok and was_viewed and far_one.get_node("..") == city.get_node("People")
+		and absf(clip_b - clip_a) > 0.05 and pose_a.distance_to(pose_b) > 0.0005,
+		"  a far walker the camera sees is stepped by hand, bones and all (%.0f m away, clip %.2f -> %.2f, pose moved %.4f)" % [far_d, clip_a, clip_b, pose_a.distance_to(pose_b)])
+
+	# --- the zombie block has none of it
+	gs.mode = "zombies"
+	city = await _sched_load()
+	await _frames(40)
+	var present := ["scheduled_people", "pedestrians", "patrol"].filter(func(g): return get_nodes_in_group(g).size() > 0)
+	_check(present.is_empty() and city.get_node_or_null("People") == null, "  Dead Block has no scheduled people, passers-by or beat cop (%s)" % [present])
+	gs.mode = "story"
 	gs.start_run()

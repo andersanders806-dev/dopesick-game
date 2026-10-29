@@ -58,7 +58,28 @@ const CAST := {
 	"mugger": {"model": DIR + "Male_Adult_02.glb", "look": {}},
 	# Your Silk Lane orders, to the mailbox by your door (npc/Postman3D.gd).
 	"postman": {"model": DIR + "Male_Adult_01.glb", "look": {}},
+	# The block's regulars (autoload/Schedules.gd): the bench, the court, the
+	# bus stop, the stoops and the camp. Bodies other places wear too, in
+	# other clothes' company -- the pool of avatars is finite.
+	"chess_a": {"model": DIR + "Wood_Male_01.glb", "look": {}},
+	"chess_b": {"model": DIR + "Male_Adult_08.glb", "look": {}},
+	"court_a": {"model": DIR + "Male_Adult_16.glb", "look": {}},
+	"court_b": {"model": DIR + "Male_Adult_10.glb", "look": {}},
+	"commuter_a": {"model": DIR + "Business_Male_07.glb", "look": {}},
+	"commuter_b": {"model": DIR + "Female_Adult_02.glb", "look": {}},
+	"stoop_a": {"model": DIR + "Female_Adult_07.glb", "look": {}},
+	"stoop_b": {"model": DIR + "Male_Adult_05.glb", "look": {}},
+	"stoop_c": {"model": DIR + "Female_Adult_09.glb", "look": {}},
+	"camp_a": {"model": DIR + "Male_Adult_04.glb", "look": {"tint": Color(0.8, 0.76, 0.7)}},
+	"camp_b": {"model": DIR + "Female_Adult_13.glb", "look": {"tint": Color(0.8, 0.76, 0.7)}},
+	"camp_c": {"model": DIR + "Construction_Male_08.glb", "look": {"tint": Color(0.8, 0.76, 0.7)}},
 }
+
+## The block's regulars (autoload/Schedules.gd). Not in all_models(): the
+## boot-time prefetch would queue twelve more bodies in front of the street's
+## own people (the first visit's load measured 2 s slower for it). City3D asks
+## for them itself, in the background, over its first seconds.
+const REGULARS := ["chess_a", "chess_b", "court_a", "court_b", "commuter_a", "commuter_b", "stoop_a", "stoop_b", "stoop_c", "camp_a", "camp_b", "camp_c"]
 
 ## Dive Bar regulars. Keyed by the same names as NPC3D.PATRON_PROFILES and
 ## the portraits in assets/portraits, so a patron's body, their portrait, and
@@ -107,7 +128,7 @@ static func all_models() -> Array:
 	var out: Array = []
 	for table in [CAST, PATRONS]:
 		for k in table:
-			if not out.has(table[k]["model"]):
+			if not REGULARS.has(k) and not out.has(table[k]["model"]):
 				out.append(table[k]["model"])
 	for e in PASSERSBY:
 		if not out.has(e["model"]):

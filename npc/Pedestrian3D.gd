@@ -40,6 +40,10 @@ var doors: Array = []
 ## for the hour, and now and then anyway.)
 var leave_here: Callable = func() -> bool: return false
 var look_index: int = 0
+## Kept in a pool by City3D.gd instead of freed when they go in at a door:
+## park() puts them away, unpark() brings them out again.
+var parkable: bool = false
+var _shape: CollisionShape3D
 ## Which segment they're on, how far along it, its direction and its
 ## right-hand side (where they step to get round you).
 var _seg: int = 0
@@ -70,6 +74,7 @@ func _ready() -> void:
 	shape.shape = cyl
 	shape.position = Vector3(0, 0.6, 0)
 	add_child(shape)
+	_shape = shape
 	_model_root = Node3D.new()
 	_model_root.scale = Vector3.ONE * 1.5
 	add_child(_model_root)
@@ -80,6 +85,26 @@ func _ready() -> void:
 	anim = CharacterAnimator.new(model)
 	preload("res://npc/HeadTurn.gd").attach(model)
 	_model_root.rotation.y = atan2(_dir.x, _dir.z)
+
+## Away between walks: unseen, unprocessed, out of the groups the street
+## counts and talks to, and nothing to bump into.
+func park() -> void:
+	remove_from_group("pedestrians")
+	remove_from_group("interactable")
+	visible = false
+	process_mode = Node.PROCESS_MODE_DISABLED
+	_shape.set_deferred("disabled", true)
+	global_position = Vector3(0.0, -40.0, 0.0)
+
+func unpark() -> void:
+	add_to_group("pedestrians")
+	add_to_group("interactable")
+	process_mode = Node.PROCESS_MODE_INHERIT
+	visible = true
+	_shape.set_deferred("disabled", false)
+	_shelter = ""
+	_asked = false
+	_dodge = 0.0
 
 ## Puts them `t` (0..1) of the way along segment `seg`, facing along it.
 func place_at(seg: int, t: float) -> void:
@@ -125,7 +150,8 @@ func _physics_process(delta: float) -> void:
 		# At a door: in they go, or on to the next stretch.
 		if doors.has(_seg) and leave_here.call():
 			left_street.emit()
-			queue_free()
+			if not parkable:
+				queue_free()
 			return
 		_along = over
 	global_position = _seg_from() + _dir * _along + _side * _dodge

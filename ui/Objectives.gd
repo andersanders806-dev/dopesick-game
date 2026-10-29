@@ -16,7 +16,7 @@ static func current() -> String:
 		if sv.health < 30.0:
 			return "You're badly hurt -- eat, get warm and sleep to heal"
 	if GameState.sickness() >= 0.5:
-		return "You're dope sick -- the pusher's on the corner %02d:00-%02d:00, or Dana's program" % [GameState.PUSHER_HOURS[0], GameState.PUSHER_HOURS[1]]
+		return "You're dope sick -- the pusher's on the corner %02d:00-%02d:00 (under the overpass after dark), or Dana's program" % [GameState.PUSHER_HOURS[0], GameState.PUSHER_NIGHT_FROM]
 	if sv and sv.enabled:
 		if sv.warmth < sv.LOW and sv.outside():
 			return "Get warm -- any building, or a fire out back"

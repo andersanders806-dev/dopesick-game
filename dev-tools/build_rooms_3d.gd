@@ -32,6 +32,12 @@ var PusherScene: PackedScene = load("res://npc/Pusher3D.tscn")
 var InteractableScript: Script = load("res://interactables/Interactable3D.gd")
 
 var _root: Node3D
+## While a walk-in shop is being built (dev-tools/city/walk_in.gd), the node
+## its fixtures, counter and staff go under instead of the scene root.
+var _shop: Node3D = null
+
+func _at() -> Node3D:
+	return _shop if _shop != null else _root
 
 func _ready() -> void:
 	_save(_build_apartment(), "res://world/Apartment3D.tscn")
@@ -70,7 +76,9 @@ func _new_root(name: String, script_path: String) -> Node3D:
 
 func _add(parent: Node, node: Node) -> Node:
 	parent.add_child(node)
-	node.owner = _root
+	# A walk-in shop's room is saved as a scene of its own (walk_in.gd's
+	# split): what is built into it belongs to the shop, not to the street.
+	node.owner = _shop if _shop != null else _root
 	return node
 
 func _instance(parent: Node, name: String, scene: PackedScene, pos := Vector3.ZERO, scale := 1.0, rot_y_deg := 0.0) -> Node3D:
@@ -754,6 +762,7 @@ const TUNE := {
 	"pharmacy_window": 1.9,
 	"liquor_window": 1.7,
 	"electronics_window": 1.6,
+	"music_window": 0.9,
 	"mirror_range": 5.0,
 }
 
@@ -817,12 +826,12 @@ func _front_counter(name: String, x_start: float, z_front: float, pieces: int) -
 	var piece_w := 0.43 * 2.5
 	# Rotated 180 degrees, so pieces run back toward -x from the east end and
 	# the counter's front edge faces north.
-	var counter := _counter(_root, name, Vector3(x_start + pieces * piece_w, 0, z_front), pieces)
+	var counter := _counter(_at(), name, Vector3(x_start + pieces * piece_w, 0, z_front), pieces)
 	counter.rotation_degrees.y = 180.0
 	return counter
 
 func _guard(name: String, pos: Vector3, facing_deg: float, vision_range: float, angle: float, sweep_arc: float, sweep_speed: float, talk_name := "", lines := "", portrait := "", role := "clerk_convenience") -> Node3D:
-	var guard := _instance(_root, name, GuardScene, pos)
+	var guard := _instance(_at(), name, GuardScene, pos)
 	guard.set("role", role)
 	guard.set("vision_range", vision_range)
 	guard.set("vision_angle_deg", angle)
@@ -853,7 +862,7 @@ func _label(parent: Node, name: String, text: String, pos: Vector3, rot_y_deg: f
 func _fixture_shelf(index: int, stock_colors: Array, stock: Array = []) -> StaticBody3D:
 	var shelf := StaticBody3D.new()
 	shelf.name = "Fixture%d" % index
-	_add(_root, shelf)
+	_add(_at(), shelf)
 	_steel_shelves(shelf)
 	for row in 3:
 		for k in 8:
@@ -863,7 +872,7 @@ func _fixture_shelf(index: int, stock_colors: Array, stock: Array = []) -> Stati
 	shelf.set_meta("item_offset", Vector3(0, 0.45, 0.5))
 	if not stock.is_empty():
 		shelf.set_meta("stock", stock)
-	_instance(_root, "Item%d" % index, ItemScene)
+	_instance(_at(), "Item%d" % index, ItemScene)
 	return shelf
 
 ## Two steel shelving units (Poly Haven, modelled 10x real size) side by
@@ -878,7 +887,7 @@ func _steel_shelves(shelf: Node3D) -> void:
 func _fixture_cooler(index: int, stock: Array) -> StaticBody3D:
 	var cooler := StaticBody3D.new()
 	cooler.name = "Fixture%d" % index
-	_add(_root, cooler)
+	_add(_at(), cooler)
 	_box_mesh(cooler, "Base", Vector3(2.2, 0.75, 0.9), Vector3(0, 0.375, 0), _tex_mat("pbr:metal_brushed", 1.0))
 	_box_mesh(cooler, "Well", Vector3(2.0, 0.05, 0.7), Vector3(0, 0.76, 0), _color_mat(Color(0.2, 0.22, 0.25), 0.6))
 	_box_mesh(cooler, "Back", Vector3(2.2, 0.5, 0.1), Vector3(0, 1.0, -0.4), _tex_mat("pbr:metal_brushed", 1.0))
@@ -888,7 +897,7 @@ func _fixture_cooler(index: int, stock: Array) -> StaticBody3D:
 	_collision(cooler, _box_shape(Vector3(2.2, 1.25, 0.9)), Vector3(0, 0.62, 0))
 	cooler.set_meta("item_offset", Vector3(0, 0.78, 0.2))
 	cooler.set_meta("stock", stock)
-	_instance(_root, "Item%d" % index, ItemScene)
+	_instance(_at(), "Item%d" % index, ItemScene)
 	return cooler
 
 ## A low glass display case: stock sits on top, lit from inside. Hides
@@ -896,7 +905,7 @@ func _fixture_cooler(index: int, stock: Array) -> StaticBody3D:
 func _fixture_glass_case(index: int, glow: Color) -> StaticBody3D:
 	var case := StaticBody3D.new()
 	case.name = "Fixture%d" % index
-	_add(_root, case)
+	_add(_at(), case)
 	_box_mesh(case, "Base", Vector3(1.8, 0.55, 0.7), Vector3(0, 0.275, 0), _tex_mat("pbr:metal_worn", 1.0))
 	var glass := _color_mat(Color(0.7, 0.85, 0.95, 0.18), 0.05)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -906,14 +915,14 @@ func _fixture_glass_case(index: int, glow: Color) -> StaticBody3D:
 		_box_mesh(case, "Demo%d" % k, Vector3(0.18, 0.1, 0.12), Vector3(-0.6 + k * 0.4, 0.63, 0), _color_mat(Color(0.1, 0.1, 0.1), 0.3))
 	_collision(case, _box_shape(Vector3(1.8, 0.9, 0.7)), Vector3(0, 0.45, 0))
 	case.set_meta("item_offset", Vector3(0, 0.92, 0.1))
-	_instance(_root, "Item%d" % index, ItemScene)
+	_instance(_at(), "Item%d" % index, ItemScene)
 	return case
 
 ## Liquor wall: a tall shelf unit packed with bottles.
 func _fixture_bottles(index: int) -> StaticBody3D:
 	var shelf := StaticBody3D.new()
 	shelf.name = "Fixture%d" % index
-	_add(_root, shelf)
+	_add(_at(), shelf)
 	_steel_shelves(shelf)
 	var files := ["food/wine-red.glb", "food/soda-bottle.glb"]
 	for row in 3:
@@ -921,7 +930,7 @@ func _fixture_bottles(index: int) -> StaticBody3D:
 			_model(shelf, "Bottle%d_%d" % [row, k], files[(k * 3 + row) % 2], Vector3(-0.88 + k * 0.25, 0.62 + row * 0.5, 0.05), 0.42)
 	_collision(shelf, _box_shape(Vector3(2.0, 2.2, 0.63)), Vector3(0, 1.1, 0))
 	shelf.set_meta("item_offset", Vector3(0, 0.45, 0.5))
-	_instance(_root, "Item%d" % index, ItemScene)
+	_instance(_at(), "Item%d" % index, ItemScene)
 	return shelf
 
 # Corner shop -----------------------------------------------------------------
@@ -1158,7 +1167,7 @@ func _zone(parent: Node, name: String, pos: Vector3, size: Vector3) -> Area3D:
 	return zone
 
 func _person(name: String, pos: Vector3, role: String, lines: String, yaw_deg := 0.0, pose := "idle", script_path := "") -> Node3D:
-	var npc := _instance(_root, name, NPCScene, pos)
+	var npc := _instance(_at(), name, NPCScene, pos)
 	if script_path != "":
 		npc.set_script(load(script_path))
 	npc.set("npc_name", name)
@@ -1436,7 +1445,7 @@ func _build_music_store() -> Node3D:
 		PackedVector2Array([Vector2(-2.2, -1.5), Vector2(1.4, -1.5), Vector2(-3.4, 1.0), Vector2(0.2, 0.9), Vector2(4.3, -0.4)]),
 	]
 	_root.set("store_id", "music")
-	_root.set("theft_window", 0.9)
+	_root.set("theft_window", TUNE["music_window"])
 	var items: Array[String] = ["tape:lofi_loop"]
 	_root.set("item_ids", items)
 	_root.set("fixture_layouts", layouts)
@@ -2072,10 +2081,12 @@ func _build_dive_bar() -> Node3D:
 # --- City -------------------------------------------------------------------
 
 const CityKit := preload("res://dev-tools/city/kit.gd")
+const Facades := preload("res://world/Facades.gd")
 const CityMainExt := preload("res://dev-tools/city/main_street_ext.gd")
 const CityAvenues := preload("res://dev-tools/city/avenues.gd")
 const CityBackStreet := preload("res://dev-tools/city/back_street.gd")
 const CityInner := preload("res://dev-tools/city/inner.gd")
+const CityWalkIn := preload("res://dev-tools/city/walk_in.gd")
 const CarPaint := preload("res://world/CarPaint.gd")
 
 ## `yaw` turns the lamp to hang over a road that isn't Main Street's.
@@ -2232,6 +2243,9 @@ func _build_city() -> Node3D:
 			_add(_root, pd)
 			pd.position = Vector3(x, 0, street_z + 0.45)
 			_collision(pd, _box_shape(Vector3(1.4, 2.0, 1.2)), Vector3(0, 1.0, 0))
+		elif Facades.WALK_INS.has(f["name"]):
+			# Walk in from the sidewalk: CityWalkIn builds the room.
+			pass
 		else:
 			_door(f["door"], Vector3(x, 0, street_z + 0.45), Vector3.BACK, f["scene"], "SpawnFromCity")
 		_marker(f["spawn"], Vector3(x, 0, street_z + 1.5))
@@ -2361,9 +2375,13 @@ func _build_city() -> Node3D:
 	CityAvenues.build(self, _root)
 	CityBackStreet.build(self, _root)
 	CityInner.build(self, _root)
+	CityWalkIn.build(self, _root)
 
 	CityKit.flush_multimeshes(self)
 	_marker("SpawnDefault", Vector3(-17.5, 0, street_z + 1.5))
 	_player_and_hud(Vector3(-17.5, 0, street_z + 1.5))
 	CityKit.bake_navigation(self)
+	# Last, once the navmesh has the rooms' counters in it: each room goes
+	# to a scene of its own, and out of the street's.
+	CityWalkIn.split(self)
 	return _root

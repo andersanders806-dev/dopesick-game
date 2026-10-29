@@ -160,6 +160,17 @@ func settle() -> void:
 		await _wait(0.2)
 	await _wait(0.5)
 
+## The corner shop and the liquor store are rooms of the street's own scene:
+## walk in through the doorway.
+func enter_walk_in(node_name: String) -> Node:
+	await settle()
+	var shop := current_scene.find_child(node_name, true, false)
+	if shop == null:
+		log_line("MISSING shop " + node_name)
+		return null
+	await walk_to(shop.get_node("SpawnInside"))
+	return shop
+
 func use_door(door_name: String) -> bool:
 	await settle()
 	var door := current_scene.get_node_or_null(door_name) as Node3D
@@ -175,9 +186,9 @@ func use_door(door_name: String) -> bool:
 	return current_scene != before
 
 const STORE_DOORS := {
-	"convenience": "DoorToShop", "pharmacy": "DoorToPharmacy", "supermarket": "DoorToSupermarket",
-	"liquor": "DoorToLiquor", "electronics": "DoorToElectronics",
+	"pharmacy": "DoorToPharmacy", "supermarket": "DoorToSupermarket", "electronics": "DoorToElectronics",
 }
+const WALK_INS := {"convenience": "WalkIn_Convenience", "liquor": "WalkIn_Liquor"}
 
 func _play() -> void:
 	var gs := root.get_node("GameState")
@@ -197,11 +208,16 @@ func _play() -> void:
 	log_line("order: %s wants '%s' from %s" % [patron.npc_name, want_id, store])
 
 	await use_door("DoorToCity")
-	await use_door(STORE_DOORS[store])
+	var shop: Node = current_scene
+	if store in WALK_INS:
+		shop = await enter_walk_in(WALK_INS[store])
+	else:
+		await use_door(STORE_DOORS[store])
+		shop = current_scene
 	await screenshot("store_" + store)
 
 	var item: Node3D = null
-	for slot in current_scene.item_slots:
+	for slot in shop.item_slots:
 		if slot.item_id == want_id:
 			item = slot
 	log_line("target on %s" % (item.name if item else "NOT STOCKED THIS VISIT"))
@@ -211,7 +227,10 @@ func _play() -> void:
 		log_line("after steal attempt")
 	await settle()
 	if current_scene.name != "Jail3D":
-		await use_door("DoorToCity")
+		if shop != current_scene:
+			await walk_to(shop.get_node("OutsideSpawn"))
+		else:
+			await use_door("DoorToCity")
 	for i in 20:
 		await settle()
 		if not gs.wanted or current_scene.name != "City3D":

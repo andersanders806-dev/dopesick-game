@@ -255,8 +255,18 @@ func _redraw_cone(facing_deg: float) -> void:
 ## How hard this clerk is watching: the hour, today's headline, and any tip
 ## or grudge a regular left about this store (GameState.store_alertness).
 func _alertness() -> float:
-	var scene := get_tree().current_scene
-	var store_id = scene.get("store_id") if scene else null
-	if store_id is String and store_id != "":
+	var store_id := _store_id()
+	if store_id != "":
 		return GameState.store_alertness(store_id)
 	return GameState.staff_alertness()
+
+## Which store this clerk works in: the nearest ancestor that says so -- the
+## old rooms' root, or a walk-in shop on the street (whose scene is the City).
+func _store_id() -> String:
+	var n: Node = get_parent()
+	while n != null:
+		var id = n.get("store_id")
+		if id is String and id != "":
+			return id
+		n = n.get_parent()
+	return ""

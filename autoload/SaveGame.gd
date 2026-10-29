@@ -39,6 +39,14 @@ func _ready() -> void:
 func has_save() -> bool:
 	return FileAccess.file_exists(PATH)
 
+## The four rooms that became shops on Main Street (world/WalkInShop.gd):
+## a save from inside one of them continues in the walk-in.
+const Facades := preload("res://world/Facades.gd")
+
+## The walk-in node a saved scene has become, or "".
+static func walk_in_for_scene(scene_path: String) -> String:
+	return Facades.walk_in_for_room(scene_path)
+
 func save() -> bool:
 	# The zombie mode (autoload/ZombieMode.gd) has a save of its own.
 	if GameState.mode != "story":
@@ -103,6 +111,11 @@ func continue_run() -> bool:
 		Jobs.shift = j["shift"]
 	var pos = data.get("position")
 	pending_position = Vector3(pos[0], pos[1], pos[2]) if pos is Array and pos.size() == 3 else null
+	var walk_in := walk_in_for_scene(String(data["scene"]))
+	if walk_in != "":
+		# Those coordinates were the old room's: the street's shop, just inside the door.
+		data["scene"] = "res://world/City3D.tscn"
+		pending_position = null
 	GameState.cash_changed.emit(GameState.cash)
 	GameState.craving_changed.emit(GameState.craving)
 	GameState.inventory_changed.emit()
@@ -113,7 +126,7 @@ func continue_run() -> bool:
 	# no store hit by Tasha just for having pressed Continue.
 	GameState._last_minute = -1
 	GameState._emit_clock()
-	SceneLoader.go(data["scene"])
+	SceneLoader.go(data["scene"], walk_in)
 	var tape: String = data.get("tape", "")
 	if tape != "" and GameState.has_walkman:
 		Walkman.play.call_deferred(tape)

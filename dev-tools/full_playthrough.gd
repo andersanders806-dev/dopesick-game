@@ -237,9 +237,10 @@ func _run() -> void:
 
 	chapter("8. Tape Deck: lifting a cassette")
 	await to_street()
-	if gs.is_open("music") and await use_door("DoorToMusic"):
+	var tape_shop: Node = await enter_walk_in("WalkIn_Music") if gs.is_open("music") else null
+	if tape_shop != null:
 		var tape: Node3D = null
-		for slot in current_scene.item_slots:
+		for slot in tape_shop.item_slots:
 			if is_instance_valid(slot):
 				tape = slot
 				break

@@ -82,6 +82,8 @@ func _on_clock(_minute: int) -> void:
 
 ## Where you are decides the cold.
 func outside() -> bool:
+	if GameState.indoors != "":
+		return false
 	var scene := get_tree().current_scene if is_inside_tree() else null
 	if scene == null:
 		return false

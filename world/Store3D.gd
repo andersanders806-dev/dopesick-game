@@ -26,25 +26,40 @@ var fixtures: Array[Node3D] = []
 var item_slots: Array[Node3D] = []
 
 func _ready() -> void:
+	_setup_store()
+	super._ready()
+	_wire_guards()
+	_shuffle_items()
+
+## What a store is, whatever it hangs from: its fixtures and goods, a layout
+## for this visit. A walk-in shop (world/WalkInShop.gd) is a part of the
+## street's scene rather than a scene of its own, and runs this without
+## WorldRoot3D's room set-up.
+func _setup_store() -> void:
 	var i := 1
 	while has_node("Fixture%d" % i):
 		fixtures.append(get_node("Fixture%d" % i))
 		item_slots.append(get_node("Item%d" % i))
 		i += 1
 	_randomize_layout()
-	super._ready()
+
+func _wire_guards() -> void:
 	for guard in get_tree().get_nodes_in_group("guards"):
 		if is_ancestor_of(guard):
 			guard.spotted_theft.connect(_on_spotted_theft)
-	_shuffle_items()
 
+## A layout is a PackedVector2Array of (x, z) floor spots, or, for fixtures
+## that stand against a wall and face the aisle, a PackedVector3Array of
+## (x, z, yaw in degrees).
 func _randomize_layout() -> void:
 	if fixture_layouts.is_empty():
 		_place_items()
 		return
-	var layout: PackedVector2Array = fixture_layouts.pick_random()
+	var layout: Variant = fixture_layouts.pick_random()
 	for i in range(mini(fixtures.size(), layout.size())):
 		fixtures[i].position = Vector3(layout[i].x, 0.0, layout[i].y)
+		if layout is PackedVector3Array:
+			fixtures[i].rotation_degrees.y = layout[i].z
 	_place_items()
 
 ## Each fixture carries its item offset as metadata, since a low glass case
@@ -52,7 +67,9 @@ func _randomize_layout() -> void:
 func _place_items() -> void:
 	for i in range(fixtures.size()):
 		var offset: Vector3 = fixtures[i].get_meta("item_offset", Vector3(0, 0.45, 0.5))
-		item_slots[i].position = fixtures[i].position + offset
+		# Turned with the fixture, so a shelf on the side wall holds its goods
+		# on the aisle side.
+		item_slots[i].position = fixtures[i].position + fixtures[i].basis * offset
 		item_slots[i].theft_window = theft_window
 
 ## Fixtures with a "stock" meta list (e.g. the supermarket's meat cooler)
@@ -89,6 +106,16 @@ func _ensure_every_item_stocked() -> void:
 				item_slots[i].set_item_id(id)
 				break
 
+## Is this still the place the theft happened? The street's scene is the one
+## you're in for as long as you play it; a room of its own is left behind by
+## walking out of its door.
+func _still_here() -> bool:
+	return get_tree().current_scene == self
+
+## Where the officer is put in the world.
+func _police_parent() -> Node:
+	return self
+
 func _on_spotted_theft() -> void:
 	if GameState.wanted or GameState.in_custody:
 		return
@@ -97,11 +124,11 @@ func _on_spotted_theft() -> void:
 	var room := self
 	tree.create_timer(POLICE_RESPONSE_TIME).timeout.connect(func():
 		# Only if we're still in this store and nobody's already on it.
-		if not is_instance_valid(room) or tree.current_scene != room:
+		if not is_instance_valid(room) or not room._still_here():
 			return
 		if not GameState.wanted or GameState.in_custody or tree.get_first_node_in_group("police"):
 			return
 		var police := PoliceScene.instantiate()
-		room.add_child(police)
+		room._police_parent().add_child(police)
 		police.global_position = room.police_spawn.global_position
 	)

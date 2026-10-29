@@ -439,6 +439,41 @@ static func masses() -> Array:
 		out.append({"name": m[0], "rect": Rect2(m[1], m[2], m[3] - m[1], m[4] - m[2]), "floors": m[5], "kit": m[6], "cell": m[7]})
 	return out
 
+## A building's solid: its rect, floor to roof (the collider's box).
+static func mass_box(m: Dictionary) -> AABB:
+	var r: Rect2 = m["rect"]
+	var h: float = m["floors"] * MODULE + ROOF_OVER + COPING.y
+	return AABB(Vector3(r.position.x, 0.0, r.position.y), Vector3(r.size.x, h, r.size.y))
+
+## The street camera hangs up and back from you, and on the sidewalk of a
+## building behind you that puts it inside the building. How far out from
+## `from` (you) to `to` (where the camera wants to be) it can go, 0..1: all
+## of the way unless `to` is in a building (or within `pad` of its walls),
+## else only as far as that building's wall. A wall merely between you and
+## a camera that's out in the open is the cutaway's job (world/Cutaway.gd),
+## not this.
+static func in_building(p: Vector3, pad: float) -> bool:
+	for m in masses():
+		if mass_box(m).grow(pad).has_point(p):
+			return true
+	return false
+
+static func camera_clip(from: Vector3, to: Vector3, pad: float) -> float:
+	for m in masses():
+		var box := mass_box(m)
+		var padded := box.grow(pad)
+		if not padded.has_point(to):
+			continue
+		# You hugging the wall: measure to the wall itself.
+		if padded.has_point(from):
+			padded = box
+		var hit: Variant = padded.intersects_segment(from, to)
+		var len := from.distance_to(to)
+		if hit == null or len < 0.001:
+			return 1.0 if not box.has_point(to) else 0.0
+		return clampf(from.distance_to(hit as Vector3) / len, 0.0, 1.0)
+	return 1.0
+
 static var _roof_mat: StandardMaterial3D
 ## The buildings' own walls (where no front covers them): old brick, a shade
 ## per kit, triplanar so it tiles at true size on any wall.

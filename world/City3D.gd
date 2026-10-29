@@ -77,8 +77,12 @@ var _night := {}
 ## [light, night energy] for everything that only matters after dark:
 ## streetlights and the glow under each shop sign.
 var _night_lights: Array = []
-## world/BlockCells.gd: [light, energy] above also carries the light's cell.
+## world/BlockCells.gd: [light, energy] above also carries the light's cell
+## and how far on its cell's waking has brought it (0..1, a quick fade:
+## lamp pools don't pop on or off at the cell's edge).
 var _cells: Node
+const LIGHT_WAKE_SECONDS := 0.5
+var _lights_fading := false
 var _street_lamp_heads: Array[MeshInstance3D] = []
 
 const VendingScript := preload("res://world/VendingMachine3D.gd")
@@ -221,9 +225,10 @@ func _ready() -> void:
 	# Which cell each light's in: a sleeping cell's stay off whatever the
 	# hour (BlockCells hid them), and come back to the hour when it wakes.
 	_cells = get_node_or_null("BlockCells")
+	for entry in _night_lights:
+		entry.append(_cells.cell_of(entry[0]) if _cells else null)
+		entry.append(1.0)
 	if _cells:
-		for entry in _night_lights:
-			entry.append(_cells.cell_of(entry[0]))
 		_cells.cell_changed.connect(_on_cell_changed)
 	GameState.clock_changed.connect(_on_clock_changed)
 	GameState.weather_changed.connect(_on_weather_changed)
@@ -349,6 +354,8 @@ func _on_hide_spot(_zone: Area3D, player: Node) -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if _lights_fading:
+		_fade_lights(delta)
 	if zombie_mode:
 		return
 	_update_collector(delta)
@@ -465,7 +472,7 @@ func _update_collector(delta: float) -> void:
 	collector.global_position = COLLECTOR_ENTRY
 
 func _on_cell_changed(_cell: Node3D, _awake: bool) -> void:
-	_apply_lights()
+	_lights_fading = true
 
 func _on_weather_changed(_raining: bool) -> void:
 	_apply_daylight()
@@ -509,13 +516,19 @@ func spawn_mugger(knife := false) -> Node3D:
 	mugger.reset_physics_interpolation()
 	return mugger
 
+## Daylight as the sky and the lamps see it: rain makes an overcast, darker
+## day. The one place the rain's dimming is decided.
+func _effective_daylight() -> float:
+	return GameState.daylight() * (RAIN_DAYLIGHT if GameState.raining else 1.0)
+
+const RAIN_DAYLIGHT := 0.55
+## How far the after-dark lights are on, 0..1; set with the daylight.
+var _lamps_on := 0.0
+
 ## Blends the scene between its baked night look and daylight as the clock
 ## moves through dawn and dusk.
 func _apply_daylight() -> void:
-	var d := GameState.daylight()
-	# Rain: an overcast, darker day.
-	if GameState.raining:
-		d *= 0.55
+	var d := _effective_daylight()
 	_env.background_color = (_night["sky"] as Color).lerp(DAY_SKY, d)
 	_env.ambient_light_color = (_night["ambient"] as Color).lerp(DAY_AMBIENT, d)
 	_env.ambient_light_energy = lerpf(_night["ambient_energy"], DAY_AMBIENT_ENERGY, d)
@@ -526,16 +539,39 @@ func _apply_daylight() -> void:
 	_sky_light.light_energy = lerpf(_night["moon_energy"], SUN_ENERGY, d)
 	# Streetlights are on a photocell: fully on until well into dawn, and
 	# back on before dusk is over.
+	_lamps_on = 1.0 - smoothstep(0.35, 0.75, d)
 	_apply_lights()
 
-## The after-dark lights by the hour; a sleeping cell's stay dark.
+## The after-dark lights by the hour; a sleeping cell's fade out and stay
+## dark, a waking cell's fade back in.
 func _apply_lights() -> void:
-	var lamps_on := 1.0 - smoothstep(0.35, 0.75, GameState.daylight() * (0.55 if GameState.raining else 1.0))
 	for entry in _night_lights:
-		var cell: Node3D = entry[2] if entry.size() > 2 else null
-		(entry[0] as Light3D).light_energy = entry[1] * lamps_on
-		(entry[0] as Light3D).visible = lamps_on > 0.01 and (cell == null or _cells.is_awake(cell))
+		# Lamps that are off anyway (it's day) go straight to where their
+		# cell says; the fade is for lamps you'd see.
+		if _lamps_on <= 0.01:
+			entry[3] = _wake_goal(entry)
+		_set_light(entry)
 	for head in _street_lamp_heads:
 		var mat := head.get_active_material(0) as StandardMaterial3D
 		if mat:
-			mat.emission_energy_multiplier = 5.0 * lamps_on
+			mat.emission_energy_multiplier = 5.0 * _lamps_on
+
+func _set_light(entry: Array) -> void:
+	var on: float = _lamps_on * float(entry[3])
+	(entry[0] as Light3D).light_energy = entry[1] * on
+	(entry[0] as Light3D).visible = on > 0.01
+
+func _wake_goal(entry: Array) -> float:
+	var cell: Node3D = entry[2]
+	return 1.0 if (cell == null or _cells.is_awake(cell)) else 0.0
+
+## Per frame while a cell's lights are coming on or going off.
+func _fade_lights(delta: float) -> void:
+	_lights_fading = false
+	for entry in _night_lights:
+		var goal := _wake_goal(entry)
+		if entry[3] == goal:
+			continue
+		entry[3] = move_toward(entry[3], goal, delta / LIGHT_WAKE_SECONDS)
+		_lights_fading = true
+		_set_light(entry)

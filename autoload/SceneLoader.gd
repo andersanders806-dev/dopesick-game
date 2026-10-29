@@ -203,6 +203,12 @@ func _prefetch_near_doors() -> void:
 			prefetch(path)
 		for path in preload("res://npc/CharacterCast.gd").all_models():
 			prefetch(path)
+		# The traffic's cars the street scene doesn't hold (the taxi): loaded
+		# here, not on the spawn that first picks one.
+		var StreetLife := preload("res://world/StreetLife.gd")
+		for kind in StreetLife.CARS:
+			if not ResourceLoader.has_cached(StreetLife.car_path(kind)):
+				prefetch(StreetLife.car_path(kind))
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:
 		return

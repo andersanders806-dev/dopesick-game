@@ -117,16 +117,27 @@ func _update_traffic(delta: float) -> void:
 			_cars.erase(car)
 			car.queue_free()
 
+static func car_path(kind: String) -> String:
+	return "res://assets/cars/%s.glb" % kind
+
+## Only a car whose model is in memory is picked: loading one (the taxi's is
+## not in the street scene, half a second) mid-game was a visible hitch.
+## SceneLoader brings the rest in while you stand still.
 static func _pick_car() -> String:
 	var total := 0
-	for weight in CARS.values():
-		total += weight
+	for kind in CARS:
+		if ResourceLoader.has_cached(car_path(kind)):
+			total += CARS[kind]
+	if total == 0:
+		return "sedan_generic"
 	var roll := randi() % total
 	for kind in CARS:
+		if not ResourceLoader.has_cached(car_path(kind)):
+			continue
 		roll -= CARS[kind]
 		if roll < 0:
 			return kind
-	return CARS.keys()[0]
+	return "sedan_generic"
 
 ## The wheels roll as far as the car moved: about their axle, z in the model.
 func _spin_wheels(car: Node3D, dist: float) -> void:
@@ -137,7 +148,7 @@ func _spin_wheels(car: Node3D, dist: float) -> void:
 func _spawn_car(x: float) -> void:
 	var car := Node3D.new()
 	car.name = "TrafficCar"
-	var model: Node3D = load("res://assets/cars/%s.glb" % _pick_car()).instantiate()
+	var model: Node3D = load(car_path(_pick_car())).instantiate()
 	CarPaint.dress(model, -1, false)
 	car.add_child(model)
 	var box := CarPaint.bounds(model)

@@ -88,6 +88,11 @@ func decorate(room: Node3D) -> void:
 
 func _snap(room: Node3D, p: Vector3) -> Vector3:
 	var map := room.get_world_3d().navigation_map
+	# The first City3D of a process is decorated before its map has synced
+	# once; asking it then is an engine error (and answers zero anyway), so
+	# keep the spot as given.
+	if NavigationServer3D.map_get_iteration_id(map) == 0:
+		return p
 	var q := NavigationServer3D.map_get_closest_point(map, p)
 	return q if q != Vector3.ZERO or p == Vector3.ZERO else p
 

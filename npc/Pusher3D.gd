@@ -90,6 +90,9 @@ var _by_schedule := false
 ## goes behind the concrete and is gone -- never in the open.
 const NIGHT_STASH := Vector3(0.0, 0.0, 2.4)
 const NIGHT_HIDE := Vector3(5.0, 0.0, 0.0)
+## He was stopped on his way to a new post and sold on the spot (no stash
+## trip: he's carrying); when it's done he walks on.
+var _moving_on := false
 ## Where he walks, along the navmesh (the way round a pillar or a building).
 var _path := PackedVector3Array()
 var _path_goal := Vector3.INF
@@ -175,7 +178,8 @@ func _physics_process(delta: float) -> void:
 		State.HANDOFF:
 			_timer -= delta
 			if _timer <= 0.0:
-				state = State.POST
+				state = State.RELOCATING if _moving_on and GameState.pusher_on_shift() else State.POST
+				_moving_on = false
 		State.TO_HIDE:
 			if _walk_to(hide_position, delta):
 				if _by_schedule and Schedules.is_seen(hide_position, true):
@@ -207,10 +211,7 @@ func interact(player: Node) -> void:
 	if GameState.wanted:
 		hud.show_dialogue("Pusher", "\"You brought cops with you? Walk away. Now.\"", PORTRAIT)
 		return
-	if state == State.RELOCATING:
-		hud.show_dialogue("Pusher", "\"Not now, I'm moving. Find me by the overpass after dark.\"" if _spot == "PusherNight" else "\"Not now, I'm moving. Find me on the corner.\"", PORTRAIT)
-		return
-	if state != State.POST:
+	if state != State.POST and state != State.RELOCATING:
 		hud.show_dialogue("Pusher", "\"I said wait.\"", PORTRAIT)
 		return
 	# Late: he takes what you've got before anything else, and sells you
@@ -260,6 +261,7 @@ func _todays_stock() -> Array:
 
 func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 	var hud := get_tree().get_first_node_in_group("hud")
+	var moving := state == State.RELOCATING
 	var cost := GameState.price_of(drug_id)
 	if on_credit:
 		if not GameState.can_front(cost):
@@ -272,8 +274,8 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 		_owes_fix = true
 		if hud:
 			player.dialogue_active = true
-			hud.show_dialogue("Pusher", "He looks you over for a long second. \"$%d. By this time tomorrow. I know where you sleep.\" He walks off down the street." % GameState.debt, PORTRAIT)
-		state = State.TO_STASH
+			hud.show_dialogue("Pusher", "He looks you over for a long second. \"$%d. By this time tomorrow. I know where you sleep.\" %s" % [GameState.debt, "He stops, turns, and reaches into his jacket." if moving else "He walks off down the street."], PORTRAIT)
+		_after_payment(moving)
 		return
 	if not GameState.spend_cash(cost):
 		player.dialogue_active = false
@@ -286,8 +288,14 @@ func _buy(player: Node, drug_id: String, on_credit := false) -> void:
 	SFX.play("cash", -6.0, 0.8)
 	if hud:
 		player.dialogue_active = true
-		hud.show_dialogue("Pusher", WAIT_LINES.pick_random() % cost, PORTRAIT)
-	state = State.TO_STASH
+		hud.show_dialogue("Pusher", ("\"$%d. Walk with me. ...No, here's fine.\" He stops, turns, and reaches into his jacket." % cost) if moving else WAIT_LINES.pick_random() % cost, PORTRAIT)
+	_after_payment(moving)
+
+## Paid. At his post he walks off for the stash; on the road he has it on him
+## and hands it over where he stands.
+func _after_payment(moving: bool) -> void:
+	_moving_on = moving
+	state = State.AWAIT_BUYER if moving else State.TO_STASH
 
 func _pay_back(player: Node, amount: int) -> void:
 	var paid := GameState.pay_debt(amount)

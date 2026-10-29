@@ -6394,6 +6394,47 @@ func _schedules_checks(gs: Node) -> void:
 	popped = await _sched_watch(city, 4200, false, func(): return pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0)
 	_check(popped.is_empty() and pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0 and pusher.model_root.visible and gs.clock < 24 * 60,
 		"  a player waiting 4 m from the overpass post at 19:55 sees him arrive on foot, ready to sell, at %02d:%02d (%s)" % [int(gs.clock) / 60, int(gs.clock) % 60, popped.slice(0, 3)])
+	# A player who catches him on the road at 20:30 can buy there: he stops,
+	# turns, hands it over (he has it on him), and walks on.
+	city = await _sched_scene(gs, 19 * 60 + 40, "PusherCorner", 6.0)
+	_clear_patrol(city)
+	pusher = city.get_node("Pusher")
+	popped = await _sched_watch(city, 780)
+	var on_road: bool = pusher.state == pusher.State.RELOCATING and pusher.global_position.distance_to(corner) > 10.0
+	var road_at: Vector3 = pusher.global_position
+	var shopper := _player()
+	gs.cash = 100
+	gs.craving = 5.0
+	gs.scored_this_run = true
+	shopper.global_position = pusher.global_position + Vector3(-1.2, 0, 0.6)
+	await _frames(3)
+	pusher._stock = ["heroin", "naloxone"]
+	pusher._stock_day = gs.day
+	pusher.interact(shopper)
+	await _frames(2)
+	var road_menu := get_tree_menu()
+	var fix_cost2: int = gs.price_of("heroin")
+	var had_menu: bool = road_menu != null
+	if road_menu:
+		road_menu.chosen.emit("heroin")
+		road_menu._close()
+	await _frames(2)
+	var paid_road: bool = gs.cash == 100 - fix_cost2
+	get_first_node_in_group("hud").advance_or_close_dialogue()
+	var stopped := false
+	var handed_road := false
+	for i in 400:
+		await _frames(1)
+		stopped = stopped or pusher.state in [pusher.State.AWAIT_BUYER, pusher.State.HANDOFF]
+		if gs.craving > 90.0:
+			handed_road = true
+			break
+	get_first_node_in_group("hud").advance_or_close_dialogue()
+	_check(on_road and had_menu and paid_road and stopped and handed_road,
+		"  at 20:30 a player who catches him on the road buys there: menu %s, paid %s, he stopped %s, handed over %s (%.0f m from the corner)" % [had_menu, paid_road, stopped, handed_road, road_at.distance_to(corner)])
+	popped = await _sched_watch(city, 4200, false, func(): return pusher.state == pusher.State.POST)
+	_check(pusher.state == pusher.State.POST and pusher.global_position.distance_to(night_spot) < 3.0,
+		"  ...then he walks on to the overpass and takes his post at %02d:%02d" % [int(gs.clock) / 60, int(gs.clock) % 60])
 	# The commuters, watched from 45 m while the camera makes a full turn.
 	city = await _sched_scene(gs, 7 * 60, "BusStop", 4.0)
 	_player().global_position = sch.place_position("BusStop") + Vector3(-45.0, 0.0, 0.7)

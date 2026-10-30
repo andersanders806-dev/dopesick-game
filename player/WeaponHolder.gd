@@ -361,6 +361,7 @@ func _scatter(dir: Vector3, cone_deg: float) -> Vector3:
 func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 	if player == null:
 		return {}
+	_sync_zones(origin, dir, length)
 	var space := player.get_world_3d().direct_space_state
 	var skip: Array[RID] = [(player as CollisionObject3D).get_rid()]
 	for n in 24:
@@ -385,6 +386,20 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 			continue
 		return {"position": r.position, "collider": c, "zombie": null, "part": ""}
 	return {}
+
+## The hit zones are not kept on the bones every frame (npc/ZombieHitboxes.gd):
+## the zombies near this ray get them put where their animation has the bones,
+## just before the cast.
+func _sync_zones(origin: Vector3, dir: Vector3, length: float) -> void:
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not (z is Node3D) or not z.has_method("sync_hitboxes"):
+			continue
+		var c: Vector3 = (z as Node3D).global_position + Vector3(0.0, 0.9, 0.0)
+		var along := (c - origin).dot(dir)
+		if along < -1.5 or along > length + 1.5:
+			continue
+		if (c - (origin + dir * clampf(along, 0.0, length))).length_squared() < 2.6:
+			z.sync_hitboxes()
 
 ## "head", "neck", "torso", "upper_arm_l", ...: what a hit zone says it is.
 func _part_of(area: Node) -> String:

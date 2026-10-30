@@ -54,6 +54,8 @@ const TEAR_PERIOD := 2.2
 ## it casts no shadow.
 const FAR_DISTANCE := 15.0
 const SHADOW_DISTANCE := 12.0
+## Beyond this from the player it thinks and steps every second physics tick.
+const FAR_THINK := 28.0
 const REPATH := Vector2(0.5, 1.0)
 const CORPSE_LIFE := 30.0
 ## A hit to the leg drops it to a knee for this long (the clip ends mid-fall,
@@ -84,6 +86,7 @@ static var _clip_library: Resource
 static var _slots := {}
 static var _horde_frame := -1
 static var _horde_cache: Array = []
+static var _horde_pos := PackedVector3Array()
 static var _gates_frame := -1
 static var _gates_cache: Array = []
 
@@ -123,6 +126,8 @@ var _kneel_t := 0.0
 var _slow := 0.0
 var _frame := 0
 var _far := false
+## Time of a skipped tick, paid on the next (far zombies think every second tick).
+var _owed := 0.0
 var _shadows := true
 var _corpse_age := 0.0
 var _facing := 0.0
@@ -289,6 +294,18 @@ func _physics_process(delta: float) -> void:
 		State.DYING:
 			return
 	_frame += 1
+	# Far down the street it thinks and steps every second tick, on double time:
+	# nobody can see the difference at 30 m, and it halves the far half of the horde.
+	if state == State.CHASE and target != null and is_instance_valid(target):
+		var away := target.global_position - global_position
+		if away.x * away.x + away.z * away.z > FAR_THINK * FAR_THINK:
+			if _frame % 2 == 0:
+				_owed += delta
+				return
+		else:
+			_owed = 0.0
+	delta += _owed
+	_owed = 0.0
 	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
@@ -316,6 +333,13 @@ func _physics_process(delta: float) -> void:
 		_stuck_t = 0.0
 		_best_remaining = INF
 	_move(want, delta)
+
+## Puts the hit zones on the bones as the animation has them now. Weapons call
+## this for the zombies near a shot just before they cast; nothing keeps them
+## on the bones between shots (npc/ZombieHitboxes.gd says why).
+func sync_hitboxes() -> void:
+	if _skeleton != null and not hitboxes.is_empty():
+		ZombieHitboxes.sync(_skeleton, hitboxes)
 
 ## Where it wants to go this tick (a direction on the ground, zero to hold).
 func _chase(delta: float) -> Vector3:
@@ -467,7 +491,15 @@ func _move(want: Vector3, delta: float) -> void:
 	velocity.x = move_toward(velocity.x, v.x, 14.0 * delta)
 	velocity.z = move_toward(velocity.z, v.z, 14.0 * delta)
 	velocity.y = 0.0
-	move_and_slide()
+	# A tick that carries a skipped one steps twice as far.
+	var steps := delta / maxf(get_physics_process_delta_time(), 0.0001)
+	if steps > 1.5:
+		var keep := velocity
+		velocity *= steps
+		move_and_slide()
+		velocity = keep
+	else:
+		move_and_slide()
 	if state == State.CHASE and _stagger <= 0.0:
 		var moved := Vector2(velocity.x, velocity.z).length()
 		var clip := "z_crawl" if legless else _move_clip
@@ -477,28 +509,43 @@ func _move(want: Vector3, delta: float) -> void:
 			anim.play("z_idle", 1.0)
 
 ## A shove off its neighbours so a horde spreads instead of stacking (also
-## when standing still: a pile unpicks itself).
+## when standing still: a pile unpicks itself). Reads one snapshot of the living
+## dead's places per physics frame (_horde()), not twenty zombies asked twenty
+## times: this was a quarter of the horde's script time.
 func _separation() -> Vector3:
+	_horde()
 	var push := Vector3.ZERO
-	for o in _horde():
-		if o == self or not is_instance_valid(o) or not o.is_alive():
+	var me := global_position
+	var space2 := PERSONAL_SPACE * PERSONAL_SPACE
+	var spots := _horde_pos
+	for i in spots.size():
+		var o := spots[i]
+		var dx := me.x - o.x
+		var dz := me.z - o.z
+		var l2 := dx * dx + dz * dz
+		if l2 >= space2 or _horde_cache[i] == self:
 			continue
-		var d: Vector3 = global_position - (o as Node3D).global_position
-		d.y = 0.0
-		var l := d.length()
-		if l < PERSONAL_SPACE:
-			if l < 0.001:
-				d = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
-				l = 0.001
-			push += d / maxf(l, 0.001) * (PERSONAL_SPACE - l) / PERSONAL_SPACE * 2.2
+		var l := sqrt(l2)
+		var d := Vector3(dx, 0.0, dz)
+		if l < 0.001:
+			d = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
+			l = 0.001
+		push += d / maxf(l, 0.001) * (PERSONAL_SPACE - l) / PERSONAL_SPACE * 2.2
 	return push.limit_length(2.5)
 
-## The living dead, listed once per physics frame for everyone.
+## The living dead, listed once per physics frame for everyone (with where each
+## stood when the frame began; only the living are in it).
 static func _horde() -> Array:
 	var f := Engine.get_physics_frames()
 	if f != _horde_frame:
 		_horde_frame = f
-		_horde_cache = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("zombies")
+		var all: Array = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("zombies")
+		_horde_cache = []
+		_horde_pos = PackedVector3Array()
+		for o in all:
+			if is_instance_valid(o) and o.is_alive():
+				_horde_cache.append(o)
+				_horde_pos.append((o as Node3D).global_position)
 	return _horde_cache
 
 static func _gates() -> Array:

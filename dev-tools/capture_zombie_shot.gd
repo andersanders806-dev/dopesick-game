@@ -55,6 +55,7 @@ func _initialize() -> void:
 ## It flinches from a hit: look at its head where it is now.
 func _look_at_head(p: Node3D, cam: Camera3D, z: Node) -> void:
 	for i in 3:
+		z.sync_hitboxes()
 		var head: Vector3 = (z.hitboxes["head"].get_child(0) as Node3D).global_position
 		var d := head - cam.global_position
 		p.set_look(atan2(-d.x, -d.z), atan2(d.y, Vector2(d.x, d.z).length()))

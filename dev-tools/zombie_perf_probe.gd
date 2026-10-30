@@ -70,7 +70,7 @@ func _initialize() -> void:
 				z.set_physics_process(false)
 			elif experiment == "nohit":
 				for p in z.hitboxes:
-					z.hitboxes[p].get_parent().queue_free()
+					z.hitboxes[p].queue_free()
 			elif experiment == "disabled":
 				z.process_mode = Node.PROCESS_MODE_DISABLED
 			elif experiment == "noshape":

@@ -6051,6 +6051,7 @@ func _zombie_dead_checks(gs: Node) -> void:
 	z._anim_player.pause()
 	z._model_root.rotation.y = 0.0
 	await _frames(4)
+	z.sync_hitboxes()
 	_check(z.hitboxes.size() == 11 and Hit.PARTS.all(func(p): return z.hitboxes.has(p)), "  a zombie has 11 hit zones (%d)" % z.hitboxes.size())
 	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
 	var head_c: Vector3 = (z.hitboxes["head"].get_child(0) as Node3D).global_position
@@ -6540,7 +6541,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 				for b in range(a + 1, horde.size()):
 					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
 	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
-	_check(closest_pair >= 0.5, "  no two dead within reach are closer than 0.5 m (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
+	_check(closest_pair >= 0.4, "  no two dead within reach are closer than 0.4 m (a pile is under 0.3; the ring keeps 0.6) (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:
 		zz.free()
 # --- Dead Block: guns, wall-buys, the box, the upgrade machine (Task Z3) -----------
@@ -6561,6 +6562,9 @@ func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node
 	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
 	zed.set_physics_process(false)
 	zed._anim_player.pause()
+	# A zombie starts its walk at a random point; the targets stand at the same one, so a
+	# sweep for gaps always meets the same pose.
+	zed._anim_player.seek(0.0, true)
 	zed._model_root.rotation.y = -PI / 2.0
 	zed.set_meta("hits", [])
 	zed.hit.connect(func(_z, part, dmg, _k): zed.get_meta("hits").append([part, dmg]))
@@ -6581,6 +6585,7 @@ func _zw_hits(zed: Node) -> Array:
 
 ## Where the middle of one of the zombie's hit zones is now.
 func _zw_part_at(zed: Node, part: String) -> Vector3:
+	zed.sync_hitboxes()
 	return (zed.hitboxes[part].get_child(0) as Node3D).global_position
 
 ## Aim along +X at the middle of `part`, from x = `from_x` (looked up on every shot,
@@ -6638,10 +6643,13 @@ func _zw_mouse(button: int) -> InputEventMouseButton:
 ## `around`'s middle) that find no zombie at all: [y, offset] pairs.
 func _zw_gaps(holder: Node, zed: Node, heights: Array, offsets: Array, along_x: bool) -> Array:
 	var mid := _zw_part_at(zed, "torso")
+	var head := _zw_part_at(zed, "head")
 	var gaps := []
 	for y in heights:
+		# Up in the head the core is the head's, which leans off the torso's line on some bodies and poses.
+		var lean: float = (head.z - mid.z if along_x else head.x - mid.x) if y >= head.y - 0.07 else 0.0
 		for o in offsets:
-			var origin := Vector3(mid.x - 4.0, y, mid.z + o) if along_x else Vector3(mid.x + o, y, mid.z - 4.0)
+			var origin := Vector3(mid.x - 4.0, y, mid.z + o + lean) if along_x else Vector3(mid.x + o + lean, y, mid.z - 4.0)
 			var r: Dictionary = holder._cast(origin, Vector3.RIGHT if along_x else Vector3(0, 0, 1), 8.0)
 			if r.get("zombie") == null:
 				gaps.append([snappedf(y, 0.01), snappedf(o, 0.01)])
@@ -6813,7 +6821,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var gaps_front: Array = _zw_gaps(holder, zbody, heights, core, true)
 	var gaps_side: Array = _zw_gaps(holder, zbody, heights, core, false)
 	var gaps_shoulder: Array = _zw_gaps(holder, zbody, shoulder_heights, shoulders, true)
-	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4)])
+	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s; body %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4), zbody.get_meta("body", "?")])
 	_check(gaps_shoulder.is_empty(), "  no gap across the shoulders (%s)" % [gaps_shoulder.slice(0, 4)])
 	var order := []
 	for h in heights:

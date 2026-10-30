@@ -19,6 +19,8 @@ extends Node
 const WD := preload("res://weapons/WeaponData.gd")
 const GunModel := preload("res://weapons/GunModel.gd")
 const ZombieControls := preload("res://player/ZombieControls.gd")
+const Viewmodel := preload("res://player/Viewmodel.gd")
+const FPFeel := preload("res://player/FPFeel.gd")
 
 signal fired
 ## A zombie was hit: the hit zone's part, and whether that killed it.
@@ -27,6 +29,10 @@ signal weapon_changed(data: WD)
 signal ammo_changed
 signal reload_started
 signal reload_finished
+## The trigger was pulled on an empty gun with nothing to load.
+signal dry_fired
+## The knife went out: whether it found something.
+signal melee_swung(found: bool)
 ## A shot ended on world or air (for tracers and sparks): [from, to].
 signal traced(from: Vector3, to: Vector3)
 
@@ -65,6 +71,8 @@ var rng := RandomNumberGenerator.new()
 
 var player: Node3D
 var viewmodel: Node3D
+## player/FPFeel.gd: aiming, recoil, sway, slide, the effects of a shot.
+var feel: Node
 var melee_data: WD
 var _cooldown := 0.0
 var _swap_left := 0.0
@@ -101,6 +109,8 @@ func _ready() -> void:
 		give(load(START_WEAPON))
 	if Graphics.has_signal("view_changed"):
 		Graphics.view_changed.connect(func(_on: bool): _rebuild_viewmodel())
+	feel = FPFeel.new()
+	add_child(feel)
 
 # --- The guns you hold -------------------------------------------------------------
 
@@ -201,7 +211,7 @@ func _process(delta: float) -> void:
 	if down and current != null and (current.auto or not _trigger_down):
 		fire()
 	_trigger_down = down
-	aiming = Input.is_action_pressed("aim") and not reloading
+	aiming = Input.is_action_pressed("aim") and not reloading and not (player != null and player.has_method("is_sprinting") and player.is_sprinting())
 
 ## The one-shot buttons (a press is an event: the mouse wheel has no "held").
 func _unhandled_input(event: InputEvent) -> void:
@@ -307,7 +317,7 @@ func fire() -> bool:
 		if reserve > 0:
 			reload()
 		else:
-			SFX.play("latch", -10.0, 1.4)
+			dry_fired.emit()
 		return false
 	mag -= 1
 	_cooldown = d.interval() / maxf(rate_mult, 0.1)
@@ -315,7 +325,6 @@ func fire() -> bool:
 	_shoot(aim[0], aim[1])
 	fired.emit()
 	ammo_changed.emit()
-	SFX.play("punch", -9.0, 0.55 if d.pellets > 1 else 0.8)
 	if player != null and player.has_method("kick"):
 		player.kick(clampf(d.recoil * 0.12, 0.0, 0.6))
 	return true
@@ -479,9 +488,11 @@ func melee() -> bool:
 	_melee_cd = MELEE_COOLDOWN
 	var aim := _aim()
 	var r := _cast(aim[0], aim[1], MELEE_RANGE)
-	SFX.play("punch", -4.0, 1.1)
-	if r.is_empty() or r.get("zombie") == null:
+	var found: bool = not r.is_empty() and r.get("zombie") != null
+	melee_swung.emit(found)
+	if not found:
 		return true
+	SFX.play("punch", -4.0, 1.1)
 	_wounded.clear()
 	_in_melee = true
 	_hurt(r.zombie, r.part, melee_data.damage_at(r.part), aim[1], melee_data, true)
@@ -533,8 +544,8 @@ func _facing() -> Vector3:
 
 # --- What you see -------------------------------------------------------------------
 
-## The gun in your hands, low on the right of the first-person view. (The
-## feel of it -- sway, reload dip, third-person hands -- is Z4/Z5's.)
+## The gun in your hands and the arms holding it (player/Viewmodel.gd), on the
+## camera; player/FPFeel.gd moves it. Nothing in third person.
 func _rebuild_viewmodel() -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.queue_free()
@@ -545,14 +556,11 @@ func _rebuild_viewmodel() -> void:
 	var cam := player.get("camera") as Camera3D
 	if cam == null:
 		return
-	viewmodel = Node3D.new()
-	viewmodel.name = "Viewmodel"
-	viewmodel.position = Vector3(0.15, -0.16, -0.42)
-	viewmodel.rotation_degrees.y = -2.0
-	var gun := GunModel.build(d)
-	viewmodel.add_child(gun)
+	viewmodel = Viewmodel.new().setup(d)
+	viewmodel.position = FPFeel.HIP_POS
 	# The night is red-dark; the gun gets a little light of its own.
 	var lamp := OmniLight3D.new()
+	lamp.name = "GunLamp"
 	lamp.light_energy = 0.9
 	lamp.omni_range = 1.6
 	lamp.shadow_enabled = false

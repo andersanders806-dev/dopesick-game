@@ -195,7 +195,7 @@ static func _last_time(last: Dictionary) -> String:
 
 const CREDITS := """Made with Godot 4.
 
-People: Microsoft Rocketbox avatars (MIT).
+People: Microsoft Rocketbox avatars (MIT), also the first-person arms.
 Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits and sounds (CC0).
 Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel Zhabotinsky -- Shvan '92;
 Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.

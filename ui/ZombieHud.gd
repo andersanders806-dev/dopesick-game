@@ -9,6 +9,8 @@ extends CanvasLayer
 const BLOOD := Color(0.72, 0.08, 0.08)
 const PAPER := Color(0.93, 0.9, 0.82)
 const POP_TIME := 1.1
+const HitmarkerScript := preload("res://ui/Hitmarker.gd")
+const PointsPopupScript := preload("res://ui/PointsPopup.gd")
 
 var round_label: Label
 var points_label: Label
@@ -17,7 +19,8 @@ var ammo_label: Label
 var gun_label: Label
 var prompt: Label
 var message: Label
-var _pops: Control
+var popups: Control
+var hitmarker: Control
 var _message_tween: Tween
 var _holder: Node
 
@@ -32,10 +35,11 @@ func _ready() -> void:
 	_pin_bottom_left(round_label, 28.0, 24.0)
 	points_label = _label(font, 30, PAPER, Vector2.ZERO)
 	_pin_bottom_left(points_label, 32.0, 100.0)
-	_pops = Control.new()
-	_pops.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pops.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_pops)
+	# What each hit paid, floating up beside the points; the crosshair and the hitmarker.
+	popups = PointsPopupScript.new()
+	add_child(popups)
+	hitmarker = HitmarkerScript.new()
+	add_child(hitmarker)
 	# The full width of the window, text centred in it.
 	banner = _label(font, 72, BLOOD, Vector2.ZERO)
 	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
@@ -101,6 +105,7 @@ func _pin_bottom_centre(l: Label, bottom: float) -> void:
 	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 
 func _process(_delta: float) -> void:
+	popups.origin = points_label.global_position + Vector2(points_label.size.x + 14.0, 6.0)
 	_update_gun()
 	_update_prompt()
 
@@ -150,20 +155,9 @@ func _on_round_started(r: int) -> void:
 	tw.tween_interval(1.8)
 	tw.tween_property(banner, "modulate:a", 0.0, 1.0)
 
-func _on_points_changed(_total: int, amount: int, _reason: String) -> void:
+func _on_points_changed(_total: int, amount: int, reason: String) -> void:
 	_refresh()
-	var pop := Label.new()
-	pop.text = "%+d" % amount
-	pop.position = points_label.position + Vector2(points_label.get_minimum_size().x + 14.0, 6.0)
-	pop.add_theme_font_size_override("font_size", 22)
-	pop.add_theme_color_override("font_color", PAPER if amount > 0 else BLOOD)
-	pop.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	pop.add_theme_constant_override("outline_size", 5)
-	_pops.add_child(pop)
-	var tw := create_tween().set_parallel()
-	tw.tween_property(pop, "position:y", pop.position.y - 34.0, POP_TIME)
-	tw.tween_property(pop, "modulate:a", 0.0, POP_TIME)
-	tw.chain().tween_callback(pop.queue_free)
+	popups.add(amount, reason)
 
 func _on_game_over(_summary: Dictionary) -> void:
 	visible = false

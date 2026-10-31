@@ -280,6 +280,9 @@ func muzzle_smoke(pos: Vector3, dir: Vector3, size := 1.0) -> void:
 	p.scale_amount_max = 0.14 * size
 	_fire(p, _up_basis(up, pos))
 
+func play(pos: Vector3, sound: String, db := 0.0) -> void:
+	_play(pos, sound, db)
+
 func _play(pos: Vector3, sound: String, db: float) -> void:
 	var a := _voices[_next["voice"]]
 	_next["voice"] = (_next["voice"] + 1) % _voices.size()

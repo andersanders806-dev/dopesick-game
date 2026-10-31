@@ -854,6 +854,7 @@ func _run() -> void:
 	await _zombie_dead_checks(gs)
 	await _zombie_weapons_checks(gs)
 	await _zombie_fp_checks(gs)
+	await _zombie_gore_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
 
@@ -9051,3 +9052,183 @@ func _zombie_impact_checks(player: Node, holder: Node, feel: Node, block: Node) 
 		if ImpactFX.stream(n) == null:
 			missing.append(n)
 	_check(missing.is_empty(), "  every hit / gore sound loads (%s missing)" % [missing])
+
+
+## Task Z6: gore. Wounds, limbs off at their own thresholds, stumps, gibs, the head pop, legless crawlers,
+## decals and pools within their caps, one payout for a blast that takes several parts, no orphans, the option.
+func _zombie_gore_checks(gs: Node) -> void:
+	await _section("Dead Block: gore -- wounds, severed limbs, head pops, decals, pools, the option")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	var gfx := root.get_node("Graphics")
+	zm.leave()
+	zm.begin(false)
+	zm.gore_enabled = true
+	var city := await _load("res://world/City3D.tscn")
+	var block: Node = city.get_node_or_null("ZombieBlock")
+	for i in 90:
+		if block != null and block.purchases_ready:
+			break
+		await physics_frame
+	await _frames(5)
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	var player := _player()
+	var holder: Node = player.get_node("WeaponHolder")
+	holder.set_process(false)
+	holder.no_spread = true
+	gfx.set_first_person(true)
+	player.global_position = Vector3(-20, 0, -3)
+	player.set_look(-PI / 2.0, 0.0)
+	await _frames(4)
+	var Gore := load("res://fx/gore/Gore.gd")
+	var gore: Node3D = Gore.of(holder)
+	block.spawner.round_no = 1
+	var mk := func(x: float) -> Node:
+		var z: Node = block.spawner.spawn_one("walker", Vector3(x, 0.0, -3.0))
+		z.set_physics_process(false)
+		z._anim_player.pause()
+		z.health = 100000.0
+		z.max_health = 150.0
+		return z
+	# Each limb comes off at its own threshold, and only that limb.
+	var z1: Node = mk.call(-24.0)
+	await _frames(2)
+	z1.take_hit("lower_arm_l", 150.0 * 0.12, Vector3.LEFT, null)
+	_check(z1.severed.is_empty() and z1.wounds_placed >= 1, "  a graze wounds the skin and keeps the limb (%d wound(s), severed %s, body %s)" % [z1.wounds_placed, z1.severed.keys(), z1.get_meta("body")])
+	var g0: int = gore.gibs.spawned
+	z1.take_hit("lower_arm_l", 150.0 * 0.20, Vector3.LEFT, null)
+	_check(z1.severed.has("forearm_l") and not z1.severed.has("forearm_r") and not z1.severed.has("arm_l") and gore.gibs.spawned == g0 + 1,
+		"  the forearm comes off at 30%% of the zombie's health and nothing else does (%s, %d gib, body %s)" % [z1.severed.keys(), gore.gibs.spawned - g0, z1.get_meta("body")])
+	_check((z1.sever_bits & (1 << 4)) != 0 and z1._skeleton.find_child("Stump_forearm_l", true, false) != null,
+		"  its triangles are clipped from the skin and a stump closes the cut")
+	_check((z1.hitboxes["lower_arm_l"] as Area3D).collision_layer == 0 and (z1.hitboxes["upper_arm_l"] as Area3D).collision_layer != 0, "  and only its hit zone is gone")
+	z1.take_hit("upper_arm_r", 150.0 * 0.30, Vector3.LEFT, null)
+	_check(not z1.severed.has("arm_r"), "  an upper arm takes more than a forearm (42%%): 30%% leaves it")
+	z1.take_hit("upper_arm_r", 150.0 * 0.20, Vector3.LEFT, null)
+	_check(z1.severed.has("arm_r") and z1.severed.has("forearm_r"), "  and it takes the forearm with it")
+	# Both legs: it crawls.
+	var z2: Node = mk.call(-26.0)
+	await _frames(2)
+	z2.take_hit("lower_leg_l", 150.0 * 0.4, Vector3.LEFT, null)
+	_check(z2.severed.has("shin_l") and not z2.legless, "  one leg gone: it kneels but is not yet a crawler")
+	z2.take_hit("upper_leg_r", 150.0 * 0.55, Vector3.LEFT, null)
+	_check(z2.legless and z2.severed.has("leg_r"), "  both legs gone: legless")
+	z2.state = z2.State.CHASE
+	z2.set_physics_process(true)
+	z2.target = player
+	await _frames(20)
+	_check(z2._anim_player.current_animation.contains("crawl"), "  and it plays the crawl clip (%s)" % z2._anim_player.current_animation)
+	z2.queue_free()
+	# A lethal headshot with a heavy hit takes the head off and the neck spurts.
+	var z3: Node = mk.call(-28.0)
+	await _frames(2)
+	z3.health = 100.0
+	var gh: int = gore.gibs.spawned
+	z3.take_hit("head", 150.0 * 0.9, Vector3.LEFT, null)
+	await _frames(2)
+	_check(z3.head_gone and z3.severed.has("head") and gore.gibs.spawned == gh + 1 and gore.fountains_active() >= 1 and z3._skeleton.find_child("Stump_head", true, false) != null,
+		"  a heavy headshot pops the head: stump, gib in the air, neck fountain (%d active)" % gore.fountains_active())
+	var z3b: Node = mk.call(-30.0)
+	await _frames(2)
+	z3b.health = 30.0
+	z3b.take_hit("head", 40.0, Vector3.LEFT, null)
+	_check(z3b.is_alive() == false and not z3b.head_gone, "  a light headshot that kills leaves the head on")
+	# Wounds: two on a zombie, the skin shader reads them.
+	var z4: Node = mk.call(-32.0)
+	await _frames(2)
+	z4.take_hit("torso", 30.0, Vector3.LEFT, null)
+	await _frames(1)
+	z4.take_hit("torso", 30.0, Vector3.LEFT, null)
+	var inst: MeshInstance3D = load("res://fx/gore/GoreRig.gd").body_mesh(z4._skeleton)
+	var wa: Vector4 = inst.get_instance_shader_parameter("wound_a")
+	var wb: Vector4 = inst.get_instance_shader_parameter("wound_b")
+	_check(wa.z > 0.0 and wb.z > 0.0 and z4.wounds_placed >= 2, "  two wounds are painted into the skin (%s, %s)" % [wa, wb])
+	# Blood decals exist and the corpse pool spreads when it settles.
+	var d0: int = gore.decals_shown()
+	z4.take_hit("torso", 150.0 * 0.5, Vector3.LEFT, null, false, z4.global_position + Vector3(0, 1.2, 0))
+	z4.health = 5.0
+	z4.take_hit("torso", 50.0, Vector3.LEFT, null)
+	for i in 240:
+		await physics_frame
+	_check(gore.decals_shown() >= d0 and gore.pools_shown() >= 1, "  blood lands on the ground and a pool spreads under the corpse (%d decals, %d pools)" % [gore.decals_shown(), gore.pools_shown()])
+	# One shotgun blast that takes several parts and kills pays once.
+	var shotgun: Resource = load("res://weapons/shotgun.tres")
+	holder.give(shotgun)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	var z5: Node = block.spawner.spawn_one("walker", Vector3(-22.0, 0.0, -3.0))
+	z5.health = 85.0
+	z5.set_physics_process(false)
+	z5._anim_player.pause()
+	z5.target = player
+	await _frames(2)
+	var eye: Vector3 = player.global_position + Vector3(0, 1.62, 0)
+	holder.aim_source = func():
+		z5.sync_hitboxes()
+		var c: Vector3 = (z5.hitboxes["upper_leg_l"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	var k0: int = zm.kills
+	zm.points = 0
+	var s0: int = gore.severs
+	holder._cooldown = 0.0
+	holder.fire()
+	await _frames(2)
+	_check(zm.kills - k0 == 1 and zm.points <= 110 and zm.points >= 60, "  a shotgun blast that kills pays once (%d kill, %d points)" % [zm.kills - k0, zm.points])
+	_check(gore.severs > s0, "  and it took parts off (%d severs)" % (gore.severs - s0))
+	holder.aim_source = Callable()
+	# Caps hold, no orphans: a crowd of zombies with every limb off.
+	var orphans0: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var crowd := []
+	for i in 14:
+		var zc: Node = mk.call(-40.0 - i * 1.2)
+		crowd.append(zc)
+	await _frames(2)
+	for zc in crowd:
+		for limb in ["head", "arm_l", "arm_r", "forearm_l", "leg_l", "leg_r", "shin_r"]:
+			gore.sever(zc, limb, Vector3.LEFT)
+		zc.take_hit("torso", 1.0e6, Vector3.LEFT, null)
+	for i in 5:
+		await physics_frame
+	for i in 600:
+		for zc in crowd:
+			if is_instance_valid(zc):
+				gore.splat(zc.global_position, Vector3.UP, 0.5)
+		if i % 20 == 0:
+			await physics_frame
+	_check(gore.gibs.shown() <= 24 and gore.decals_shown() <= 80 and gore.pools_shown() <= 12,
+		"  caps hold: %d gibs of 24, %d blood decals of 80, %d pools of 12" % [gore.gibs.shown(), gore.decals_shown(), gore.pools_shown()])
+	for zc in crowd:
+		if is_instance_valid(zc):
+			zc.free()
+	await _frames(3)
+	var orphans1: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	_check(orphans1 <= orphans0 + 2, "  no orphan nodes are left behind (%d -> %d)" % [orphans0, orphans1])
+	# Screen blood.
+	gore.screen_blood(1.0)
+	_check(gore.screen.shown() >= 1, "  a claw leaves blood on the screen")
+	# The option: gore off means no severs, no decals, no wounds, but the kills still count.
+	zm.gore_enabled = false
+	var sv: int = gore.severs
+	var dc: int = gore.decals_shown()
+	var wd: int = gore.wounds
+	var z6: Node = mk.call(-22.0)
+	await _frames(2)
+	z6.take_hit("lower_arm_l", 150.0 * 0.5, Vector3.LEFT, null)
+	z6.take_hit("torso", 20.0, Vector3.LEFT, null)
+	var k1: int = zm.kills
+	z6.health = 5.0
+	z6.take_hit("head", 500.0, Vector3.LEFT, null)
+	await _frames(3)
+	var before_shown: int = gore.screen.shown()
+	gore.screen_blood(1.0)
+	_check(gore.severs == sv and gore.decals_shown() == dc and gore.wounds == wd and z6.severed.is_empty() and not z6.head_gone and gore.screen.shown() == before_shown,
+		"  with gore off nothing is cut, painted or splattered")
+	_check(not z6.is_alive() and zm.kills == k1 + 1, "  and the kill still counts")
+	zm.gore_enabled = true
+	gfx.set_first_person(true)
+	await _frames(4)
+	zm.leave()
+	gs.start_run()

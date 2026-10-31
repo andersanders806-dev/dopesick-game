@@ -510,8 +510,11 @@ func melee() -> bool:
 	SFX.play("punch", -4.0, 1.1)
 	_wounded.clear()
 	_in_melee = true
-	_hurt(r.zombie, r.part, melee_data.damage_at(r.part), aim[1], melee_data, true)
+	_hurt(r.zombie, r.part, melee_data.damage_at(r.part), aim[1], melee_data, true, r.position)
 	_in_melee = false
+	var gore := get_tree().get_first_node_in_group("gore")
+	if gore != null:
+		gore.screen_blood(0.6)
 	_pay_hits()
 	return true
 

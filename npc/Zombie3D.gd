@@ -24,6 +24,7 @@ const CharacterCast := preload("res://npc/CharacterCast.gd")
 const ZombieHitboxes := preload("res://npc/ZombieHitboxes.gd")
 const ZombieFlinch := preload("res://npc/ZombieFlinch.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
+const Gore := preload("res://fx/gore/Gore.gd")
 const ROT_SHADER := preload("res://npc/zombie_rot.gdshader")
 
 enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, DYING, DEAD }
@@ -128,6 +129,13 @@ var _kneel_t := 0.0
 var _slow := 0.0
 ## A shove from a shotgun at close range (m/s on the ground, dying away).
 var _knock := Vector3.ZERO
+## Gore (fx/gore/Gore.gd): damage taken per hit zone, the limbs gone (limb -> true), the
+## skeleton modifier that holds them at nothing, wounds painted, whether the head is off.
+var limb_damage := {}
+var severed := {}
+var sever_bits := 0
+var wounds_placed := 0
+var head_gone := false
 var _flinch: SkeletonModifier3D
 var _frame := 0
 var _far := false
@@ -205,9 +213,14 @@ func _ready() -> void:
 	anim.set_clips(_move_clip, "z_idle")
 	_skeleton = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	_anim_player = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _skeleton and ZombieMode.gore_enabled:
+		# Limb ids on the body's vertices, so a lost limb can be clipped away (once per body;
+		# before the rot materials, since a new mesh drops the surface overrides).
+		Gore.GoreRig.prepare(self)
 	_apply_rot(float(get_meta("seed", 0.0)))
 	if _skeleton:
 		hitboxes = ZombieHitboxes.build(_skeleton, self)
+
 	_facing = randf() * TAU
 	_model_root.rotation.y = _facing
 	_repath_in = randf_range(0.0, REPATH.y)
@@ -470,6 +483,10 @@ func _attack(delta: float) -> void:
 			_attack_hit_done = true
 			if to.length() <= ATTACK_RANGE + 0.35:
 				attacked.emit(self, damage)
+				if target.is_in_group("player") and ZombieMode.gore_enabled:
+					var gore := Gore.of(self)
+					if gore != null:
+						gore.screen_blood(clampf(damage / 35.0, 0.6, 1.6))
 				if target.has_method("take_zombie_hit"):
 					target.take_zombie_hit(damage, self)
 	if _attack_time >= _attack_len:
@@ -733,6 +750,10 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 	var killed := health <= 0.0
 	hit.emit(self, part, dmg, killed)
 	_hit_fx(part, dmg, dir, at, killed, melee)
+	if ZombieMode.gore_enabled and is_inside_tree() and not bool(get_meta("prewarm", false)):
+		var gore := Gore.of(self)
+		if gore != null:
+			gore.on_hit(self, part, dmg, dir, at, killed, weapon)
 	if killed:
 		_die(part, melee, dir)
 		return
@@ -863,6 +884,10 @@ func _settle() -> void:
 		return
 	state = State.DEAD
 	_shape.set_deferred("disabled", true)
+	if ZombieMode.gore_enabled and not bool(get_meta("prewarm", false)):
+		var gore := Gore.of(self)
+		if gore != null:
+			gore.pool_under(self)
 
 ## Both legs gone (gore, Z6): it crawls from now on. `false` gives the legs back.
 func set_legless(on := true) -> void:

@@ -56,7 +56,7 @@ func _initialize() -> void:
 		else:
 			_check(vm.grip_l.y < vm.grip_r.y, "pistol: support hand under the firing hand")
 		_check(vm.arms != null, "%s: arms built" % id)
-		if id == "ar" or id == "smg":
+		if id == "ar" or id == "smg" or id == "lmg":
 			_check(vm.has_optic and vm.optic != null, "%s: red dot fitted" % id)
 			var painted := 0
 			var dot := vm.optic.get_node_or_null("Dot") != null

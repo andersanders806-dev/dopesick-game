@@ -195,14 +195,15 @@ func _measure() -> void:
 ## Where the sight picture sits on each gun: the zones (fractions of the gun's length from
 ## the muzzle) of the front sight and the rear sight to measure the sight line from, the eye
 ## relief (metres from the eye to the rear sight), and whether a red dot is fitted.
-## [front_lo, front_hi, rear_lo, rear_hi, relief, optic, lift]; with a red dot: [rail_lo, rail_hi, dot_z, -, relief, true, 0].
-## `lift` raises the eye over the gun's top (a sight that is only a flat receiver).
+## [front_lo, front_hi, rear_lo, rear_hi, relief, optic, lift]; with a red dot: [rail_lo, rail_hi, dot_z, -, relief, true, riser].
+## `lift` raises the eye over the gun's top (a sight that is only a flat receiver); with a red dot it is the
+## height of a riser the sight stands on (the LMG's, so the dot clears the pan magazine).
 const SIGHTS := {
 	"pistol": [0.0, 0.14, 0.78, 0.97, 0.30, false, 0.0],
 	"magnum": [0.0, 0.14, 0.62, 0.78, 0.30, false, 0.0],
 	"smg": [0.3, 0.7, 0.55, 0.0, 0.14, true, 0.0],
 	"ar": [0.3, 0.7, 0.58, 0.0, 0.14, true, 0.0],
-	"lmg": [0.0, 0.1, 0.45, 0.6, 0.30, false, 0.045],
+	"lmg": [0.3, 0.7, 0.5, 0.0, 0.19, true, 0.055],
 	"shotgun": [0.0, 0.1, 0.55, 0.72, 0.42, false, 0.05],
 	"sniper": [0.0, 0.1, 0.5, 0.65, 0.2, false, 0.01],
 	"wonder": [0.0, 0.1, 0.5, 0.65, 0.3, false, 0.05],
@@ -253,7 +254,10 @@ func _measure_sights(f: String) -> void:
 	has_optic = cfg[5]
 	var relief: float = cfg[4]
 	if has_optic:
-		_build_optic(Vector3(0.0, rear.y, rear.z))
+		var riser: float = cfg[6]
+		_build_optic(Vector3(0.0, rear.y + riser, rear.z))
+		if riser > 0.0:
+			_build_riser(rear.y, riser, rear.z)
 		# The dot sits in the middle of the sight's frame.
 		sight_point = optic.position + optic_dot
 		ads_pitch = 0.0
@@ -417,6 +421,25 @@ func _build_optic_kit() -> void:
 	glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	glass.position = Vector3(0.0, OPTIC_CENTRE_Y - 0.002, OPTIC_L * 0.2)
 	optic.add_child(glass)
+
+## The post under a raised red dot: from the gun's top up to the sight's base.
+func _build_riser(from_y: float, height: float, z: float) -> void:
+	var steel := ShaderMaterial.new()
+	steel.shader = SHADER
+	steel.set_shader_parameter("viewmodel_fov", VM_FOV)
+	steel.set_shader_parameter("albedo", Color(0.02, 0.02, 0.022))
+	steel.set_shader_parameter("metallic", 0.3)
+	steel.set_shader_parameter("roughness", 0.55)
+	steel.set_shader_parameter("near_cut", 0.05)
+	var mi := MeshInstance3D.new()
+	mi.name = "Riser"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.03, height + 0.01, 0.06)
+	mi.mesh = bm
+	mi.material_override = steel
+	mi.position = Vector3(0.0, from_y + height * 0.5 - 0.004, z)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
 	var mi := MeshInstance3D.new()

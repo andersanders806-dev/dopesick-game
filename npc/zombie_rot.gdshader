@@ -15,6 +15,13 @@ uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform int kind = 0;
 uniform float roughness_base = 0.8;
 uniform float specular_base = 0.3;
+// So they read in the dark street: a cold rim where the body turns away from you
+// (the silhouette) and a small lift of the body's own colour, both stronger with
+// distance, so a zombie is always seen without the night turning into day.
+uniform vec3 rim_color : source_color = vec3(0.34, 0.5, 0.46);
+uniform float rim_power = 2.4;
+uniform float rim_strength = 0.55;
+uniform float body_lift = 0.07;
 
 // How far gone this one is (0 fresh .. 1 rotten) and its own offset into the
 // noise, so no two share a pattern.
@@ -22,9 +29,11 @@ instance uniform float rot : hint_range(0.0, 1.0) = 0.6;
 instance uniform float seed = 0.0;
 
 varying vec2 v_uv;
+varying float v_dist;
 
 void vertex() {
 	v_uv = UV;
+	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
 }
 
 float sat_of(vec3 c) {
@@ -82,9 +91,13 @@ void fragment() {
 	ROUGHNESS = mix(roughness_base, 0.28, max(blood * skin, stain * (1.0 - skin)));
 	SPECULAR = specular_base;
 
+	float far_k = 1.0 + 1.1 * smoothstep(6.0, 26.0, v_dist);
+	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power);
+	vec3 glow = rim_color * rim * rim_strength * far_k + col * body_lift * far_k;
 	// Eyes: the whites of a head glow a sick yellow.
 	if (kind == 1) {
 		float eye = (1.0 - smoothstep(0.08, 0.2, sat)) * smoothstep(0.62, 0.82, mx);
-		EMISSION = eye * vec3(0.85, 0.9, 0.35) * 0.55 * rot;
+		glow += eye * vec3(0.85, 0.9, 0.35) * 0.55 * rot;
 	}
+	EMISSION = glow;
 }

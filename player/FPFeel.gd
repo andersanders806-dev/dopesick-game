@@ -505,7 +505,7 @@ func _pose(_delta: float) -> void:
 		return
 	var ease := smoothstep(0.0, 1.0, ads)
 	var pos: Vector3 = HIP_POS.lerp(vm.ads_position, ease)
-	var rot := Vector3.ZERO
+	var rot := Vector3(vm.ads_pitch * ease, 0.0, 0.0)
 	# Breathing, and the Lissajous drift of the sights while aimed.
 	var breath := Vector3(sin(_t * 1.1) * 0.0008, sin(_t * 1.6) * 0.0012, 0.0)
 	pos += breath * (1.0 - ease)

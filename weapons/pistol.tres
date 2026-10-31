@@ -33,4 +33,4 @@ upgrade = ExtResource("2_up")
 model = "res://assets/guns/pistol/service_pistol.gltf"
 model_yaw = 90.0
 model_length = 0.24
-model_hide = PackedStringArray("_b", "magazine_empty", "bullet")
+model_hide = PackedStringArray("_b", "magazine_empty", "magazine_loaded", "bullet")

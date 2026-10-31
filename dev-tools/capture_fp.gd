@@ -9,7 +9,7 @@ func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	out = ProjectSettings.globalize_path("res://.pilot")
 	var args: Array = Array(OS.get_cmdline_user_args())
-	var specials := ["sprint", "slide", "hit", "scope", "melee"]
+	var specials := ["sprint", "slide", "hit", "scope", "melee", "zombies"]
 	var guns: Array = args.filter(func(a): return not specials.has(a))
 	if args.is_empty():
 		guns = ["pistol", "ar"]
@@ -68,6 +68,20 @@ func _initialize() -> void:
 		await _snap("%s_reload70" % id)
 		await _run(h, feel, int(h.reload_left() * 60.0) + 10)
 	var player := p
+	if args.has("zombies"):
+		h.give(load("res://weapons/ar.tres"))
+		await _run(h, feel, 30)
+		zs[0].global_position = Vector3(-14.0, 0.0, -3.0)
+		zs[1].global_position = Vector3(-8.0, 0.0, -2.4)
+		for z in zs:
+			z.sync_hitboxes()
+		await _run(h, feel, 20)
+		await _snap("zombies_hip")
+		h.aiming = true
+		await _run(h, feel, 40)
+		await _snap("zombies_ads")
+		h.aiming = false
+		await _run(h, feel, 20)
 	if args.has("sprint"):
 		h.give(load("res://weapons/ar.tres"))
 		await _run(h, feel, 30)

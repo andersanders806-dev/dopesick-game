@@ -52,8 +52,8 @@ func _ready() -> void:
 	gun_label = _label(font, 22, BLOOD, Vector2.ZERO)
 	_pin_bottom_right(gun_label, 34.0, 96.0)
 	# What E does, low in the middle; a word of refusal above it.
-	prompt = _label(font, 24, PAPER, Vector2.ZERO)
-	_pin_bottom_centre(prompt, 190.0)
+	prompt = _label(font, 19, PAPER, Vector2.ZERO)
+	_pin_bottom_centre(prompt, 150.0)
 	message = _label(font, 28, BLOOD, Vector2.ZERO)
 	_pin_bottom_centre(message, 240.0)
 	message.modulate.a = 0.0
@@ -127,11 +127,30 @@ func _update_prompt() -> void:
 	var text := ""
 	if player != null and not player.dialogue_active and not get_tree().paused:
 		var target = player._nearest_interactable()
-		if target != null and target.has_method("prompt_text"):
+		if target != null and target.has_method("prompt_text") and prompt_in_view(player, target):
 			text = target.prompt_text()
 	# On the pad the use button is also reload: buying is a hold.
 	var key := ("Hold " if GameState.using_pad else "") + GameState.control_name("interact")
 	prompt.text = "%s  %s" % [key, text] if text != "" else ""
+
+## A buy prompt only shows when the thing is close (under PROMPT_RANGE) and you are
+## looking at it, not whenever you stand somewhere near it.
+const PROMPT_RANGE := 2.0
+const PROMPT_FACING := 0.55
+
+static func prompt_in_view(player: Node3D, target: Node3D) -> bool:
+	var to := target.global_position - player.global_position
+	to.y = 0.0
+	if to.length() > PROMPT_RANGE:
+		return false
+	if not Graphics.first_person:
+		return true
+	var cam := player.get_viewport().get_camera_3d()
+	if cam == null or to.length() < 0.4:
+		return true
+	var fwd := -cam.global_transform.basis.z
+	fwd.y = 0.0
+	return fwd.normalized().dot(to.normalized()) >= PROMPT_FACING
 
 ## A line of refusal or news over the prompt ("Not enough points"), gone in a moment.
 func say(text: String) -> void:

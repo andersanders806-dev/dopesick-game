@@ -16,7 +16,7 @@ G = "res://assets/guns/"
 BASE = {
     "pistol": dict(name="Service Pistol", damage=40, head=2.5, neck=1.6, limb=0.8, rpm=330, auto=False, mag=8, reserve=80,
                    reload=1.7, hip=2.2, ads=0.3, recoil=1.2, zoom=1.3, price=0, in_box=False,
-                   model="pistol/service_pistol.gltf", yaw=90, length=0.24, hide=["_b", "magazine_empty", "bullet"]),
+                   model="pistol/service_pistol.gltf", yaw=90, length=0.24, hide=["_b", "magazine_empty", "magazine_loaded", "bullet"]),
     "smg": dict(name="Submachine Gun", damage=28, head=1.5, neck=1.25, limb=0.8, rpm=780, auto=True, mag=30, reserve=150,
                 reload=2.1, hip=3.0, ads=0.9, recoil=0.8, zoom=1.5, price=1000,
                 model="smg/scene.gltf", yaw=0, length=0.52),

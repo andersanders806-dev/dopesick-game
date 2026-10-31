@@ -16,6 +16,7 @@ const WD := preload("res://weapons/WeaponData.gd")
 const GunModel := preload("res://weapons/GunModel.gd")
 const SHADER := preload("res://player/viewmodel.gdshader")
 const FX_SHADER := preload("res://player/viewmodel_fx.gdshader")
+const DOT_SHADER := preload("res://player/viewmodel_dot.gdshader")
 const ARMS_SCENE := "res://assets/viewmodel/arms.glb"
 ## Vertical field of view the gun and arms are drawn with (research: 55 to 65).
 const VM_FOV := 60.0
@@ -24,15 +25,27 @@ const ARM_NEAR_CUT := 0.12
 ## Where the hands go on each gun, as fractions of the gun's box
 ## (x across, y up, z from the muzzle (0) to the back (1)), right hand then left:
 ## the grip, and the foregrip / support.
+## Where the hands go on each gun, as fractions of the gun's box (x across from the left
+## side, y up from the bottom, z from the BACK (0) to the muzzle (1)): the right hand on the
+## grip, the left on the foregrip or, for a pistol, cupping the right. Then each hand's roll
+## about its own length (degrees) and how far its fingers close (1 = the standard grip).
+## [right, left, right_roll, left_roll, right_curl, left_curl]
 const HANDS := {
-	"pistol": [Vector3(0.5, 0.22, 0.60), Vector3(-0.9, 0.12, 0.62)],
-	"magnum": [Vector3(0.5, 0.20, 0.72), Vector3(-0.9, 0.12, 0.72)],
-	"smg": [Vector3(0.5, 0.20, 0.70), Vector3(0.5, 0.30, 0.42)],
-	"ar": [Vector3(0.5, 0.18, 0.66), Vector3(0.5, 0.22, 0.42)],
-	"lmg": [Vector3(0.5, 0.18, 0.62), Vector3(0.5, 0.22, 0.44)],
-	"shotgun": [Vector3(0.5, 0.35, 0.68), Vector3(0.5, 0.30, 0.46)],
-	"sniper": [Vector3(0.5, 0.30, 0.66), Vector3(0.5, 0.25, 0.46)],
-	"wonder": [Vector3(0.5, 0.20, 0.72), Vector3(0.5, 0.30, 0.46)],
+	"pistol": [Vector3(0.5, 0.3, 0.14), Vector3(-1.4, 0.25, 0.2), 0.0, 0.0, 1.0, 1.0],
+	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0],
+	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(0.5, 0.40, 0.58), 0.0, 0.0, 1.0, 1.0],
+	"ar": [Vector3(0.5, 0.18, 0.34), Vector3(0.5, 0.40, 0.60), 0.0, 0.0, 1.0, 1.0],
+	"lmg": [Vector3(0.5, 0.18, 0.38), Vector3(0.5, 0.30, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.42, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.38, 0.54), 0.0, 0.0, 1.0, 1.0],
+	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0],
+}
+
+## Guns whose model is plain colours (the importer drops its specular-glossiness
+## materials, which leaves flat grey): the shader paints them. Material name ->
+## 1 blued steel, 2 walnut; "*" is everything else.
+const PLAIN_KIT := {
+	"shotgun": {"Material.001": 2, "*": 1},
 }
 
 var data: WD
@@ -100,7 +113,7 @@ static func material_for(src: Material) -> ShaderMaterial:
 ## Puts every mesh under `node` on the viewmodel shader, shadows off. The
 ## upgraded guns' tint becomes the shader's glow instead of an overlay (which
 ## would be drawn with the world's projection).
-func _convert(node: Node, cut := 0.05) -> void:
+func _convert(node: Node, cut := 0.05, is_arms := false) -> void:
 	for mi in node.find_children("*", "MeshInstance3D", true, false):
 		var m := mi as MeshInstance3D
 		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -123,6 +136,14 @@ func _convert(node: Node, cut := 0.05) -> void:
 				pass
 			var mat := material_for(src)
 			mat.set_shader_parameter("near_cut", cut)
+			if is_arms:
+				mat.set_shader_parameter("arms", true)
+			elif data != null and src is BaseMaterial3D and (src as BaseMaterial3D).albedo_texture == null:
+				var kind: int = PLAIN_KIT.get(data.family(), {}).get(src.resource_name, 0)
+				if kind == 0 and PLAIN_KIT.has(data.family()):
+					kind = PLAIN_KIT[data.family()].get("*", 0)
+				if kind != 0:
+					mat.set_shader_parameter("procedural", kind)
 			if data != null and data.tint.a > 0.0:
 				mat.set_shader_parameter("glow_color", Color(data.tint.r, data.tint.g, data.tint.b))
 				mat.set_shader_parameter("glow_amount", 0.9)
@@ -152,12 +173,169 @@ func _measure() -> void:
 	var hands: Array = HANDS.get(f, HANDS["ar"])
 	grip_r = _in_box(hands[0])
 	grip_l = _in_box(hands[1])
+	_hand_roll = {"R": hands[2], "L": hands[3]}
+	_hand_curl = {"R": hands[4], "L": hands[5]}
 	magwell = Vector3(b.position.x + b.size.x * 0.5, b.position.y + b.size.y * 0.1, b.position.z + b.size.z * 0.55)
 	belt = magwell + Vector3(-0.12, -0.15, 0.06)
-	# The top of the gun on the view's axis, its back end a hand's width from the eye.
-	var sight_y := b.end.y - 0.004
-	var eye_gap: float = {"pistol": 0.34, "magnum": 0.34, "smg": 0.28, "ar": 0.30, "lmg": 0.30, "shotgun": 0.28, "sniper": 0.14, "wonder": 0.3}.get(f, 0.3)
-	ads_position = Vector3(-(b.position.x + b.size.x * 0.5), -sight_y, -(eye_gap + b.end.z))
+	_measure_sights(f)
+
+## Where the sight picture sits on each gun: the zones (fractions of the gun's length from
+## the muzzle) of the front sight and the rear sight to measure the sight line from, the eye
+## relief (metres from the eye to the rear sight), and whether a red dot is fitted.
+## [front_lo, front_hi, rear_lo, rear_hi, relief, optic, lift]; with a red dot: [rail_lo, rail_hi, dot_z, -, relief, true, 0].
+## `lift` raises the eye over the gun's top (a sight that is only a flat receiver).
+const SIGHTS := {
+	"pistol": [0.0, 0.14, 0.78, 0.97, 0.30, false, 0.0],
+	"magnum": [0.0, 0.14, 0.62, 0.78, 0.30, false, 0.0],
+	"smg": [0.3, 0.7, 0.55, 0.0, 0.25, true, 0.0],
+	"ar": [0.3, 0.7, 0.58, 0.0, 0.25, true, 0.0],
+	"lmg": [0.0, 0.1, 0.45, 0.6, 0.30, false, 0.045],
+	"shotgun": [0.0, 0.1, 0.55, 0.72, 0.42, false, 0.05],
+	"sniper": [0.0, 0.1, 0.5, 0.65, 0.2, false, 0.01],
+	"wonder": [0.0, 0.1, 0.5, 0.65, 0.3, false, 0.05],
+}
+
+## The point on the sight line the eye sits behind (rear sight, or the red dot), in this
+## node's space, and the pitch that levels the line with the view.
+var sight_point := Vector3.ZERO
+var ads_pitch := 0.0
+var optic: Node3D
+var has_optic := false
+static var _sight_cache := {}
+
+func _measure_sights(f: String) -> void:
+	var cfg: Array = SIGHTS.get(f, SIGHTS["ar"])
+	var b := box
+	var len := b.size.z
+	var z0 := b.position.z
+	var key := data.id if data != null else f
+	var front := Vector3(0.0, b.end.y, z0)
+	var rear := Vector3(0.0, b.end.y, b.end.z)
+	var measured := false
+	if _sight_cache.has(key):
+		var c: Array = _sight_cache[key]
+		front = c[0]
+		rear = c[1]
+		measured = true
+	else:
+		var verts := _gun_verts()
+		if verts.size() > 0:
+			var cfg_f: Array = [z0 + len * cfg[0], z0 + len * cfg[1]]
+			var cfg_r: Array = [z0 + len * cfg[2], z0 + len * cfg[3]]
+			if cfg[5]:
+				# A red dot goes on the rail: the top of the receiver there.
+				var r := _top_in(verts, cfg_f[0], cfg_f[1])
+				r.z = z0 + len * cfg[2]
+				front = r
+				rear = r
+			else:
+				front = _top_in(verts, cfg_f[0], cfg_f[1])
+				rear = _top_in(verts, cfg_r[0], cfg_r[1])
+			if front.y > -1e8 and rear.y > -1e8:
+				_sight_cache[key] = [front, rear]
+				measured = true
+	if not measured or front.y < -1e8 or rear.y < -1e8:
+		front = Vector3(0.0, b.end.y - 0.004, z0)
+		rear = Vector3(0.0, b.end.y - 0.004, b.end.z - len * 0.25)
+	has_optic = cfg[5]
+	var relief: float = cfg[4]
+	if has_optic:
+		_build_optic(Vector3(0.0, rear.y, rear.z))
+		# The dot sits in the middle of the sight's frame.
+		sight_point = optic.position + Vector3(0.0, OPTIC_CENTRE_Y, 0.0)
+		ads_pitch = 0.0
+	else:
+		var d := front - rear
+		ads_pitch = atan(d.y / d.z) if absf(d.z) > 0.01 else 0.0
+		sight_point = Vector3(0.0, rear.y + float(cfg[6]), rear.z)
+	var rot := Basis(Vector3.RIGHT, ads_pitch)
+	ads_position = Vector3(0.0, 0.0, -relief) - rot * sight_point
+	muzzle = Vector3(0.0, muzzle.y, muzzle.z)
+
+## Every vertex of the gun's visible meshes in this node's space (empty when the renderer
+## keeps no mesh data, as a headless run).
+func _gun_verts() -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for mi in gun.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if not m.visible or m.mesh == null:
+			continue
+		var xf := Transform3D()
+		var c: Node = m
+		while c != null and c != gun:
+			xf = (c as Node3D).transform * xf
+			c = c.get_parent()
+		for sidx in m.mesh.get_surface_count():
+			var arr := m.mesh.surface_get_arrays(sidx)
+			if arr.is_empty() or arr[Mesh.ARRAY_VERTEX] == null:
+				continue
+			for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				out.append(xf * v)
+	return out
+
+## The highest vertex near the gun's centreline with z between the two, as (x, y, z).
+func _top_in(verts: PackedVector3Array, zlo: float, zhi: float) -> Vector3:
+	var best := Vector3(0.0, -1e9, 0.0)
+	for v in verts:
+		if v.z < zlo or v.z > zhi or absf(v.x) > 0.02:
+			continue
+		if v.y > best.y:
+			best = v
+	return best
+
+# --- The red dot sight: a frame you look through with a dot floating in it -----------
+
+const OPTIC_CENTRE_Y := 0.0245
+const OPTIC_W := 0.034
+const OPTIC_H := 0.03
+const OPTIC_L := 0.05
+
+func _build_optic(at: Vector3) -> void:
+	optic = Node3D.new()
+	optic.name = "RedDot"
+	# at.y is the top of the rail; the housing sits on a mount plate.
+	optic.position = Vector3(0.0, at.y, at.z)
+	add_child(optic)
+	var steel := ShaderMaterial.new()
+	steel.shader = SHADER
+	steel.set_shader_parameter("viewmodel_fov", VM_FOV)
+	steel.set_shader_parameter("albedo", Color(0.012, 0.012, 0.014))
+	steel.set_shader_parameter("metallic", 0.1)
+	steel.set_shader_parameter("roughness", 0.6)
+	steel.set_shader_parameter("near_cut", 0.05)
+	var wall := 0.0028
+	var half_w := OPTIC_W * 0.5
+	# Mount plate, then the rectangular tube you look through (left, right, top, bottom).
+	_optic_box(Vector3(0.026, 0.008, OPTIC_L * 1.2), Vector3(0.0, 0.004, 0.0), steel)
+	_optic_box(Vector3(OPTIC_W, 0.006, OPTIC_L), Vector3(0.0, 0.011, 0.0), steel)
+	_optic_box(Vector3(wall, OPTIC_H, OPTIC_L), Vector3(-half_w + wall * 0.5, 0.008 + OPTIC_H * 0.5, 0.0), steel)
+	_optic_box(Vector3(wall, OPTIC_H, OPTIC_L), Vector3(half_w - wall * 0.5, 0.008 + OPTIC_H * 0.5, 0.0), steel)
+	_optic_box(Vector3(OPTIC_W, wall * 1.4, OPTIC_L), Vector3(0.0, 0.008 + OPTIC_H - wall * 0.7, 0.0), steel)
+	# A lens-hood lip at the front and a little glare line on the top.
+	_optic_box(Vector3(OPTIC_W + 0.004, 0.004, 0.006), Vector3(0.0, 0.008 + OPTIC_H + 0.001, -OPTIC_L * 0.5), steel)
+	# The dot: a small red disc and a faint ring, unshaded, drawn on the viewmodel's projection.
+	var dot := MeshInstance3D.new()
+	dot.name = "Dot"
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * 0.016
+	dot.mesh = q
+	var dm := ShaderMaterial.new()
+	dm.shader = DOT_SHADER
+	dm.set_shader_parameter("viewmodel_fov", VM_FOV)
+	dot.material_override = dm
+	dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dot.position = Vector3(0.0, OPTIC_CENTRE_Y, 0.0)
+	optic.add_child(dot)
+
+func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = mat
+	mi.position = at
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	optic.add_child(mi)
 
 func _in_box(frac: Vector3) -> Vector3:
 	return Vector3(box.position.x + box.size.x * frac.x, box.position.y + box.size.y * frac.y, box.position.z + box.size.z * (1.0 - frac.z))
@@ -260,7 +438,7 @@ func _build_arms() -> void:
 	add_child(arms)
 	_skeleton = arms.find_child("Skeleton3D", true, false) as Skeleton3D
 	# Nothing of an arm nearer than this to the eye is drawn: the upper arms stay out of the picture.
-	_convert(arms, ARM_NEAR_CUT)
+	_convert(arms, ARM_NEAR_CUT, true)
 	if _skeleton == null:
 		return
 	_skeleton.modifier_callback_mode_process = Skeleton3D.MODIFIER_CALLBACK_MODE_PROCESS_IDLE
@@ -280,12 +458,10 @@ func _build_arms() -> void:
 
 ## Arm scale against the avatar's own (first-person arms are always big: the
 ## viewmodel's narrow field of view and the short reach to the gun need it).
-const ARM_SCALE := 1.3
+const ARM_SCALE := 1.12
 ## Shoulders, camera space.
-const SHOULDER_R := Vector3(0.20, -0.40, 0.0)
-const SHOULDER_L := Vector3(-0.20, -0.40, 0.0)
-## Roll of each hand about its own length, degrees (tuned on screen).
-const HAND_ROLL := {"R": 0.0, "L": 0.0}
+const SHOULDER_R := Vector3(0.22, -0.46, 0.22)
+const SHOULDER_L := Vector3(-0.22, -0.46, 0.22)
 ## Finger curl about the Z axis, degrees [base, middle, tip] and the thumb's.
 const GRIP_CURL := {"R": [58.0, 70.0, 42.0], "L": [50.0, 62.0, 40.0]}
 const THUMB_CURL := {"R": [12.0, 18.0], "L": [6.0, 10.0]}
@@ -312,6 +488,8 @@ func _fit_arms() -> void:
 		_arm[side] = a
 
 var _arm := {}
+var _hand_roll := {"R": 0.0, "L": 0.0}
+var _hand_curl := {"R": 1.0, "L": 1.0}
 
 ## The skeleton's pose with the hands where they go. `left` is the left hand's
 ## target on the gun (this node's space); the right is on the grip. Reads the
@@ -356,7 +534,7 @@ func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_v
 	var fo_basis := _aim_bone(fo_rest.basis, (t - elbow).normalized())
 	var ha_dir := (to_sk.basis * (hand_dir_vm + Vector3(0, -0.3, 0))).normalized()
 	var ha_basis := _aim_bone(ha_rest.basis, ha_dir)
-	ha_basis = Basis(ha_dir, deg_to_rad(HAND_ROLL[side])) * ha_basis
+	ha_basis = Basis(ha_dir, deg_to_rad(float(_hand_roll[side]))) * ha_basis
 	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis, sh))
 	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis, elbow))
 	_skeleton.set_bone_global_pose(a["hand"], Transform3D(ha_basis, t))
@@ -389,7 +567,7 @@ func _curl(a: Dictionary, side: String) -> void:
 			var idx: int = chain[k]
 			if idx < 0:
 				continue
-			var ang: float = (thumb[mini(k, 1)] if f == 0 else curl[k]) * CURL_SIGN
+			var ang: float = (thumb[mini(k, 1)] if f == 0 else curl[k]) * CURL_SIGN * float(_hand_curl[side])
 			var rest_local: Transform3D = _skeleton.get_bone_rest(idx)
 			var rot := Basis(Vector3.BACK, deg_to_rad(ang))
 			_skeleton.set_bone_pose_rotation(idx, (rest_local.basis * rot).get_rotation_quaternion())

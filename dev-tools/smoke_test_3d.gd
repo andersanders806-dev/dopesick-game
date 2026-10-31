@@ -8747,7 +8747,7 @@ func _zombie_fp_checks(gs: Node) -> void:
 	for id in ["pistol", "smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder", "pistol_up", "smg_up"]:
 		var gv: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
 		for m in gv.materials():
-			var is_shader: bool = m is ShaderMaterial and (m.shader == Viewmodel.SHADER or m.shader == Viewmodel.FX_SHADER)
+			var is_shader: bool = m is ShaderMaterial and (m.shader == Viewmodel.SHADER or m.shader == Viewmodel.FX_SHADER or m.shader == Viewmodel.DOT_SHADER)
 			if not is_shader:
 				all_shader = false
 				bad.append(id)
@@ -8817,5 +8817,97 @@ func _zombie_fp_checks(gs: Node) -> void:
 	far_z.queue_free()
 	gfx.set_first_person(true)
 	await _frames(4)
+	await _zombie_fp_look_checks(player, holder, feel, block)
 	zm.leave()
 	gs.start_run()
+
+
+## Task Z4b stage (a): sights on the screen's centre, the red dot, sleeves and gloves, a painted
+## shotgun, buy prompts only when you look at the thing, zombies that read in the dark.
+func _zombie_fp_look_checks(player: Node, holder: Node, feel: Node, block: Node) -> void:
+	var Viewmodel := load("res://player/Viewmodel.gd")
+	var Hud := load("res://ui/ZombieHud.gd")
+	# Aimed, the sight sits on the view's axis for every gun.
+	var worst := 0.0
+	var worst_id := ""
+	var near_relief := true
+	for id in ["pistol", "magnum", "smg", "ar", "lmg", "shotgun", "sniper", "wonder", "ar_up", "shotgun_up", "pistol_up"]:
+		var vm: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
+		var p: Vector3 = vm.ads_position + Basis(Vector3.RIGHT, vm.ads_pitch) * vm.sight_point
+		var off := Vector2(p.x, p.y).length()
+		if off > worst:
+			worst = off
+			worst_id = id
+		if p.z > -0.1 or p.z < -0.6:
+			near_relief = false
+		vm.free()
+	_check(worst < 0.003, "  aimed, every gun's sight (rear sight or red dot) is on the screen's centre (worst %s %.1f mm)" % [worst_id, worst * 1000.0])
+	_check(near_relief, "  at an eye relief between 10 and 60 cm")
+	for id in ["ar", "smg"]:
+		var vm: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
+		var dot := vm.optic.get_node_or_null("Dot") as Node3D if vm.optic != null else null
+		_check(vm.has_optic and dot != null and (vm.optic.position + dot.position).distance_to(vm.sight_point) < 0.002,
+			"  the %s wears a red dot with its dot on the sight line" % id)
+		vm.free()
+	var vm_p: Node3D = Viewmodel.new().setup(load("res://weapons/pistol.tres"))
+	_check(not vm_p.has_optic and vm_p.optic == null, "  the pistol keeps its iron sights")
+	# Sleeves and gloves: the arms carry a mask map and every arm material uses it.
+	var arms_ok := true
+	var glove := false
+	var sleeve := false
+	var tip := false
+	for mi in vm_p.arms.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for sidx in m.mesh.get_surface_count():
+			var mat := m.get_active_material(sidx) as ShaderMaterial
+			if mat == null or mat.get_shader_parameter("arms") != true:
+				arms_ok = false
+			var uv2 = m.mesh.surface_get_arrays(sidx)[Mesh.ARRAY_TEX_UV2]
+			if uv2 == null or (uv2 as PackedVector2Array).size() < 800:
+				arms_ok = false
+				continue
+			for uv in (uv2 as PackedVector2Array):
+				glove = glove or uv.x > 0.9
+				sleeve = sleeve or uv.y > 0.9
+				tip = tip or (uv.x < 0.05 and uv.y < 0.05)
+	_check(arms_ok and glove and sleeve and tip, "  the arms have sleeves, gloves and bare fingertips (mask: arms %s glove %s sleeve %s tip %s)" % [arms_ok, glove, sleeve, tip])
+	vm_p.free()
+	# The shotgun is painted (blued steel and walnut) instead of plain grey.
+	var vm_s: Node3D = Viewmodel.new().setup(load("res://weapons/shotgun.tres"))
+	var kinds := {}
+	for mat in vm_s.materials():
+		if mat is ShaderMaterial and mat.shader == Viewmodel.SHADER:
+			var pv = mat.get_shader_parameter("procedural")
+			if pv != null:
+				kinds[int(pv)] = true
+	_check(kinds.has(1) and kinds.has(2), "  the shotgun has blued steel and walnut (material kinds %s)" % [kinds.keys()])
+	vm_s.free()
+	# Buy prompts only when you are close and looking at the thing.
+	var cam: Camera3D = player.get_viewport().get_camera_3d()
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var thing := Node3D.new()
+	root.add_child(thing)
+	thing.global_position = player.global_position + fwd * 1.5
+	var in_front: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position - fwd * 1.5
+	var behind: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position + fwd * 3.0
+	var far_off: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position + fwd.rotated(Vector3.UP, deg_to_rad(80.0)) * 1.5
+	var aside: bool = Hud.prompt_in_view(player, thing)
+	thing.free()
+	_check(in_front and not behind and not far_off and not aside,
+		"  a buy prompt shows only within 2 m and in view (front %s, behind %s, 3 m %s, 80 deg aside %s)" % [in_front, behind, far_off, aside])
+	# Zombies read in the dark: a rim and a lift in the rot shader.
+	var z: Node = block.spawner.spawn_one("walker", player.global_position + fwd * 6.0)
+	await _frames(2)
+	var rim_ok := false
+	for mi in z.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var mat := m.get_surface_override_material(0) as ShaderMaterial
+		if mat != null and mat.shader != null and mat.shader.code.contains("rim_strength") and mat.shader.code.contains("body_lift"):
+			rim_ok = true
+	_check(rim_ok, "  a zombie wears a rim light and a body lift so it reads in the dark street")
+	z.free()

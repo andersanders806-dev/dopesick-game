@@ -66,6 +66,32 @@ print("ARMS verts left", len(body.data.vertices), "polys", len(body.data.polygon
 used = {p.material_index for p in body.data.polygons}
 print("ARMS materials used", sorted(used), [m.name if m else None for m in body.data.materials])
 
+# What each vertex wears, in a second UV map (the viewmodel shader reads UV2): x = glove (the
+# hand and the first fingers' segments), y = sleeve (the arm). Both 0 is a bare fingertip
+# (fingerless gloves: the last segment of each finger and thumb).
+me = body.data
+vg_name = {g.index: g.name for g in body.vertex_groups}
+mask = {}
+for v in me.vertices:
+    glove = sleeve = 0.0
+    total = 0.0
+    for g in v.groups:
+        n = vg_name.get(g.group, "")
+        total += g.weight
+        if "Finger" in n and n.endswith("2"):
+            pass
+        elif "Hand" in n or "Finger" in n:
+            glove += g.weight
+        elif "Forearm" in n or "UpperArm" in n:
+            sleeve += g.weight
+    total = total or 1.0
+    mask[v.index] = (min(glove / total, 1.0), min(sleeve / total, 1.0))
+layer = me.uv_layers.new(name="Mask")
+for loop in me.loops:
+    m = mask[loop.vertex_index]
+    layer.data[loop.index].uv = (m[0], 1.0 - m[1])  # the exporter flips V
+print("ARMS mask uv written", [u.name for u in me.uv_layers])
+
 bpy.ops.export_scene.gltf(filepath=dst, export_format="GLB", export_skins=True, export_animations=False,
                           export_apply=False, export_yup=True)
 print("ARMS wrote", dst)

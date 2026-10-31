@@ -26,6 +26,19 @@ var hitmarker: Control
 var _message_tween: Tween
 var _holder: Node
 
+var hurt: ColorRect
+const HURT_SHADER := """shader_type canvas_item;
+uniform float amount = 0.0;
+void fragment() {
+	vec2 d = (UV - 0.5) * vec2(1.6, 1.0);
+	float edge = smoothstep(0.35, 0.95, length(d));
+	COLOR = vec4(0.45, 0.0, 0.0, clamp(edge * amount * 1.4, 0.0, 0.85));
+}"""
+
+func _on_health(hp: float) -> void:
+	var a := clampf(1.0 - hp / ZombieMode.MAX_HEALTH, 0.0, 1.0)
+	(hurt.material as ShaderMaterial).set_shader_parameter("amount", a)
+
 func _ready() -> void:
 	add_to_group("zombie_hud")
 	layer = 12
@@ -62,6 +75,18 @@ func _ready() -> void:
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
 	ZombieMode.game_over_started.connect(_on_game_over)
+	# Hurt: the edges of the view go red, as in COD, and clear as health returns.
+	hurt = ColorRect.new()
+	hurt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hurt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := ShaderMaterial.new()
+	sh.shader = Shader.new()
+	sh.shader.code = HURT_SHADER
+	hurt.material = sh
+	add_child(hurt)
+	move_child(hurt, 0)
+	ZombieMode.health_changed.connect(_on_health)
+	_on_health(ZombieMode.health)
 	_refresh()
 
 func _label(font: Font, size: int, color: Color, at: Vector2, made: Label = null) -> Label:

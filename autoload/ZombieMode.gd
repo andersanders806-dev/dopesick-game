@@ -15,6 +15,7 @@ signal round_ended(r: int)
 ## `amount` is what was earned (negative for a purchase).
 signal points_changed(total: int, amount: int, reason: String)
 signal game_over_started(summary: Dictionary)
+signal health_changed(hp: float)
 
 const ZombieControls := preload("res://player/ZombieControls.gd")
 const CITY_SCENE := "res://world/City3D.tscn"
@@ -68,6 +69,28 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if active and not over and not get_tree().paused:
 		run_time += delta
+		# Health comes back once nothing has clawed you for a while, as in COD.
+		_since_hit += delta
+		if _since_hit >= REGEN_DELAY and health < MAX_HEALTH:
+			health = minf(MAX_HEALTH, health + REGEN_RATE * delta)
+			health_changed.emit(health)
+
+## The player's health (three claws and you are down; there is no revive yet).
+const MAX_HEALTH := 100.0
+const REGEN_DELAY := 3.0
+const REGEN_RATE := 60.0
+var health := MAX_HEALTH
+var _since_hit := 0.0
+
+## A zombie's claw landed on the player.
+func player_hit(dmg: float) -> void:
+	if not active or over:
+		return
+	health = maxf(0.0, health - dmg)
+	_since_hit = 0.0
+	health_changed.emit(health)
+	if health <= 0.0:
+		game_over()
 
 # --- The run -------------------------------------------------------------------
 
@@ -96,6 +119,8 @@ func leave() -> void:
 	over = false
 	double_points = false
 	insta_kill = false
+	health = MAX_HEALTH
+	_since_hit = 0.0
 	GameState.mode = "story"
 	ZombieControls.restore()
 

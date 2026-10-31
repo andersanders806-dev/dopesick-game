@@ -306,6 +306,10 @@ func _update_cramps(delta: float) -> void:
 	_busy_timer = anim.play_once_timed("pick-up", CRAMP_DURATION)
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
+## Zombie mode: a claw from the dead (npc/Zombie3D.gd calls this).
+func take_zombie_hit(dmg: float, _from: Node) -> void:
+	ZombieMode.player_hit(dmg)
+
 func _physics_process(delta: float) -> void:
 	if not _first_person:
 		# (First person: the right stick looks round in pad_look(), every drawn frame.)

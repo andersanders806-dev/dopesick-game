@@ -5,6 +5,8 @@ extends CanvasLayer
 ## Esc.
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
+const PadFocus := preload("res://ui/PadFocus.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 
 var _was_paused: bool = false
@@ -58,12 +60,24 @@ func open() -> void:
 			c.custom_minimum_size = Vector2(0, 36)
 			c.toggled.connect(func(on: bool): ZombieMode.set(opt[1], on))
 			col.add_child(c)
-	_button(col, "Fullscreen on/off  (F11)", Graphics.toggle_fullscreen)
-	_button(col, "Photo mode  (F12)", _open_photo_mode)
+	var zombies := GameState.mode == "zombies"
+	_button(col, "Fullscreen on/off" if zombies and GameState.using_pad else "Fullscreen on/off  (F11)", Graphics.toggle_fullscreen)
+	_button(col, "Photo mode" if zombies and GameState.using_pad else "Photo mode  (F12)", _open_photo_mode)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"
 	if GameState.mode != "story":
 		quit_label = "Quit to title"
 	_button(col, quit_label, _quit_to_title)
+	if zombies:
+		# What the buttons do, in the PlayStation's own (ui/GlyphLabel.gd: the keys' when it is the keyboard).
+		var hint := GlyphLabelScript.new()
+		hint.name = "PadHint"
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.add_theme_font_size_override("font_size", 14)
+		hint.add_theme_color_override("font_color", Color(0.7, 0.68, 0.62))
+		hint.custom_minimum_size = Vector2(0, 26)
+		col.add_child(hint)
+		hint.markup = "{accept} Select      {back} Resume"
+	PadFocus.dress(_panel)
 	resume.grab_focus.call_deferred()
 
 func _button(col: VBoxContainer, text: String, action: Callable) -> Button:

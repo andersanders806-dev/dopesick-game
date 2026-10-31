@@ -68,6 +68,19 @@ var first_person: bool = false
 ## First-person look: a multiplier on mouse and stick speed, and up/down
 ## inverted for those who fly planes.
 var look_sensitivity: float = 1.0
+## The pad's own look (player/PadLook.gd): horizontal and vertical speed
+## multipliers, the multiplier on top of that while aimed down the sights, the
+## stick's inner deadzone, the aim assist (player/AimAssist.gd) and rumble.
+var pad_sens_h: float = 1.0
+var pad_sens_v: float = 1.0
+var pad_ads_mult: float = 0.75
+var pad_deadzone: float = 0.08
+var aim_assist: int = ASSIST_STANDARD
+var rumble: bool = true
+const ASSIST_OFF := 0
+const ASSIST_PRECISION := 1
+const ASSIST_STANDARD := 2
+const ASSIST_NAMES := ["Off", "Precision", "Standard"]
 ## Laptop mode: a steady 30 FPS cap -- even frames beat 45-55 that wobble,
 ## and the fan and battery thank you.
 var laptop_mode: bool = false
@@ -215,6 +228,30 @@ const LAPTOP_MAX_SCALE := 0.75
 
 func set_look_sensitivity(v: float) -> void:
 	look_sensitivity = clampf(v, 0.3, 2.5)
+	_save_settings()
+
+func set_pad_sens_h(v: float) -> void:
+	pad_sens_h = clampf(v, 0.3, 2.5)
+	_save_settings()
+
+func set_pad_sens_v(v: float) -> void:
+	pad_sens_v = clampf(v, 0.3, 2.5)
+	_save_settings()
+
+func set_pad_ads_mult(v: float) -> void:
+	pad_ads_mult = clampf(v, 0.3, 1.5)
+	_save_settings()
+
+func set_pad_deadzone(v: float) -> void:
+	pad_deadzone = clampf(v, 0.02, 0.3)
+	_save_settings()
+
+func set_aim_assist(mode: int) -> void:
+	aim_assist = clampi(mode, ASSIST_OFF, ASSIST_STANDARD)
+	_save_settings()
+
+func set_rumble(on: bool) -> void:
+	rumble = on
 	_save_settings()
 
 func set_invert_look(on: bool) -> void:
@@ -713,6 +750,12 @@ func _load_settings() -> void:
 		laptop_mode = bool(cfg.get_value("graphics", "laptop_mode", false))
 		Engine.max_fps = fps_cap()
 		invert_look = bool(cfg.get_value("controls", "invert_look", false))
+		pad_sens_h = clampf(float(cfg.get_value("controls", "pad_sens_h", 1.0)), 0.3, 2.5)
+		pad_sens_v = clampf(float(cfg.get_value("controls", "pad_sens_v", 1.0)), 0.3, 2.5)
+		pad_ads_mult = clampf(float(cfg.get_value("controls", "pad_ads_mult", 0.75)), 0.3, 1.5)
+		pad_deadzone = clampf(float(cfg.get_value("controls", "pad_deadzone", 0.08)), 0.02, 0.3)
+		aim_assist = clampi(int(cfg.get_value("controls", "aim_assist", ASSIST_STANDARD)), ASSIST_OFF, ASSIST_STANDARD)
+		rumble = bool(cfg.get_value("controls", "rumble", true))
 		immersive_hud = bool(cfg.get_value("interface", "immersive_hud", true))
 		camera_motion = bool(cfg.get_value("controls", "camera_motion", true))
 		for bus in VOLUME_BUSES:
@@ -732,6 +775,12 @@ func _save_settings() -> void:
 	cfg.set_value("controls", "look_sensitivity", look_sensitivity)
 	cfg.set_value("graphics", "laptop_mode", laptop_mode)
 	cfg.set_value("controls", "invert_look", invert_look)
+	cfg.set_value("controls", "pad_sens_h", pad_sens_h)
+	cfg.set_value("controls", "pad_sens_v", pad_sens_v)
+	cfg.set_value("controls", "pad_ads_mult", pad_ads_mult)
+	cfg.set_value("controls", "pad_deadzone", pad_deadzone)
+	cfg.set_value("controls", "aim_assist", aim_assist)
+	cfg.set_value("controls", "rumble", rumble)
 	cfg.set_value("interface", "immersive_hud", immersive_hud)
 	cfg.set_value("controls", "camera_motion", camera_motion)
 	cfg.save(SETTINGS_PATH)

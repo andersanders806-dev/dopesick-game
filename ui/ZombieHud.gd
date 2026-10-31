@@ -11,12 +11,14 @@ const PAPER := Color(0.93, 0.9, 0.82)
 const POP_TIME := 1.1
 const HitmarkerScript := preload("res://ui/Hitmarker.gd")
 const PointsPopupScript := preload("res://ui/PointsPopup.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 
 var round_label: Label
 var points_label: Label
 var banner: Label
 var ammo_label: Label
 var gun_label: Label
+## ui/GlyphLabel.gd: shows the PlayStation button on the pad and the key otherwise.
 var prompt: Label
 var message: Label
 var popups: Control
@@ -52,7 +54,7 @@ func _ready() -> void:
 	gun_label = _label(font, 22, BLOOD, Vector2.ZERO)
 	_pin_bottom_right(gun_label, 34.0, 96.0)
 	# What E does, low in the middle; a word of refusal above it.
-	prompt = _label(font, 19, PAPER, Vector2.ZERO)
+	prompt = _label(font, 19, PAPER, Vector2.ZERO, GlyphLabelScript.new())
 	_pin_bottom_centre(prompt, 150.0)
 	message = _label(font, 28, BLOOD, Vector2.ZERO)
 	_pin_bottom_centre(message, 240.0)
@@ -62,8 +64,8 @@ func _ready() -> void:
 	ZombieMode.game_over_started.connect(_on_game_over)
 	_refresh()
 
-func _label(font: Font, size: int, color: Color, at: Vector2) -> Label:
-	var l := Label.new()
+func _label(font: Font, size: int, color: Color, at: Vector2, made: Label = null) -> Label:
+	var l := made if made != null else Label.new()
 	l.position = at
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.add_theme_font_override("font", font)
@@ -129,11 +131,19 @@ func _update_prompt() -> void:
 	var text := ""
 	if player != null and not player.dialogue_active and not get_tree().paused:
 		var target = player._nearest_interactable()
-		if target != null and target.has_method("prompt_text") and prompt_in_view(player, target):
-			text = target.prompt_text()
+		if target != null and prompt_in_view(player, target):
+			if target.has_method("prompt_text"):
+				text = target.prompt_text()
+			elif target.has_meta("prompt"):
+				text = str(target.get_meta("prompt"))
 	# On the pad the use button is also reload: buying is a hold.
-	var key := ("Hold " if GameState.using_pad else "") + GameState.control_name("interact")
-	prompt.text = "%s  %s" % [key, text] if text != "" else ""
+	prompt.markup = prompt_markup(text, GameState.using_pad)
+
+## What the prompt says for `text`: "E  Buy the SMG [1000]", or "Hold {Square}  Buy ..." on the pad.
+static func prompt_markup(text: String, pad: bool) -> String:
+	if text == "":
+		return ""
+	return ("Hold {interact}  " if pad else "{interact}  ") + text
 
 ## A buy prompt only shows when the thing is close (under PROMPT_RANGE) and you are
 ## looking at it, not whenever you stand somewhere near it.

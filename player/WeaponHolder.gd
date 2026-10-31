@@ -22,6 +22,8 @@ const ZombieControls := preload("res://player/ZombieControls.gd")
 const Viewmodel := preload("res://player/Viewmodel.gd")
 const FPFeel := preload("res://player/FPFeel.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
+const AimAssist := preload("res://player/AimAssist.gd")
+const PadRumble := preload("res://player/PadRumble.gd")
 ## A shotgun this close throws a zombie back.
 const KNOCK_RANGE := 4.5
 
@@ -114,6 +116,9 @@ func _ready() -> void:
 		Graphics.view_changed.connect(func(_on: bool): _rebuild_viewmodel())
 	feel = FPFeel.new()
 	add_child(feel)
+	# The pad: aim assist on the look (first person) and rumble from this node's signals.
+	add_child(AimAssist.new())
+	add_child(PadRumble.new())
 
 # --- The guns you hold -------------------------------------------------------------
 

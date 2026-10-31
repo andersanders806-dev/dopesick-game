@@ -12,6 +12,8 @@ const PRESET_NOTES := [
 	"High: volumetric fog, bounce light, reflections and the film look. Wants a real GPU.",
 	"PS5: High at console quality -- sharper upscaling, ultra shadows, full-res bounce light and AO. Wants a strong GPU.",
 ]
+const PadFocus := preload("res://ui/PadFocus.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const BUS_LABELS := {"Master": "Master", "Music": "Music", "SFX": "Effects", "Voice": "Voices", "Walkman": "Walkman"}
 
 var _note: Label
@@ -34,9 +36,20 @@ func open() -> void:
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 22)
 	panel.add_child(margin)
+	# Tall: it scrolls (and follows the pad's focus down it) when the window is short.
+	var scroll := ScrollContainer.new()
+	scroll.name = "Scroll"
+	scroll.follow_focus = true
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(0, clampf((get_viewport().get_visible_rect().size.y if get_viewport() != null else 720.0) - 150.0, 300.0, 700.0))
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	margin.add_child(outer)
+	outer.add_child(scroll)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
-	margin.add_child(col)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(col)
 
 	col.add_child(_label("Settings", 22, Color(0.9, 0.8, 0.55)))
 	col.add_child(_label("Graphics", 15, Color(0.75, 0.72, 0.65)))
@@ -92,7 +105,7 @@ func open() -> void:
 
 	col.add_child(_label("Controls", 15, Color(0.75, 0.72, 0.65)))
 	var srow := HBoxContainer.new()
-	var sname := _label("Look speed", 14, Color(0.84, 0.82, 0.78))
+	var sname := _label("Mouse speed", 14, Color(0.84, 0.82, 0.78))
 	sname.custom_minimum_size = Vector2(110, 0)
 	srow.add_child(sname)
 	var sens := HSlider.new()
@@ -120,15 +133,84 @@ func open() -> void:
 	var calm := _check("Fade the HUD while walking", Graphics.immersive_hud, Graphics.set_immersive_hud)
 	calm.name = "ImmersiveHud"
 	col.add_child(calm)
-	var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options", 12, Color(0.6, 0.58, 0.54))
-	col.add_child(keys)
+	_controller_section(col)
+	if GameState.mode == "zombies":
+		for line in ["Fire  {fire}     Aim  {aim}     Reload / buy  {reload}     Swap gun  {swap_weapon}",
+				"Knife  {melee}     Sprint  {sprint}     Crouch / slide  {crouch}     Pause  {pause}"]:
+			var hint := GlyphLabelScript.new()
+			hint.add_theme_font_size_override("font_size", 12)
+			hint.add_theme_color_override("font_color", Color(0.6, 0.58, 0.54))
+			col.add_child(hint)
+			hint.markup = line
+	else:
+		var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options", 12, Color(0.6, 0.58, 0.54))
+		col.add_child(keys)
 
 	var back := Button.new()
 	back.text = "Back"
 	back.custom_minimum_size = Vector2(0, 34)
 	back.pressed.connect(_close)
-	col.add_child(back)
+	outer.add_child(back)
+	PadFocus.dress(panel)
 	back.grab_focus.call_deferred()
+
+## Settings > Controller: the right stick, the aim assist and the rumble. Every row is a slider or a
+## button the pad can reach (left / right on a slider changes it), and all of it is remembered.
+func _controller_section(col: VBoxContainer) -> void:
+	col.add_child(_label("Controller", 15, Color(0.75, 0.72, 0.65)))
+	_slider_row(col, "PadSensH", "Look speed, horizontal", 0.3, 2.5, 0.05, Graphics.pad_sens_h, Graphics.set_pad_sens_h, "%.2fx")
+	_slider_row(col, "PadSensV", "Look speed, vertical", 0.3, 2.5, 0.05, Graphics.pad_sens_v, Graphics.set_pad_sens_v, "%.2fx")
+	_slider_row(col, "PadAdsMult", "Aimed down sights", 0.3, 1.5, 0.05, Graphics.pad_ads_mult, Graphics.set_pad_ads_mult, "%.2fx")
+	_slider_row(col, "PadDeadzone", "Stick deadzone", 0.02, 0.3, 0.01, Graphics.pad_deadzone, Graphics.set_pad_deadzone, "%.2f")
+	var arow := HBoxContainer.new()
+	arow.name = "AimAssistRow"
+	arow.add_theme_constant_override("separation", 6)
+	var aname := _label("Aim assist", 14, Color(0.84, 0.82, 0.78))
+	aname.custom_minimum_size = Vector2(150, 0)
+	arow.add_child(aname)
+	var group := ButtonGroup.new()
+	for i in Graphics.ASSIST_NAMES.size():
+		var b := Button.new()
+		b.name = "Assist" + Graphics.ASSIST_NAMES[i]
+		b.text = Graphics.ASSIST_NAMES[i]
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = Graphics.aim_assist == i
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0, 30)
+		b.pressed.connect(Graphics.set_aim_assist.bind(i))
+		arow.add_child(b)
+	col.add_child(arow)
+	var note := _label("Standard slows the stick over a zombie, follows one that crosses your aim and pulls the sights onto one near the crosshair. Precision does the first two, lighter. Pad only, never the mouse.", 12, Color(0.6, 0.58, 0.54))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(note)
+	var rumble := _check("Rumble", Graphics.rumble, Graphics.set_rumble)
+	rumble.name = "Rumble"
+	col.add_child(rumble)
+
+func _slider_row(col: VBoxContainer, node_name: String, text: String, lo: float, hi: float, step: float, value: float, setter: Callable, fmt: String) -> HSlider:
+	var row := HBoxContainer.new()
+	var name_label := _label(text, 14, Color(0.84, 0.82, 0.78))
+	name_label.custom_minimum_size = Vector2(150, 0)
+	row.add_child(name_label)
+	var sl := HSlider.new()
+	sl.name = node_name
+	sl.min_value = lo
+	sl.max_value = hi
+	sl.step = step
+	sl.value = value
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var val := _label(fmt % value, 12, Color(0.6, 0.58, 0.54))
+	val.custom_minimum_size = Vector2(44, 0)
+	val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	sl.value_changed.connect(func(v: float):
+		setter.call(v)
+		val.text = fmt % v)
+	row.add_child(sl)
+	row.add_child(val)
+	col.add_child(row)
+	return sl
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("cancel_ui"):

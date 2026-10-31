@@ -109,6 +109,11 @@ var _first_person: bool = false
 var feel: Node
 var _look_yaw: float = 0.0
 var _look_pitch: float = 0.0
+## The pad's look: deadzone, curve, turn acceleration (player/PadLook.gd), and the aim assist the
+## weapon holder makes in zombie mode (player/AimAssist.gd; null elsewhere).
+const PadLook := preload("res://player/PadLook.gd")
+var pad_look_state := PadLook.new()
+var assist: Node
 var _tp_camera_base: Transform3D
 var _tp_fov: float
 var _shake_t: float = 0.0
@@ -222,8 +227,24 @@ func _process(delta: float) -> void:
 	RenderingServer.global_shader_parameter_set("player_world_pos", cutaway_globals[0])
 	RenderingServer.global_shader_parameter_set("cutaway_radius", cutaway_globals[1])
 	if _first_person:
+		pad_look(delta)
 		_update_camera_shake(delta)
 		_update_fp_camera()
+
+## The right stick looks round every drawn frame, as the mouse does: PadLook shapes it, the aim assist
+## (pad only, never the mouse, which has its own path in _unhandled_input) adds to it.
+func pad_look(delta: float) -> void:
+	if dialogue_active or get_tree().paused:
+		pad_look_state.reset()
+		return
+	var ads: float = feel.ads if feel != null else 0.0
+	var scale := _look_scale() * lerpf(1.0, Graphics.pad_ads_mult, ads)
+	var look := pad_look_state.step(PadLook.raw_stick(), delta, scale, Graphics.invert_look)
+	if assist != null:
+		var moving := Input.get_vector("move_left", "move_right", "move_up", "move_down").length() > 0.1
+		look = assist.adjust(look, delta, moving or pad_look_state.tilt > 0.0)
+	if look != Vector2.ZERO:
+		set_look(_look_yaw - look.x, _look_pitch + look.y)
 
 ## Look speed scale: aimed down the sights the zoomed view turns by the same
 ## picture distance (FPFeel.sens_scale), otherwise 1.
@@ -286,13 +307,8 @@ func _update_cramps(delta: float) -> void:
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
-	if _first_person:
-		# The right stick looks round, as the mouse does.
-		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-		if look.length() > 0.0 and not dialogue_active:
-			var k := LOOK_SPEED * Graphics.look_sensitivity * delta * _look_scale()
-			set_look(_look_yaw - look.x * k, _look_pitch - look.y * k * (-1.0 if Graphics.invert_look else 1.0))
-	else:
+	if not _first_person:
+		# (First person: the right stick looks round in pad_look(), every drawn frame.)
 		# The right stick pulls the camera in and out, as the wheel does.
 		var zoom := Input.get_axis("look_up", "look_down")
 		if absf(zoom) > 0.0:

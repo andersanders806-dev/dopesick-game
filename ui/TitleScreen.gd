@@ -4,6 +4,8 @@ extends Control
 ## Quit. There's no Continue: every start is a fresh run.
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
+const PadFocus := preload("res://ui/PadFocus.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
 ## Backdrops, one picked at random each time.
 const BACKDROPS := ["intro_street", "first_score_walk", "busted_car", "released_steps", "intro_mattress"]
@@ -78,6 +80,7 @@ void fragment() {
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)
 	_button("Quit", func(): get_tree().quit())
+	PadFocus.dress(_buttons)
 	first.grab_focus.call_deferred()
 
 	if MetaProgress.know_how > 0:
@@ -155,6 +158,16 @@ func _choose_view(start: Callable, zombie_options := false) -> void:
 			_choose_extra += 1
 	var note := _label("Through your own eyes, or from up over the room. Settings can change it later.", 13, Color(0.6, 0.58, 0.54))
 	_buttons.add_child(note)
+	if zombie_options:
+		var hint := GlyphLabelScript.new()
+		hint.name = "PadHint"
+		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		hint.add_theme_font_size_override("font_size", 13)
+		hint.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
+		_buttons.add_child(hint)
+		hint.markup = "{accept} Choose      {back} Back"
+		_choose_extra += 1
+	PadFocus.dress(_buttons)
 	_choosing_view = true
 	# Last time's choice is the default.
 	(fp if Graphics.first_person else tp).grab_focus.call_deferred()

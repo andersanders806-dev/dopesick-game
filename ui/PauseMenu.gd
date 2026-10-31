@@ -49,6 +49,15 @@ func open() -> void:
 	if GameState.mode == "story":
 		_button(col, "Notebook  (%s)" % GameState.control_name("notebook"), _open_notebook)
 	_button(col, "Settings", _open_settings)
+	if GameState.mode == "zombies":
+		# The mode's options, same as on the Zombies menu.
+		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"]]:
+			var c := CheckButton.new()
+			c.text = opt[0]
+			c.button_pressed = bool(ZombieMode.get(opt[1]))
+			c.custom_minimum_size = Vector2(0, 36)
+			c.toggled.connect(func(on: bool): ZombieMode.set(opt[1], on))
+			col.add_child(c)
 	_button(col, "Fullscreen on/off  (F11)", Graphics.toggle_fullscreen)
 	_button(col, "Photo mode  (F12)", _open_photo_mode)
 	var quit_label := "Save and quit to title" if not (GameState.wanted or GameState.in_custody) else "Quit to title (can't save while wanted)"

@@ -17,6 +17,7 @@ const GunModel := preload("res://weapons/GunModel.gd")
 const SHADER := preload("res://player/viewmodel.gdshader")
 const FX_SHADER := preload("res://player/viewmodel_fx.gdshader")
 const DOT_SHADER := preload("res://player/viewmodel_dot.gdshader")
+const GLASS_SHADER := preload("res://player/viewmodel_glass.gdshader")
 const ARMS_SCENE := "res://assets/viewmodel/arms.glb"
 ## Vertical field of view the gun and arms are drawn with (research: 55 to 65).
 const VM_FOV := 60.0
@@ -33,20 +34,18 @@ const ARM_NEAR_CUT := 0.12
 const HANDS := {
 	"pistol": [Vector3(0.5, 0.3, 0.14), Vector3(-1.4, 0.25, 0.2), 0.0, 0.0, 1.0, 1.0],
 	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0],
-	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(0.5, 0.40, 0.58), 0.0, 0.0, 1.0, 1.0],
-	"ar": [Vector3(0.5, 0.18, 0.34), Vector3(0.5, 0.40, 0.60), 0.0, 0.0, 1.0, 1.0],
-	"lmg": [Vector3(0.5, 0.18, 0.38), Vector3(0.5, 0.30, 0.56), 0.0, 0.0, 1.0, 1.0],
-	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.42, 0.56), 0.0, 0.0, 1.0, 1.0],
-	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.38, 0.54), 0.0, 0.0, 1.0, 1.0],
+	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(0.5, 0.60, 0.58), 0.0, 0.0, 1.0, 1.0],
+	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(0.5, 0.62, 0.60), 0.0, 0.0, 1.0, 1.0],
+	"lmg": [Vector3(0.5, 0.18, 0.38), Vector3(0.5, 0.45, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.66, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.55, 0.54), 0.0, 0.0, 1.0, 1.0],
 	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0],
 }
 
 ## Guns whose model is plain colours (the importer drops its specular-glossiness
 ## materials, which leaves flat grey): the shader paints them. Material name ->
 ## 1 blued steel, 2 walnut; "*" is everything else.
-const PLAIN_KIT := {
-	"shotgun": {"Material.001": 2, "*": 1},
-}
+const PLAIN_KIT := {}
 
 var data: WD
 var gun: Node3D
@@ -187,8 +186,8 @@ func _measure() -> void:
 const SIGHTS := {
 	"pistol": [0.0, 0.14, 0.78, 0.97, 0.30, false, 0.0],
 	"magnum": [0.0, 0.14, 0.62, 0.78, 0.30, false, 0.0],
-	"smg": [0.3, 0.7, 0.55, 0.0, 0.25, true, 0.0],
-	"ar": [0.3, 0.7, 0.58, 0.0, 0.25, true, 0.0],
+	"smg": [0.3, 0.7, 0.55, 0.0, 0.14, true, 0.0],
+	"ar": [0.3, 0.7, 0.58, 0.0, 0.14, true, 0.0],
 	"lmg": [0.0, 0.1, 0.45, 0.6, 0.30, false, 0.045],
 	"shotgun": [0.0, 0.1, 0.55, 0.72, 0.42, false, 0.05],
 	"sniper": [0.0, 0.1, 0.5, 0.65, 0.2, false, 0.01],
@@ -242,7 +241,7 @@ func _measure_sights(f: String) -> void:
 	if has_optic:
 		_build_optic(Vector3(0.0, rear.y, rear.z))
 		# The dot sits in the middle of the sight's frame.
-		sight_point = optic.position + Vector3(0.0, OPTIC_CENTRE_Y, 0.0)
+		sight_point = optic.position + optic_dot
 		ads_pitch = 0.0
 	else:
 		var d := front - rear
@@ -285,17 +284,70 @@ func _top_in(verts: PackedVector3Array, zlo: float, zhi: float) -> Vector3:
 
 # --- The red dot sight: a frame you look through with a dot floating in it -----------
 
-const OPTIC_CENTRE_Y := 0.0245
-const OPTIC_W := 0.034
-const OPTIC_H := 0.03
-const OPTIC_L := 0.05
+const OPTIC_CENTRE_Y := 0.032
+const OPTIC_W := 0.05
+const OPTIC_H := 0.042
+const OPTIC_L := 0.06
+
+## The sight model (CC BY 4.0, assets/guns/optic): scale, and where its lens centre is once
+## its base sits on the rail (metres, in the model's own scale).
+const OPTIC_MODEL := "res://assets/guns/optic/red_dot_sight.glb"
+const OPTIC_SCALE := 0.55
+## Lens centre above the base and along the sight (z), after scaling.
+var optic_dot := Vector3(0.0, OPTIC_CENTRE_Y, 0.0)
 
 func _build_optic(at: Vector3) -> void:
 	optic = Node3D.new()
 	optic.name = "RedDot"
-	# at.y is the top of the rail; the housing sits on a mount plate.
 	optic.position = Vector3(0.0, at.y, at.z)
 	add_child(optic)
+	var ps := load(OPTIC_MODEL) as PackedScene
+	if ps != null:
+		var model := ps.instantiate() as Node3D
+		model.name = "Model"
+		model.scale = Vector3.ONE * OPTIC_SCALE
+		model.rotation_degrees.y = OPTIC_YAW
+		# Its base on the rail.
+		
+		model.position = Vector3(0.0, 0.0472 * OPTIC_SCALE, 0.0)
+		optic.add_child(model)
+		_convert(optic, 0.05)
+		# The lens is glass you see through: a faint tint, not the model's solid blue.
+		for mi in model.find_children("*", "MeshInstance3D", true, false):
+			var inst := mi as MeshInstance3D
+			for sidx in inst.mesh.get_surface_count():
+				var src := inst.mesh.surface_get_material(sidx)
+				if src != null and src.resource_name.begins_with("08"):
+					var gm := ShaderMaterial.new()
+					gm.shader = GLASS_SHADER
+					gm.set_shader_parameter("viewmodel_fov", VM_FOV)
+					gm.set_shader_parameter("edge_amount", 0.0)
+					inst.set_surface_override_material(sidx, gm)
+		optic_dot = Vector3(0.0, OPTIC_LENS_Y * OPTIC_SCALE + 0.0472 * OPTIC_SCALE, OPTIC_LENS_Z * OPTIC_SCALE)
+		_add_dot()
+		return
+	_build_optic_kit()
+
+const OPTIC_YAW := 0.0
+## Lens centre in the model's own units, from the model's centre.
+const OPTIC_LENS_Y := 0.012
+const OPTIC_LENS_Z := 0.0
+
+func _add_dot() -> void:
+	var dot := MeshInstance3D.new()
+	dot.name = "Dot"
+	var q := QuadMesh.new()
+	q.size = Vector2.ONE * 0.034
+	dot.mesh = q
+	var dm := ShaderMaterial.new()
+	dm.shader = DOT_SHADER
+	dm.set_shader_parameter("viewmodel_fov", VM_FOV)
+	dot.material_override = dm
+	dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	dot.position = optic_dot
+	optic.add_child(dot)
+
+func _build_optic_kit() -> void:
 	var steel := ShaderMaterial.new()
 	steel.shader = SHADER
 	steel.set_shader_parameter("viewmodel_fov", VM_FOV)
@@ -303,7 +355,7 @@ func _build_optic(at: Vector3) -> void:
 	steel.set_shader_parameter("metallic", 0.1)
 	steel.set_shader_parameter("roughness", 0.6)
 	steel.set_shader_parameter("near_cut", 0.05)
-	var wall := 0.0028
+	var wall := 0.0035
 	var half_w := OPTIC_W * 0.5
 	# Mount plate, then the rectangular tube you look through (left, right, top, bottom).
 	_optic_box(Vector3(0.026, 0.008, OPTIC_L * 1.2), Vector3(0.0, 0.004, 0.0), steel)
@@ -317,7 +369,7 @@ func _build_optic(at: Vector3) -> void:
 	var dot := MeshInstance3D.new()
 	dot.name = "Dot"
 	var q := QuadMesh.new()
-	q.size = Vector2.ONE * 0.016
+	q.size = Vector2.ONE * 0.034
 	dot.mesh = q
 	var dm := ShaderMaterial.new()
 	dm.shader = DOT_SHADER
@@ -326,6 +378,19 @@ func _build_optic(at: Vector3) -> void:
 	dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	dot.position = Vector3(0.0, OPTIC_CENTRE_Y, 0.0)
 	optic.add_child(dot)
+	# The glass: a faint cool tint across the window.
+	var glass := MeshInstance3D.new()
+	glass.name = "Glass"
+	var gq := QuadMesh.new()
+	gq.size = Vector2(OPTIC_W - wall * 2.0, OPTIC_H - wall * 1.5)
+	glass.mesh = gq
+	var gm := ShaderMaterial.new()
+	gm.shader = GLASS_SHADER
+	gm.set_shader_parameter("viewmodel_fov", VM_FOV)
+	glass.material_override = gm
+	glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	glass.position = Vector3(0.0, OPTIC_CENTRE_Y - 0.002, OPTIC_L * 0.2)
+	optic.add_child(glass)
 
 func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
 	var mi := MeshInstance3D.new()
@@ -351,7 +416,7 @@ func _build_flash() -> void:
 	for i in 2:
 		var q := MeshInstance3D.new()
 		var mesh := QuadMesh.new()
-		mesh.size = Vector2.ONE * 0.2
+		mesh.size = Vector2.ONE * 0.26
 		q.mesh = mesh
 		var mat := ShaderMaterial.new()
 		mat.shader = FX_SHADER

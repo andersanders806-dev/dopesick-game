@@ -6,8 +6,8 @@ render_mode unshaded, blend_add, depth_draw_never, depth_test_disabled, cull_dis
 // The red dot of a reflex sight: a bright dot in a thin ring, from the UVs.
 // Drawn with the viewmodel's projection and on top of the sight's own frame.
 uniform float viewmodel_fov = 60.0;
-uniform vec3 tint : source_color = vec3(1.0, 0.08, 0.04);
-uniform float dot_size = 0.07;
+uniform vec3 tint : source_color = vec3(1.0, 0.05, 0.02);
+uniform float dot_size = 0.1;
 uniform float ring_size = 0.9;
 
 void vertex() {
@@ -21,6 +21,6 @@ void fragment() {
 	float glow = exp(-r * r / (dot_size * dot_size) * 0.5) * 0.35;
 	float ring = (1.0 - smoothstep(0.0, 0.035, abs(r - ring_size * 0.8))) * 0.22 * (1.0 - smoothstep(0.85, 1.0, r));
 	float v = clamp(d + glow + ring, 0.0, 1.0);
-	ALBEDO = tint * v * 2.0;
+	ALBEDO = tint * v * 3.5;
 	ALPHA = v;
 }

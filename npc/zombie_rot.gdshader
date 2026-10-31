@@ -21,7 +21,7 @@ uniform float specular_base = 0.3;
 uniform vec3 rim_color : source_color = vec3(0.34, 0.5, 0.46);
 uniform float rim_power = 2.4;
 uniform float rim_strength = 0.55;
-uniform float body_lift = 0.07;
+uniform float body_lift = 0.065;
 
 // How far gone this one is (0 fresh .. 1 rotten) and its own offset into the
 // noise, so no two share a pattern.
@@ -91,7 +91,7 @@ void fragment() {
 	ROUGHNESS = mix(roughness_base, 0.28, max(blood * skin, stain * (1.0 - skin)));
 	SPECULAR = specular_base;
 
-	float far_k = 1.0 + 1.1 * smoothstep(6.0, 26.0, v_dist);
+	float far_k = 1.0 + 1.6 * smoothstep(6.0, 26.0, v_dist);
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power);
 	vec3 glow = rim_color * rim * rim_strength * far_k + col * body_lift * far_k;
 	// Eyes: the whites of a head glow a sick yellow.

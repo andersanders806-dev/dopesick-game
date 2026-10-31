@@ -51,6 +51,9 @@ var run_time := 0.0
 ## Power-up state (Double Points doubles what you earn, never a price).
 var double_points := false
 var insta_kill := false
+## Options of the mode (the Zombies menu): gore on by default, floating damage numbers off.
+var gore_enabled := true: set = set_gore_enabled
+var damage_numbers := false: set = set_damage_numbers
 
 var best_round := 0
 var best_kills := 0
@@ -188,10 +191,33 @@ func game_over() -> void:
 	get_tree().root.add_child(screen)
 	screen.show_summary(s)
 
+func set_gore_enabled(on: bool) -> void:
+	gore_enabled = on
+	_save_options()
+
+func set_damage_numbers(on: bool) -> void:
+	damage_numbers = on
+	_save_options()
+
+var _options_loaded := false
+
+func _save_options() -> void:
+	if not _options_loaded:
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(PATH)
+	cfg.set_value("options", "gore", gore_enabled)
+	cfg.set_value("options", "damage_numbers", damage_numbers)
+	cfg.save(PATH)
+
 func load_best() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) != OK:
+		_options_loaded = true
 		return
+	gore_enabled = bool(cfg.get_value("options", "gore", true))
+	damage_numbers = bool(cfg.get_value("options", "damage_numbers", false))
+	_options_loaded = true
 	best_round = int(cfg.get_value("best", "round", 0))
 	best_kills = int(cfg.get_value("best", "kills", 0))
 	best_headshots = int(cfg.get_value("best", "headshots", 0))
@@ -204,6 +230,7 @@ func save_best() -> void:
 	best_headshots = maxi(best_headshots, headshots)
 	best_time = maxf(best_time, run_time)
 	var cfg := ConfigFile.new()
+	cfg.load(PATH)
 	cfg.set_value("best", "round", best_round)
 	cfg.set_value("best", "kills", best_kills)
 	cfg.set_value("best", "headshots", best_headshots)

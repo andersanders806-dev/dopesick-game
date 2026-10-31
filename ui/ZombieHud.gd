@@ -43,7 +43,7 @@ func _ready() -> void:
 	# The full width of the window, text centred in it.
 	banner = _label(font, 72, BLOOD, Vector2.ZERO)
 	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	banner.offset_top = 150.0
+	banner.offset_top = 70.0
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.modulate.a = 0.0
 	# The gun: pinned to the bottom-right corner, growing up and left.
@@ -108,6 +108,8 @@ func _process(_delta: float) -> void:
 	popups.origin = points_label.global_position + Vector2(points_label.size.x + 14.0, 6.0)
 	_update_gun()
 	_update_prompt()
+	# Keep the banner off the sight picture while aimed.
+	banner.self_modulate.a = 0.15 if (is_instance_valid(_holder) and _holder.aiming) else 1.0
 
 func _update_gun() -> void:
 	if not is_instance_valid(_holder):

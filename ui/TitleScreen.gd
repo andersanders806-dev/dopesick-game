@@ -73,7 +73,7 @@ void fragment() {
 	# No Continue: it's a survival run, and every start is a fresh one --
 	# you die, you start over.
 	var first := _button("New run", _choose_view.bind(_start_run))
-	_button("Zombies", _choose_view.bind(_start_zombies))
+	_button("Zombies", _choose_view.bind(_start_zombies, true))
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)
@@ -137,16 +137,29 @@ func _on_new_run() -> void:
 	_choose_view(_start_run)
 
 ## `start` takes whether it's first person.
-func _choose_view(start: Callable) -> void:
+func _choose_view(start: Callable, zombie_options := false) -> void:
 	for b in _buttons.get_children():
 		b.visible = false
 	var fp := _button("First person", start.bind(true))
 	var tp := _button("Third person", start.bind(false))
+	_choose_extra = 3
+	if zombie_options:
+		# The mode's options: gore on, damage numbers off, unless you change them.
+		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"]]:
+			var c := CheckButton.new()
+			c.text = opt[0]
+			c.button_pressed = bool(ZombieMode.get(opt[1]))
+			c.focus_mode = Control.FOCUS_ALL
+			c.toggled.connect(func(on: bool): ZombieMode.set(opt[1], on))
+			_buttons.add_child(c)
+			_choose_extra += 1
 	var note := _label("Through your own eyes, or from up over the room. Settings can change it later.", 13, Color(0.6, 0.58, 0.54))
 	_buttons.add_child(note)
 	_choosing_view = true
 	# Last time's choice is the default.
 	(fp if Graphics.first_person else tp).grab_focus.call_deferred()
+
+var _choose_extra := 3
 
 func _start_run(first_person: bool) -> void:
 	Graphics.set_first_person(first_person)
@@ -167,7 +180,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_choosing_view = false
 		var kids := _buttons.get_children()
 		for i in kids.size():
-			if i >= kids.size() - 3:
+			if i >= kids.size() - _choose_extra:
 				kids[i].queue_free()
 			else:
 				kids[i].visible = true
@@ -200,7 +213,7 @@ Places: Poly Haven models and textures, ambientCG materials (CC0); Kenney kits a
 Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel Zhabotinsky -- Shvan '92;
 Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.
 Guns (Poly Haven, CC0; Sketchfab, CC BY 4.0, creativecommons.org/licenses/by/4.0): nebula075 -- MPX SMG (sketchfab.com/nebula075);
-TastyTony -- Low-Poly Remington 870 (sketchfab.com/TastyTony); Derek Flanagan -- HK 416 Low Poly (sketchfab.com/derek_flanagan);
+AK -- Mossberg500 Shotgun low-poly (sketchfab.com/skaf13); Michael Makivic -- FPS Red Dot Sight (sketchfab.com/makivic); Derek Flanagan -- HK 416 Low Poly (sketchfab.com/derek_flanagan);
 austincford -- Low Poly Magnum Revolver (sketchfab.com/austincford); MaX3Dd -- DP28 Low-poly PBR (sketchfab.com/MaX3Dd).
 Model links: assets/guns/LICENSE.md.
 Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.

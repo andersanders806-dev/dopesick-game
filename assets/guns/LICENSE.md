@@ -13,7 +13,8 @@ The wonder weapon is built in code (weapons/GunModel.gd) from primitives: ours, 
 Textures scaled to 1024 px max. Models are otherwise unmodified.
 
 - smg: "MPX SMG" by nebula075 (https://sketchfab.com/3d-models/238fa4b18f1247e99231529f98d11a61)
-- shotgun: "Low-Poly Remington 870" by TastyTony (https://sketchfab.com/3d-models/8766498ce778479aa03c3b6078937510)
+- shotgun: "Mossberg500 Shotgun low-poly" by AK (https://sketchfab.com/3d-models/5ae38a34bfed4c91a3dbe78aaea51790)
+- red dot sight: "FPS Red Dot Sight (Game Model)" by Michael Makivic (https://sketchfab.com/3d-models/0cf999d9363940c2b149dcd80c448554)
 - ar: "HK 416 Assault Rifle - Low Poly" by Derek Flanagan (https://sketchfab.com/3d-models/fbdf159836224d67b193ca527d4f4333)
 - magnum: "Low Poly Magnum Revolver" by austincford (https://sketchfab.com/3d-models/9191c62d1cec4087809102dcc81493bb)
 - lmg: "DP28 Light Machine Gun Low-poly PBR" by MaX3Dd (https://sketchfab.com/3d-models/03978b66f0c646f19e9502634f0ad20a)

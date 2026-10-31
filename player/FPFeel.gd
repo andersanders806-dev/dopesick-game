@@ -13,6 +13,7 @@ extends Node
 
 const WD := preload("res://weapons/WeaponData.gd")
 const Viewmodel := preload("res://player/Viewmodel.gd")
+const ImpactFX := preload("res://fx/ImpactFX.gd")
 
 # --- The numbers (research §2) -------------------------------------------------------
 const HIP_FOV := 70.0
@@ -274,6 +275,9 @@ func _on_dry() -> void:
 ## Sounds still to come after a shot (the shotgun's pump, the rifle's bolt):
 ## [seconds left, name].
 var _later: Array = []
+## The left hand working the pump after a shotgun shot: seconds left.
+var _pump_t := 0.0
+const PUMP_TIME := 0.5
 
 func _fire_sound(d: WD) -> String:
 	var fam := d.family()
@@ -334,6 +338,7 @@ func _on_traced(from: Vector3, to: Vector3) -> void:
 ## Everything first-person is put back: the sights down, the recoil gone, the flash off.
 func reset_state() -> void:
 	ads = 0.0
+	_pump_t = 0.0
 	recoil = Vector2.ZERO
 	trauma = 0.0
 	sliding = false
@@ -461,10 +466,13 @@ func advance(delta: float) -> void:
 				vm.hide_flash()
 			if is_instance_valid(_light):
 				_light.visible = false
+	_pump_t = maxf(_pump_t - delta, 0.0)
 	for i in range(_later.size() - 1, -1, -1):
 		_later[i][0] -= delta
 		if _later[i][0] <= 0.0:
 			_sound(_later[i][1], -4.0, rng.randf_range(0.97, 1.03))
+			if _later[i][1] == "pump":
+				_pump_t = PUMP_TIME
 			_later.remove_at(i)
 	_update_shells(delta)
 	_update_tracers(delta)
@@ -546,6 +554,11 @@ func _pose(_delta: float) -> void:
 	vm_position = pos
 	vm_rotation = rot
 	_left_hand = rl[2]
+	if _pump_t > 0.0:
+		# The forend is pulled back to the chest and pushed home.
+		var u := 1.0 - _pump_t / PUMP_TIME
+		_left_hand += Vector3(0.0, 0.0, 0.16 * sin(PI * u))
+		pos += Vector3(0.0, 0.004 * sin(PI * u), 0.012 * sin(PI * u))
 
 func _curve(keys: Array, t: float) -> float:
 	# keys: [[t, v], ...] ascending; smooth between them.
@@ -703,11 +716,15 @@ func _muzzle_flash(d: WD) -> void:
 	var vm := _vm()
 	if vm == null:
 		return
-	var size := lerpf(0.7, 1.5, clampf(d.recoil / 4.0, 0.0, 1.0))
+	var size := lerpf(1.1, 2.3, clampf(d.recoil / 4.0, 0.0, 1.0))
 	if d.family() == "wonder":
 		size = 1.0
 	vm.show_flash(rng, size)
 	_flash_left = FLASH_TIME
+	if camera != null and is_inside_tree():
+		var fx := ImpactFX.of(self)
+		if fx != null:
+			fx.muzzle_smoke(_muzzle_world() + (-camera.global_transform.basis.z) * 0.12, -camera.global_transform.basis.z, size * 0.9)
 	if not is_instance_valid(_light) and camera != null:
 		_light = OmniLight3D.new()
 		_light.name = "MuzzleLight"
@@ -718,7 +735,7 @@ func _muzzle_flash(d: WD) -> void:
 		camera.add_child(_light)
 	if is_instance_valid(_light):
 		_light.visible = true
-		_light.light_energy = rng.randf_range(2.0, 3.2)
+		_light.light_energy = rng.randf_range(2.8, 4.4)
 		_light.global_position = _muzzle_world() + camera.global_transform.basis * Vector3(0.0, 0.0, -0.25)
 
 func _eject_shell(_d: WD) -> void:

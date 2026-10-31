@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://bnllahqn5c3vj"
-path="res://.godot/imported/scene.gltf-5bbc5f50915d3c469629970648fd05b1.scn"
+uid="uid://ctx1w2bws052b"
+path="res://.godot/imported/red_dot_sight.glb-29388ca7c1b5cf57933efdedba29be1d.scn"
 
 [deps]
 
-source_file="res://assets/guns/shotgun/scene.gltf"
-dest_files=["res://.godot/imported/scene.gltf-5bbc5f50915d3c469629970648fd05b1.scn"]
+source_file="res://assets/guns/optic/red_dot_sight.glb"
+dest_files=["res://.godot/imported/red_dot_sight.glb-29388ca7c1b5cf57933efdedba29be1d.scn"]
 
 [params]
 

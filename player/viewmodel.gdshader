@@ -91,8 +91,8 @@ void fragment() {
 		r *= orm.g;
 		m *= orm.b;
 	}
-	ROUGHNESS = clamp(r, 0.04, 1.0);
-	METALLIC = m;
+	ROUGHNESS = clamp(r, 0.4, 1.0);
+	METALLIC = min(m, 0.6);
 	if (use_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;
 	}

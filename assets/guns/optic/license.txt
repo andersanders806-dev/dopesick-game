@@ -1,0 +1,11 @@
+Model Information:
+* title:	FPS Red Dot Sight (Game Model)
+* source:	https://sketchfab.com/3d-models/fps-red-dot-sight-game-model-0cf999d9363940c2b149dcd80c448554
+* author:	Michael Makivic (https://sketchfab.com/makivic)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "FPS Red Dot Sight (Game Model)" (https://sketchfab.com/3d-models/fps-red-dot-sight-game-model-0cf999d9363940c2b149dcd80c448554) by Michael Makivic (https://sketchfab.com/makivic) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

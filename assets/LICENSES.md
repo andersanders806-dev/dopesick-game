@@ -11,9 +11,10 @@ list sits. Credits shown in the game: ui/TitleScreen.gd (CREDITS).
 | Microsoft Rocketbox avatars | github.com/microsoft/Rocketbox | MIT | assets/rocketbox/LICENSE.md |
 | Music | OpenGameArt | CC-BY / CC0 per track | assets/music/CREDITS.txt |
 | Car models (12) | Sketchfab | CC BY 4.0 | assets/cars/LICENSE.md |
-| Gun models: MPX SMG (nebula075), Low-Poly Remington 870 (TastyTony), HK 416 Low Poly (Derek Flanagan), Low Poly Magnum Revolver (austincford), DP28 LMG Low-poly PBR (MaX3Dd) | Sketchfab | CC BY 4.0 | assets/guns/LICENSE.md, assets/guns/*/license.txt |
+| Gun models: MPX SMG (nebula075), Mossberg500 Shotgun low-poly (AK), FPS Red Dot Sight (Michael Makivic), HK 416 Low Poly (Derek Flanagan), Low Poly Magnum Revolver (austincford), DP28 LMG Low-poly PBR (MaX3Dd) | Sketchfab | CC BY 4.0 | assets/guns/LICENSE.md, assets/guns/*/license.txt |
 | First-person arms (assets/viewmodel/arms.glb): the forearms and hands cut from the Rocketbox Male_Adult_20 avatar by dev-tools/make_fp_arms.py | Microsoft Rocketbox | MIT | assets/rocketbox/LICENSE.md |
-| First-person gun sounds (assets/sfx/guns/*.wav): shots, reloads, brass, cloth, slide, hit ticks | Synthesized for this game by dev-tools/gen_gun_sfx.py from noise and sine sweeps; no recording or sample of any game or library | Ours | dev-tools/gen_gun_sfx.py |
+| Blood and impact decals (assets/decals/blood_*, impact_*): procedurally generated for Dope Sick, no third-party material | n/a | Ours | assets/decals/ |
+| First-person gun sounds (assets/sfx/guns/*.wav): shots, reloads, brass, cloth, slide, hit ticks | Synthesized for this game by dev-tools/gen_gun_sfx.py and gen_gun_sfx_v2.py (shots, flesh, gore, impacts) from noise and sine sweeps; no recording or sample of any game or library | Ours | dev-tools/gen_gun_sfx.py |
 | Zombie and finisher animation clips | Quaternius Universal Animation Library 1 and 2 (opengameart.org) | CC0 | assets/zombie_anims/LICENSE.md |
 | Kimodo-generated zombie/player clips (z_attack, z_attack2, z_attack3, z_crawl, z_scream, p_kick, z_walk3, z_hit_leg, z_death2), generated 2026-10-26 | NVIDIA Kimodo SOMA-RP v1.1 (github.com/nv-tlabs/kimodo) run through kimodo.cpp (github.com/localai-org/kimodo.cpp, Apache-2.0) | Weights: NVIDIA Open Model License (commercial use, outputs ours); code Apache-2.0; text encoder LocalAI-io/Llama-3-Kimodo-GGML (Meta Llama 3 Community License, built with Meta Llama 3, dev machine only, not shipped) | assets/zombie_anims/LICENSE.md |
 
@@ -35,7 +36,8 @@ materials merged, wheels split, textures re-encoded. Downloaded 2026-10-21.
 Fetched by dev-tools/fetch_guns.py on 2026-10-27; textures scaled to 1024 px max, nothing else changed. The pistol and the sniper rifle are Poly Haven (CC0); the wonder weapon is built in code.
 
 - "MPX SMG" by nebula075 (https://sketchfab.com/3d-models/mpx-smg-238fa4b18f1247e99231529f98d11a61): the submachine gun
-- "Low-Poly Remington 870" by TastyTony (https://sketchfab.com/3d-models/low-poly-remington-870-8766498ce778479aa03c3b6078937510): the shotgun
+- "Mossberg500 Shotgun low-poly" by AK (https://sketchfab.com/3d-models/mossberg500-shotgun-low-poly-5ae38a34bfed4c91a3dbe78aaea51790): the shotgun
+- "FPS Red Dot Sight (Game Model)" by Michael Makivic (https://sketchfab.com/3d-models/fps-red-dot-sight-game-model-0cf999d9363940c2b149dcd80c448554): the red dot on the rifle and the SMG
 - "HK 416 Assault Rifle - Low Poly" by Derek Flanagan (https://sketchfab.com/3d-models/hk-416-assault-rifle-low-poly-fbdf159836224d67b193ca527d4f4333): the assault rifle
 - "Low Poly Magnum Revolver" by austincford (https://sketchfab.com/3d-models/low-poly-magnum-revolver-9191c62d1cec4087809102dcc81493bb): the magnum
 - "DP28 Light Machine Gun Low-poly PBR" by MaX3Dd (https://sketchfab.com/3d-models/dp28-light-machine-gun-low-poly-pbr-03978b66f0c646f19e9502634f0ad20a): the LMG

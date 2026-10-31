@@ -22,6 +22,8 @@ signal attacked(zombie: Node, damage: float)
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
 const ZombieHitboxes := preload("res://npc/ZombieHitboxes.gd")
+const ZombieFlinch := preload("res://npc/ZombieFlinch.gd")
+const ImpactFX := preload("res://fx/ImpactFX.gd")
 const ROT_SHADER := preload("res://npc/zombie_rot.gdshader")
 
 enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, DYING, DEAD }
@@ -124,6 +126,9 @@ var _tear_hit_done := false
 var _stagger := 0.0
 var _kneel_t := 0.0
 var _slow := 0.0
+## A shove from a shotgun at close range (m/s on the ground, dying away).
+var _knock := Vector3.ZERO
+var _flinch: SkeletonModifier3D
 var _frame := 0
 var _far := false
 ## Time of a skipped tick, paid on the next (far zombies think every second tick).
@@ -491,6 +496,9 @@ func _move(want: Vector3, delta: float) -> void:
 	velocity.x = move_toward(velocity.x, v.x, 14.0 * delta)
 	velocity.z = move_toward(velocity.z, v.z, 14.0 * delta)
 	velocity.y = 0.0
+	if _knock.length_squared() > 0.0001:
+		velocity += _knock
+		_knock = _knock.move_toward(Vector3.ZERO, 11.0 * delta)
 	# A tick that carries a skipped one steps twice as far.
 	var steps := delta / maxf(get_physics_process_delta_time(), 0.0001)
 	if steps > 1.5:
@@ -713,7 +721,7 @@ func _update_lod(delta: float) -> void:
 
 ## `damage` is final (the weapon already scaled it for `part`). `melee` marks
 ## a knife/kick kill for the points.
-func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, melee := false) -> void:
+func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, melee := false, at := Vector3.INF) -> void:
 	if state >= State.DYING:
 		return
 	if weapon != null and weapon.get("melee") == true:
@@ -724,10 +732,72 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 	health -= dmg
 	var killed := health <= 0.0
 	hit.emit(self, part, dmg, killed)
+	_hit_fx(part, dmg, dir, at, killed, melee)
 	if killed:
 		_die(part, melee, dir)
 		return
 	_react(part, dmg)
+	_flinch_part(part, dir, dmg)
+
+## Blood, the sound of it, a floating number: where the bullet went in (or where the part is).
+func _hit_fx(part: String, dmg: float, dir: Vector3, at: Vector3, killed: bool, melee: bool) -> void:
+	if not is_inside_tree() or bool(get_meta("prewarm", false)):
+		return
+	var pos := at
+	if pos == Vector3.INF:
+		sync_hitboxes()
+		var zone := hitboxes.get(part) as Node3D
+		pos = zone.global_position if zone != null else global_position + Vector3(0, 1.1, 0)
+	var fx := ImpactFX.of(self)
+	if fx == null:
+		return
+	fx.blood_hit(pos, dir if dir.length() > 0.01 else Vector3.BACK, part, killed, dmg / maxf(max_health * 0.3, 1.0))
+	fx.damage_number(pos, dmg, part, killed)
+
+## Which way it gives: the head snaps back, a shoulder twists, the body bends, a leg buckles.
+func _flinch_part(part: String, dir: Vector3, dmg: float) -> void:
+	if _skeleton == null or state >= State.DYING:
+		return
+	var d := Vector3(dir.x, 0.0, dir.z)
+	if d.length() < 0.01:
+		return
+	d = d.normalized()
+	var inv := _skeleton.global_transform.basis.orthonormalized().inverse()
+	var bend := inv * Vector3.UP.cross(d).normalized()
+	var spin := inv * Vector3.UP
+	var k := clampf(0.5 + dmg / maxf(max_health * 0.25, 1.0), 0.5, 1.6)
+	if _flinch == null:
+		_flinch = ZombieFlinch.new()
+		_skeleton.add_child(_flinch)
+	var f: Variant = _flinch
+	match part:
+		"head":
+			f.kick(_skeleton.find_bone("Bip01 Head"), bend, deg_to_rad(34.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Neck"), bend, deg_to_rad(14.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Spine1"), bend, deg_to_rad(6.0) * k)
+		"neck":
+			f.kick(_skeleton.find_bone("Bip01 Neck"), bend, deg_to_rad(24.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Head"), bend, deg_to_rad(16.0) * k)
+		"torso":
+			f.kick(_skeleton.find_bone("Bip01 Spine1"), bend, deg_to_rad(14.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Spine"), bend, deg_to_rad(8.0) * k)
+		_:
+			if part.contains("arm"):
+				var sgn := 1.0 if part.ends_with("_l") else -1.0
+				f.kick(_skeleton.find_bone("Bip01 Spine1"), spin, deg_to_rad(18.0) * k * sgn)
+				f.kick(_skeleton.find_bone("Bip01 " + ("L" if sgn > 0.0 else "R") + " UpperArm"), bend, deg_to_rad(30.0) * k)
+			elif part.contains("leg"):
+				f.kick(_skeleton.find_bone("Bip01 Pelvis"), -bend, deg_to_rad(13.0) * k)
+				f.kick(_skeleton.find_bone("Bip01 Spine"), -bend, deg_to_rad(10.0) * k)
+
+## A shove along the ground (a shotgun at close range).
+func knock(v: Vector3) -> void:
+	if state >= State.DYING:
+		return
+	v.y = 0.0
+	_knock += v
+	if _knock.length() > 7.0:
+		_knock = _knock.normalized() * 7.0
 
 func _react(part: String, dmg: float) -> void:
 	# A hit that matters makes it flinch; a graze doesn't.

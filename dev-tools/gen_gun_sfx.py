@@ -239,9 +239,7 @@ def kill_thump():
 
 
 def main():
-    for kind in SHOTS:
-        for i, seed in enumerate((101, 202)):
-            save("fire_%s_%s" % (kind, "ab"[i]), shot(kind, seed + sum(map(ord, kind)) % 7))
+    # The gunshots (fire_*) and the hit / gore sounds come from dev-tools/gen_gun_sfx_v2.py.
     for i, seed in enumerate((301, 302)):
         save("fire_wonder_%s" % "ab"[i], wonder(seed))
     save("dry_click", norm(click(1700, 0.04, 0.008, 5), 0.6))

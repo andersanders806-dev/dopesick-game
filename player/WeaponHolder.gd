@@ -21,6 +21,9 @@ const GunModel := preload("res://weapons/GunModel.gd")
 const ZombieControls := preload("res://player/ZombieControls.gd")
 const Viewmodel := preload("res://player/Viewmodel.gd")
 const FPFeel := preload("res://player/FPFeel.gd")
+const ImpactFX := preload("res://fx/ImpactFX.gd")
+## A shotgun this close throws a zombie back.
+const KNOCK_RANGE := 4.5
 
 signal fired
 ## A zombie was hit: the hit zone's part, and whether that killed it.
@@ -337,6 +340,7 @@ func shoot_at(origin: Vector3, dir: Vector3) -> void:
 func _shoot(origin: Vector3, dir: Vector3) -> void:
 	var d := current
 	_wounded.clear()
+	var shoved := {}
 	var cone: float = 0.0 if no_spread else (d.spread_ads if aiming else d.spread_hip)
 	for i in d.pellets:
 		var v := _scatter(dir, cone)
@@ -347,11 +351,22 @@ func _shoot(origin: Vector3, dir: Vector3) -> void:
 		var z: Node = r.get("zombie")
 		traced.emit(origin, r.position)
 		if z == null:
+			var fx := ImpactFX.of(self)
+			if fx != null:
+				fx.bullet_hit(r.position, r.get("normal", Vector3.UP), r.get("collider"))
 			continue
 		var dist := origin.distance_to(r.position)
-		_hurt(z, r.part, d.damage_at(r.part, dist), v, d, false)
+		_hurt(z, r.part, d.damage_at(r.part, dist), v, d, false, r.position)
+		if d.pellets > 1 and dist < KNOCK_RANGE and z.has_method("knock"):
+			shoved[z] = (shoved.get(z, 0.0) as float) + 1.0
 		if d.splash_radius > 0.0:
 			_splash(z, r.position, d, v, dist)
+	# A shotgun's blast at close range throws them back.
+	for z in shoved:
+		if is_instance_valid(z):
+			var away: Vector3 = (z as Node3D).global_position - origin
+			var k := clampf(1.0 - away.length() / KNOCK_RANGE, 0.15, 1.0) * clampf(float(shoved[z]) / float(d.pellets) * 1.6, 0.3, 1.0)
+			z.knock(away.normalized() * 6.5 * k)
 	_pay_hits()
 
 func _scatter(dir: Vector3, cone_deg: float) -> Vector3:
@@ -393,7 +408,7 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 		if c.has_method("take_hit"):
 			skip.append(c.get_rid())
 			continue
-		return {"position": r.position, "collider": c, "zombie": null, "part": ""}
+		return {"position": r.position, "normal": r.normal, "collider": c, "zombie": null, "part": ""}
 	return {}
 
 ## The hit zones are not kept on the bones every frame (npc/ZombieHitboxes.gd):
@@ -438,7 +453,7 @@ func _splash(first: Node, at: Vector3, d: WD, dir: Vector3, dist: float) -> void
 			_hurt(other, "torso", d.damage_at("torso", dist) * 0.5, dir, d, false)
 
 ## Hands the zombie its damage and pays for what happened.
-func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, melee_hit: bool) -> void:
+func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, melee_hit: bool, at := Vector3.INF) -> void:
 	if not z.has_method("take_hit") or (z.has_method("is_alive") and not z.is_alive()):
 		return
 	var on_hit := _on_zombie_hit
@@ -447,7 +462,7 @@ func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, me
 		z.connect("hit", on_hit)
 	if z.has_signal("died"):
 		z.connect("died", on_died)
-	z.take_hit(part, dmg, dir, weapon, melee_hit)
+	z.take_hit(part, dmg, dir, weapon, melee_hit, at)
 	if is_instance_valid(z):
 		if z.has_signal("hit") and z.is_connected("hit", on_hit):
 			z.disconnect("hit", on_hit)

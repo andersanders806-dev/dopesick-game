@@ -6516,6 +6516,8 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	player.global_position = ring_at
 	player.velocity = Vector3.ZERO
 	spawner.round_no = 8
+	# Twenty claws would put the player down long before the ring forms.
+	root.get_node("ZombieMode").health = 1e9
 	var horde := []
 	for i in 20:
 		var at := ring_at + Vector3(4.0 + (i % 5) * 1.0, 0.0, -1.5 + (i / 5) * 1.0)
@@ -6542,6 +6544,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 			for a in horde.size():
 				for b in range(a + 1, horde.size()):
 					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
+	root.get_node("ZombieMode").health = 100.0
 	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
 	_check(closest_pair >= 0.4, "  no two dead within reach are closer than 0.4 m (a pile is under 0.3; the ring keeps 0.6) (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:

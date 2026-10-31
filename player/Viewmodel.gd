@@ -32,11 +32,11 @@ const ARM_NEAR_CUT := 0.12
 ## about its own length (degrees) and how far its fingers close (1 = the standard grip).
 ## [right, left, right_roll, left_roll, right_curl, left_curl]
 const HANDS := {
-	"pistol": [Vector3(0.5, 0.3, 0.14), Vector3(-1.4, 0.25, 0.2), 0.0, 0.0, 1.0, 1.0],
+	"pistol": [Vector3(0.5, 0.2, 0.14), Vector3(-0.9, 0.05, 0.18), 0.0, 0.0, 1.0, 1.0],
 	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0],
-	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(0.5, 0.60, 0.58), 0.0, 0.0, 1.0, 1.0],
-	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(0.5, 0.62, 0.60), 0.0, 0.0, 1.0, 1.0],
-	"lmg": [Vector3(0.5, 0.18, 0.38), Vector3(0.5, 0.45, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(-0.3, 0.55, 0.58), 0.0, 0.0, 1.0, 1.0],
+	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(-0.35, 0.7, 0.74), 0.0, 0.0, 1.0, 1.0],
+	"lmg": [Vector3(0.5, 0.60, 0.24), Vector3(0.40, 0.74, 0.50), 0.0, 0.0, 1.0, 1.0],
 	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.66, 0.56), 0.0, 0.0, 1.0, 1.0],
 	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.55, 0.54), 0.0, 0.0, 1.0, 1.0],
 	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0],
@@ -66,6 +66,20 @@ var _skeleton: Skeleton3D
 var _flash_mats: Array[ShaderMaterial] = []
 var _fingers := {}
 var _arm_cfg := {}
+
+## A viewmodel built and freed within a frame or two (a gun swap, a view change) used to leave
+## the renderer an instance still marked for update whose materials were already gone: four
+## 'Parameter "material" is null' engine errors at the start of a run. Letting go of the
+## materials first, while the nodes still exist, keeps the instances clean.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for mi in find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			m.material_override = null
+			m.material_overlay = null
+			if m.mesh != null:
+				for s in m.mesh.get_surface_count():
+					m.set_surface_override_material(s, null)
 
 func setup(d: WD) -> Node3D:
 	data = d
@@ -181,14 +195,15 @@ func _measure() -> void:
 ## Where the sight picture sits on each gun: the zones (fractions of the gun's length from
 ## the muzzle) of the front sight and the rear sight to measure the sight line from, the eye
 ## relief (metres from the eye to the rear sight), and whether a red dot is fitted.
-## [front_lo, front_hi, rear_lo, rear_hi, relief, optic, lift]; with a red dot: [rail_lo, rail_hi, dot_z, -, relief, true, 0].
-## `lift` raises the eye over the gun's top (a sight that is only a flat receiver).
+## [front_lo, front_hi, rear_lo, rear_hi, relief, optic, lift]; with a red dot: [rail_lo, rail_hi, dot_z, -, relief, true, riser].
+## `lift` raises the eye over the gun's top (a sight that is only a flat receiver); with a red dot it is the
+## height of a riser the sight stands on (the LMG's, so the dot clears the pan magazine).
 const SIGHTS := {
 	"pistol": [0.0, 0.14, 0.78, 0.97, 0.30, false, 0.0],
 	"magnum": [0.0, 0.14, 0.62, 0.78, 0.30, false, 0.0],
 	"smg": [0.3, 0.7, 0.55, 0.0, 0.14, true, 0.0],
 	"ar": [0.3, 0.7, 0.58, 0.0, 0.14, true, 0.0],
-	"lmg": [0.0, 0.1, 0.45, 0.6, 0.30, false, 0.045],
+	"lmg": [0.3, 0.7, 0.5, 0.0, 0.19, true, 0.055],
 	"shotgun": [0.0, 0.1, 0.55, 0.72, 0.42, false, 0.05],
 	"sniper": [0.0, 0.1, 0.5, 0.65, 0.2, false, 0.01],
 	"wonder": [0.0, 0.1, 0.5, 0.65, 0.3, false, 0.05],
@@ -239,7 +254,10 @@ func _measure_sights(f: String) -> void:
 	has_optic = cfg[5]
 	var relief: float = cfg[4]
 	if has_optic:
-		_build_optic(Vector3(0.0, rear.y, rear.z))
+		var riser: float = cfg[6]
+		_build_optic(Vector3(0.0, rear.y + riser, rear.z))
+		if riser > 0.0:
+			_build_riser(rear.y, riser, rear.z)
 		# The dot sits in the middle of the sight's frame.
 		sight_point = optic.position + optic_dot
 		ads_pitch = 0.0
@@ -312,6 +330,7 @@ func _build_optic(at: Vector3) -> void:
 		model.position = Vector3(0.0, 0.0472 * OPTIC_SCALE, 0.0)
 		optic.add_child(model)
 		_convert(optic, 0.05)
+		_blank_logo(model)
 		# The lens is glass you see through: a faint tint, not the model's solid blue.
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			var inst := mi as MeshInstance3D
@@ -332,6 +351,17 @@ const OPTIC_YAW := 0.0
 ## Lens centre in the model's own units, from the model's centre.
 const OPTIC_LENS_Y := 0.012
 const OPTIC_LENS_Z := 0.0
+
+## The "AimDot" logo printed on the sight's side (in its base colour texture) painted out dark.
+const OPTIC_LOGO := Vector4(0.128, 0.622, 0.192, 0.748)
+
+func _blank_logo(model: Node) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var inst := mi as MeshInstance3D
+		for sidx in inst.mesh.get_surface_count():
+			var sm := inst.get_surface_override_material(sidx) as ShaderMaterial
+			if sm != null and sm.shader == SHADER:
+				sm.set_shader_parameter("blank_rect", OPTIC_LOGO)
 
 func _add_dot() -> void:
 	var dot := MeshInstance3D.new()
@@ -391,6 +421,25 @@ func _build_optic_kit() -> void:
 	glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	glass.position = Vector3(0.0, OPTIC_CENTRE_Y - 0.002, OPTIC_L * 0.2)
 	optic.add_child(glass)
+
+## The post under a raised red dot: from the gun's top up to the sight's base.
+func _build_riser(from_y: float, height: float, z: float) -> void:
+	var steel := ShaderMaterial.new()
+	steel.shader = SHADER
+	steel.set_shader_parameter("viewmodel_fov", VM_FOV)
+	steel.set_shader_parameter("albedo", Color(0.02, 0.02, 0.022))
+	steel.set_shader_parameter("metallic", 0.3)
+	steel.set_shader_parameter("roughness", 0.55)
+	steel.set_shader_parameter("near_cut", 0.05)
+	var mi := MeshInstance3D.new()
+	mi.name = "Riser"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.03, height + 0.01, 0.06)
+	mi.mesh = bm
+	mi.material_override = steel
+	mi.position = Vector3(0.0, from_y + height * 0.5 - 0.004, z)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
 
 func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
 	var mi := MeshInstance3D.new()
@@ -524,6 +573,8 @@ func _build_arms() -> void:
 ## Arm scale against the avatar's own (first-person arms are always big: the
 ## viewmodel's narrow field of view and the short reach to the gun need it).
 const ARM_SCALE := 1.12
+## Thickness of the forearm and upper arm against the avatar's (the hands keep their size).
+const ARM_SLIM := 0.78
 ## Shoulders, camera space.
 const SHOULDER_R := Vector3(0.22, -0.46, 0.22)
 const SHOULDER_L := Vector3(-0.22, -0.46, 0.22)
@@ -600,8 +651,10 @@ func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_v
 	var ha_dir := (to_sk.basis * (hand_dir_vm + Vector3(0, -0.3, 0))).normalized()
 	var ha_basis := _aim_bone(ha_rest.basis, ha_dir)
 	ha_basis = Basis(ha_dir, deg_to_rad(float(_hand_roll[side]))) * ha_basis
-	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis, sh))
-	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis, elbow))
+	# A slimmer forearm and upper arm (COD sleeves are fitted, not tubes): thinned about the bone's own axis.
+	var slim := Basis.from_scale(Vector3(1.0, ARM_SLIM, ARM_SLIM))
+	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis * slim, sh))
+	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis * slim, elbow))
 	_skeleton.set_bone_global_pose(a["hand"], Transform3D(ha_basis, t))
 	_curl(a, side)
 

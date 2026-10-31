@@ -121,6 +121,19 @@ var _tracer_n := 0
 var _light: OmniLight3D
 var _audio: Array[AudioStreamPlayer] = []
 var _audio_next := 0
+## Gunshots have voices of their own, so a burst never starves the clicks and swishes (and cannot pile
+## up more than this many tails and bodies: the oldest is cut off for the newest).
+const SHOT_VOICES := 4
+var _shot_audio: Array[AudioStreamPlayer] = []
+var _shot_next := 0
+## Full-auto guns play a short body per round and one echo tail when the trigger lets go: the family
+## of the burst waiting for its tail, the time since its last round, and the gap that counts as letting go.
+const AUTO_FAMILIES := ["smg", "ar", "lmg"]
+var _tail_family := ""
+var _tail_idle := 0.0
+var _tail_gap := 0.15
+## How many times each sound was played (the tests read it).
+var sound_counts := {}
 static var _streams := {}
 
 func _ready() -> void:
@@ -138,6 +151,11 @@ func _ready() -> void:
 		p.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
 		add_child(p)
 		_audio.append(p)
+	for i in SHOT_VOICES:
+		var sp := AudioStreamPlayer.new()
+		sp.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
+		add_child(sp)
+		_shot_audio.append(sp)
 	holder.connect("fired", _on_fired)
 	holder.connect("hit", _on_hit)
 	holder.connect("reload_started", _on_reload_started)
@@ -240,7 +258,16 @@ func _on_fired() -> void:
 	if d == null:
 		return
 	# The shot is heard in either view; the rest is the first person's.
-	_sound(_fire_sound(d), -2.0, rng.randf_range(0.97, 1.04))
+	var fam := _fire_family(d)
+	if d.auto and fam in AUTO_FAMILIES:
+		# Full auto: a short body per round with a little pitch and level variation; the echo comes once,
+		# when the rounds stop (advance).
+		_sound("fire_%s_body_%s" % [fam, "ab"[rng.randi() % 2]], rng.randf_range(-3.5, -1.0), rng.randf_range(0.93, 1.07))
+		_tail_family = fam
+		_tail_idle = 0.0
+		_tail_gap = maxf(d.interval() * 1.7, 0.1)
+	else:
+		_sound(_fire_sound(d), -2.0, rng.randf_range(0.97, 1.04))
 	if not _fp():
 		return
 	shots += 1
@@ -279,11 +306,14 @@ var _later: Array = []
 var _pump_t := 0.0
 const PUMP_TIME := 0.5
 
-func _fire_sound(d: WD) -> String:
+func _fire_family(d: WD) -> String:
 	var fam := d.family()
 	if not (fam in ["pistol", "smg", "ar", "shotgun", "sniper", "magnum", "lmg", "wonder"]):
 		fam = "pistol"
-	return "fire_%s_%s" % [fam, "ab"[rng.randi() % 2]]
+	return fam
+
+func _fire_sound(d: WD) -> String:
+	return "fire_%s_%s" % [_fire_family(d), "ab"[rng.randi() % 2]]
 
 func _on_hit(part: String, killed: bool) -> void:
 	if killed:
@@ -390,6 +420,12 @@ func _process(delta: float) -> void:
 ## Steps every piece of feel by `delta` seconds (no node is touched).
 func advance(delta: float) -> void:
 	_t += delta
+	# The trigger let go (or the magazine ran dry): the street answers, once.
+	if _tail_family != "":
+		_tail_idle += delta
+		if _tail_idle >= _tail_gap:
+			_sound("fire_%s_tail" % _tail_family, -4.0, rng.randf_range(0.98, 1.03))
+			_tail_family = ""
 	_slide_cd = maxf(_slide_cd - delta, 0.0)
 	if not _fp():
 		return
@@ -874,13 +910,19 @@ func _sound(name_: String, volume_db := 0.0, pitch := 1.0) -> void:
 	var s := stream(name_)
 	if s == null:
 		return
-	var p := _audio[_audio_next]
-	_audio_next = (_audio_next + 1) % _audio.size()
+	var p: AudioStreamPlayer
+	if name_.begins_with("fire_"):
+		p = _shot_audio[_shot_next]
+		_shot_next = (_shot_next + 1) % _shot_audio.size()
+	else:
+		p = _audio[_audio_next]
+		_audio_next = (_audio_next + 1) % _audio.size()
 	p.stream = s
 	p.volume_db = volume_db
 	p.pitch_scale = pitch
 	p.play()
 	last_sound = name_
+	sound_counts[name_] = int(sound_counts.get(name_, 0)) + 1
 	recent.append(name_)
 	if recent.size() > 12:
 		recent.pop_front()

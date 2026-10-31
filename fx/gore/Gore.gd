@@ -13,12 +13,15 @@ extends Node3D
 const GoreRig := preload("res://fx/gore/GoreRig.gd")
 const GibPool := preload("res://fx/gore/GibPool.gd")
 const ScreenBlood := preload("res://fx/gore/ScreenBlood.gd")
+const Ragdolls := preload("res://fx/gore/Ragdolls.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
 
 const DECALS := 80
 const POOLS := 12
 const FOUNTAINS := 4
 const BLEEDERS := 12
+## Seconds a pool takes to spread under a corpse.
+const POOL_TIME := 2.2
 ## What a limb must take (as a fraction of the zombie's health, summed over its own hit zone) to come off.
 const THRESHOLD := {"lower_arm": 0.30, "upper_arm": 0.42, "lower_leg": 0.34, "upper_leg": 0.48}
 ## The limb a hit zone takes off.
@@ -32,12 +35,14 @@ const ZONES := {"forearm_l": ["lower_arm_l"], "forearm_r": ["lower_arm_r"], "arm
 ## Most of each per physics frame.
 const BUDGET := {"decal": 3, "wound": 2, "raycast": 4}
 
+static var _wet: Texture2D
 static var _flesh: StandardMaterial3D
 static var _bone: StandardMaterial3D
 
 var rng := RandomNumberGenerator.new()
 var gibs: Node3D
 var screen: CanvasLayer
+var ragdolls: Node
 var severs := 0
 var heads_popped := 0
 var wounds := 0
@@ -72,6 +77,8 @@ func _ready() -> void:
 	rng.randomize()
 	for k in ["splatter_01", "splatter_02", "spray_01", "spray_02", "pool_01", "pool_02", "drips_01", "drips_02"]:
 		_textures[k] = load("res://assets/decals/blood_%s.png" % k)
+		# The glow of wet blood in the dark: the picture times its own alpha (decal emission ignores alpha).
+		_textures[k + "_em"] = load("res://assets/decals/blood_%s_em.png" % k)
 	for i in DECALS:
 		var d := Decal.new()
 		d.size = Vector3(0.8, 0.4, 0.8)
@@ -81,6 +88,8 @@ func _ready() -> void:
 		d.distance_fade_length = 10.0
 		d.upper_fade = 0.2
 		d.lower_fade = 0.2
+		d.texture_orm = wet_texture()
+		d.emission_energy = 0.55
 		add_child(d)
 		_decals.append(d)
 	for i in POOLS:
@@ -88,6 +97,9 @@ func _ready() -> void:
 		d.visible = false
 		d.size = Vector3(1.0, 0.4, 1.0)
 		d.texture_albedo = _textures["pool_%02d" % (1 + i % 2)]
+		d.texture_emission = _textures["pool_%02d_em" % (1 + i % 2)]
+		d.emission_energy = 0.6
+		d.texture_orm = wet_texture()
 		add_child(d)
 		_pools.append({"decal": d, "z": null, "t": 99.0, "size": 1.3})
 	for i in FOUNTAINS:
@@ -99,6 +111,16 @@ func _ready() -> void:
 	gibs.gib_landed.connect(_on_gib_landed)
 	screen = ScreenBlood.new()
 	add_child(screen)
+	ragdolls = Ragdolls.new()
+	add_child(ragdolls)
+
+## Roughness map for blood on the ground: smooth and wet, so it catches the street light.
+static func wet_texture() -> Texture2D:
+	if _wet == null:
+		var img := Image.create(4, 4, false, Image.FORMAT_RGBA8)
+		img.fill(Color(1.0, 0.12, 0.0, 1.0))
+		_wet = ImageTexture.create_from_image(img)
+	return _wet
 
 func _fountain_node() -> CPUParticles3D:
 	var p := CPUParticles3D.new()
@@ -222,13 +244,13 @@ func _blood_on_world(z: Node, pos: Vector3, dir: Vector3, dmg: float) -> void:
 	q.exclude = [(z as CollisionObject3D).get_rid()]
 	var r: Dictionary = space.intersect_ray(q)
 	if not r.is_empty() and absf((r.normal as Vector3).y) < 0.6:
-		splat(r.position, r.normal, rng.randf_range(0.6, 1.1) * (0.8 + dmg / maxf(z.max_health, 1.0)), "spray")
+		splat(r.position, r.normal, rng.randf_range(0.9, 1.5) * (0.8 + dmg / maxf(z.max_health, 1.0)), "spray")
 	var q2 := PhysicsRayQueryParameters3D.create(pos, pos + Vector3.DOWN * 3.0)
 	q2.collision_mask = 0x7FFFFF7F
 	q2.exclude = [(z as CollisionObject3D).get_rid()]
 	var r2: Dictionary = space.intersect_ray(q2)
 	if not r2.is_empty():
-		splat(r2.position, r2.normal, rng.randf_range(0.4, 0.8), "splatter")
+		splat(r2.position, r2.normal, rng.randf_range(0.6, 1.1), "splatter")
 
 ## One blood decal (spray, splatter, drips) on a surface; the oldest of the 80 is reused.
 func splat(pos: Vector3, normal: Vector3, size: float, kind := "splatter") -> void:
@@ -238,6 +260,7 @@ func splat(pos: Vector3, normal: Vector3, size: float, kind := "splatter") -> vo
 	_decal_next = (_decal_next + 1) % _decals.size()
 	var k := "%s_%02d" % [kind, 1 + rng.randi() % 2]
 	d.texture_albedo = _textures[k]
+	d.texture_emission = _textures[k + "_em"]
 	var n := normal.normalized() if normal.length() > 0.01 else Vector3.UP
 	var xf := ImpactFX._up_basis(n, pos + n * 0.01)
 	xf.basis = xf.basis.rotated(n, rng.randf() * TAU)
@@ -296,6 +319,7 @@ func sever(z: Node, limb: String, dir: Vector3) -> bool:
 			area.collision_layer = 0
 	var joint := sk.global_transform * sk.get_bone_global_pose(bone).origin
 	var fx := ImpactFX.of(z)
+	burst(z, joint, dir, 1.0 if limb != "head" else 0.5, 0)
 	if fx != null:
 		fx.blood_hit(joint, dir if dir.length() > 0.01 else Vector3.UP, "torso", true, 2.0)
 		fx.play(joint, "sever_%d" % (1 + rng.randi() % 2), -1.0)
@@ -364,7 +388,28 @@ func _throw(z: Node, seg: String, dir: Vector3) -> void:
 	var cap_r: float = float(data.get("radius", 0.0)) if float(data.get("radius", 0.0)) > 0.0 else float(GoreRig.LIMBS[seg][2]) / unit
 	gibs.spawn(data, mats, float(z._rot_amount), float(z.get_meta("seed", 0.0)), xf, vel, z.global_position.y, flesh_material(), cap_r)
 
+## The dense burst of a severed head or limb: a cloud of mist, chunky drops, and (for a head)
+## chunks of skull and flesh thrown with it. `power` 1 is a limb, 2 a head.
+func burst(z: Node, pos: Vector3, dir: Vector3, power := 1.0, chunks := 0) -> void:
+	var fx := ImpactFX.of(z)
+	if fx != null:
+		fx.gore_burst(pos, dir, power)
+	var d := dir.normalized() if dir.length() > 0.01 else Vector3.BACK
+	var gy: float = (z as Node3D).global_position.y
+	for i in chunks:
+		var bone := i % 3 == 0
+		var v := d * rng.randf_range(2.0, 6.0) + Vector3(rng.randf_range(-2.5, 2.5), rng.randf_range(2.5, 5.5), rng.randf_range(-2.5, 2.5))
+		gibs.spawn_chunk(pos + Vector3(rng.randf_range(-0.05, 0.05), rng.randf_range(0.0, 0.1), rng.randf_range(-0.05, 0.05)), v, gy,
+			rng.randf_range(0.05, 0.11) * (1.0 if not bone else 0.8), bone_material() if bone else flesh_material())
+	# Blood behind it, on the wall and the ground.
+	_blood_on_world(z, pos, d, z.max_health * 0.4 * power)
+
 func _on_gib_landed(at: Vector3, impact: float) -> void:
+	if impact < 0.0:
+		# A chunk: a small smear.
+		if rng.randf() < 0.6:
+			splat(at + Vector3(0, 0.02, 0), Vector3.UP, rng.randf_range(0.25, 0.5), "splatter")
+		return
 	splat(at + Vector3(0, 0.02, 0), Vector3.UP, rng.randf_range(0.5, 0.9) * clampf(impact / 4.0, 0.6, 1.4), "splatter")
 	var fx := ImpactFX.of(self)
 	if fx != null:
@@ -382,6 +427,7 @@ func pop_head(z: Node, dir: Vector3) -> bool:
 	var fx := ImpactFX.of(z)
 	var sk: Skeleton3D = z._skeleton
 	var neck := sk.global_transform * sk.get_bone_global_pose(sk.find_bone("Bip01 Neck")).origin
+	burst(z, neck + Vector3(0, 0.12, 0), dir, 2.0, 3 + rng.randi() % 3)
 	if fx != null:
 		fx.play(neck, "head_pop_%d" % (1 + rng.randi() % 2), 0.0)
 		fx.blood_hit(neck + Vector3(0, 0.1, 0), Vector3.UP, "head", true, 3.0)
@@ -419,7 +465,7 @@ func pool_under(z: Node) -> void:
 	d.visible = true
 	e["z"] = z
 	e["t"] = 0.0
-	e["size"] = rng.randf_range(1.2, 1.7)
+	e["size"] = rng.randf_range(1.7, 2.3)
 
 func pools_shown() -> int:
 	var n := 0
@@ -440,9 +486,9 @@ func bleeders() -> int:
 
 func _process(delta: float) -> void:
 	for e in _pools:
-		if e["t"] < 6.0:
+		if e["t"] < POOL_TIME:
 			e["t"] += delta
-			var s: float = float(e["size"]) * (1.0 - pow(1.0 - clampf(e["t"] / 6.0, 0.0, 1.0), 2.0))
+			var s: float = float(e["size"]) * (1.0 - pow(1.0 - clampf(e["t"] / POOL_TIME, 0.0, 1.0), 2.0))
 			(e["decal"] as Decal).size = Vector3(maxf(s, 0.2), 0.4, maxf(s, 0.2))
 	for f in _fountains:
 		var p: CPUParticles3D = f["p"]
@@ -457,6 +503,13 @@ func _process(delta: float) -> void:
 		var neck := sk.find_bone("Bip01 Neck")
 		var n := sk.global_transform * sk.get_bone_global_pose(neck).origin
 		# The spurts weaken as it bleeds out; pulses with the heart.
+		f["splat"] = float(f.get("splat", 0.0)) - delta
+		if f["splat"] <= 0.0:
+			# The arcs come down round the body.
+			f["splat"] = rng.randf_range(0.09, 0.16)
+			var a := rng.randf() * TAU
+			var rr := rng.randf_range(0.2, 1.6)
+			splat(Vector3(n.x + cos(a) * rr, (z as Node3D).global_position.y + 0.01, n.z + sin(a) * rr), Vector3.UP, rng.randf_range(0.25, 0.6), "splatter")
 		var pulse := 0.6 + 0.4 * sin(f["t"] * 9.0)
 		p.initial_velocity_max = 4.4 * (1.0 - f["t"] / 3.2) * (0.7 + 0.3 * pulse)
 		p.global_position = n
@@ -475,6 +528,12 @@ func _process(delta: float) -> void:
 			var gy: float = (z as Node3D).global_position.y
 			if _allow("decal"):
 				splat(Vector3(p.x + rng.randf_range(-0.15, 0.15), gy + 0.01, p.z + rng.randf_range(-0.15, 0.15)), Vector3.UP, rng.randf_range(0.18, 0.32), "splatter")
+
+## The dead fall as a ragdoll (see Ragdolls.gd); `power` is the launch speed in m/s.
+func ragdoll(z: Node, dir: Vector3, power: float, at := Vector3.INF) -> bool:
+	if not ZombieMode.gore_enabled:
+		return false
+	return ragdolls.start(z, dir, power, at)
 
 ## You get hit, or cut one down at point blank: blood on the screen.
 func screen_blood(strength := 1.0) -> void:

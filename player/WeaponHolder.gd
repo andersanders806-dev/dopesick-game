@@ -391,6 +391,8 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 	for n in 24:
 		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * length)
 		q.exclude = skip
+		# Not the dead's ragdoll bodies (fx/gore/Ragdolls.gd, layer 512): a shot goes through them.
+		q.collision_mask = 0xFFFFFFFF & ~512
 		q.collide_with_areas = true
 		q.collide_with_bodies = true
 		var r := space.intersect_ray(q)

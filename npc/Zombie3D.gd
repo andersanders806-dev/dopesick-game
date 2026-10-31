@@ -756,6 +756,11 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 			gore.on_hit(self, part, dmg, dir, at, killed, weapon)
 	if killed:
 		_die(part, melee, dir)
+		var power := _ragdoll_power(dmg, weapon, melee)
+		if power > 0.0 and ZombieMode.gore_enabled and is_inside_tree() and not bool(get_meta("prewarm", false)):
+			var gore := Gore.of(self)
+			if gore != null:
+				gore.ragdoll(self, dir, power, at)
 		return
 	_react(part, dmg)
 	_flinch_part(part, dir, dmg)
@@ -774,6 +779,22 @@ func _hit_fx(part: String, dmg: float, dir: Vector3, at: Vector3, killed: bool, 
 		return
 	fx.blood_hit(pos, dir if dir.length() > 0.01 else Vector3.BACK, part, killed, dmg / maxf(max_health * 0.3, 1.0))
 	fx.damage_number(pos, dmg, part, killed)
+
+## How hard a kill throws the body (m/s), 0 for one that just plays its death clip: a real hit
+## (15 % of its health or more), a headless one, or a shotgun close up (thrown hard).
+func _ragdoll_power(dmg: float, weapon: Resource, melee: bool) -> float:
+	if weapon == null or melee:
+		return 0.0
+	var close := -1.0
+	if int(weapon.get("pellets")) > 1 and target != null and is_instance_valid(target):
+		close = (target as Node3D).global_position.distance_to(global_position)
+	if close >= 0.0 and close < 6.0:
+		return 3.5 + 3.5 * (1.0 - close / 6.0)
+	if head_gone:
+		return 3.0
+	if dmg >= max_health * 0.15:
+		return 1.8 + minf(dmg / maxf(max_health, 1.0), 1.0) * 2.2
+	return 0.0
 
 ## Which way it gives: the head snaps back, a shoulder twists, the body bends, a leg buckles.
 func _flinch_part(part: String, dir: Vector3, dmg: float) -> void:

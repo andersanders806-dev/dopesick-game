@@ -7,6 +7,11 @@ const SIZE := 24
 const GRAVITY := 9.8
 
 var _gibs: Array = []
+## Small chunks (skull, flesh): a second pool of the same kind of piece.
+var _chunks: Array = []
+var _chunk_next := 0
+var chunks_spawned := 0
+const CHUNKS := 24
 var _next := 0
 var spawned := 0
 
@@ -36,6 +41,21 @@ func _ready() -> void:
 		g.node.add_child(g.cap)
 		add_child(g.node)
 		_gibs.append(g)
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.5
+	sphere.height = 1.0
+	sphere.radial_segments = 8
+	sphere.rings = 4
+	for i in CHUNKS:
+		var g := Gib.new()
+		g.node = Node3D.new()
+		g.node.visible = false
+		g.mesh = MeshInstance3D.new()
+		g.mesh.mesh = sphere
+		g.mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		g.node.add_child(g.mesh)
+		add_child(g.node)
+		_chunks.append(g)
 
 ## Throws a gib: `data` from GoreRig.limb(), carrying `materials` (per source surface) and the
 ## zombie's rot / seed; its world transform, a launch velocity and the ground height under it.
@@ -71,6 +91,23 @@ func spawn(data: Dictionary, materials: Array, rot: float, seed_value: float, xf
 	g.bounces = 0
 	return g
 
+## A chunky bit (size metres, `bone` white or flesh red) thrown from `at`.
+func spawn_chunk(at: Vector3, vel: Vector3, ground: float, size: float, mat: Material) -> void:
+	var g: Gib = _chunks[_chunk_next]
+	_chunk_next = (_chunk_next + 1) % _chunks.size()
+	chunks_spawned += 1
+	g.mesh.material_override = mat
+	g.node.scale = Vector3(size, size * randf_range(0.6, 1.0), size * randf_range(0.7, 1.2))
+	g.node.global_position = at
+	g.node.visible = true
+	g.vel = vel
+	g.spin = Vector3(randf_range(-14, 14), randf_range(-14, 14), randf_range(-14, 14))
+	g.ground = ground
+	g.radius = size * 0.4
+	g.resting = false
+	g.age = 0.0
+	g.bounces = 0
+
 static var _cap: Mesh
 static func _cap_mesh(r: float) -> Mesh:
 	var m := CylinderMesh.new()
@@ -83,6 +120,12 @@ static func _cap_mesh(r: float) -> Mesh:
 
 func _physics_process(delta: float) -> void:
 	for g: Gib in _gibs:
+		_step(g, delta, true)
+	for g: Gib in _chunks:
+		_step(g, delta, false)
+
+func _step(g: Gib, delta: float, big: bool) -> void:
+	for once in 1:
 		if g.resting or not g.node.visible:
 			continue
 		g.age += delta
@@ -100,7 +143,7 @@ func _physics_process(delta: float) -> void:
 			g.vel.z *= 0.55
 			g.spin *= 0.5
 			if g.bounces == 1:
-				gib_landed.emit(g.node.global_position, impact)
+				gib_landed.emit(g.node.global_position, impact if big else -impact)
 			if impact < 1.2 or g.bounces > 3:
 				g.resting = true
 				g.vel = Vector3.ZERO
@@ -117,6 +160,13 @@ func in_flight() -> int:
 func shown() -> int:
 	var n := 0
 	for g: Gib in _gibs:
+		if g.node.visible:
+			n += 1
+	return n
+
+func chunks_shown() -> int:
+	var n := 0
+	for g: Gib in _chunks:
 		if g.node.visible:
 			n += 1
 	return n

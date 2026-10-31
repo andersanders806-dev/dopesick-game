@@ -191,7 +191,7 @@ func _on_died(zombie: Node, part: String, _melee: bool) -> void:
 	ZombieMode.record_kill(part == "head")
 	_corpses.append(zombie)
 	while _corpses.size() > CORPSE_LIMIT:
-		var old: Node = _corpses.pop_front()
+		var old = _corpses.pop_front()
 		if is_instance_valid(old):
 			old.remove_corpse()
 	_corpses = _corpses.filter(func(c): return is_instance_valid(c))

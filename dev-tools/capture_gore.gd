@@ -111,7 +111,7 @@ func _initialize() -> void:
 		z.health = 100.0
 		z.take_hit("torso", 60.0, Vector3(0.5, 0, 0.8), null)
 		z.take_hit("lower_leg_r" if i % 2 == 0 else "upper_arm_l", 150.0, Vector3(0.5, 0, 0.8), null)
-		z.take_hit("torso", 300.0, Vector3(0.5, 0, 0.8), null)
+		z.take_hit("torso", 300.0, Vector3(0.5, 0, 0.8), load("res://weapons/smg.tres"))
 	await _run(240)
 	await _snap("gore_heap")
 	print("GORE severs ", gore.severs, " heads ", gore.heads_popped, " decals ", gore.decals_shown(), " gibs ", gore.gibs.shown(), " pools ", gore.pools_shown())

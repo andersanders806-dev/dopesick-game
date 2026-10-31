@@ -13,6 +13,7 @@ const SPARKS := 10
 const DUST := 10
 const BLOOD := 16
 const SMOKE := 6
+const BURSTS := 6
 const VOICES := 10
 const NUMBERS := 10
 ## Most of each per physics frame (a shotgun blast is eight impacts).
@@ -30,6 +31,8 @@ var _dust: Array[CPUParticles3D] = []
 var _blood: Array[CPUParticles3D] = []
 var _mist: Array[CPUParticles3D] = []
 var _smoke: Array[CPUParticles3D] = []
+var _gore_drops: Array[CPUParticles3D] = []
+var _gore_mist: Array[CPUParticles3D] = []
 var _voices: Array[AudioStreamPlayer3D] = []
 var _next := {"spark": 0, "dust": 0, "blood": 0, "smoke": 0, "voice": 0, "number": 0}
 var _numbers: Array = []
@@ -88,6 +91,10 @@ func _build() -> void:
 		_mist.append(_burst(mist_mat, 5, 0.45, 0.14, 0.3, 0.3, 1.2, 50.0, Vector3(0, -0.5, 0), Color(0.5, 0.02, 0.02, 0.5), Color(0.3, 0.0, 0.0, 0.0), 1.5))
 	for i in SMOKE:
 		_smoke.append(_burst(smoke_mat, 7, 1.3, 0.07, 0.14, 0.2, 0.7, 28.0, Vector3(0, 0.35, 0), Color(0.75, 0.75, 0.78, 0.4), Color(0.6, 0.6, 0.62, 0.0), 2.6))
+	for i in BURSTS:
+		# The burst of a severed head or limb: chunky drops and a big cloud of mist.
+		_gore_drops.append(_burst(blood_mat, 40, 1.0, 0.05, 0.12, 3.0, 8.5, 38.0, Vector3(0, -10.0, 0), Color(0.6, 0.03, 0.03, 1.0), Color(0.3, 0.0, 0.0, 0.0), 0.0))
+		_gore_mist.append(_burst(mist_mat, 18, 0.5, 0.35, 0.7, 1.0, 3.5, 60.0, Vector3(0, -0.6, 0), Color(0.55, 0.02, 0.02, 0.75), Color(0.3, 0.0, 0.0, 0.0), 1.6))
 	for i in VOICES:
 		var a := AudioStreamPlayer3D.new()
 		a.unit_size = 8.0
@@ -271,6 +278,18 @@ func blood_hit(pos: Vector3, dir: Vector3, part: String, killed := false, power 
 		if part == "head":
 			s = "headshot_crunch_%d" % (1 + rng.randi() % 2)
 		_play(pos, s, -2.0 if part == "head" else -5.0)
+
+## A dense burst out of a cut: `power` 1 for a limb, 2 for a head.
+func gore_burst(pos: Vector3, dir: Vector3, power := 1.0) -> void:
+	var k: int = _next.get("burst", 0)
+	_next["burst"] = (k + 1) % BURSTS
+	var up := (dir.normalized() * 0.7 + Vector3(0, 0.8, 0)).normalized()
+	var at := _up_basis(up, pos)
+	_gore_drops[k].initial_velocity_max = 8.5 * (0.8 + 0.3 * power)
+	_fire(_gore_drops[k], at)
+	_fire(_gore_mist[k], at)
+	if power > 1.4:
+		_fire(_gore_mist[(k + 1) % BURSTS], _up_basis(Vector3.UP, pos))
 
 func muzzle_smoke(pos: Vector3, dir: Vector3, size := 1.0) -> void:
 	var p := _smoke[_next["smoke"]]

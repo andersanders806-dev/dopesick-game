@@ -9130,6 +9130,11 @@ func _zombie_gore_checks(gs: Node) -> void:
 	await _frames(2)
 	_check(z3.head_gone and z3.severed.has("head") and gore.gibs.spawned == gh + 1 and gore.fountains_active() >= 1 and z3._skeleton.find_child("Stump_head", true, false) != null,
 		"  a heavy headshot pops the head: stump, gib in the air, neck fountain (%d active)" % gore.fountains_active())
+	_check(gore.gibs.chunks_spawned >= 3 and gore.gibs.chunks_spawned <= 5 and gore.gibs.chunks_shown() >= 3, "  with 3 to 5 chunks of skull and flesh thrown with it (%d)" % gore.gibs.chunks_spawned)
+	var d_before: int = gore.decals_shown()
+	for i in 90:
+		await physics_frame
+	_check(gore.decals_shown() > d_before, "  and the neck's arcs come down as blood on the ground (%d -> %d decals)" % [d_before, gore.decals_shown()])
 	var z3b: Node = mk.call(-30.0)
 	await _frames(2)
 	z3b.health = 30.0
@@ -9206,6 +9211,83 @@ func _zombie_gore_checks(gs: Node) -> void:
 	await _frames(3)
 	var orphans1: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
 	_check(orphans1 <= orphans0 + 2, "  no orphan nodes are left behind (%d -> %d)" % [orphans0, orphans1])
+	# Ragdolls: ten at once, six running, the rest stopped where they lay; all frozen and freed after 3 s.
+	var rg: Node = gore.ragdolls
+	var rz := []
+	for i in 10:
+		rz.append(mk.call(-30.0 - i * 1.0))
+	await _frames(2)
+	var hb: int = rz[9]._skeleton.find_bone("Bip01 Head")
+	var head_y0: float = _rag_head_y(rz[9], hb)
+	for q in rz:
+		gore.ragdoll(q, Vector3.LEFT, 4.0)
+	_check(rg.started >= 10 and rg.active() <= 6, "  ten ragdolls start, no more than six run at once (%d running)" % rg.active())
+	for i in 45:
+		await physics_frame
+	rz[9]._skeleton.advance(0.0)
+	var head_y1: float = _rag_head_y(rz[9], hb)
+	_check(head_y0 > 1.2 and head_y1 < head_y0 - 0.4, "  and the body drops: its head from %.2f m to %.2f m" % [head_y0, head_y1])
+	var rag_node := (rz[9] as Node).find_child("Ragdoll", false, false)
+	_check(rag_node != null and rag_node.get_child_count() > 8, "  it is ten bodies and their joints while it runs (%d nodes)" % (rag_node.get_child_count() if rag_node != null else 0))
+	for i in 230:
+		await physics_frame
+	_check(rg.active() == 0 and rag_node.get_child_count() == 0, "  after 3 s every one is frozen and its bodies are freed (%d running, %d nodes)" % [rg.active(), rag_node.get_child_count()])
+	rz[9]._skeleton.advance(0.0)
+	var head_y2: float = _rag_head_y(rz[9], hb)
+	_check(absf(head_y2 - head_y1) < 0.6 and head_y2 < 1.0, "  and the pose is held (head at %.2f m)" % head_y2)
+	for q in rz:
+		q.free()
+	await _frames(2)
+	# 500 shots with ragdolls on: 200 into zombies (each dies on its fifth and falls), 300 into the wall.
+	var smg: Resource = load("res://weapons/smg.tres")
+	holder.give(smg)
+	await _frames(2)
+	holder._swap_left = 0.0
+	var tgt := [null]
+	var nodes_g: int = gore.get_child_count()
+	var rag0: int = rg.started
+	var kills0: int = zm.kills
+	var max_active := 0
+	var shots_fired := 0
+	holder.aim_source = func():
+		var t = tgt[0]
+		if t == null or not is_instance_valid(t):
+			return [eye, Vector3(-0.75, -0.15, 0.65).normalized()]
+		t.sync_hitboxes()
+		var c: Vector3 = (t.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	for n in 40:
+		var vz: Node = block.spawner.spawn_one("walker", Vector3(-22.0 - (n % 5) * 0.9, 0.0, -3.0 + (n % 3) * 0.5))
+		vz.set_physics_process(false)
+		vz._anim_player.pause()
+		vz.health = 135.0
+		vz.max_health = 150.0
+		vz.target = player
+		tgt[0] = vz
+		for k in 5:
+			holder.mag = 30
+			holder._cooldown = 0.0
+			if holder.fire():
+				shots_fired += 1
+		max_active = maxi(max_active, rg.active())
+		await physics_frame
+	tgt[0] = null
+	for i in 300:
+		holder.mag = 30
+		holder._cooldown = 0.0
+		if holder.fire():
+			shots_fired += 1
+		if i % 25 == 0:
+			await physics_frame
+			max_active = maxi(max_active, rg.active())
+	for i in 200:
+		await physics_frame
+	var fx_n: Node3D = get_first_node_in_group("impact_fx")
+	_check(shots_fired >= 480 and rg.started - rag0 >= 25 and zm.kills - kills0 >= 25, "  500 shots: %d fired, %d fell as ragdolls, %d kills" % [shots_fired, rg.started - rag0, zm.kills - kills0])
+	_check(max_active <= 6 and rg.active() == 0 and block.spawner.corpse_count() <= 12, "  at most 6 ragdolls ran at once (%d), all froze, corpses %d <= 12" % [max_active, block.spawner.corpse_count()])
+	_check(gore.get_child_count() == nodes_g and gore.decals_shown() <= 80 and gore.gibs.shown() <= 24 and gore.pools_shown() <= 12 and fx_n.decals_shown() <= 48,
+		"  and the caps hold (gore children %d -> %d, %d blood decals, %d gibs, %d pools, %d holes)" % [nodes_g, gore.get_child_count(), gore.decals_shown(), gore.gibs.shown(), gore.pools_shown(), fx_n.decals_shown()])
+	holder.aim_source = Callable()
 	# Screen blood.
 	gore.screen_blood(1.0)
 	_check(gore.screen.shown() >= 1, "  a claw leaves blood on the screen")
@@ -9232,3 +9314,13 @@ func _zombie_gore_checks(gs: Node) -> void:
 	await _frames(4)
 	zm.leave()
 	gs.start_run()
+
+
+## Where the ragdoll puts the head bone (the world transform its modifier last used).
+func _rag_head_y(z: Node, head_bone: int) -> float:
+	for c in z._skeleton.get_children():
+		if c.get("entries") != null:
+			for e in c.entries:
+				if int(e["bone"]) == head_bone:
+					return (e["held"] as Transform3D).origin.y
+	return (z._skeleton.global_transform * z._skeleton.get_bone_global_pose(head_bone)).origin.y

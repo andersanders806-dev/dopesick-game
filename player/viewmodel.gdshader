@@ -8,6 +8,8 @@ uniform float viewmodel_fov = 60.0;
 uniform float near_cut = 0.11;
 uniform sampler2D albedo_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_tex = false;
+// A rectangle of the albedo texture (u0, v0, u1, v1) painted out dark: a maker's logo on the red dot sight.
+uniform vec4 blank_rect = vec4(0.0);
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform float roughness = 0.7;
 uniform float metallic = 0.0;
@@ -50,6 +52,9 @@ void fragment() {
 		discard;
 	}
 	vec4 tex = use_tex ? texture(albedo_tex, UV) : vec4(1.0);
+	if (UV.x > blank_rect.x && UV.y > blank_rect.y && UV.x < blank_rect.z && UV.y < blank_rect.w) {
+		tex.rgb = vec3(0.022);
+	}
 	ALBEDO = albedo.rgb * tex.rgb;
 	float r = roughness;
 	float m = metallic;
@@ -59,12 +64,16 @@ void fragment() {
 		float tip = 1.0 - smoothstep(0.0, 0.4, glove + sleeve);
 		vec2 w = UV * vec2(520.0, 520.0);
 		float weave = 0.5 + 0.5 * sin(w.x + sin(w.y * 0.5) * 1.3) * sin(w.y);
-		vec3 cloth = vec3(0.0065, 0.0075, 0.007) * (0.8 + 0.4 * weave);
-		vec3 leather = vec3(0.005, 0.0045, 0.0045) * (0.85 + 0.3 * weave);
-		// The wrist strap: where sleeve and glove overlap.
+		// A worn field-jacket sleeve: charcoal olive, a coarse weave, and soft folds that run round the arm.
+		float fold = 0.5 + 0.5 * sin(v_obj.x * 0.55 + sin(v_obj.y * 0.31 + v_obj.z * 0.2) * 2.4 + v_obj.z * 0.35);
+		float fold2 = 0.5 + 0.5 * sin(v_obj.x * 1.7 + v_obj.y * 0.9 - v_obj.z * 0.8);
+		float wear = 0.5 + 0.5 * sin(w.x * 0.07 + sin(w.y * 0.05) * 2.0);
+		vec3 cloth = vec3(0.026, 0.029, 0.023) * (0.7 + 0.45 * weave) * (0.55 + 0.6 * fold) * (0.9 + 0.2 * fold2);
+		cloth = mix(cloth, vec3(0.05, 0.052, 0.042), wear * 0.25);
+		vec3 leather = vec3(0.012, 0.011, 0.011) * (0.85 + 0.3 * weave);
 		float strap = smoothstep(0.15, 0.4, glove) * (1.0 - smoothstep(0.55, 0.85, glove)) * smoothstep(0.1, 0.4, sleeve);
 		vec3 worn = mix(cloth, leather, smoothstep(0.35, 0.65, glove));
-		worn = mix(worn, vec3(0.03, 0.028, 0.025), strap * 0.8);
+		worn = mix(worn, vec3(0.06, 0.056, 0.048), strap * 0.8);
 		ALBEDO = mix(worn, albedo.rgb * tex.rgb * 0.9, tip);
 		r = mix(mix(0.9, 0.5, smoothstep(0.35, 0.65, glove)), 0.65, tip);
 		m = 0.0;

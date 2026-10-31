@@ -32,11 +32,11 @@ const ARM_NEAR_CUT := 0.12
 ## about its own length (degrees) and how far its fingers close (1 = the standard grip).
 ## [right, left, right_roll, left_roll, right_curl, left_curl]
 const HANDS := {
-	"pistol": [Vector3(0.5, 0.3, 0.14), Vector3(-1.4, 0.25, 0.2), 0.0, 0.0, 1.0, 1.0],
+	"pistol": [Vector3(0.5, 0.2, 0.14), Vector3(-0.9, 0.05, 0.18), 0.0, 0.0, 1.0, 1.0],
 	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0],
-	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(0.5, 0.60, 0.58), 0.0, 0.0, 1.0, 1.0],
-	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(0.5, 0.62, 0.60), 0.0, 0.0, 1.0, 1.0],
-	"lmg": [Vector3(0.5, 0.18, 0.38), Vector3(0.5, 0.45, 0.56), 0.0, 0.0, 1.0, 1.0],
+	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(-0.3, 0.55, 0.58), 0.0, 0.0, 1.0, 1.0],
+	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(-0.35, 0.7, 0.74), 0.0, 0.0, 1.0, 1.0],
+	"lmg": [Vector3(0.5, 0.60, 0.24), Vector3(0.40, 0.74, 0.50), 0.0, 0.0, 1.0, 1.0],
 	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.66, 0.56), 0.0, 0.0, 1.0, 1.0],
 	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.55, 0.54), 0.0, 0.0, 1.0, 1.0],
 	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0],
@@ -66,6 +66,20 @@ var _skeleton: Skeleton3D
 var _flash_mats: Array[ShaderMaterial] = []
 var _fingers := {}
 var _arm_cfg := {}
+
+## A viewmodel built and freed within a frame or two (a gun swap, a view change) used to leave
+## the renderer an instance still marked for update whose materials were already gone: four
+## 'Parameter "material" is null' engine errors at the start of a run. Letting go of the
+## materials first, while the nodes still exist, keeps the instances clean.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		for mi in find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			m.material_override = null
+			m.material_overlay = null
+			if m.mesh != null:
+				for s in m.mesh.get_surface_count():
+					m.set_surface_override_material(s, null)
 
 func setup(d: WD) -> Node3D:
 	data = d
@@ -312,6 +326,7 @@ func _build_optic(at: Vector3) -> void:
 		model.position = Vector3(0.0, 0.0472 * OPTIC_SCALE, 0.0)
 		optic.add_child(model)
 		_convert(optic, 0.05)
+		_blank_logo(model)
 		# The lens is glass you see through: a faint tint, not the model's solid blue.
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			var inst := mi as MeshInstance3D
@@ -332,6 +347,17 @@ const OPTIC_YAW := 0.0
 ## Lens centre in the model's own units, from the model's centre.
 const OPTIC_LENS_Y := 0.012
 const OPTIC_LENS_Z := 0.0
+
+## The "AimDot" logo printed on the sight's side (in its base colour texture) painted out dark.
+const OPTIC_LOGO := Vector4(0.128, 0.622, 0.192, 0.748)
+
+func _blank_logo(model: Node) -> void:
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var inst := mi as MeshInstance3D
+		for sidx in inst.mesh.get_surface_count():
+			var sm := inst.get_surface_override_material(sidx) as ShaderMaterial
+			if sm != null and sm.shader == SHADER:
+				sm.set_shader_parameter("blank_rect", OPTIC_LOGO)
 
 func _add_dot() -> void:
 	var dot := MeshInstance3D.new()
@@ -524,6 +550,8 @@ func _build_arms() -> void:
 ## Arm scale against the avatar's own (first-person arms are always big: the
 ## viewmodel's narrow field of view and the short reach to the gun need it).
 const ARM_SCALE := 1.12
+## Thickness of the forearm and upper arm against the avatar's (the hands keep their size).
+const ARM_SLIM := 0.78
 ## Shoulders, camera space.
 const SHOULDER_R := Vector3(0.22, -0.46, 0.22)
 const SHOULDER_L := Vector3(-0.22, -0.46, 0.22)
@@ -600,8 +628,10 @@ func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_v
 	var ha_dir := (to_sk.basis * (hand_dir_vm + Vector3(0, -0.3, 0))).normalized()
 	var ha_basis := _aim_bone(ha_rest.basis, ha_dir)
 	ha_basis = Basis(ha_dir, deg_to_rad(float(_hand_roll[side]))) * ha_basis
-	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis, sh))
-	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis, elbow))
+	# A slimmer forearm and upper arm (COD sleeves are fitted, not tubes): thinned about the bone's own axis.
+	var slim := Basis.from_scale(Vector3(1.0, ARM_SLIM, ARM_SLIM))
+	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis * slim, sh))
+	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis * slim, elbow))
 	_skeleton.set_bone_global_pose(a["hand"], Transform3D(ha_basis, t))
 	_curl(a, side)
 

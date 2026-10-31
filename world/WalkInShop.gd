@@ -141,7 +141,20 @@ func _go_inert() -> void:
 func _dress_inert() -> void:
 	for n in get_children():
 		if n.is_in_group("guards") or n is Area3D and n.name != "Inside" or n.name.begins_with("Pawnbroker"):
+			_let_go_of_materials(n)
 			n.queue_free()
+
+## Freed within a frame of being built, a mesh whose own materials die with it leaves the renderer
+## an instance still marked for update with a material that is gone (the four 'Parameter "material"
+## is null' engine errors at the start of a Dead Block run). Dropping them first keeps it clean.
+static func _let_go_of_materials(n: Node) -> void:
+	for mi in n.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		m.material_override = null
+		m.material_overlay = null
+		if m.mesh != null:
+			for i in m.mesh.get_surface_count():
+				m.set_surface_override_material(i, null)
 
 ## Frames cost nothing here: the roof, the lamps and the guards change on the
 ## step, not every frame.

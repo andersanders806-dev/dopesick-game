@@ -9398,8 +9398,10 @@ func _zombie_horde_checks(gs: Node) -> void:
 	await _frames(8)
 	var block := city.get_node("ZombieBlock")
 	var spawner: Node = block.spawner
+	var surge: Node = block.surge
 	spawner.enabled = false
 	spawner.adaptive = false
+	surge.enabled = true
 	for old_z in get_nodes_in_group("zombies"):
 		old_z.free()
 	_check(spawner.GAP_BASE <= 1.2 and spawner.GAP_MIN <= 0.25, "  spawn gaps are shorter (%.2f s base, %.2f s min)" % [spawner.GAP_BASE, spawner.GAP_MIN])
@@ -9476,6 +9478,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	spawner.released = 0
 	spawner._kinds = spawner._plan_kinds(1, 40)
 	spawner._timer = 0.0
+	surge.enabled = false
 	zm.max_alive = 48
 	var kinds_out := {}
 	var spawned_now := []
@@ -9549,3 +9552,101 @@ func _zombie_horde_checks(gs: Node) -> void:
 		zs.free()
 	_check(fx.visible_cracks() >= 1 and fx.visible_cracks() <= fx.CRACKS, "  cracks are pooled (%d of %d showing)" % [fx.visible_cracks(), fx.CRACKS])
 
+	# --- The surge ---
+	spawner.round_no = 0
+	spawner.enabled = true
+	surge.enabled = true
+	surge.time_scale = 0.02
+	zm.round = 4
+	var log := []
+	var w := func(): log.append("warning")
+	var s := func(): log.append("started")
+	var e_ := func(): log.append("ended")
+	zm.surge_warning.connect(w)
+	zm.surge_started.connect(s)
+	zm.surge_ended.connect(e_)
+	var base_pts: int = zm.points
+	zm.add_points(10, "t")
+	var normal_pay: int = zm.points - base_pts
+	var made := []
+	var on_surge := func(zz): made.append(zz)
+	surge.spawned.connect(on_surge)
+	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
+	_check(not surge.trigger(10), "  ...and not another while one is on")
+	var pay_warn: int = zm.points
+	zm.add_points(10, "t")
+	var warn_pay: int = zm.points - pay_warn
+	var double_seen := false
+	var max_alive_seen := 0
+	var f2 := 0
+	while zm.surge_busy and f2 < 4000:
+		await physics_frame
+		f2 += 1
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+		max_alive_seen = maxi(max_alive_seen, spawner.alive())
+		if zm.surge_active and not double_seen:
+			var p1: int = zm.points
+			zm.add_points(10, "t")
+			double_seen = zm.points - p1 == 20
+	_check(log == ["warning", "started", "ended"], "  the signals come in order: %s" % [log])
+	_check(normal_pay == 10 and warn_pay == 10 and double_seen, "  points: 10 normally and in the warning, 20 in the quake")
+	var runners := 0
+	var types := {}
+	for zz in made:
+		runners += 1 if zz.kind == "runner" else 0
+		types[zz.entrance] = int(types.get(zz.entrance, 0)) + 1
+	_check(made.size() == 32 and spawner.alive() == 32, "  the surge let out exactly 32 (%d, alive %d)" % [made.size(), spawner.alive()])
+	_check(runners >= 24 and runners <= 27, "  mostly runners (%d of 32)" % runners)
+	var from_ground_air := int(types.get("rise", 0)) + int(types.get("drop", 0)) + int(types.get("smash", 0))
+	_check(from_ground_air >= 26 and types.size() >= 3, "  from the ground, the fire escapes and the shop fronts (%s)" % [types])
+	_check(surge.entrance_counts.size() >= 3 and max_alive_seen <= zm.SURGE_HARD_CAP, "  hard cap respected (peak %d of %d)" % [max_alive_seen, zm.SURGE_HARD_CAP])
+	_check(zm.surge_active and not zm.surge_busy, "  after the last one is out the round may end, double points linger")
+	var f3 := 0
+	while zm.surge_active and f3 < 2000:
+		await physics_frame
+		f3 += 1
+	var p2: int = zm.points
+	zm.add_points(10, "t")
+	_check(not zm.surge_active and zm.points - p2 == 10 and surge.phase == surge.Phase.IDLE, "  and then single points again")
+	_check(surge.next_round - zm.round >= 3 and surge.next_round - zm.round <= 4 and surge.last_round == zm.round,
+		"  the next one is 3 or 4 rounds on (round %d -> %d)" % [zm.round, surge.next_round])
+	zm.surge_warning.disconnect(w)
+	zm.surge_started.disconnect(s)
+	zm.surge_ended.disconnect(e_)
+	surge.spawned.disconnect(on_surge)
+	for zz in get_nodes_in_group("zombies"):
+		zz.free()
+
+	# --- When it comes ---
+	spawner.round_no = 0
+	var sch := 0
+	surge.next_round = 3
+	surge.last_round = -99
+	surge.plan_in = -1.0
+	surge._on_round_started(1)
+	var none_r1: bool = surge.plan_in < 0.0 and surge.next_round >= 3 and surge.next_round <= 4
+	surge.next_round = 3
+	surge._on_round_started(3)
+	var planned_r3: bool = surge.plan_in >= 0.0
+	surge.plan_in = -1.0
+	var randoms := 0
+	for i in 400:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 2
+		surge._on_round_started(6)
+		randoms += 1 if surge.plan_in >= 0.0 else 0
+	var near := 0
+	for i in 200:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 5
+		surge._on_round_started(6)
+		near += 1 if surge.plan_in >= 0.0 else 0
+	surge.plan_in = -1.0
+	_check(none_r1 and planned_r3, "  scheduled: none in round 1, one planned from round 3")
+	_check(randoms >= 10 and randoms <= 80 and near == 0, "  and now and then at random (%d of 400 rounds), never within 2 rounds of the last (%d)" % [randoms, near])
+	_check(surge.surge_size(1) >= 25 and surge.surge_size(30) <= 40, "  25 to 40 of them (%d at round 1, %d at round 30)" % [surge.surge_size(1), surge.surge_size(30)])
+	surge.enabled = false
+	spawner.enabled = false

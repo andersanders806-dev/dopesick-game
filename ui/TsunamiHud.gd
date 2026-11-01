@@ -110,8 +110,8 @@ func _ready() -> void:
 	markers.draw.connect(_draw_markers)
 	add_child(markers)
 	_build_strip()
-	_build_banner()
 	_build_timer()
+	_build_banner()
 	_build_cancel()
 	water = _rect(WATER)
 	water.visible = false
@@ -146,7 +146,7 @@ func _label(text: String, size: int, color: Color, parent: Node) -> Label:
 ## The slim strip across the top, with the alert crawling along it.
 func _build_strip() -> void:
 	strip = Control.new()
-	strip.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	strip.offset_bottom = 34.0
 	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.clip_contents = true
@@ -165,7 +165,7 @@ func _build_strip() -> void:
 ## The full broadcast card: slides in from above, holds, and goes.
 func _build_banner() -> void:
 	banner = Control.new()
-	banner.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	banner.offset_bottom = 190.0
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(banner)
@@ -182,15 +182,15 @@ func _build_banner() -> void:
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	banner.add_child(bar)
 	var head := _label("EMERGENCY ALERT SYSTEM    CIVIL DEFENSE    ALL STATIONS", 18, Color(0.85, 0.2, 0.2), banner)
-	head.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	head.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	head.offset_top = 14.0
 	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var big := _label("TSUNAMI WARNING", 70, PAPER, banner)
-	big.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	big.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	big.offset_top = 40.0
 	big.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var sub := _label("EVACUATE TO HIGH GROUND", 30, Color(1.0, 0.82, 0.3), banner)
-	sub.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	sub.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	sub.offset_top = -50.0
 	sub.offset_bottom = -8.0
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -201,15 +201,15 @@ func _build_banner() -> void:
 
 func _build_timer() -> void:
 	timer_label = _label("2:00", 84, PAPER, self)
-	timer_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	timer_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	timer_label.offset_top = 40.0
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tracker_label = _label("DROWNED  0 / 2", 34, SEA, self)
-	tracker_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	tracker_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	tracker_label.offset_top = 146.0
 	tracker_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hint_label = _label("KILL BOTH BEFORE THE WAVE", 18, Color(0.85, 0.82, 0.74), self)
-	hint_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	hint_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	hint_label.offset_top = 186.0
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.pivot_offset = Vector2(640, 48)
@@ -222,11 +222,11 @@ func _build_cancel() -> void:
 	cancel_banner.modulate.a = 0.0
 	add_child(cancel_banner)
 	cancel_label = _label("TSUNAMI CANCELLED", 76, Color(0.78, 1.0, 0.9), cancel_banner)
-	cancel_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	cancel_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	cancel_label.offset_top = 90.0
 	cancel_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bonus_label = _label("", 44, Color(1.0, 0.82, 0.3), cancel_banner)
-	bonus_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bonus_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	bonus_label.offset_top = 184.0
 	bonus_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
@@ -444,13 +444,12 @@ func _draw_markers() -> void:
 func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color, who: Node) -> void:
 	var local := cam.global_transform.affine_inverse() * at
 	var dist := cam.global_position.distance_to(at)
-	var centre := rect.size * 0.5
 	var margin := 64.0
 	var sp := cam.unproject_position(at) if local.z < 0.0 else Vector2(-9999, -9999)
 	var inside := rect.grow(-margin).has_point(sp)
 	var meters := "%dm" % int(dist) if who != null else ""
 	if inside:
-		var p := sp + Vector2(0, -26.0)
+		var p := Vector2(sp.x, maxf(sp.y - 26.0, 232.0))
 		var s := clampf(1.3 - dist / 70.0, 0.75, 1.3)
 		var pts := PackedVector2Array([p + Vector2(0, 16) * s, p + Vector2(-14, 0) * s, p + Vector2(0, -16) * s, p + Vector2(14, 0) * s])
 		markers.draw_colored_polygon(pts, Color(0, 0, 0, 0.6))
@@ -474,8 +473,12 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 		if local.z > 0.0:
 			# behind: the side it is on, along the lower part of the screen
 			dir = Vector2(signf(local.x) if absf(local.x) > 0.05 else 1.0, 0.55).normalized()
-		var sx := (centre.x - margin) / maxf(absf(dir.x), 0.0001)
-		var sy := (centre.y - margin) / maxf(absf(dir.y), 0.0001)
+		# the arrow rides the edge of a box that keeps clear of the clock, the points and the ammo
+		var box_top := 130.0
+		var box_bottom := rect.size.y - 170.0
+		var centre := Vector2(rect.size.x * 0.5, (box_top + box_bottom) * 0.5)
+		var sx := (rect.size.x * 0.5 - 70.0) / maxf(absf(dir.x), 0.0001)
+		var sy := ((box_bottom - box_top) * 0.5) / maxf(absf(dir.y), 0.0001)
 		var p := centre + dir * minf(sx, sy)
 		var ang := dir.angle()
 		var tri := PackedVector2Array([Vector2(26, 0), Vector2(-14, -20), Vector2(-4, 0), Vector2(-14, 20)])

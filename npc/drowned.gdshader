@@ -27,7 +27,7 @@ uniform vec3 rim_color : source_color = vec3(0.34, 0.5, 0.46);
 uniform float rim_power = 2.4;
 uniform float rim_strength = 0.55;
 uniform float body_lift = 0.12;
-uniform float bloat = 1.6;
+uniform float bloat = 4.5;
 uniform vec3 eye_color : source_color = vec3(0.62, 0.95, 1.0);
 
 // How far gone this one is (0 fresh .. 1 rotten) and its own offset into the
@@ -54,7 +54,7 @@ void vertex() {
 	v_uv = UV;
 	// Swollen: the belly and chest bulge, the limbs a little.
 	float belly = smoothstep(-24.0, -4.0, VERTEX.y) * (1.0 - smoothstep(12.0, 30.0, VERTEX.y));
-	VERTEX += NORMAL * (belly * bloat + 0.35);
+	VERTEX += NORMAL * (belly * bloat + 1.4);
 	v_local = VERTEX;
 	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
@@ -127,7 +127,9 @@ void fragment() {
 	vec3 skin_out = mix(c, dead_skin, clamp(rot * 1.4, 0.0, 1.0));
 
 	// Cloth: dirt in the folds, mould, and blood that has dried dark.
-	vec3 grime = c * mix(1.0, 0.3 + n_lo * 0.4, rot) * vec3(0.55, 0.72, 0.7);
+	// Cloth soaked and sea-stained: the colour it had mostly washed out to a green-grey.
+	vec3 washed = vec3(luma) * vec3(0.5, 0.78, 0.74) + vec3(0.0, 0.025, 0.02);
+	vec3 grime = mix(c * vec3(0.6, 0.8, 0.8), washed, 0.8) * mix(1.0, 0.45 + n_lo * 0.4, rot);
 	float stain = smoothstep(0.62, 0.72, n_mid * 0.7 + n_lo * 0.5) * rot;
 	grime = mix(grime, vec3(0.03, 0.09, 0.06), stain * 0.85);
 	vec3 col = mix(grime, skin_out, skin);

@@ -44,8 +44,8 @@ const START_DELAY := 2.5
 const RUSH := 1.9
 const UNDER_TIME := 2.6
 const SINK_TIME := 4.0
-const WAVE_DIST := Vector2(560.0, 300.0)
-const WAVE_HEIGHT := Vector2(22.0, 80.0)
+const WAVE_DIST := Vector2(520.0, 270.0)
+const WAVE_HEIGHT := Vector2(45.0, 150.0)
 const REDUCED := 0.25
 
 enum Phase { IDLE, COUNTDOWN, CANCELLED, WAVE, DONE }
@@ -518,7 +518,7 @@ func _turn_to_wave(k: float) -> void:
 	var yaw := float(_player.get("_look_yaw"))
 	var step := clampf(3.5 * get_process_delta_time(), 0.0, 1.0) * smoothstep(0.0, 0.5, k)
 	var pitch := float(_player.get("_look_pitch"))
-	_player.call("set_look", lerp_angle(yaw, want, step), lerpf(pitch, 0.22, step))
+	_player.call("set_look", lerp_angle(yaw, want, step), lerpf(pitch, 0.34, step))
 
 func _place_wave() -> void:
 	var from := _player.global_position if _player != null and is_instance_valid(_player) else Vector3.ZERO
@@ -559,11 +559,11 @@ void fragment() {
 	vec2 r2 = texture(noise, wp.xz * 0.33 - vec2(0.0, TIME * 0.05)).gb;
 	NORMAL_MAP = vec3(0.5 + (r1.x + r2.x - 1.0) * 0.4, 0.5 + (r1.y + r2.y - 1.0) * 0.4, 1.0);
 	float rim = smoothstep(0.0, 0.025, edge) * (1.0 - smoothstep(0.025, 0.08, edge));
-	ALBEDO = mix(vec3(0.008, 0.04, 0.045), vec3(0.35, 0.45, 0.43), rim * 0.5);
+	ALBEDO = mix(vec3(0.012, 0.06, 0.065), vec3(0.45, 0.58, 0.55), rim * 0.7);
 	ROUGHNESS = 0.03;
 	SPECULAR = 0.9;
 	METALLIC = 0.0;
-	EMISSION = vec3(0.004, 0.02, 0.018);
+	EMISSION = vec3(0.01, 0.05, 0.045) * a;
 	ALPHA = a * 0.9;
 }
 """
@@ -575,7 +575,7 @@ void fragment() {
 	add_child(_water)
 
 func _apply_seep(delta: float) -> void:
-	var want := smoothstep(15.0, 0.0, remaining)
+	var want := smoothstep(15.0, 0.0, remaining) * 1.25
 	seep = move_toward(seep, want, delta * 0.4)
 	water_level = 0.0
 	_update_water()
@@ -598,7 +598,7 @@ func _update_water() -> void:
 # --- Sky and fog -------------------------------------------------------------------------------------
 
 const ENV_TARGET := {
-	"sky": Color(0.004, 0.03, 0.026), "ambient": Color(0.18, 0.5, 0.44), "fog_light": Color(0.03, 0.16, 0.13),
+	"sky": Color(0.006, 0.04, 0.034), "ambient": Color(0.2, 0.56, 0.5), "fog_light": Color(0.04, 0.2, 0.17),
 	"moon_color": Color(0.4, 0.88, 0.78),
 }
 
@@ -616,7 +616,7 @@ func _apply_env(k: float) -> void:
 	var e: Environment = city._env
 	for key in ["sky", "ambient", "fog_light", "moon_color"]:
 		n[key] = (_base_env[key] as Color).lerp(ENV_TARGET[key], k)
-	n["ambient_energy"] = lerpf(_base_env["ambient_energy"], 0.3, k)
+	n["ambient_energy"] = lerpf(_base_env["ambient_energy"], 0.42, k)
 	n["moon_energy"] = lerpf(_base_env["moon_energy"], 0.32, k)
 	n["fog_density"] = lerpf(_base_env["fog_density"], 0.034, k)
 	e.background_color = n["sky"]

@@ -285,7 +285,7 @@ void fragment() {
 static func _make_weed() -> void:
 	var segs := 7
 	var length := 0.36
-	var width := 0.05
+	var width := 0.022
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for i in segs:

@@ -77,9 +77,12 @@ void fragment() {
 	vec3 n = normalize(NORMAL);
 	float fres = pow(1.0 - abs(dot(n, VIEW)), 2.2);
 	float swell = fbm(vec2(v_xy.x * 0.02, v_xy.y * 0.06 - flow * 0.35));
-	vec3 deep = vec3(0.006, 0.03, 0.035);
-	vec3 mid = vec3(0.025, 0.11, 0.115);
-	vec3 col = mix(deep, mid, smoothstep(0.05, 0.6, v) * (0.55 + 0.9 * swell));
+	vec3 deep = vec3(0.003, 0.016, 0.02);
+	vec3 mid = vec3(0.05, 0.2, 0.2);
+	vec3 col = mix(deep, mid, smoothstep(0.02, 0.7, v) * (0.35 + 1.1 * swell));
+	// broad ridges climbing the face, lit pale from the moon side
+	float ridge = pow(vnoise(vec2(v_xy.x * 0.035, v_xy.y * 0.03 - flow * 0.25)), 3.0);
+	col += vec3(0.08, 0.26, 0.24) * ridge * smoothstep(0.1, 0.5, v);
 	// light coming through the thin water of the curl
 	float thin = smoothstep(0.5, 0.88, v);
 	col += vec3(0.07, 0.34, 0.27) * thin * (0.35 + 0.9 * fbm(vec2(v_xy.x * 0.05, v * 6.0 - flow * 0.2))) * glow;
@@ -87,7 +90,7 @@ void fragment() {
 	// streaks of foam sliding down the face, a rope of foam along the crest
 	float streak = vnoise(vec2(v_xy.x * 0.16, v * 38.0 + flow * 1.4));
 	float streak2 = vnoise(vec2(v_xy.x * 0.5, v * 70.0 + flow * 2.0));
-	float foam_face = smoothstep(0.72, 0.9, streak * 0.7 + streak2 * 0.4) * smoothstep(0.35, 0.8, v) * 0.7;
+	float foam_face = smoothstep(0.74, 0.9, streak * 0.7 + streak2 * 0.4) * smoothstep(0.3, 0.8, v) * 0.55;
 	float crest = smoothstep(0.58, 0.69, v + (fbm(vec2(v_xy.x * 0.06, 2.0)) - 0.5) * 0.12);
 	float lip = smoothstep(0.69, 0.98, v) * (0.7 + 0.3 * streak);
 	float foam = clamp(foam_face + crest * 0.8 + lip * 0.9, 0.0, 1.0);

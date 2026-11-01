@@ -104,6 +104,8 @@ static var _gates_frame := -1
 static var _gates_cache: Array = []
 
 var kind := "walker"
+## How big the body is drawn and its capsule and hit zones are (1.5 for the dead; npc/Drowned.gd is bigger).
+var body_scale := 1.5
 var max_health := 150.0
 var health := 150.0
 ## Both legs gone: it crawls and its capsule and leg zones shrink with it
@@ -215,14 +217,15 @@ func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_shape = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.3
-	cap.height = 1.7
+	var grow := body_scale / 1.5
+	cap.radius = 0.3 * grow
+	cap.height = 1.7 * grow
 	_shape.shape = cap
-	_shape.position = Vector3(0, 0.85, 0)
+	_shape.position = Vector3(0, 0.85 * grow, 0)
 	add_child(_shape)
 	_model_root = Node3D.new()
 	_model_root.name = "ModelRoot"
-	_model_root.scale = Vector3.ONE * 1.5
+	_model_root.scale = Vector3.ONE * body_scale
 	add_child(_model_root)
 	var body: String = get_meta("body", BODIES[0])
 	model = CharacterCast.scene_for(MODEL_DIR + body + ".glb").instantiate()
@@ -238,7 +241,7 @@ func _ready() -> void:
 		Gore.GoreRig.prepare(self)
 	_apply_rot(float(get_meta("seed", 0.0)))
 	if _skeleton:
-		hitboxes = ZombieHitboxes.build(_skeleton, self)
+		hitboxes = ZombieHitboxes.build(_skeleton, self, body_scale / 1.5)
 
 	_facing = randf() * TAU
 	_model_root.rotation.y = _facing

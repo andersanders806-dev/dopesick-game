@@ -187,6 +187,13 @@ func _controller_section(col: VBoxContainer) -> void:
 	var rumble := _check("Rumble", Graphics.rumble, Graphics.set_rumble)
 	rumble.name = "Rumble"
 	col.add_child(rumble)
+	var triggers := _check("Adaptive triggers (DualSense)", Graphics.ds_triggers, Graphics.set_ds_triggers)
+	triggers.name = "AdaptiveTriggers"
+	col.add_child(triggers)
+	_slider_row(col, "TriggerStrength", "Trigger strength", 0.3, 1.0, 0.05, Graphics.ds_trigger_strength, Graphics.set_ds_trigger_strength, "%.2fx")
+	var bar := _check("Lightbar effects (DualSense)", Graphics.ds_lightbar, Graphics.set_ds_lightbar)
+	bar.name = "LightbarEffects"
+	col.add_child(bar)
 
 func _slider_row(col: VBoxContainer, node_name: String, text: String, lo: float, hi: float, step: float, value: float, setter: Callable, fmt: String) -> HSlider:
 	var row := HBoxContainer.new()

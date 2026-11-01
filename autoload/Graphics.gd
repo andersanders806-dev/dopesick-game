@@ -77,6 +77,11 @@ var pad_ads_mult: float = 0.75
 var pad_deadzone: float = 0.08
 var aim_assist: int = ASSIST_STANDARD
 var rumble: bool = true
+## DualSense over USB / Bluetooth (autoload/DualSense.gd): the triggers' resistance and vibration,
+## how hard they push (0.3 to 1.0) and the lightbar.
+var ds_triggers: bool = true
+var ds_trigger_strength: float = 1.0
+var ds_lightbar: bool = true
 const ASSIST_OFF := 0
 const ASSIST_PRECISION := 1
 const ASSIST_STANDARD := 2
@@ -252,6 +257,18 @@ func set_aim_assist(mode: int) -> void:
 
 func set_rumble(on: bool) -> void:
 	rumble = on
+	_save_settings()
+
+func set_ds_triggers(on: bool) -> void:
+	ds_triggers = on
+	_save_settings()
+
+func set_ds_trigger_strength(v: float) -> void:
+	ds_trigger_strength = clampf(v, 0.3, 1.0)
+	_save_settings()
+
+func set_ds_lightbar(on: bool) -> void:
+	ds_lightbar = on
 	_save_settings()
 
 func set_invert_look(on: bool) -> void:
@@ -756,6 +773,9 @@ func _load_settings() -> void:
 		pad_deadzone = clampf(float(cfg.get_value("controls", "pad_deadzone", 0.08)), 0.02, 0.3)
 		aim_assist = clampi(int(cfg.get_value("controls", "aim_assist", ASSIST_STANDARD)), ASSIST_OFF, ASSIST_STANDARD)
 		rumble = bool(cfg.get_value("controls", "rumble", true))
+		ds_triggers = bool(cfg.get_value("controls", "ds_triggers", true))
+		ds_trigger_strength = clampf(float(cfg.get_value("controls", "ds_trigger_strength", 1.0)), 0.3, 1.0)
+		ds_lightbar = bool(cfg.get_value("controls", "ds_lightbar", true))
 		immersive_hud = bool(cfg.get_value("interface", "immersive_hud", true))
 		camera_motion = bool(cfg.get_value("controls", "camera_motion", true))
 		for bus in VOLUME_BUSES:
@@ -781,6 +801,9 @@ func _save_settings() -> void:
 	cfg.set_value("controls", "pad_deadzone", pad_deadzone)
 	cfg.set_value("controls", "aim_assist", aim_assist)
 	cfg.set_value("controls", "rumble", rumble)
+	cfg.set_value("controls", "ds_triggers", ds_triggers)
+	cfg.set_value("controls", "ds_trigger_strength", ds_trigger_strength)
+	cfg.set_value("controls", "ds_lightbar", ds_lightbar)
 	cfg.set_value("interface", "immersive_hud", immersive_hud)
 	cfg.set_value("controls", "camera_motion", camera_motion)
 	cfg.save(SETTINGS_PATH)

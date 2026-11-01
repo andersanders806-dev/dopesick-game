@@ -18,6 +18,7 @@ const CarPaint := preload("res://world/CarPaint.gd")
 const BarricadeScript := preload("res://world/Barricade.gd")
 const SpawnerScript := preload("res://npc/ZombieSpawner.gd")
 const SurgeScript := preload("res://npc/ZombieSurge.gd")
+const QuakeScript := preload("res://fx/Quake.gd")
 ## The block's navmesh as zombies need it: with the buildings' masses and the
 ## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
 const NAVMESH := "res://world/block/zombie_navmesh.res"
@@ -119,6 +120,8 @@ var upgrade_machine: Area3D
 var purchases_ready := false
 ## [light, full energy, seconds to the next change, in a burst, dead]
 var _flickering: Array = []
+## fx/Quake.gd: the presentation of the horde surge.
+var quake
 ## How many streetlights stutter (the smoke test reads it).
 var flicker_count: int:
 	get: return _flickering.size()
@@ -136,6 +139,10 @@ func setup(block: Node3D) -> void:
 	hud = ZombieHudScript.new()
 	hud.name = "ZombieHud"
 	city.add_child(hud)
+	# RICHTER 8.0: the surge's lights, alarms, dust, shake and seismograph.
+	quake = QuakeScript.new()
+	quake.city = city
+	add_child(quake)
 	prewarm_bodies()
 	prewarm_render()
 	spawner = SpawnerScript.new()

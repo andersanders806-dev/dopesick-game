@@ -12,6 +12,8 @@ const POP_TIME := 1.1
 const HitmarkerScript := preload("res://ui/Hitmarker.gd")
 const PointsPopupScript := preload("res://ui/PointsPopup.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
+const SeismographScript := preload("res://ui/Seismograph.gd")
+const DOUBLE_GOLD := Color(0.96, 0.74, 0.16)
 
 var round_label: Label
 var points_label: Label
@@ -25,6 +27,9 @@ var popups: Control
 var hitmarker: Control
 var _message_tween: Tween
 var _holder: Node
+## The RICHTER 8.0 surge: the seismograph (top right) and DOUBLE POINTS (fx/Quake.gd drives them).
+var seismo: Control
+var double_label: Label
 
 var hurt: ColorRect
 const HURT_SHADER := """shader_type canvas_item;
@@ -72,6 +77,12 @@ func _ready() -> void:
 	message = _label(font, 28, BLOOD, Vector2.ZERO)
 	_pin_bottom_centre(message, 240.0)
 	message.modulate.a = 0.0
+	seismo = SeismographScript.new()
+	add_child(seismo)
+	double_label = _label(font, 34, DOUBLE_GOLD, Vector2.ZERO)
+	_pin_bottom_left(double_label, 32.0, 146.0)
+	double_label.text = "DOUBLE POINTS"
+	double_label.visible = false
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
 	ZombieMode.game_over_started.connect(_on_game_over)
@@ -132,6 +143,10 @@ func _pin_bottom_centre(l: Label, bottom: float) -> void:
 	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 
 func _process(_delta: float) -> void:
+	# Double Points (the surge's, or a power-up's) pulses over the points.
+	double_label.visible = ZombieMode.double_points or ZombieMode.surge_active
+	if double_label.visible:
+		double_label.modulate.a = 0.82 + 0.18 * sin(Time.get_ticks_msec() * 0.008)
 	popups.origin = points_label.global_position + Vector2(points_label.size.x + 14.0, 6.0)
 	_update_gun()
 	_update_prompt()

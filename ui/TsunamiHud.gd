@@ -95,6 +95,8 @@ var _banner_tween: Tween
 var _cancel_tween: Tween
 var _beat := 0.0
 var _last_second := -1
+## Where this frame's edge arrows are (they keep apart).
+var _placed: Array[Vector2] = []
 
 func _ready() -> void:
 	layer = 14
@@ -433,6 +435,7 @@ func _draw_markers() -> void:
 	if cam == null or not shown:
 		return
 	var rect := Rect2(Vector2.ZERO, markers.size)
+	_placed = []
 	for t in targets:
 		if not is_instance_valid(t) or not t.has_method("is_alive") or not t.is_alive():
 			continue
@@ -475,11 +478,26 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 			dir = Vector2(signf(local.x) if absf(local.x) > 0.05 else 1.0, 0.55).normalized()
 		# the arrow rides the edge of a box that keeps clear of the clock, the points and the ammo
 		var box_top := 130.0
-		var box_bottom := rect.size.y - 170.0
+		var box_bottom := rect.size.y - 270.0
 		var centre := Vector2(rect.size.x * 0.5, (box_top + box_bottom) * 0.5)
 		var sx := (rect.size.x * 0.5 - 70.0) / maxf(absf(dir.x), 0.0001)
 		var sy := ((box_bottom - box_top) * 0.5) / maxf(absf(dir.y), 0.0001)
 		var p := centre + dir * minf(sx, sy)
+		# never on top of another arrow: slide along the edge until there is room
+		var tangent := Vector2(-dir.y, dir.x)
+		for attempt in 4:
+			var clash := false
+			for q in _placed:
+				if p.distance_to(q) < 92.0:
+					clash = true
+			if not clash:
+				break
+			p += tangent * 96.0
+			p.x = clampf(p.x, 70.0, rect.size.x - 70.0)
+			p.y = clampf(p.y, box_top, box_bottom)
+			if attempt == 1:
+				tangent = -tangent
+		_placed.append(p)
 		var ang := dir.angle()
 		var tri := PackedVector2Array([Vector2(26, 0), Vector2(-14, -20), Vector2(-4, 0), Vector2(-14, 20)])
 		var xf := Transform2D(ang, p)

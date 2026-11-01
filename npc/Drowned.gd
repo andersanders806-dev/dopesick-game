@@ -38,6 +38,9 @@ const CHARGE_PERIOD := Vector2(5.0, 9.0)
 const KNOCK_SPEED := 15.0
 const KNOCK_TIME := 0.32
 const ROAR_PERIOD := Vector2(6.0, 12.0)
+## The hunch pushes the head this far forward and down (in the model's metres; drowned.gdshader).
+const HEAD_SHIFT := Vector3(0.0, -0.026, 0.105)
+const HELMET_RADIUS := 0.112
 
 enum Charge { NONE, WINDUP, RUSH, RECOVER }
 
@@ -66,7 +69,8 @@ var _pknock_t := 0.0
 var _roar_t := 6.0
 var _step_t := 0.5
 var _voice: AudioStreamPlayer3D
-var _helmet_node: MeshInstance3D
+var _helmet_node: Node3D
+var _puddle: MeshInstance3D
 var _eye_light: OmniLight3D
 var _eye_nodes: Array[MeshInstance3D] = []
 var _drips: CPUParticles3D
@@ -78,6 +82,8 @@ static var _weed_mesh: ArrayMesh
 static var _weed_material: ShaderMaterial
 static var _helmet_material: ShaderMaterial
 static var _eye_material: StandardMaterial3D
+static var _mouth_material: StandardMaterial3D
+static var _plate_material: StandardMaterial3D
 
 ## Sets it up before it is added to the tree (the Tsunami does this).
 func setup_drowned(round_no: int, rng: RandomNumberGenerator = null) -> void:
@@ -123,10 +129,24 @@ func _wet_skin() -> void:
 			continue
 		for i in inst.mesh.get_surface_count():
 			var src := inst.mesh.surface_get_material(i) as BaseMaterial3D
-			if src == null or src.resource_name.ends_with("opacity"):
+			if src == null:
+				continue
+			if src.resource_name.ends_with("opacity"):
+				# Hair and lashes would not follow the swollen, hunched head: it is bald, waterlogged.
+				inst.set_surface_override_material(i, _hidden_material())
 				continue
 			inst.set_surface_override_material(i, _skin_material(src))
 		inst.set_instance_shader_parameter("rot", 0.95)
+
+static var _hidden: ShaderMaterial
+
+static func _hidden_material() -> Material:
+	if _hidden == null:
+		var sh := Shader.new()
+		sh.code = "shader_type spatial;\nvoid fragment() { discard; }\n"
+		_hidden = ShaderMaterial.new()
+		_hidden.shader = sh
+	return _hidden
 
 static func _skin_material(src: BaseMaterial3D) -> Material:
 	if _skins.has(src):
@@ -138,7 +158,7 @@ static func _skin_material(src: BaseMaterial3D) -> Material:
 	m.set_shader_parameter("noise_tex", noise_texture())
 	m.set_shader_parameter("kind", 1 if src.resource_name.ends_with("head") else 0)
 	m.set_shader_parameter("roughness_base", 0.2)
-	m.set_shader_parameter("rim_color", Vector3(0.3, 0.55, 0.6))
+	m.set_shader_parameter("rim_color", Vector3(0.3, 0.38, 0.36))
 	_skins[src] = m
 	return m
 
@@ -172,66 +192,73 @@ func _build_gear() -> void:
 	var eye_l := _bone_in_model("Bip01 LEye")
 	var eye_r := _bone_in_model("Bip01 REye")
 	var eyes := (eye_l + eye_r) * 0.5 if eye_l != eye_r else head + Vector3(0, 0.06, 0.04)
-	# The helmet: a crust of barnacles over the top of the skull.
-	if _helmet_material == null:
-		_helmet_material = _make_helmet_material()
-	var sph := SphereMesh.new()
-	sph.radius = 0.105
-	sph.height = 0.105
-	sph.is_hemisphere = true
-	sph.radial_segments = 28
-	sph.rings = 14
-	_helmet_node = MeshInstance3D.new()
-	_helmet_node.name = "BarnacleHelmet"
-	_helmet_node.mesh = sph
-	_helmet_node.material_override = _helmet_material
-	_helmet_node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var hat := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-8.0)), eyes + Vector3(0, 0.022, -0.004))
-	_attach("Bip01 Head", hat, _helmet_node)
-	# Eyes: two pale lamps and a light that shows the wet skin round them.
+	# The shader hunches the body and the head goes forward and down with it; what hangs on the head goes too.
+	eyes += HEAD_SHIFT
+	eye_l += HEAD_SHIFT
+	eye_r += HEAD_SHIFT
+	_build_helmet(eyes)
+	# Eyes: two small pale points, and a faint light that shows the wet skin round them.
 	if _eye_material == null:
 		_eye_material = StandardMaterial3D.new()
 		_eye_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_eye_material.albedo_color = Color(0.72, 1.0, 1.0)
+		_eye_material.albedo_color = Color(0.85, 1.0, 1.0)
 		_eye_material.emission_enabled = true
-		_eye_material.emission = Color(0.55, 0.95, 1.0)
-		_eye_material.emission_energy_multiplier = 3.0
+		_eye_material.emission = Color(0.7, 1.0, 1.0)
+		_eye_material.emission_energy_multiplier = 4.0
 	for e in [eye_l, eye_r]:
 		if e == eyes:
 			continue
 		var ball := MeshInstance3D.new()
 		var bm := SphereMesh.new()
-		bm.radius = 0.0155
-		bm.height = 0.031
-		bm.radial_segments = 10
-		bm.rings = 6
+		bm.radius = 0.0085
+		bm.height = 0.017
+		bm.radial_segments = 8
+		bm.rings = 4
 		ball.mesh = bm
 		ball.material_override = _eye_material
 		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_attach("Bip01 Head", Transform3D(Basis(), e + Vector3(0, 0, 0.012)), ball)
+		_attach("Bip01 Head", Transform3D(Basis(), e + Vector3(0, 0, 0.022)), ball)
 		_eye_nodes.append(ball)
 	_eye_light = OmniLight3D.new()
-	_eye_light.light_color = Color(0.55, 0.92, 1.0)
-	_eye_light.light_energy = 0.9
-	_eye_light.omni_range = 5.5
+	_eye_light.light_color = Color(0.6, 0.95, 1.0)
+	_eye_light.light_energy = 0.45
+	_eye_light.omni_range = 3.5
 	_eye_light.shadow_enabled = false
-	_attach("Bip01 Head", Transform3D(Basis(), eyes + Vector3(0, 0.0, 0.12)), _eye_light)
-	# Seaweed: strands off the helmet, the shoulders and the back, hanging and swaying.
+	_attach("Bip01 Head", Transform3D(Basis(), eyes + Vector3(0.0, 0.0, 0.14)), _eye_light)
+	# A dark open mouth, hanging.
+	if _mouth_material == null:
+		_mouth_material = StandardMaterial3D.new()
+		_mouth_material.albedo_color = Color(0.015, 0.005, 0.008)
+		_mouth_material.roughness = 0.35
+	var mouth := MeshInstance3D.new()
+	var mm := SphereMesh.new()
+	mm.radius = 0.5
+	mm.height = 1.0
+	mm.radial_segments = 12
+	mm.rings = 6
+	mouth.mesh = mm
+	mouth.material_override = _mouth_material
+	mouth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mb := Basis().scaled(Vector3(0.05, 0.062, 0.03))
+	_attach("Bip01 Head", Transform3D(mb, eyes + Vector3(0, -0.062, 0.048)), mouth)
+	# Seaweed: clumps hanging from the helmet, the shoulders, the back and the hips.
 	if _weed_mesh == null:
 		_make_weed()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(get_meta("seed", 0.5) * 100000.0)
 	var spots := [
-		["Bip01 Head", eyes + Vector3(0.05, 0.05, -0.03), 0.9], ["Bip01 Head", eyes + Vector3(-0.05, 0.05, -0.02), 1.0],
-		["Bip01 Head", eyes + Vector3(0.0, 0.07, -0.06), 1.2],
-		["Bip01 L Clavicle", _bone_in_model("Bip01 L Clavicle") + Vector3(0.03, 0.0, 0.0), 1.4],
-		["Bip01 R Clavicle", _bone_in_model("Bip01 R Clavicle") + Vector3(-0.03, 0.0, 0.0), 1.3],
-		["Bip01 Spine1", _bone_in_model("Bip01 Spine1") + Vector3(0.05, 0.1, -0.05), 1.7],
-		["Bip01 Spine1", _bone_in_model("Bip01 Spine1") + Vector3(-0.04, 0.12, -0.06), 1.5],
-		["Bip01 L UpperArm", _bone_in_model("Bip01 L UpperArm") + Vector3(0.03, 0.0, 0.0), 1.1],
-		["Bip01 R UpperArm", _bone_in_model("Bip01 R UpperArm") + Vector3(-0.03, 0.0, 0.0), 1.1],
-		["Bip01 Pelvis", _bone_in_model("Bip01 Pelvis") + Vector3(0.06, 0.0, 0.02), 1.3],
-		["Bip01 Pelvis", _bone_in_model("Bip01 Pelvis") + Vector3(-0.06, 0.0, -0.02), 1.0],
+		["Bip01 Head", eyes + Vector3(0.07, 0.07, -0.05), 1.0], ["Bip01 Head", eyes + Vector3(-0.07, 0.07, -0.04), 1.1],
+		["Bip01 Head", eyes + Vector3(0.0, 0.09, -0.09), 1.3],
+		["Bip01 L Clavicle", _bone_in_model("Bip01 L Clavicle") + Vector3(0.05, 0.0, 0.0), 1.5],
+		["Bip01 R Clavicle", _bone_in_model("Bip01 R Clavicle") + Vector3(-0.05, 0.0, 0.0), 1.4],
+		["Bip01 Spine1", _bone_in_model("Bip01 Spine1") + Vector3(0.08, 0.1, -0.1), 1.8],
+		["Bip01 Spine1", _bone_in_model("Bip01 Spine1") + Vector3(-0.07, 0.12, -0.11), 1.6],
+		["Bip01 L UpperArm", _bone_in_model("Bip01 L UpperArm") + Vector3(0.05, 0.0, 0.0), 1.2],
+		["Bip01 R UpperArm", _bone_in_model("Bip01 R UpperArm") + Vector3(-0.05, 0.0, 0.0), 1.2],
+		["Bip01 L Forearm", _bone_in_model("Bip01 L Forearm") + Vector3(0.04, 0.0, 0.0), 1.0],
+		["Bip01 R Forearm", _bone_in_model("Bip01 R Forearm") + Vector3(-0.04, 0.0, 0.0), 1.0],
+		["Bip01 Pelvis", _bone_in_model("Bip01 Pelvis") + Vector3(0.1, 0.02, 0.03), 1.4],
+		["Bip01 Pelvis", _bone_in_model("Bip01 Pelvis") + Vector3(-0.1, 0.02, -0.03), 1.1],
 	]
 	for s in spots:
 		var strand := MeshInstance3D.new()
@@ -239,119 +266,251 @@ func _build_gear() -> void:
 		strand.material_override = _weed_material
 		strand.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var k: float = s[2]
-		var tilt := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.25, 0.25))
+		var tilt := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.2, 0.2))
 		tilt = tilt.scaled(Vector3(k, k, k) * rng.randf_range(0.85, 1.25))
 		_attach(s[0], Transform3D(tilt, s[1]), strand)
+	_build_puddle()
+
+## The barnacle helmet: a dark crust over the top of the skull, studded with plates of shell.
+func _build_helmet(eyes: Vector3) -> void:
+	if _helmet_material == null:
+		_helmet_material = _make_helmet_material()
+		_plate_material = StandardMaterial3D.new()
+		_plate_material.vertex_color_use_as_albedo = true
+		_plate_material.albedo_color = Color.WHITE
+		_plate_material.roughness = 0.9
+		_plate_material.emission_enabled = true
+		_plate_material.emission = Color(0.16, 0.18, 0.16)
+		_plate_material.emission_energy_multiplier = 0.5
+	_helmet_node = Node3D.new()
+	_helmet_node.name = "BarnacleHelmet"
+	var sph := SphereMesh.new()
+	sph.radius = HELMET_RADIUS
+	sph.height = HELMET_RADIUS
+	sph.is_hemisphere = true
+	sph.radial_segments = 24
+	sph.rings = 12
+	var cap := MeshInstance3D.new()
+	cap.mesh = sph
+	cap.material_override = _helmet_material
+	cap.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_helmet_node.add_child(cap)
+	# plates: cones of shell on the dome, outwards, big ones overlapping small
+	var cone := CylinderMesh.new()
+	cone.top_radius = 0.18
+	cone.bottom_radius = 0.5
+	cone.height = 0.55
+	cone.radial_segments = 7
+	cone.rings = 1
+	cone.material = _plate_material
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = cone
+	var n := 120
+	mm.instance_count = n
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(get_meta("seed", 0.5) * 100000.0) + 5
+	for i in n:
+		var big := i < 28
+		# a point on the dome (not below the rim)
+		var ang := rng.randf() * TAU
+		var elev := acos(rng.randf_range(0.0, 1.0))
+		var dir := Vector3(sin(elev) * cos(ang), cos(elev), sin(elev) * sin(ang))
+		if big:
+			dir = Vector3(sin(elev * 0.9) * cos(ang), cos(elev * 0.9), sin(elev * 0.9) * sin(ang))
+		var size := rng.randf_range(0.026, 0.04) if big else rng.randf_range(0.011, 0.02)
+		var basis := Basis(Quaternion(Vector3.UP, dir))
+		basis = basis.scaled(Vector3(size, size * rng.randf_range(0.8, 1.6), size))
+		mm.set_instance_transform(i, Transform3D(basis, dir * (HELMET_RADIUS - 0.002)))
+		var shade := rng.randf_range(0.5, 0.85)
+		var tint := Color(shade, shade * 1.02, shade * 0.92)
+		if rng.randf() < 0.14:
+			tint = Color(0.05, 0.06, 0.09)
+		mm.set_instance_color(i, tint)
+	var plates := MultiMeshInstance3D.new()
+	plates.multimesh = mm
+	plates.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_helmet_node.add_child(plates)
+	var hat := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-10.0)), eyes + Vector3(0, 0.004, -0.014))
+	_attach("Bip01 Head", hat, _helmet_node)
 
 static func _make_helmet_material() -> ShaderMaterial:
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
-render_mode cull_back;
 varying vec3 v_p;
 float h3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-void vertex() {
-	v_p = VERTEX;
-	// Barnacles: a field of cones and bumps (cells of the sphere's surface).
-	vec3 q = VERTEX * 70.0;
-	vec3 cell = floor(q);
-	vec3 f = fract(q) - 0.5;
-	float r = h3(cell);
-	float cone = max(0.0, 0.55 - length(f)) * step(0.35, r) * (0.5 + r);
-	VERTEX += NORMAL * cone * 0.05;
-}
+void vertex() { v_p = VERTEX; }
 void fragment() {
-	vec3 q = v_p * 70.0;
+	vec3 q = v_p * 38.0;
 	vec3 cell = floor(q);
 	float r = h3(cell);
-	vec3 f = fract(q) - 0.5;
-	float top = max(0.0, 0.5 - length(f));
-	vec3 shell = mix(vec3(0.55, 0.57, 0.5), vec3(0.78, 0.8, 0.72), r);
-	vec3 gap = vec3(0.03, 0.07, 0.06);
-	float mussel = step(0.8, h3(cell + 7.0));
-	vec3 col = mix(gap, shell, smoothstep(0.05, 0.28, top));
-	col = mix(col, vec3(0.04, 0.05, 0.08), mussel * 0.8);
+	// a dark, wet crust of mussel and rust under the plates
+	vec3 col = mix(vec3(0.03, 0.045, 0.05), vec3(0.11, 0.12, 0.11), r * 0.8);
+	col = mix(col, vec3(0.04, 0.09, 0.06), step(0.82, h3(cell + 3.0)) * 0.9);
 	ALBEDO = col;
-	ROUGHNESS = 0.82;
-	SPECULAR = 0.3;
+	ROUGHNESS = 0.55;
+	SPECULAR = 0.5;
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.4);
-	EMISSION = vec3(0.26, 0.4, 0.4) * rim * 0.6 + col * 0.1;
+	EMISSION = vec3(0.12, 0.16, 0.15) * rim + col * 0.2;
 }
 """
 	var m := ShaderMaterial.new()
 	m.shader = sh
 	return m
 
-## One ribbon of weed (a strip of quads hanging down; the shader sways and tapers it).
+## A clump of weed: thick strands (tapered tubes that curve) and a couple of ragged fronds, hanging
+## from the origin; the shader sways them.
 static func _make_weed() -> void:
-	var segs := 7
-	var length := 0.36
-	var width := 0.022
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in segs:
-		var y0 := -length * float(i) / segs
-		var y1 := -length * float(i + 1) / segs
-		var v0 := float(i) / segs
-		var v1 := float(i + 1) / segs
-		var a := Vector3(-width, y0, 0)
-		var b := Vector3(width, y0, 0)
-		var c := Vector3(-width, y1, 0)
-		var d := Vector3(width, y1, 0)
-		st.set_uv(Vector2(0, v0)); st.add_vertex(a)
-		st.set_uv(Vector2(1, v0)); st.add_vertex(b)
-		st.set_uv(Vector2(0, v1)); st.add_vertex(c)
-		st.set_uv(Vector2(1, v0)); st.add_vertex(b)
-		st.set_uv(Vector2(1, v1)); st.add_vertex(d)
-		st.set_uv(Vector2(0, v1)); st.add_vertex(c)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var sides := 5
+	var segs := 7
+	for t in 6:
+		var length := rng.randf_range(0.26, 0.5)
+		var r0 := rng.randf_range(0.006, 0.011)
+		var base := Vector3(rng.randf_range(-0.03, 0.03), rng.randf_range(-0.01, 0.01), rng.randf_range(-0.03, 0.03))
+		var bend := Vector3(rng.randf_range(-1.0, 1.0), 0.0, rng.randf_range(-1.0, 1.0)) * 0.09
+		var rings: Array = []
+		for j in segs + 1:
+			var u := float(j) / segs
+			var c := base + Vector3(0, -length * u, 0) + bend * u * u + Vector3(sin(u * 5.0 + t) * 0.012 * u, 0, 0)
+			var rad := r0 * (1.0 - 0.85 * u)
+			var ring: Array = []
+			for k in sides:
+				var a := TAU * float(k) / sides
+				ring.append(c + Vector3(cos(a) * rad, 0, sin(a) * rad))
+			rings.append(ring)
+		for j in segs:
+			for k in sides:
+				var k2 := (k + 1) % sides
+				var a: Vector3 = rings[j][k]
+				var b: Vector3 = rings[j][k2]
+				var c2: Vector3 = rings[j + 1][k]
+				var d: Vector3 = rings[j + 1][k2]
+				var col := Color(0, 0, 0, 0)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(a)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(b)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(c2)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(b)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(d)
+				st.set_color(col); st.set_uv(Vector2(0, 0)); st.add_vertex(c2)
+	# fronds: wide ragged ribbons, cut out by the shader (alpha in the colour's w)
+	for f in 3:
+		var length := rng.randf_range(0.3, 0.45)
+		var width := rng.randf_range(0.035, 0.05)
+		var yaw := rng.randf() * PI
+		var side := Vector3(cos(yaw), 0, sin(yaw)) * width
+		var sway := Vector3(-sin(yaw), 0, cos(yaw)) * rng.randf_range(-0.05, 0.05)
+		var segs2 := 6
+		for j in segs2:
+			var u0 := float(j) / segs2
+			var u1 := float(j + 1) / segs2
+			var p0 := Vector3(0, -length * u0, 0) + sway * u0 * u0
+			var p1 := Vector3(0, -length * u1, 0) + sway * u1 * u1
+			var col := Color(1, 0, 0, 1)
+			st.set_color(col); st.set_uv(Vector2(0, u0)); st.add_vertex(p0 - side)
+			st.set_color(col); st.set_uv(Vector2(1, u0)); st.add_vertex(p0 + side)
+			st.set_color(col); st.set_uv(Vector2(0, u1)); st.add_vertex(p1 - side)
+			st.set_color(col); st.set_uv(Vector2(1, u0)); st.add_vertex(p0 + side)
+			st.set_color(col); st.set_uv(Vector2(1, u1)); st.add_vertex(p1 + side)
+			st.set_color(col); st.set_uv(Vector2(0, u1)); st.add_vertex(p1 - side)
 	st.generate_normals()
 	_weed_mesh = st.commit()
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode cull_disabled;
-varying float v_t;
+varying float v_frond;
+varying float v_len;
+float h1(float x) { return fract(sin(x * 91.3) * 43758.5453); }
 void vertex() {
-	v_t = UV.y;
-	float w = UV.y * UV.y;
+	v_frond = COLOR.r;
+	v_len = clamp(-VERTEX.y / 0.4, 0.0, 1.0);
 	float ph = MODEL_MATRIX[3].x * 3.0 + MODEL_MATRIX[3].z * 5.0;
-	VERTEX.x += sin(TIME * 2.2 + UV.y * 3.0 + ph) * 0.35 * w;
-	VERTEX.z += cos(TIME * 1.7 + UV.y * 2.5 + ph) * 0.3 * w;
-	// narrows to a point
-	VERTEX.x *= 1.0 - UV.y * 0.7;
+	float w = v_len * v_len;
+	VERTEX.x += sin(TIME * 2.0 + v_len * 3.0 + ph) * 0.03 * w;
+	VERTEX.z += cos(TIME * 1.6 + v_len * 2.5 + ph) * 0.025 * w;
 }
 void fragment() {
-	ALBEDO = mix(vec3(0.05, 0.17, 0.07), vec3(0.02, 0.07, 0.04), v_t) * (0.8 + 0.4 * fract(sin(UV.x * 12.0) * 99.0));
-	ROUGHNESS = 0.25;
+	if (v_frond > 0.5) {
+		// a ragged leaf: narrows, with torn edges
+		float e = abs(UV.x - 0.5) * 2.0;
+		float env = smoothstep(0.0, 0.1, UV.y) * (1.0 - UV.y * 0.75);
+		float tear = 0.78 + 0.22 * sin(UV.y * 38.0 + UV.x * 3.0) * sin(UV.y * 17.0);
+		if (e > env * tear) {
+			discard;
+		}
+	}
+	vec3 dark = mix(vec3(0.045, 0.1, 0.05), vec3(0.015, 0.035, 0.02), v_len);
+	ALBEDO = dark * (0.8 + 0.5 * h1(floor(v_len * 9.0) + MODEL_MATRIX[3].x));
+	ROUGHNESS = 0.3;
 	SPECULAR = 0.7;
-	EMISSION = vec3(0.01, 0.04, 0.02);
+	CLEARCOAT = 0.4;
+	CLEARCOAT_ROUGHNESS = 0.2;
+	EMISSION = vec3(0.01, 0.025, 0.012);
 }
 """
 	_weed_material = ShaderMaterial.new()
 	_weed_material.shader = sh
 
+## A dark pool of water under it.
+func _build_puddle() -> void:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.6, 2.6)
+	quad.orientation = PlaneMesh.FACE_Y
+	var g := GradientTexture2D.new()
+	var grad := Gradient.new()
+	grad.set_color(0, Color(1, 1, 1, 0.85))
+	grad.set_color(1, Color(1, 1, 1, 0))
+	grad.add_point(0.55, Color(1, 1, 1, 0.7))
+	g.gradient = grad
+	g.fill = GradientTexture2D.FILL_RADIAL
+	g.fill_from = Vector2(0.5, 0.5)
+	g.fill_to = Vector2(1.0, 0.5)
+	g.width = 64
+	g.height = 64
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = g
+	m.albedo_color = Color(0.012, 0.03, 0.034)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.04
+	m.metallic_specular = 1.0
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	quad.material = m
+	_puddle = MeshInstance3D.new()
+	_puddle.name = "Puddle"
+	_puddle.mesh = quad
+	_puddle.position = Vector3(0, 0.035, 0)
+	_puddle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_puddle)
+
+## Water off the body: a steady fall of drops and streaks.
 func _build_drips() -> void:
 	_drips = CPUParticles3D.new()
 	_drips.name = "Drips"
-	_drips.amount = 22
-	_drips.lifetime = 1.1
+	_drips.amount = 64
+	_drips.lifetime = 1.0
 	_drips.local_coords = false
-	_drips.position = Vector3(0, 1.3, 0)
+	_drips.position = Vector3(0, 1.4, 0)
 	_drips.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_drips.emission_box_extents = Vector3(0.45, 0.9, 0.3)
+	_drips.emission_box_extents = Vector3(0.5, 0.95, 0.32)
 	_drips.direction = Vector3.DOWN
-	_drips.spread = 12.0
-	_drips.gravity = Vector3(0, -9.0, 0)
+	_drips.spread = 10.0
+	_drips.gravity = Vector3(0, -10.0, 0)
 	_drips.initial_velocity_min = 0.1
-	_drips.initial_velocity_max = 0.6
-	_drips.scale_amount_min = 0.5
-	_drips.scale_amount_max = 1.0
+	_drips.initial_velocity_max = 0.7
+	_drips.scale_amount_min = 0.6
+	_drips.scale_amount_max = 1.3
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.025, 0.07)
+	quad.size = Vector2(0.03, 0.11)
 	var dm := StandardMaterial3D.new()
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	dm.billboard_keep_scale = true
 	dm.albedo_texture = _dot_texture()
-	dm.albedo_color = Color(0.62, 0.8, 0.86, 0.75)
+	dm.albedo_color = Color(0.7, 0.85, 0.88, 0.8)
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	quad.material = dm
 	_drips.mesh = quad
@@ -383,6 +542,8 @@ func _physics_process(delta: float) -> void:
 		_step_thud(delta)
 	if _pknock_t > 0.0:
 		_apply_player_knock(delta)
+	if _puddle != null:
+		_puddle.visible = state != State.ENTER
 	super._physics_process(delta)
 
 ## A footfall you feel: a thud and a little shake when it is near.

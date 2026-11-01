@@ -147,6 +147,8 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	c._stagger = 0.0
 	c._charge_cd = 0.0
 	c._slot = -1
+	var low_hp := [zm.MAX_HEALTH]
+	zm.health_changed.connect(func(h): low_hp[0] = minf(low_hp[0], h))
 	var got_windup := await _wait_until(func(): return c.charge == c.Charge.WINDUP, 2.0)
 	_check(got_windup, "  it stops and roars first (windup)")
 	var got_rush := await _wait_until(func(): return c.charge == c.Charge.RUSH or c.charges_made > 0, 3.0)
@@ -158,7 +160,7 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 		spd = maxf(spd, Vector2(c.velocity.x, c.velocity.z).length())
 		await physics_frame
 	_check(spd > 6.0, "  at %.1f m/s" % spd)
-	_check(c.charge_hits == 1 and zm.health < zm.MAX_HEALTH, "  the charge lands and hurts (health %.0f)" % zm.health)
+	_check(c.charge_hits == 1 and low_hp[0] < zm.MAX_HEALTH, "  the charge lands and hurts (health went down to %.0f)" % low_hp[0])
 	before_hit = player.global_position
 	await _wait_secs(0.5)
 	var thrown := player.global_position.distance_to(before_hit)

@@ -23,12 +23,13 @@ uniform float specular_base = 0.3;
 // So they read in the dark street: a cold rim where the body turns away from you
 // (the silhouette) and a small lift of the body's own colour, both stronger with
 // distance, so a zombie is always seen without the night turning into day.
-uniform vec3 rim_color : source_color = vec3(0.34, 0.5, 0.46);
+uniform vec3 rim_color : source_color = vec3(0.3, 0.38, 0.36);
 uniform float rim_power = 2.4;
-uniform float rim_strength = 0.55;
-uniform float body_lift = 0.12;
-uniform float bloat = 4.5;
-uniform vec3 eye_color : source_color = vec3(0.62, 0.95, 1.0);
+uniform float rim_strength = 0.3;
+uniform float body_lift = 0.045;
+uniform float bloat = 6.5;
+uniform float head_scale = 1.2;
+uniform float hunch = 11.0;
 
 // How far gone this one is (0 fresh .. 1 rotten) and its own offset into the
 // noise, so no two share a pattern.
@@ -52,9 +53,19 @@ varying flat float v_limb;
 void vertex() {
 	v_limb = COLOR.r * 16.0;
 	v_uv = UV;
-	// Swollen: the belly and chest bulge, the limbs a little.
-	float belly = smoothstep(-24.0, -4.0, VERTEX.y) * (1.0 - smoothstep(12.0, 30.0, VERTEX.y));
-	VERTEX += NORMAL * (belly * bloat + 1.4);
+	// A bigger head, then bulk: thick legs, a swollen belly and chest, heavy arms; then the hunch.
+	// (The model's mesh space: pelvis at the origin, head at +40..+52, forward is +X.)
+	float hs = smoothstep(35.0, 38.0, VERTEX.y);
+	vec3 hc = vec3(-2.0, 45.0, 0.0);
+	VERTEX = mix(VERTEX, hc + (VERTEX - hc) * head_scale, hs);
+	float legs = 2.6 * (1.0 - smoothstep(-6.0, 0.0, VERTEX.y));
+	float belly = bloat * smoothstep(-24.0, -6.0, VERTEX.y) * (1.0 - smoothstep(8.0, 22.0, VERTEX.y));
+	float chest = bloat * 0.8 * smoothstep(6.0, 16.0, VERTEX.y) * (1.0 - smoothstep(30.0, 36.0, VERTEX.y));
+	float arm = 3.4 * smoothstep(8.0, 14.0, abs(VERTEX.z)) * smoothstep(-8.0, 6.0, VERTEX.y);
+	VERTEX += NORMAL * (max(max(legs, belly), max(chest, arm)) + 0.8);
+	float up = smoothstep(2.0, 46.0, VERTEX.y);
+	VERTEX.x += hunch * up * up;
+	VERTEX.y -= hunch * 0.25 * up * up;
 	v_local = VERTEX;
 	v_wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_dist = -(MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).z;
@@ -108,62 +119,56 @@ void fragment() {
 	float n_mid = texture(noise_tex, v_uv * 7.0 + so.yx).g;
 	float n_hi = texture(noise_tex, v_uv * 19.0 + so).b;
 
-	// Cloth that is torn through: holes cut by the damage mask, more of them
-	// the further gone.
+	// Cloth is soaked through and torn: ragged edges darkened, not cut away (nothing here is see-through).
+	float tear = 0.0;
 	if (kind == 0 && skin < 0.4) {
-		float tear = texture(noise_tex, v_uv * 4.0 + so * 1.7).a;
-		if (tear > 1.0 - 0.1 * rot) {
-			discard;
-		}
+		tear = smoothstep(0.86, 0.95, texture(noise_tex, v_uv * 4.0 + so * 1.7).a);
 	}
 
-	// Skin: drained, greenish, with dark veins in a ridged network.
-	vec3 dead_skin = vec3(luma * 1.0) * vec3(0.62, 0.82, 0.9) + vec3(0.02, 0.05, 0.07);
-	dead_skin *= mix(1.0, 0.72 + n_lo * 0.5, rot);
-	float vein_line = 1.0 - smoothstep(0.0, 0.06, abs(n_mid - 0.5));
+	// Flesh: opaque, pale grey-green and bloated, mottled with bruises and sickly yellow patches,
+	// dark veins in a ridged network.
+	vec3 flesh = vec3(0.5, 0.58, 0.49) * (0.62 + luma * 0.65);
+	float bruise = smoothstep(0.5, 0.78, n_lo * 0.75 + n_mid * 0.45);
+	float jaundice = smoothstep(0.55, 0.8, n_mid * 0.6 + (1.0 - n_lo) * 0.4);
+	flesh = mix(flesh, vec3(0.2, 0.11, 0.18) * (0.8 + n_hi * 0.5), bruise * 0.75);
+	flesh = mix(flesh, vec3(0.5, 0.55, 0.3) * (0.7 + n_hi * 0.5), jaundice * 0.35 * (1.0 - bruise));
+	float vein_line = 1.0 - smoothstep(0.0, 0.07, abs(n_mid - 0.5));
 	float vein_fine = 1.0 - smoothstep(0.0, 0.05, abs(n_hi - 0.5));
-	float veins = clamp(vein_line + vein_fine * 0.6, 0.0, 1.0) * rot;
-	dead_skin = mix(dead_skin, vec3(0.1, 0.15, 0.3), veins * 0.8);
-	vec3 skin_out = mix(c, dead_skin, clamp(rot * 1.4, 0.0, 1.0));
+	float veins = clamp(vein_line + vein_fine * 0.7, 0.0, 1.0);
+	flesh = mix(flesh, vec3(0.09, 0.07, 0.16), veins * 0.85);
+	vec3 skin_out = mix(c * vec3(0.8, 0.9, 0.8), flesh, 0.96);
 
-	// Cloth: dirt in the folds, mould, and blood that has dried dark.
-	// Cloth soaked and sea-stained: the colour it had mostly washed out to a green-grey.
-	vec3 washed = vec3(luma) * vec3(0.5, 0.78, 0.74) + vec3(0.0, 0.025, 0.02);
-	vec3 grime = mix(c * vec3(0.5, 0.75, 0.75), washed, 0.94) * mix(1.0, 0.45 + n_lo * 0.4, rot);
-	float stain = smoothstep(0.62, 0.72, n_mid * 0.7 + n_lo * 0.5) * rot;
-	grime = mix(grime, vec3(0.03, 0.09, 0.06), stain * 0.85);
-	vec3 col = mix(grime, skin_out, skin);
+	// Clothes: dark, soaked, stained with sea slime, frayed at the tears.
+	vec3 soaked = vec3(luma) * vec3(0.3, 0.36, 0.33) * 0.75 + vec3(0.008, 0.012, 0.01);
+	float stain = smoothstep(0.55, 0.72, n_mid * 0.7 + n_lo * 0.5);
+	soaked = mix(soaked, vec3(0.02, 0.05, 0.035), stain * 0.8);
+	soaked *= 1.0 - 0.6 * tear;
+	vec3 col = mix(soaked, skin_out, skin);
 
-	// Blood on the skin too, wetter than the cloth's.
-	float blood = smoothstep(0.7, 0.8, n_mid * 0.6 + n_lo * 0.55 + (1.0 - n_hi) * 0.1) * rot;
-	col = mix(col, vec3(0.18, 0.05, 0.12), blood * 0.5 * skin);
-	// Algae and weed from the knees down, barnacle crust in patches on the cloth and skin.
+	// Slime and weed stains from the knees down; barnacle crust in patches.
 	float low = 1.0 - smoothstep(-34.0, 2.0, v_local.y);
-	float algae = smoothstep(0.38, 0.62, n_mid * 0.6 + n_lo * 0.6) * (0.35 + 0.65 * low);
-	col = mix(col, vec3(0.05, 0.18, 0.08) * (0.6 + n_hi), algae * 0.75);
+	float algae = smoothstep(0.42, 0.66, n_mid * 0.6 + n_lo * 0.6) * (0.2 + 0.8 * low);
+	col = mix(col, vec3(0.04, 0.14, 0.07) * (0.6 + n_hi), algae * 0.7);
 	float crust_n = texture(noise_tex, v_uv * 13.0 + so * 2.0).g;
-	float crust = smoothstep(0.7, 0.74, crust_n + low * 0.1) * (0.4 + 0.6 * smoothstep(0.35, 0.65, n_lo));
-	col = mix(col, vec3(0.62, 0.64, 0.58) * (0.7 + 0.5 * n_hi), crust);
+	float crust = smoothstep(0.72, 0.76, crust_n + low * 0.08) * (0.3 + 0.7 * smoothstep(0.35, 0.65, n_lo)) * (kind == 1 ? 0.0 : 1.0);
+	col = mix(col, vec3(0.6, 0.62, 0.55) * (0.6 + 0.5 * n_hi), crust);
 
-	// Wet: slick everywhere, dry and rough only where the crust is.
-	float rough_out = mix(0.14 + 0.16 * n_hi, 0.85, crust);
+	// Wet: slick, with a clear coat of water over the skin; dry and rough only where the crust is.
+	float rough_out = mix(0.3 + 0.12 * n_hi, 0.85, crust);
 	col = wound_layer(wound_a, wound_sa, col, v_uv, kind, rough_out);
 	col = wound_layer(wound_b, wound_sb, col, v_uv, kind, rough_out);
 	ALBEDO = col;
 	ROUGHNESS = rough_out;
-	SPECULAR = mix(0.9, 0.2, crust);
-	// A running sheen of water.
+	SPECULAR = mix(0.55, 0.2, crust);
+	CLEARCOAT = 0.55 * (1.0 - crust);
+	CLEARCOAT_ROUGHNESS = 0.08;
+	// Water running down: streaks that are glassier than the rest.
 	float run = texture(noise_tex, vec2(v_uv.x * 6.0, v_uv.y * 2.0 - TIME * 0.12) + so).a;
 	float sheen = smoothstep(0.62, 0.9, run) * (1.0 - crust);
-	ROUGHNESS = mix(ROUGHNESS, 0.03, sheen);
+	ROUGHNESS = mix(ROUGHNESS, 0.05, sheen);
 
-	float far_k = 1.0 + 1.6 * smoothstep(6.0, 26.0, v_dist);
+	// A faint cold edge so the shape reads against the night: not a glow.
+	float far_k = 1.0 + 1.2 * smoothstep(6.0, 26.0, v_dist);
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), rim_power);
-	vec3 glow = rim_color * rim * rim_strength * far_k + col * body_lift * far_k + vec3(0.02, 0.06, 0.07) * sheen;
-	// Eyes: the whites of a head glow a sick yellow.
-	if (kind == 1) {
-		float eye = (1.0 - smoothstep(0.08, 0.2, sat)) * smoothstep(0.62, 0.82, mx);
-		glow += eye * eye_color * 1.6;
-	}
-	EMISSION = glow;
+	EMISSION = rim_color * rim * rim_strength * far_k + col * body_lift * far_k;
 }

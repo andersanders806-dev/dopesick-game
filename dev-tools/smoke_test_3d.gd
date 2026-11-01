@@ -5748,19 +5748,16 @@ func _zombie_shell_checks(gs: Node) -> void:
 	var entry := _buttons_named(title, "Zombies")
 	_check(entry.size() == 1, "  the title screen has a Zombies button")
 	if entry.size() == 1:
+		root.get_node("Graphics").set_first_person(false)
 		entry[0].pressed.emit()
+		_check(_buttons_named(title, "Third person").is_empty(), "  it asks no view: Dead Block is first person")
+		while root.get_node("SceneLoader").busy():
+			await process_frame
+		await _frames(15)
+		_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
+			"  Zombies starts the run on the zombie block, in first person")
+		zm.game_over()
 		await _frames(2)
-		var fp := _buttons_named(title, "First person")
-		_check(not _buttons_named(title, "Third person").is_empty() and fp.size() == 1, "  it asks first person or third")
-		if fp.size() == 1:
-			fp[0].pressed.emit()
-			while root.get_node("SceneLoader").busy():
-				await process_frame
-			await _frames(15)
-			_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
-				"  First person starts the run on the zombie block")
-			zm.game_over()
-			await _frames(2)
 	for s in root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")):
 		s.queue_free()
 	paused = false

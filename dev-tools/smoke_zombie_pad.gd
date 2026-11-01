@@ -630,28 +630,8 @@ func _zombie_pad_checks(gs: Node) -> void:
 	for b in title.find_children("*", "Button", true, false):
 		if (b as Button).text == "Zombies":
 			zbtn = b
-	zbtn.pressed.emit()
-	await _frames(3)
-	var chk = 0
-	var chk_ok = true
-	for b in title.find_children("*", "CheckButton", true, false):
-		chk += 1
-		chk_ok = chk_ok and (b as Control).focus_mode == Control.FOCUS_ALL and PadFocus.dressed(b)
-	owner = root.gui_get_focus_owner()
-	_check(chk == 2 and chk_ok and owner is Button and ((owner as Button).text == "First person" or (owner as Button).text == "Third person") and PadFocus.dressed(owner),
-		"  the Zombies menu opens with the view choice focused and the Gore and Damage numbers toggles reachable (%d toggles)" % chk)
-	_press(JOY_BUTTON_DPAD_DOWN)
-	_press(JOY_BUTTON_DPAD_DOWN)
-	await _frames(1)
-	owner = root.gui_get_focus_owner()
-	_check(owner is CheckButton, "  the D-pad walks down to the toggles (%s)" % (owner.get("text") if owner != null else "none"))
-	_press(JOY_BUTTON_B)
-	await _frames(2)
-	var back_ok = false
-	for b in title.find_children("*", "Button", true, false):
-		if (b as Button).text == "Zombies":
-			back_ok = (b as Button).visible
-	_check(back_ok, "  Circle returns to the main menu")
+	_check(zbtn != null and zbtn.focus_mode == Control.FOCUS_ALL,
+		"  the Zombies button is reachable by pad (it starts the run straight in first person)")
 	gs.using_pad = false
 	zm.leave()
 

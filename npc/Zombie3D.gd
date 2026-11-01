@@ -24,10 +24,11 @@ const CharacterCast := preload("res://npc/CharacterCast.gd")
 const ZombieHitboxes := preload("res://npc/ZombieHitboxes.gd")
 const ZombieFlinch := preload("res://npc/ZombieFlinch.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
+const EntranceFX := preload("res://fx/EntranceFX.gd")
 const Gore := preload("res://fx/gore/Gore.gd")
 const ROT_SHADER := preload("res://npc/zombie_rot.gdshader")
 
-enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, DYING, DEAD }
+enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, ENTER, DYING, DEAD }
 
 ## Bodies the dead wear.
 const BODIES := [
@@ -310,6 +311,9 @@ func _physics_process(delta: float) -> void:
 				remove_corpse()
 			return
 		State.DYING:
+			return
+		State.ENTER:
+			_enter_tick(delta)
 			return
 	_frame += 1
 	# Far down the street it thinks and steps every second tick, on double time:
@@ -714,6 +718,104 @@ func relocated() -> void:
 	_release_slot()
 	velocity = Vector3.ZERO
 
+# --- Entrances (npc/Entrances.gd) ---------------------------------------------------------------
+
+## Seconds for a zombie to climb out of the ground, and how deep it starts.
+const RISE_TIME := 1.7
+const RISE_DEPTH := 2.1
+## Out through a shop front: the shove it comes out with (m/s along the ground).
+const SMASH_SHOVE := 6.5
+## How it came in ("", "rise", "drop", "smash", "plain"); the tests read it.
+var entrance := ""
+var _enter := {}
+var _enter_t := 0.0
+
+## Lets it come in the way `e` says (an Entrances.pick() result); call it right after adding the
+## zombie to the tree. A rise starts under the street and climbs out, a drop falls from a fire
+## escape or roof and lands, a smash is shoved out through a shop front; a plain one just walks in.
+func begin_entrance(e: Dictionary) -> void:
+	entrance = String(e.get("type", "plain"))
+	_enter = e
+	_enter_t = 0.0
+	var fx := EntranceFX.of(self) if entrance != "plain" else null
+	match entrance:
+		"rise":
+			state = State.ENTER
+			global_position = e["pos"]
+			_ghost(true)
+			_model_root.position.y = -RISE_DEPTH
+			anim.play(_move_clip, 0.7)
+			if fx != null:
+				fx.ground_burst(e["pos"], e.get("node"))
+		"drop":
+			state = State.ENTER
+			global_position = e["start"]
+			_ghost(true)
+			anim.play("z_idle", 1.0)
+			_face_dir(e["out"])
+		"smash":
+			global_position = e["start"]
+			_face_dir(e["out"])
+			_knock = (e["out"] as Vector3).normalized() * SMASH_SHOVE
+			_stagger = 0.15
+			if fx != null:
+				fx.smash(e["facade"], e["out"])
+
+func _face_dir(dir: Vector3) -> void:
+	if dir.length() > 0.01:
+		_facing = atan2(dir.x, dir.z)
+		_model_root.rotation.y = _facing
+
+## Climbing out of the ground, or falling in; hands over to the chase when it is done.
+func _enter_tick(delta: float) -> void:
+	_enter_t += delta
+	match entrance:
+		"rise":
+			var k := clampf(_enter_t / RISE_TIME, 0.0, 1.0)
+			# A pause while the dirt flies, then up with a heave.
+			var u := smoothstep(0.12, 1.0, k)
+			_model_root.position.y = -RISE_DEPTH * (1.0 - u)
+			if k >= 1.0:
+				_finish_entrance(0.2)
+		"drop":
+			var fall := maxf(float(_enter.get("fall", 0.5)), 0.2)
+			var k := clampf(_enter_t / fall, 0.0, 1.0)
+			var start: Vector3 = _enter["start"]
+			var land: Vector3 = _enter["pos"]
+			var at := start.lerp(land, k)
+			at.y = start.y * (1.0 - k * k)
+			global_position = at
+			if k >= 1.0:
+				global_position = land
+				var fx := EntranceFX.of(self)
+				if fx != null:
+					fx.landing(land, bool(_enter.get("roof", false)))
+				# A runner is off at once; a walker takes a moment to find its feet.
+				_finish_entrance(0.2 if kind == "runner" else 0.8)
+		_:
+			_finish_entrance(0.0)
+
+func _finish_entrance(stagger: float) -> void:
+	_end_entrance()
+	state = State.CHASE
+	_stagger = stagger
+	_repath_in = 0.0
+	anim.play(_move_clip, 1.0)
+
+## Back to a body in the world: the capsule on, the model at its feet.
+func _end_entrance() -> void:
+	if state != State.ENTER:
+		return
+	_model_root.position.y = 0.0
+	_ghost(false)
+	velocity = Vector3.ZERO
+
+## No body for the world while it climbs out or falls in (the player walks through it; hit
+## zones stay): the layers off rather than the shape, which would make it a new body to push out.
+func _ghost(on: bool) -> void:
+	collision_layer = 0 if on else BODY_LAYER
+	collision_mask = 0 if on else 1
+
 # --- Far away: cheaper ---------------------------------------------------------
 
 ## Beyond FAR_DISTANCE of the player its animation advances every other
@@ -843,7 +945,7 @@ func knock(v: Vector3) -> void:
 
 func _react(part: String, dmg: float) -> void:
 	# A hit that matters makes it flinch; a graze doesn't.
-	if dmg < max_health * 0.12 or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP:
+	if dmg < max_health * 0.12 or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP or state == State.ENTER:
 		return
 	if part.contains("leg") and not legless:
 		_begin_kneel()
@@ -884,6 +986,7 @@ func is_kneeling() -> bool:
 	return state == State.KNEEL
 
 func _die(part: String, melee: bool, _dir: Vector3) -> void:
+	_end_entrance()
 	state = State.DYING
 	_release_slot()
 	remove_from_group("zombies")

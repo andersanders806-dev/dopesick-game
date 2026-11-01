@@ -139,6 +139,7 @@ func setup(block: Node3D) -> void:
 	spawner.holder = city
 	spawner.spawn_points.assign(SPAWN_POINTS)
 	add_child(spawner)
+	spawner.setup_entrances(city)
 	_arm_player()
 	_build_purchases()
 	ZombieMode.start_round()

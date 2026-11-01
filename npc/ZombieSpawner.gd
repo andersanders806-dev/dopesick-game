@@ -1,9 +1,12 @@
 extends Node
 ## Deals each round's dead onto the block. On ZombieMode.round_started(r) it
-## owes ZombieMode.zombies_in_round(r) zombies, lets them out one at a time
-## from spawn points the player can't see, never more than ZombieMode.MAX_ALIVE
-## on the block at once (the rest wait in reserve), and when the last is down
-## and none are left it ends the round after a breath.
+## owes ZombieMode.zombies_in_round(r) zombies and lets them out one at a time
+## by the block's entrances (npc/Entrances.gd: up out of the ground, off the fire
+## escapes and roofs, through shop fronts, round corners; all round the player),
+## never more than ZombieMode.max_alive on the block at once (the rest wait in
+## reserve; npc/HordeBudget.gd moves that between 24 and 48 with the frame time),
+## and when the last is down and none are left it ends the round after a breath.
+## The surge (npc/ZombieSurge.gd) lets its own out through spawn_entrance().
 ##
 ## Runners are mixed in from round 6: a tenth of the round's dead then, a tenth
 ## more each round, all of them from round 15.
@@ -18,17 +21,26 @@ signal round_cleared(r: int)
 signal relocated(zombie: Node)
 
 const ZombieScript := preload("res://npc/Zombie3D.gd")
+const HordeBudget := preload("res://npc/HordeBudget.gd")
+const Entrances := preload("res://npc/Entrances.gd")
 const CORPSE_LIMIT := 12
 ## Seconds before the first of a round, between two, and the quiet after the
 ## last one dies.
-const FIRST_DELAY := 2.5
-const GAP_BASE := 1.8
-const GAP_PER_ROUND := 0.08
-const GAP_MIN := 0.35
+const FIRST_DELAY := 2.0
+const GAP_BASE := 1.1
+const GAP_PER_ROUND := 0.06
+const GAP_MIN := 0.22
 const ROUND_BREAK := 5.0
 ## A spawn point has to be this far from the player and out of their view.
 const MIN_SPAWN_DISTANCE := 22.0
 
+## Whether the frame time moves the alive cap (the tests turn it off and set
+## ZombieMode.max_alive themselves).
+var adaptive := true
+var budget := HordeBudget.new(32, ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX)
+## The entrances (built by the block: setup_entrances()); empty means the old spawn points.
+var entrances := Entrances.new()
+var _entrances_ready := false
 ## Scales every wait (tests run it near zero).
 var time_scale := 1.0
 ## Where the dead come from: world positions on the navmesh.
@@ -96,12 +108,23 @@ func _plan_kinds(r: int, n: int) -> Array[String]:
 		out[j] = t
 	return out
 
+## The block's manholes, fire escapes and shop fronts, found in `city`.
+func setup_entrances(city: Node3D) -> void:
+	entrances.build(city, spawn_points)
+	_entrances_ready = true
+
 func _process(delta: float) -> void:
 	if not enabled or not ZombieMode.active or ZombieMode.over or round_no == 0:
 		return
+	if adaptive and budget.enabled:
+		budget.feed(delta * 1000.0, alive(), delta)
+		ZombieMode.max_alive = budget.cap
+	# The surge is the horde while it lasts: the round's own wait.
+	if ZombieMode.surge_busy:
+		return
 	if released < total:
 		_timer -= delta
-		if _timer <= 0.0 and alive() < ZombieMode.MAX_ALIVE:
+		if _timer <= 0.0 and alive() < ZombieMode.max_alive:
 			_release()
 			_timer = _gap() * time_scale
 	elif alive() == 0:
@@ -119,10 +142,30 @@ func _gap() -> float:
 	return maxf(GAP_BASE - round_no * GAP_PER_ROUND, GAP_MIN) * _rng.randf_range(0.7, 1.3)
 
 func _release() -> void:
-	var z := spawn_one(_kinds[released])
+	var kind := _kinds[released]
+	var z: CharacterBody3D
+	if _entrances_ready:
+		z = spawn_entrance(kind, _pick_entrance())
+	else:
+		z = spawn_one(kind)
 	released += 1
 	if z:
 		kind_counts[z.get("kind")] += 1
+
+## An entrance for the next one out, round the player (npc/Entrances.gd).
+func _pick_entrance(weights: Dictionary = Entrances.WEIGHTS) -> Dictionary:
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	var from := player.global_position if player else Vector3.ZERO
+	return entrances.pick(from, get_viewport().get_camera_3d(), weights)
+
+## One zombie of `kind` coming in by entrance `e` (an Entrances.pick() result; none: a fresh one).
+func spawn_entrance(kind: String, e := {}) -> CharacterBody3D:
+	if e.is_empty():
+		e = _pick_entrance()
+	var z := spawn_one(kind, e["start"] if e["type"] != Entrances.RISE else e["pos"])
+	if z != null:
+		z.begin_entrance(e)
+	return z
 
 ## One zombie of `kind` at a fresh spawn point, now. (The round's budget is
 ## `released`; tests and the horde probe call this directly.)

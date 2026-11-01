@@ -16,6 +16,12 @@ signal round_ended(r: int)
 signal points_changed(total: int, amount: int, reason: String)
 signal game_over_started(summary: Dictionary)
 signal health_changed(hp: float)
+## The Richter 8.0 surge (npc/ZombieSurge.gd): the warning comes SURGE_WARNING seconds before the
+## quake (the build-up: rumble, flicker), then it starts (the zombies erupt, double points) and
+## ends (the last one is out; double points linger a few seconds more). fx/Quake.gd shows it.
+signal surge_warning
+signal surge_started
+signal surge_ended
 
 const ZombieControls := preload("res://player/ZombieControls.gd")
 const CITY_SCENE := "res://world/City3D.tscn"
@@ -27,11 +33,18 @@ var PATH: String:
 	get: return SANDBOX_PATH if Engine.get_meta("sandbox", false) else REAL_PATH
 
 const START_POINTS := 500
-## Alive at once; the rest of a round waits in reserve (UHD 620 budget).
-const MAX_ALIVE := 20
+## Alive at once; the rest of a round waits in reserve. The cap moves between these two with
+## the frame time (npc/HordeBudget.gd, the spawner feeds it): `max_alive` is where it stands now.
+const MAX_ALIVE_MIN := 24
+const MAX_ALIVE_MAX := 48
 ## What a round's zombies come to before round 6, which the formula takes
-## over from. A gentle ramp, tuned by playtest.
-const EARLY_ROUNDS := [6, 8, 13, 18, 24]
+## over from: 2.5 times the first design (15 in round 1).
+const EARLY_ROUNDS := [15, 20, 32, 45, 60]
+## Everything the horde and the surge may put on the block together.
+const SURGE_HARD_CAP := 64
+const HORDE_SCALE := 2.5
+## Seconds between the warning and the quake.
+const SURGE_WARNING := 2.5
 ## What things pay.
 const POINTS_HIT := 10
 const POINTS_KILL_BODY := 60
@@ -52,6 +65,13 @@ var run_time := 0.0
 ## Power-up state (Double Points doubles what you earn, never a price).
 var double_points := false
 var insta_kill := false
+## The surge: `surge_busy` from the warning to the last zombie of it coming out, `surge_active`
+## (double points) from the quake to a few seconds after, `surge_count` how many it lets out.
+var surge_busy := false
+var surge_active := false
+var surge_count := 0
+## The alive cap now (HordeBudget moves it).
+var max_alive := 32
 ## Options of the mode (the Zombies menu): gore on by default, floating damage numbers off.
 var gore_enabled := true: set = set_gore_enabled
 var damage_numbers := false: set = set_damage_numbers
@@ -119,6 +139,9 @@ func leave() -> void:
 	over = false
 	double_points = false
 	insta_kill = false
+	surge_busy = false
+	surge_active = false
+	surge_count = 0
 	health = MAX_HEALTH
 	_since_hit = 0.0
 	GameState.mode = "story"
@@ -134,6 +157,10 @@ func _reset() -> void:
 	run_time = 0.0
 	double_points = false
 	insta_kill = false
+	surge_busy = false
+	surge_active = false
+	surge_count = 0
+	max_alive = 32
 
 # --- Rounds --------------------------------------------------------------------
 
@@ -166,7 +193,7 @@ func zombies_in_round(r: int) -> int:
 	var mult := maxf(1.0, r / 5.0)
 	if r >= 10:
 		mult *= r * 0.15
-	return 24 + int(0.5 * 6.0 * mult)
+	return roundi((24 + int(0.5 * 6.0 * mult)) * HORDE_SCALE)
 
 # --- Points --------------------------------------------------------------------
 
@@ -175,7 +202,7 @@ func zombies_in_round(r: int) -> int:
 func add_points(n: int, reason: String) -> void:
 	if not active or n <= 0:
 		return
-	if double_points:
+	if double_points or surge_active:
 		n *= 2
 	points += n
 	points_changed.emit(points, n, reason)

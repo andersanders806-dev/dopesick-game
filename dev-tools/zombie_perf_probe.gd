@@ -4,7 +4,7 @@ extends SceneTree
 ## frames over 33 ms, CPU ms per frame. Needs a window.
 ##
 ##   flatpak run org.godotengine.Godot --path . --socket=wayland --display-driver wayland \
-##     -s res://dev-tools/zombie_perf_probe.gd -- [seconds=60] [Low|Medium|High] [zombies=20] [baseline] [route] [rounds] [shoot] [fp]
+##     -s res://dev-tools/zombie_perf_probe.gd -- [seconds=60] [Low|Medium|High] [zombies=20, 40 or 48 for the raised horde] [baseline] [route] [rounds] [shoot] [fp]
 ## `shoot` fires the assault rifle at the nearest zombie ten times a second (gore on: wounds, limbs, head pops,
 ## ragdolls, decals) and replaces the dead so the horde stays at its size; `fp` plays it in first person.
 ## `baseline` runs the same street with no zombies, for the difference.
@@ -27,7 +27,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var seconds := float(args[0]) if args.size() > 0 else 60.0
 	var preset_name := args[1] if args.size() > 1 else "Low"
-	var count := int(args[2]) if args.size() > 2 else 20
+	var count := clampi(int(args[2]) if args.size() > 2 else 20, 0, 64)
 	var baseline := args.has("baseline")
 	# near: the whole horde starts on top of the player; exp=<x>: switch a cost off to measure it.
 	var near := args.has("near")
@@ -62,9 +62,11 @@ func _initialize() -> void:
 		for i in count:
 			# A column down Main Street: from 10 m to 60 m either side.
 			var side := -1.0 if i % 2 == 0 else 1.0
-			var x := -8.0 + side * (10.0 + (i / 2) * 5.0)
+			# (40 or 48 of them are packed closer so the column still ends inside the street.)
+			var gap := minf(5.0, 56.0 / maxf(count / 2.0, 1.0))
+			var x := -8.0 + side * (10.0 + (i / 2) * gap)
 			var kind := "runner" if i % 3 == 0 else "walker"
-			var at := Vector3(clampf(x, -70.0, 70.0), 0.0, 1.0 + (i % 3) * 0.8)
+			var at := Vector3(clampf(x, -70.0, 70.0), 0.0, 1.0 + (i % 4) * 1.2)
 			if near:
 				at = player.global_position + Vector3(cos(i * 0.7), 0.0, sin(i * 0.7)) * (3.0 + (i % 4) * 0.8)
 			spawner.spawn_one(kind, at)
@@ -134,6 +136,8 @@ func _initialize() -> void:
 		var dt := (now - last) / 1000.0
 		last = now
 		frames += 1
+		# Claws hurt now: the player outlives the measurement (a dead player ends the run).
+		zm.health = zm.MAX_HEALTH
 		if not shot and Time.get_ticks_msec() > shot_at:
 			shot = true
 			root.get_texture().get_image().save_png("res://.pilot/zhorde_%s.png" % ("base" if baseline else "horde"))

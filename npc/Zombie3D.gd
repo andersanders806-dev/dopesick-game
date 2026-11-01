@@ -53,12 +53,21 @@ const ATTACK_DAMAGE := 35.0
 const RUNNER_DAMAGE := 40.0
 ## Seconds between a zombie's board-tearing swings.
 const TEAR_PERIOD := 2.2
-## Beyond this from the player its animation runs on every second frame and
-## it casts no shadow.
-const FAR_DISTANCE := 15.0
+## Beyond this from the player its pose steps less often (LOD_MID) ...
+const FAR_DISTANCE := LOD_MID
+## ... and beyond this it casts no shadow.
 const SHADOW_DISTANCE := 12.0
-## Beyond this from the player it thinks and steps every second physics tick.
+## Beyond this from the player it thinks and steps every second physics tick,
+## beyond FAR_THINK_2 every fourth (on owed time, so it covers the same ground).
 const FAR_THINK := 28.0
+const FAR_THINK_2 := 50.0
+## Animation LOD (see "Far away: cheaper"): from LOD_MID its pose is updated every 2nd
+## rendered frame, from LOD_FAR every 4th, from LOD_VFAR every 8th; from LOD_FAR the rot
+## shader skips its finest layer too. Rings of 2 m hysteresis keep one at a tier.
+const LOD_MID := 15.0
+const LOD_FAR := 32.0
+const LOD_VFAR := 55.0
+const LOD_HYST := 2.0
 const REPATH := Vector2(0.5, 1.0)
 const CORPSE_LIFE := 30.0
 ## A hit to the leg drops it to a knee for this long (the clip ends mid-fall,
@@ -139,6 +148,13 @@ var head_gone := false
 var _flinch: SkeletonModifier3D
 var _frame := 0
 var _far := false
+## Animation LOD tier: 0 near (the AnimationPlayer runs itself), 1..3 stepped by hand in _process.
+var _lod := 0
+var _lod_phase := 0
+var _lod_acc := 0.0
+var _lod_ticks := 0
+## The body's meshes that wear the rot shader (they get the far_lod instance uniform).
+var _lod_meshes: Array = []
 ## Time of a skipped tick, paid on the next (far zombies think every second tick).
 var _owed := 0.0
 var _shadows := true
@@ -189,6 +205,8 @@ func _ready() -> void:
 	if not dummy:
 		add_to_group("zombies")
 	set_physics_process(not dummy)
+	# Only a far zombie steps its pose by hand (set_lod turns this on).
+	set_process(false)
 	collision_layer = BODY_LAYER
 	collision_mask = 1
 	# The block is flat and its floors sit on another layer: like the player,
@@ -224,7 +242,8 @@ func _ready() -> void:
 	_facing = randf() * TAU
 	_model_root.rotation.y = _facing
 	_repath_in = randf_range(0.0, REPATH.y)
-	_frame = randi() % 2
+	_frame = randi() % 4
+	_lod_phase = randi() % 8
 	if target == null:
 		target = get_tree().get_first_node_in_group("player") as Node3D
 	# Starts into its walk at a random point, so a crowd isn't in step.
@@ -275,6 +294,7 @@ func _apply_rot(seed_value: float) -> void:
 				continue
 			inst.set_surface_override_material(i, _rot_material(src))
 		inst.set_instance_shader_parameter("rot", _rot_amount)
+		_lod_meshes.append(inst)
 		inst.set_instance_shader_parameter("seed", seed_value)
 
 static func _rot_material(src: BaseMaterial3D) -> Material:
@@ -312,16 +332,14 @@ func _physics_process(delta: float) -> void:
 		State.DYING:
 			return
 	_frame += 1
-	# Far down the street it thinks and steps every second tick, on double time:
-	# nobody can see the difference at 30 m, and it halves the far half of the horde.
+	# Far down the street it thinks and steps every second tick (every fourth beyond
+	# FAR_THINK_2), on owed time: nobody can see the difference at 30 m, and it
+	# thins out the far half of the horde.
 	if state == State.CHASE and target != null and is_instance_valid(target):
 		var away := target.global_position - global_position
-		if away.x * away.x + away.z * away.z > FAR_THINK * FAR_THINK:
-			if _frame % 2 == 0:
-				_owed += delta
-				return
-		else:
-			_owed = 0.0
+		if not _think_now(away.x * away.x + away.z * away.z):
+			_owed += delta
+			return
 	delta += _owed
 	_owed = 0.0
 	_stagger = maxf(_stagger - delta, 0.0)
@@ -715,24 +733,87 @@ func relocated() -> void:
 	velocity = Vector3.ZERO
 
 # --- Far away: cheaper ---------------------------------------------------------
+# Distance tiers, all of them invisible within the fog and the size on screen:
+#   shadow   beyond SHADOW_DISTANCE no shadow caster;
+#   think    beyond FAR_THINK / FAR_THINK_2 the brain and the step run every 2nd / 4th tick;
+#   pose     beyond LOD_MID / LOD_FAR / LOD_VFAR the AnimationPlayer is stepped by hand every
+#            2nd / 4th / 8th rendered frame (the skeleton, its skinning and the shadow pass
+#            only get new work then), with the elapsed time, so the walk keeps its pace;
+#   shader   beyond LOD_FAR the rot shader leaves out its finest veins (instance uniform).
+# The hit zones are not part of this: sync_hitboxes() reads the pose on screen at any distance.
 
-## Beyond FAR_DISTANCE of the player its animation advances every other
-## frame (twice as far each time) and it stops casting a shadow.
-func _update_lod(delta: float) -> void:
+## Whether this physics tick is one the brain runs, for a squared ground distance.
+func _think_now(d2: float) -> bool:
+	if d2 > FAR_THINK_2 * FAR_THINK_2:
+		return _frame % 4 == 0
+	if d2 > FAR_THINK * FAR_THINK:
+		return _frame % 2 == 1
+	_owed = 0.0
+	return true
+
+## The tier (0..3) for a distance, with hysteresis round the one it is in.
+static func lod_for(d: float, current: int) -> int:
+	var edges := [LOD_MID, LOD_FAR, LOD_VFAR]
+	var tier := 0
+	for i in 3:
+		var e: float = edges[i] - (LOD_HYST if current > i else 0.0)
+		if d > e:
+			tier = i + 1
+	return tier
+
+## Pose update period in rendered frames for a tier.
+static func lod_period(tier: int) -> int:
+	return 1 << tier if tier > 0 else 1
+
+## Called from the physics tick: sets the tier, the hand-stepped mode, the shadow and the shader.
+func _update_lod(_delta: float) -> void:
 	if _anim_player == null or target == null:
 		return
 	var d := global_position.distance_to(target.global_position)
-	var far := d > FAR_DISTANCE if not _far else d > FAR_DISTANCE - 2.0
-	if far != _far:
-		_far = far
-		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if far else AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
-	if _far and _frame % 2 == 0:
-		_anim_player.advance(delta * 2.0)
+	var tier := lod_for(d, _lod)
+	if tier != _lod:
+		set_lod(tier)
 	var shadows := d < SHADOW_DISTANCE if _shadows else d < SHADOW_DISTANCE - 2.0
 	if shadows != _shadows:
 		_shadows = shadows
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+## Puts the zombie on a tier (tests may force one; the next physics tick sets it by distance again).
+func set_lod(tier: int) -> void:
+	if _anim_player == null:
+		return
+	var was_far := _lod > 0
+	_lod = tier
+	_far = tier > 0
+	_lod_ticks = 0
+	if _far != was_far:
+		_lod_acc = 0.0
+		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if _far else AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+	for mi in _lod_meshes:
+		(mi as MeshInstance3D).set_instance_shader_parameter("far_lod", 1.0 if tier >= 2 else 0.0)
+	set_process(_far and state < State.DYING)
+
+## Rendered frames: a far zombie's pose is stepped here, by the time owed since its last step.
+func _process(delta: float) -> void:
+	if _lod == 0 or _anim_player == null:
+		return
+	_lod_acc += delta
+	_lod_ticks += 1
+	if (_lod_ticks + _lod_phase) % lod_period(_lod) != 0:
+		return
+	_anim_player.advance(_lod_acc)
+	_lod_acc = 0.0
+
+## Back to the AnimationPlayer running itself (a death plays out in full).
+func _lod_release() -> void:
+	set_process(false)
+	if _anim_player != null and _lod > 0:
+		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+		for mi in _lod_meshes:
+			(mi as MeshInstance3D).set_instance_shader_parameter("far_lod", 0.0)
+	_lod = 0
+	_far = false
 
 # --- Hits ----------------------------------------------------------------------
 
@@ -895,8 +976,7 @@ func _die(part: String, melee: bool, _dir: Vector3) -> void:
 		area.set_deferred("monitorable", false)
 		area.collision_layer = 0
 	var dur := anim.play_once("z_death2" if (randf() < 0.4 and not legless) else "z_death", 1.0)
-	if _anim_player and _far:
-		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+	_lod_release()
 	died.emit(self, part, melee)
 	get_tree().create_timer(maxf(dur, 0.5) + 0.1).timeout.connect(_settle)
 

@@ -27,6 +27,9 @@ uniform float body_lift = 0.065;
 // noise, so no two share a pattern.
 instance uniform float rot : hint_range(0.0, 1.0) = 0.6;
 instance uniform float seed = 0.0;
+// 1 once the zombie is past the near distance (npc/Zombie3D.gd, "Far away: cheaper"): the finest
+// noise layer (a texture read and the fine veins) is left out, which at 15 m and more is under a pixel.
+instance uniform float far_lod = 0.0;
 // Wounds (fx/gore/Gore.gd): where a bullet went in, in the body's UVs: (u, v, radius, depth),
 // and which surface (0 body, 1 head) each is on. Radius 0 is no wound. Skin, then torn flesh, then bone.
 instance uniform vec4 wound_a = vec4(0.0);
@@ -92,7 +95,8 @@ void fragment() {
 	vec2 so = vec2(seed * 7.13, seed * 3.71);
 	float n_lo = texture(noise_tex, v_uv * 2.0 + so).r;
 	float n_mid = texture(noise_tex, v_uv * 7.0 + so.yx).g;
-	float n_hi = texture(noise_tex, v_uv * 19.0 + so).b;
+	bool near_lod = far_lod < 0.5;
+	float n_hi = near_lod ? texture(noise_tex, v_uv * 19.0 + so).b : 0.5;
 
 	// Cloth that is torn through: holes cut by the damage mask, more of them
 	// the further gone.
@@ -107,7 +111,7 @@ void fragment() {
 	vec3 dead_skin = vec3(luma * 1.08) * vec3(0.76, 0.9, 0.7) + vec3(0.03, 0.04, 0.02);
 	dead_skin *= mix(1.0, 0.72 + n_lo * 0.5, rot);
 	float vein_line = 1.0 - smoothstep(0.0, 0.06, abs(n_mid - 0.5));
-	float vein_fine = 1.0 - smoothstep(0.0, 0.05, abs(n_hi - 0.5));
+	float vein_fine = near_lod ? 1.0 - smoothstep(0.0, 0.05, abs(n_hi - 0.5)) : 0.0;
 	float veins = clamp(vein_line + vein_fine * 0.6, 0.0, 1.0) * rot;
 	dead_skin = mix(dead_skin, vec3(0.16, 0.2, 0.28), veins * 0.75);
 	vec3 skin_out = mix(c, dead_skin, clamp(rot * 1.4, 0.0, 1.0));

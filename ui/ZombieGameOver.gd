@@ -32,7 +32,8 @@ func show_summary(s: Dictionary) -> void:
 	var font := FontVariation.new()
 	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
 	font.spacing_glyph = 6
-	var title := _label("YOU WERE OVERRUN", 52, BLOOD)
+	var cause := String(s.get("cause", ""))
+	var title := _label(cause.to_upper() if cause != "" else "YOU WERE OVERRUN", 52 if cause == "" else 40, BLOOD)
 	title.add_theme_font_override("font", font)
 	col.add_child(title)
 	var best_line := "Best: round %d" % int(s["best_round"])

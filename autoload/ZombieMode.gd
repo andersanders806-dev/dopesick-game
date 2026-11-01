@@ -70,6 +70,9 @@ var insta_kill := false
 var surge_busy := false
 var surge_active := false
 var surge_count := 0
+## The tsunami's countdown is on (fx/Tsunami.gd), and what ended the run if it was not the dead ("" otherwise).
+var tsunami_active := false
+var death_cause := ""
 ## The alive cap now (HordeBudget moves it).
 var max_alive := 32
 ## Options of the mode (the Zombies menu): gore on by default, floating damage numbers off.
@@ -142,6 +145,8 @@ func leave() -> void:
 	surge_busy = false
 	surge_active = false
 	surge_count = 0
+	tsunami_active = false
+	death_cause = ""
 	health = MAX_HEALTH
 	_since_hit = 0.0
 	GameState.mode = "story"
@@ -160,6 +165,8 @@ func _reset() -> void:
 	surge_busy = false
 	surge_active = false
 	surge_count = 0
+	tsunami_active = false
+	death_cause = ""
 	max_alive = 32
 
 # --- Rounds --------------------------------------------------------------------
@@ -227,7 +234,7 @@ func record_kill(headshot := false) -> void:
 
 func summary() -> Dictionary:
 	return {"round": round, "kills": kills, "headshots": headshots, "time": run_time,
-		"best_round": best_round, "new_best": new_best}
+		"best_round": best_round, "new_best": new_best, "cause": death_cause}
 
 ## The run is over: save the best and show the screen. Once per run.
 func game_over() -> void:

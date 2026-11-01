@@ -120,7 +120,7 @@ func _process(delta: float) -> void:
 		Phase.IDLE:
 			if plan_in >= 0.0:
 				plan_in -= delta
-				if plan_in <= 0.0:
+				if plan_in <= 0.0 and not ZombieMode.tsunami_active:
 					trigger()
 		Phase.WARNING:
 			_t -= delta

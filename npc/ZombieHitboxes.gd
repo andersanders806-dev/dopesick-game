@@ -37,7 +37,7 @@ const LAYOUT := {
 ## Builds the zombie's hitboxes under `skeleton`, which must already be in the
 ## tree (its scale is how metres turn into skeleton units). Returns part ->
 ## Area3D.
-static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
+static func build(skeleton: Skeleton3D, zombie: Node, grow := 1.0) -> Dictionary:
 	var out := {}
 	var unit := skeleton.global_transform.basis.get_scale().x
 	if unit <= 0.0:
@@ -64,7 +64,7 @@ static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
 		zones.add_child(area)
 		var shape := CollisionShape3D.new()
 		var cap := CapsuleShape3D.new()
-		var radius: float = spec[3] / unit
+		var radius: float = spec[3] * grow / unit
 		if part == "head":
 			# The skull starts at the head bone, so its round bottom doesn't swallow the neck.
 			a += Vector3.UP * radius

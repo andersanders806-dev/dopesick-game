@@ -1,6 +1,6 @@
 extends SceneTree
 ## Dev helper: the tsunami in a window -> .pilot/z4c_tsu_*.png (the broadcast banner and countdown, a Drowned close up,
-## the wave on the horizon at 0:20, the water seeping in, the wave hitting, the relief banner). One windowed Godot at a time.
+## the wave on the horizon at 0:20, the water seeping in, the wave hitting). With `-- cancel`: only the Drowned and the relief banner. One windowed Godot at a time.
 ##   flatpak run org.godotengine.Godot --path . -s res://dev-tools/capture_tsunami.gd
 var out := ""
 var p: Node3D
@@ -31,11 +31,11 @@ func _initialize() -> void:
 	ts.start()
 	await _wait(40)
 	await _snap("banner")
-	await _wait(400)
+	await _wait(150 if "cancel" in OS.get_cmdline_user_args() else 400)
 	await _snap("countdown")
 	# 2. a Drowned close up
 	var d = ts.drowned[0]
-	await _wait(200)
+	await _wait(150 if "cancel" in OS.get_cmdline_user_args() else 200)
 	d.state = d.State.CHASE
 	d.global_position = Vector3(30.0, 0.0, -0.3)
 	d._model_root.position.y = 0.0
@@ -56,6 +56,15 @@ func _initialize() -> void:
 	_stand(Vector3(45.0, 0.0, -0.3), PI / 2.0 + 0.1, 0.1)
 	await _wait(30)
 	await _snap("drowned_nohelmet")
+	if "cancel" in OS.get_cmdline_user_args():
+		# the relief: both down
+		d.take_hit("torso", 1.0e9, Vector3.LEFT)
+		ts.drowned[1].take_hit("torso", 1.0e9, Vector3.LEFT)
+		for t in [20, 60, 120]:
+			await _wait(20)
+			await _snap("cancel_%d" % t)
+		quit()
+		return
 	d.global_position = Vector3(500, -50, 500)
 	ts.drowned[1].global_position = Vector3(500, -50, 500)
 	ts.drowned[1].set_physics_process(false)

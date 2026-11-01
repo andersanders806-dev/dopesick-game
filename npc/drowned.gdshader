@@ -129,7 +129,7 @@ void fragment() {
 	// Cloth: dirt in the folds, mould, and blood that has dried dark.
 	// Cloth soaked and sea-stained: the colour it had mostly washed out to a green-grey.
 	vec3 washed = vec3(luma) * vec3(0.5, 0.78, 0.74) + vec3(0.0, 0.025, 0.02);
-	vec3 grime = mix(c * vec3(0.6, 0.8, 0.8), washed, 0.8) * mix(1.0, 0.45 + n_lo * 0.4, rot);
+	vec3 grime = mix(c * vec3(0.5, 0.75, 0.75), washed, 0.94) * mix(1.0, 0.45 + n_lo * 0.4, rot);
 	float stain = smoothstep(0.62, 0.72, n_mid * 0.7 + n_lo * 0.5) * rot;
 	grime = mix(grime, vec3(0.03, 0.09, 0.06), stain * 0.85);
 	vec3 col = mix(grime, skin_out, skin);

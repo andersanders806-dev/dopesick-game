@@ -350,6 +350,7 @@ func _build_drips() -> void:
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 	dm.billboard_keep_scale = true
+	dm.albedo_texture = _dot_texture()
 	dm.albedo_color = Color(0.62, 0.8, 0.86, 0.75)
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	quad.material = dm
@@ -626,6 +627,24 @@ func _die(part: String, melee: bool, dir: Vector3) -> void:
 		if d < 25.0:
 			player.get("feel").add_trauma(0.4 * (1.0 - d / 25.0))
 
+static var _dot: Texture2D
+
+## A soft round dot for the splash (a plain quad would be a square).
+static func _dot_texture() -> Texture2D:
+	if _dot == null:
+		var g := GradientTexture2D.new()
+		var grad := Gradient.new()
+		grad.set_color(0, Color(1, 1, 1, 1))
+		grad.set_color(1, Color(1, 1, 1, 0))
+		g.gradient = grad
+		g.fill = GradientTexture2D.FILL_RADIAL
+		g.fill_from = Vector2(0.5, 0.5)
+		g.fill_to = Vector2(1.0, 0.5)
+		g.width = 32
+		g.height = 32
+		_dot = g
+	return _dot
+
 ## Collapsing, it lets go of the sea in it: a heavy splash and a pool.
 func _death_splash() -> void:
 	var p := CPUParticles3D.new()
@@ -641,10 +660,11 @@ func _death_splash() -> void:
 	p.initial_velocity_max = 5.0
 	p.gravity = Vector3(0, -10.0, 0)
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.09, 0.09)
+	quad.size = Vector2(0.16, 0.16)
 	var dm := StandardMaterial3D.new()
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.albedo_texture = _dot_texture()
 	dm.albedo_color = Color(0.6, 0.8, 0.85, 0.8)
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	quad.material = dm

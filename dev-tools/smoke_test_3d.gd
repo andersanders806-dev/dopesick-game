@@ -9404,6 +9404,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	spawner.enabled = false
 	spawner.adaptive = false
 	surge.enabled = true
+	block.tsunami.auto = false
 	for old_z in get_nodes_in_group("zombies"):
 		old_z.free()
 	_check(spawner.GAP_BASE <= 1.2 and spawner.GAP_MIN <= 0.25, "  spawn gaps are shorter (%.2f s base, %.2f s min)" % [spawner.GAP_BASE, spawner.GAP_MIN])
@@ -9558,6 +9559,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	spawner.round_no = 0
 	spawner.enabled = true
 	surge.enabled = true
+	block.tsunami.auto = false
 	surge.time_scale = 0.02
 	zm.round = 4
 	var log := []

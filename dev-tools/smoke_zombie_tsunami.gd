@@ -43,28 +43,38 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	var master := AudioServer.get_bus_index("Master")
 	var base_fx := AudioServer.get_bus_effect_count(master)
 
-	# --- Starts after the surge: the first quake always, later ones by chance ---
+	# --- Starts AT the quake: the first always, later ones by chance ---
 	var block := await _tsunami_block()
 	var ts: Node = block.tsunami
 	var player := _player()
 	_check(ts != null and ts.phase == ts.Phase.IDLE and not zm.tsunami_active, "  the block has a tsunami director, idle")
-	ts.start_delay = 0.2
 	ts.later_chance = 0.0
 	zm.surge_ended.emit()
-	_check(ts.phase == ts.Phase.IDLE, "  not at once: the quake has to fade first")
-	await _wait_secs(0.6)
-	_check(ts.phase == ts.Phase.COUNTDOWN and zm.tsunami_active, "  the first quake always brings it")
-	_check(ts.duration == 120.0 and ts.remaining > 118.5 and ts.remaining <= 120.0, "  the countdown starts at 120 s (%.2f)" % ts.remaining)
+	await _frames(3)
+	_check(ts.phase == ts.Phase.IDLE, "  the quake's end does not start it")
+	zm.surge_started.emit()
+	await _frames(3)
+	_check(ts.phase == ts.Phase.COUNTDOWN and zm.tsunami_active, "  the first quake brings it, as it hits")
+	_check(ts.duration == 120.0 and ts.remaining > 119.0 and ts.remaining <= 120.0, "  the countdown starts at 120 s (%.2f)" % ts.remaining)
+	_check(ts.drowned.size() == 2, "  the Drowned come up as it hits")
 	_check(ts.hud.time_text == "2:00" or ts.hud.time_text == "1:59", "  the HUD shows it (%s)" % ts.hud.time_text)
 	_check(ts.hud.needed == 2 and ts.hud.tracker_label.text.begins_with("DROWNED  0 / 2"), "  DROWNED 0 / 2 (%s)" % ts.hud.tracker_label.text)
+	_check(ts.hud.banner.position.y < -200.0, "  the broadcast card waits (the RICHTER readout is not covered)")
+	_check(not ts.warned and ts.remaining == 120.0 and not ts.hud.shown, "  the clock waits, still 2:00, until the warning is given")
+	_check(await _wait_until(func(): return ts.warned, 5.0), "  the warning comes a few seconds after the quake (%.1f s)" % ts.INTRO)
+	_check(absf(ts.remaining - 120.0) < 0.2 and ts.hud.shown and ts.hud.time_text == "2:00", "  and it reads 2:00 when it appears (%.2f, %s)" % [ts.remaining, ts.hud.time_text])
+	await _wait_secs(1.2)
+	_check(ts.hud.banner.position.y > -60.0, "  and slides in a few seconds after the quake started (y %.0f)" % ts.hud.banner.position.y)
+	var seismo_left: float = ts.hud.get_viewport().get_visible_rect().size.x - 358.0
+	_check(ts.hud.banner.position.x + ts.hud.banner.size.x <= seismo_left + 0.5, "  and stays left of the seismograph (right edge %.0f of %.0f)" % [ts.hud.banner.position.x + ts.hud.banner.size.x, seismo_left])
 	ts._finish()
 	_check(ts.phase == ts.Phase.IDLE and not zm.tsunami_active, "  finished: idle again")
-	zm.surge_ended.emit()
-	await _wait_secs(0.6)
+	zm.surge_started.emit()
+	await _frames(3)
 	_check(ts.phase == ts.Phase.IDLE, "  the second quake (chance 0) brings none")
 	ts.later_chance = 1.0
-	zm.surge_ended.emit()
-	await _wait_secs(0.6)
+	zm.surge_started.emit()
+	await _frames(3)
 	_check(ts.phase == ts.Phase.COUNTDOWN, "  the third (chance 1) does")
 	ts._finish()
 
@@ -84,42 +94,63 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	_check(a.length() >= 14.0 and b.length() >= 14.0, "  both far from the player (%.0f m, %.0f m)" % [a.length(), b.length()])
 	_check(ang >= 60.0 and d[0].global_position.distance_to(d[1].global_position) > 25.0, "  on different sides: %.0f degrees apart, %.0f m between" % [ang, d[0].global_position.distance_to(d[1].global_position)])
 	_check(d[0].side == "sea" and d[1].side == "inland", "  one on the sea side, one inland")
-	_check(absf(d[0].max_health - health0 * 25.0) < 1.0, "  25 times the health of a normal zombie (%.0f vs %.0f)" % [d[0].max_health, health0])
+	_check(absf(d[0].max_health - health0 * 3.0) < 1.0, "  3 times the health of a normal zombie (%.0f vs %.0f)" % [d[0].max_health, health0])
 	_check(d[0].is_inside_tree() and d[0].entrance == "rise", "  they rise out of the ground")
 	await _wait_secs(3.6)
 	var head_y: float = (d[0]._skeleton.global_transform * d[0]._skeleton.get_bone_global_pose(d[0]._skeleton.find_bone("Bip01 Head")).origin).y
 	_check(head_y > 1.9 and head_y < 2.6, "  about 2.2 m tall (head bone at %.2f m)" % head_y)
 	_check(not d[0].hitboxes.is_empty() and d[0].hitboxes["head"].get_child_count() > 0, "  hit zones, scaled with the body")
-	_check(ts.remaining < 117.0, "  the clock runs (%.1f)" % ts.remaining)
+	_check(ts.remaining < 119.9 and ts.remaining > 110.0, "  the clock runs (%.1f)" % ts.remaining)
 	_check(absf(ts.hud.targets.size() - 2.0) < 0.1 and ts.dread > 0.0 and ts.dread < 0.1, "  the HUD tracks both, the dread has begun (%.3f)" % ts.dread)
 
-	# --- Head armour, stagger ---
+	# --- Easy to kill: helmet, stagger, a head shot stops a charge ---
 	var z: Node = d[1]
+	var mh: float = z.max_health
 	var h0: float = z.health
-	z.take_hit("head", 100.0, Vector3.FORWARD)
-	_check(absf((h0 - z.health) - 50.0) < 0.5 and z.helmet_on, "  a headshot does half while the helmet holds (%.1f)" % (h0 - z.health))
+	z.take_hit("head", 10.0, Vector3.FORWARD)
+	_check(absf((h0 - z.health) - 10.0) < 0.5 and z.helmet_on, "  a headshot does its full damage, the helmet holding for now (%.1f)" % (h0 - z.health))
 	h0 = z.health
-	z.take_hit("torso", 100.0, Vector3.FORWARD)
-	_check(absf((h0 - z.health) - 100.0) < 0.5, "  the body takes it all")
+	z.take_hit("torso", 20.0, Vector3.FORWARD)
+	_check(absf((h0 - z.health) - 20.0) < 0.5, "  the body takes it all")
 	var broke := [false]
 	z.helmet_broke.connect(func(_x): broke[0] = true)
-	var shots := 0
-	while z.helmet_on and shots < 400:
-		z.take_hit("head", 100.0, Vector3.FORWARD)
+	var shots := 1
+	while z.helmet_on and shots < 20:
+		z.take_hit("head", 10.0, Vector3.FORWARD)
 		shots += 1
-	_check(broke[0] and not z.helmet_on and not z._helmet_node.visible, "  the helmet breaks off after %d headshots (%.0f hp of shell)" % [shots, z.helmet_max])
+	_check(broke[0] and not z.helmet_on and not z._helmet_node.visible and shots <= 3, "  the helmet breaks off after %d head hits" % shots)
 	h0 = z.health
-	z.take_hit("head", 100.0, Vector3.FORWARD)
-	_check(absf((h0 - z.health) - 100.0) < 0.5, "  then headshots count in full")
-	z._stagger = 0.0
-	z.take_hit("torso", 30.0, Vector3.FORWARD)
-	var small_stagger: float = z._stagger
-	z._stagger = 0.0
+	z.take_hit("head", 10.0, Vector3.FORWARD)
+	_check(absf((h0 - z.health) - 10.0) < 0.5, "  and headshots stay at full damage")
+	z.health = mh
 	z.state = z.State.CHASE
 	z.charge = z.Charge.NONE
-	z.take_hit("torso", 300.0, Vector3.FORWARD)
-	_check(small_stagger == 0.0 and z._stagger > 0.0, "  only a heavy hit staggers it (%.2f vs %.2f)" % [small_stagger, z._stagger])
-	_check(z.is_alive() and z.health > 0.0, "  and it is a long way from dead")
+	z._stagger = 0.0
+	z.take_hit("torso", mh * 0.04, Vector3.FORWARD)
+	var small_stagger: float = z._stagger
+	z._stagger = 0.0
+	z._burst = 0.0
+	z.take_hit("torso", mh * 0.1, Vector3.FORWARD)
+	var heavy_stagger: float = z._stagger
+	_check(small_stagger == 0.0 and heavy_stagger > 0.0, "  one heavy hit staggers it (%.2f vs %.2f)" % [small_stagger, heavy_stagger])
+	z._stagger = 0.0
+	z._burst = 0.0
+	z._burst_t = 0.0
+	for i in 3:
+		z.take_hit("torso", mh * 0.045, Vector3.FORWARD)
+	_check(z._stagger > 0.0, "  so do three quick hits (%.2f)" % z._stagger)
+	z.health = mh
+	# a head hit in the middle of a charge stops it
+	z._stagger = 0.0
+	z.state = z.State.CHASE
+	z._start_windup(Vector3.FORWARD)
+	_check(z.charge == z.Charge.WINDUP, "  a charge starts with a roar and a stomp (windup %.1f s)" % z.WINDUP)
+	z.take_hit("head", 5.0, Vector3.FORWARD)
+	_check(z.charge == z.Charge.RECOVER and z.interrupted == 1, "  a bullet to the head stops it")
+	z.charge = z.Charge.NONE
+	z._stagger = 0.0
+	z.health = mh
+	_check(z.is_alive() and z.health > 0.0, "  and it is alive")
 	z.health = z.max_health
 
 	# --- The charge: a roar, a run in a line, a throw ---
@@ -228,6 +259,119 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	_check(AudioServer.get_bus_effect_count(master) == base_fx, "  no leftover audio filter")
 	_check(ts.hud.cancel_banner.modulate.a >= 0.0 and not ts.hud.timer_label.visible, "  the HUD cleared")
 
+	# --- The high ground: a stair up to the overpass deck, a safe zone, a beacon, a marker ---
+	var hg: Node3D = block.high_ground
+	_check(hg != null and hg.zone_center().y > 11.0 and not hg.lit, "  the block has a high ground (the overpass deck at %.1f m), its beacon dark" % hg.DECK_Y)
+	var nav_map: RID = block.city.get_world_3d().navigation_map
+	NavigationServer3D.map_force_update(nav_map)
+	var route: PackedVector3Array = NavigationServer3D.map_get_path(nav_map, Vector3(10.0, 0.3, 1.5), hg.zone_center() + Vector3(0, 0.3, 0), true)
+	var route_len := 0.0
+	for i in range(1, route.size()):
+		route_len += route[i].distance_to(route[i - 1])
+	_check(route.size() > 5 and route[route.size() - 1].y > 11.0 and route[route.size() - 1].distance_to(hg.zone_center() + Vector3(0, 0.3, 0)) < 3.0, "  the zone is reachable on the navmesh from Main Street (%d points, %.0f m)" % [route.size(), route_len])
+	var far: PackedVector3Array = NavigationServer3D.map_get_path(nav_map, Vector3(-60.0, 0.3, -3.0), hg.zone_center() + Vector3(0, 0.3, 0), true)
+	var far_len := 0.0
+	for i in range(1, far.size()):
+		far_len += far[i].distance_to(far[i - 1])
+	_check(far.size() > 5 and far_len > 100.0 and far_len < 260.0, "  from the far west end it is %.0f m, about %.0f s at a run" % [far_len, far_len / (player.BASE_SPEED * player.SPRINT_MULT)])
+	player.global_position = Vector3(46.0, 0.0, -29.5)
+	await _frames(4)
+	_check(absf(player.global_position.y - hg.height_at_x(46.0)) < 0.05 and not hg.is_up(player), "  on the stair the player is lifted along it (y %.2f of %.2f)" % [player.global_position.y, hg.height_at_x(46.0)])
+	player.global_position = Vector3(55.8, player.global_position.y, -29.5)
+	await _frames(3)
+	player.global_position = Vector3(60.0, player.global_position.y, -29.5)
+	await _frames(3)
+	_check(hg.is_up(player) and absf(player.global_position.y - hg.DECK_Y) < 0.05 and hg.zone_contains(player.global_position), "  walking off the top puts it on the deck, in the zone (y %.2f)" % player.global_position.y)
+	player.global_position = Vector3(60.0, player.global_position.y, -48.0)
+	await _frames(3)
+	_check(not hg.zone_contains(player.global_position), "  and past the barrier is not")
+	hg.put_up(player, hg.zone_center())
+	player.velocity = Vector3.ZERO
+	# a runner at the foot of the stair follows up it; one under the deck cannot claw through it
+	block.spawner.enabled = false
+	var chaser: Node = block.spawner.spawn_one("runner", Vector3(38.5, 0.0, -26.0))
+	var under: Node = block.spawner.spawn_one("walker", Vector3(61.0, 0.0, -29.0))
+	var hp_before: float = zm.health
+	var climbed := await _wait_until(func(): return is_instance_valid(chaser) and chaser.global_position.y > 8.0, 25.0)
+	_check(climbed, "  the dead follow you up the stair (y %.1f)" % (chaser.global_position.y if is_instance_valid(chaser) else -1.0))
+	_check(zm.health >= hp_before - 0.1 or (is_instance_valid(chaser) and chaser.global_position.y > 8.0), "  the one under the deck did not claw through it (health %.0f)" % zm.health)
+	for zz in get_nodes_in_group("zombies"):
+		zz.queue_free()
+	await _frames(3)
+	zm.health = zm.MAX_HEALTH
+
+	# on the deck at 0:00: the wave passes below, the street's dead are swept, play goes on
+	hg.put_up(player, hg.zone_center())
+	var street_dead: Array = []
+	for i in 3:
+		street_dead.append(block.spawner.spawn_one("walker", Vector3(40.0 + i * 3.0, 0.0, -45.0)))
+	var roof_dead: Node = block.spawner.spawn_one("walker", Vector3(0, 0, 0))
+	hg.put_up(roof_dead, hg.zone_center() + Vector3(2.0, 0, 3.0))
+	roof_dead.set_physics_process(false)
+	var pts_before: int = zm.points
+	ts.flood_hold = 1.0
+	ts.flood_recede = 1.5
+	ts.start(30.0)
+	_check(not hg.lit and not ts.hud.safe_marker, "  no beacon or marker before the warning is given")
+	await _wait_until(func(): return ts.warned, 6.0)
+	await _frames(4)
+	_check(hg.lit and ts.hud.safe_marker, "  the beacon is lit and the HIGH GROUND marker is on the HUD")
+	var marker_before: Vector3 = ts.hud.safe_at
+	_check(marker_before.y > 12.0, "  pointing at the beacon (%.0f m up)" % marker_before.y)
+	for dd in ts.drowned:
+		dd.global_position = Vector3(500, -50, 500)
+		dd.set_physics_process(false)
+	ts.skip_to(0.3)
+	await _wait_until(func(): return ts.phase == ts.Phase.WAVE, 3.0)
+	_check(ts.survive and ts.phase == ts.Phase.WAVE, "  in the zone at 0:00: it is a wave to live through")
+	await _wait_until(func(): return ts.fired.has("impact"), 5.0)
+	await _frames(4)
+	var all_swept := true
+	for sd in street_dead:
+		all_swept = all_swept and (not is_instance_valid(sd) or not sd.is_alive())
+	_check(all_swept and ts.swept >= 3, "  the street's dead are swept away (%d)" % ts.swept)
+	_check(is_instance_valid(roof_dead) and roof_dead.is_alive(), "  the one up on the deck is not")
+	_check(not zm.over and zm.points - pts_before >= 500 and zm.points - pts_before < 700, "  alive, and a small bonus (+%d)" % (zm.points - pts_before))
+	await _wait_secs(1.5)
+	_check(ts.water_level > 3.0 and ts._water.visible, "  the water stands in the street (%.1f m)" % ts.water_level)
+	_check(zm.surge_busy, "  the horde waits while it does")
+	var ended := await _wait_until(func(): return ts.phase == ts.Phase.IDLE, 10.0)
+	_check(ended and not ts._water.visible and not zm.surge_busy and not zm.over and zm.active, "  the water goes and play goes on")
+	_check(not hg.lit and not zm.tsunami_active and ts.survived == 1, "  the beacon is out")
+	if is_instance_valid(roof_dead):
+		roof_dead.queue_free()
+	hg.up.clear()
+	player.global_position = Vector3(-17.5, 0.0, -3.0)
+	await _frames(3)
+
+	# 120 s (here: the duration given) pass between the warning being shown and the wave
+	hg.up.clear()
+	hg.put_up(player, hg.zone_center())
+	ts.flood_hold = 0.5
+	ts.flood_recede = 0.5
+	ts.start(4.0)
+	await _frames(2)
+	for dd in ts.drowned:
+		dd.global_position = Vector3(500, -50, 500)
+		dd.set_physics_process(false)
+	var t_warn := -1
+	var t_wave := -1
+	var t0w := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0w < 14000:
+		if ts.warned and t_warn < 0:
+			t_warn = Time.get_ticks_msec()
+		if ts.phase == ts.Phase.WAVE:
+			t_wave = Time.get_ticks_msec()
+			break
+		await process_frame
+	var gap := float(t_wave - t_warn) / 1000.0
+	_check(t_warn > 0 and t_wave > 0 and absf(gap - 4.0) < 0.6, "  the wave arrives exactly the countdown after the warning is shown (%.2f s for a 4 s clock)" % gap)
+	_check(ts.DURATION == 120.0 and ts.INTRO > 2.0 and ts.INTRO < 5.0, "  the real clock is 120 s, the warning %.1f s after the quake" % ts.INTRO)
+	await _wait_until(func(): return ts.phase == ts.Phase.IDLE, 12.0)
+	hg.up.clear()
+	player.global_position = Vector3(-17.5, 0.0, -3.0)
+	await _frames(3)
+
 	# --- The zombie round keeps going; the surge waits for the tsunami ---
 	block.spawner.enabled = true
 	block.surge.enabled = true
@@ -252,7 +396,7 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	var yaw0: float = float(player.get("_look_yaw"))
 	var points_fail: int = zm.points
 	await _wait_until(func(): return ts.phase == ts.Phase.WAVE, 3.0)
-	_check(ts.phase == ts.Phase.WAVE and ts.waves_hit == 1, "  at 0:00 the wave hits")
+	_check(ts.phase == ts.Phase.WAVE and ts.waves_hit == 3 and not ts.survive, "  at 0:00 outside the zone the wave hits")
 	var d_early: float = ts.wave_dist
 	await _wait_secs(1.0)
 	_check(ts.wave_dist < d_early and ts.wave.visible, "  it rushes down the street (%.0f m -> %.0f m)" % [d_early, ts.wave_dist])

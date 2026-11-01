@@ -390,14 +390,18 @@ func _chase(delta: float) -> Vector3:
 		anim.update(0.0)
 		return Vector3.ZERO
 	var to := target.global_position - global_position
+	var height_gap := absf(to.y)
 	to.y = 0.0
 	var dist := to.length()
+	# Not on its level (the player up on the high ground): no clawing through the floor, it has to find the way.
+	if height_gap > 2.4:
+		dist = maxf(dist, 99.0)
 	if dist < ATTACK_RANGE and _attack_cooldown <= 0.0 and _stagger <= 0.0:
 		_begin_attack(to)
 		return Vector3.ZERO
 	if _stagger > 0.0:
 		return Vector3.ZERO
-	var dir := to.normalized()
+	var dir := to.normalized() if to.length() > 0.001 else Vector3.FORWARD
 	_holding = false
 	# Near the target it takes a slot on the ring round it and goes to that.
 	var slot_goal := _slot_goal(dist, delta)

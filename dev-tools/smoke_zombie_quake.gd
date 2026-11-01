@@ -38,6 +38,7 @@ func _zombie_quake_checks(_gs_node: Node) -> void:
 	var q = block.quake
 	_check(q != null and q.is_inside_tree(), "  the block adds a Quake")
 	q.auto = false
+	block.tsunami.auto = false
 	block.set_process(false)
 	var holder: Node = player.get_node("WeaponHolder")
 	holder.set_process(false)

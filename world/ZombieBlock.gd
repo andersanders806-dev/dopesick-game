@@ -19,6 +19,7 @@ const BarricadeScript := preload("res://world/Barricade.gd")
 const SpawnerScript := preload("res://npc/ZombieSpawner.gd")
 const SurgeScript := preload("res://npc/ZombieSurge.gd")
 const TsunamiScript := preload("res://fx/Tsunami.gd")
+const HighGroundScript := preload("res://world/HighGround.gd")
 const QuakeScript := preload("res://fx/Quake.gd")
 ## The block's navmesh as zombies need it: with the buildings' masses and the
 ## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
@@ -125,6 +126,8 @@ var _flickering: Array = []
 var quake
 ## fx/Tsunami.gd: the countdown that can follow a surge (two Drowned to kill, or the wave).
 var tsunami
+## world/HighGround.gd: the overpass deck with its stair and safe zone (what survives the wave).
+var high_ground
 ## How many streetlights stutter (the smoke test reads it).
 var flicker_count: int:
 	get: return _flickering.size()
@@ -156,9 +159,13 @@ func setup(block: Node3D) -> void:
 	surge = SurgeScript.new()
 	surge.spawner = spawner
 	add_child(surge)
+	high_ground = HighGroundScript.new()
+	high_ground.city = city
+	add_child(high_ground)
 	tsunami = TsunamiScript.new()
 	tsunami.city = city
 	tsunami.spawner = spawner
+	tsunami.high = high_ground
 	add_child(tsunami)
 	_arm_player()
 	_build_purchases()

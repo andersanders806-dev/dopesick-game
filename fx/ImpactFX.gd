@@ -322,6 +322,25 @@ func voices_busy() -> int:
 			n += 1
 	return n
 
+## The pools as new, nothing shown or counted (fx/Prewarm.gd draws every one of them once, then calls this).
+func reset() -> void:
+	for d in _decals:
+		d.visible = false
+	_decal_next = 0
+	for pool in [_sparks, _dust, _blood, _mist, _smoke, _gore_drops, _gore_mist]:
+		for p: CPUParticles3D in pool:
+			p.emitting = false
+	for v in _voices:
+		v.stop()
+	for e in _numbers:
+		(e[0] as Label3D).visible = false
+		e[1] = 99.0
+	_used.clear()
+	for k in _next:
+		_next[k] = 0
+	impacts = 0
+	puffs = 0
+
 func decals_shown() -> int:
 	var n := 0
 	for d in _decals:

@@ -226,6 +226,8 @@ func _measure_sights(f: String) -> void:
 	var front := Vector3(0.0, b.end.y, z0)
 	var rear := Vector3(0.0, b.end.y, b.end.z)
 	var measured := false
+	# The answer, found or fallen back to, is kept for the gun (the AR's rail has no vertex on its centreline
+	# and was measured again, 300 to 400 ms, on every swap to it).
 	if _sight_cache.has(key):
 		var c: Array = _sight_cache[key]
 		front = c[0]
@@ -251,6 +253,7 @@ func _measure_sights(f: String) -> void:
 	if not measured or front.y < -1e8 or rear.y < -1e8:
 		front = Vector3(0.0, b.end.y - 0.004, z0)
 		rear = Vector3(0.0, b.end.y - 0.004, b.end.z - len * 0.25)
+		_sight_cache[key] = [front, rear]
 	has_optic = cfg[5]
 	var relief: float = cfg[4]
 	if has_optic:
@@ -286,8 +289,7 @@ func _gun_verts() -> PackedVector3Array:
 			var arr := m.mesh.surface_get_arrays(sidx)
 			if arr.is_empty() or arr[Mesh.ARRAY_VERTEX] == null:
 				continue
-			for v in (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array):
-				out.append(xf * v)
+			out.append_array(xf * (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array))
 	return out
 
 ## The highest vertex near the gun's centreline with z between the two, as (x, y, z).
@@ -319,7 +321,7 @@ func _build_optic(at: Vector3) -> void:
 	optic.name = "RedDot"
 	optic.position = Vector3(0.0, at.y, at.z)
 	add_child(optic)
-	var ps := load(OPTIC_MODEL) as PackedScene
+	var ps := GunModel.scene(OPTIC_MODEL)
 	if ps != null:
 		var model := ps.instantiate() as Node3D
 		model.name = "Model"

@@ -214,6 +214,25 @@ func crack(pos: Vector3, size := 2.0) -> void:
 	d.visible = true
 	cracks_made += 1
 
+## The pools as new, nothing shown or counted (fx/Prewarm.gd draws every one of them once, then calls this).
+func reset() -> void:
+	for d in _cracks:
+		d.visible = false
+	_crack_next = 0
+	for pool in [_dirt, _dust, _glass]:
+		for p: CPUParticles3D in pool:
+			p.emitting = false
+	for v in _voices:
+		v.stop()
+	_used.clear()
+	for k in _next:
+		_next[k] = 0
+	bursts = 0
+	landings = 0
+	smashes = 0
+	cracks_made = 0
+	lids_thrown = 0
+
 func visible_cracks() -> int:
 	var n := 0
 	for d in _cracks:

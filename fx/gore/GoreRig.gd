@@ -170,7 +170,8 @@ static func table(z: Node) -> Array:
 			# Mesh space -> the skeleton's rest pose (the bind pose carries the model's unit scale).
 			rest[i] = bx * verts[i]
 			nrm[i] = (bx.basis.orthonormalized() * src_n[i]).normalized() if src_n.size() > i else Vector3.UP
-		out.append({"rest": rest, "uv": uvs, "dom": dom, "nrm": nrm})
+		# (The triangle list too: reading it back from the renderer for every limb stalled a frame.)
+		out.append({"rest": rest, "uv": uvs, "dom": dom, "nrm": nrm, "idx": a[Mesh.ARRAY_INDEX]})
 	_tables[body] = out
 	return out
 
@@ -193,8 +194,7 @@ static func limb(z: Node, name_: String) -> Dictionary:
 	var hi := Vector3(-INF, -INF, -INF)
 	var picks := []
 	for s in tab.size():
-		var a := inst.mesh.surface_get_arrays(s)
-		var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+		var idx: PackedInt32Array = tab[s]["idx"]
 		var dom: PackedInt32Array = tab[s]["dom"]
 		var tris := PackedInt32Array()
 		var i := 0
@@ -220,7 +220,6 @@ static func limb(z: Node, name_: String) -> Dictionary:
 		var tris: PackedInt32Array = picks[s]
 		if tris.is_empty():
 			continue
-		var a := inst.mesh.surface_get_arrays(s)
 		var src_v: PackedVector3Array = tab[s]["rest"]
 		var src_n: PackedVector3Array = tab[s]["nrm"]
 		var src_uv: PackedVector2Array = tab[s]["uv"]
@@ -262,6 +261,22 @@ static func limb(z: Node, name_: String) -> Dictionary:
 		"cut": cut_rest - centre, "bone": cut_bone, "triangles": count / 3, "radius": radius}
 	_limb_cache[key] = out
 	return out
+
+## One piece of the per-body work that a first wound or sever would otherwise do in one go (the skin's
+## vertex table, then each limb's gib: 6 ms apiece, 70 ms together), a step at a time. True once the
+## body has all of it.
+static func warm_step(z: Node) -> bool:
+	var body: String = String(z.get_meta("body", ""))
+	if z._skeleton == null or body_mesh(z._skeleton) == null:
+		return true
+	if not _tables.has(body):
+		table(z)
+		return false
+	for name_ in LIMBS:
+		if not _limb_cache.has(body + "/" + name_):
+			limb(z, name_)
+			return false
+	return true
 
 ## Where on the skin a hit landed, as (u, v, surface): the vertex nearest the point
 ## (skeleton space, in the pose it has now) among those the part's bones carry.

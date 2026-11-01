@@ -55,6 +55,7 @@ var _fountains: Array = []
 var _bleeders: Array = []
 var _used := {}
 var _frame := -1
+var _warming: Array = []
 
 static func of(node: Node) -> Node3D:
 	var tree := node.get_tree()
@@ -113,6 +114,39 @@ func _ready() -> void:
 	add_child(screen)
 	ragdolls = Ragdolls.new()
 	add_child(ragdolls)
+
+## Gives the decals their pictures now (four kinds round the pool), so the decal atlas holds every
+## texture from the start: a picture first set in the middle of a fight rebuilds the atlas then.
+func warm_textures() -> void:
+	var keys := ["splatter_01", "splatter_02", "spray_01", "spray_02"]
+	for i in _decals.size():
+		var k: String = keys[i % keys.size()]
+		_decals[i].texture_albedo = _textures[k]
+		_decals[i].texture_emission = _textures[k + "_em"]
+
+## The pools as new, nothing shown or counted (fx/Prewarm.gd draws every one of them once, then calls this).
+func reset() -> void:
+	for d in _decals:
+		d.visible = false
+	_decal_next = 0
+	for e in _pools:
+		(e["decal"] as Decal).visible = false
+		e["t"] = 99.0
+		e["z"] = null
+	_pool_next = 0
+	for f in _fountains:
+		(f["p"] as CPUParticles3D).emitting = false
+		f["t"] = 99.0
+		f["z"] = null
+	_bleeders.clear()
+	_used.clear()
+	_warming.clear()
+	gibs.clear()
+	screen.clear()
+	ragdolls.reset()
+	severs = 0
+	heads_popped = 0
+	wounds = 0
 
 ## Roughness map for blood on the ground: smooth and wet, so it catches the street light.
 static func wet_texture() -> Texture2D:
@@ -484,7 +518,22 @@ func fountains_active() -> int:
 func bleeders() -> int:
 	return _bleeders.size()
 
+## A zombie came out: its body's tables and limb gibs are built a step a frame, so that the first wound
+## or sever of that body does not (see GoreRig.warm_step).
+func warm_body(z: Node) -> void:
+	if not is_instance_valid(z) or not ZombieMode.gore_enabled:
+		return
+	var body: String = String(z.get_meta("body", ""))
+	for w in _warming:
+		if is_instance_valid(w) and String(w.get_meta("body", "")) == body:
+			return
+	_warming.append(z)
+
 func _process(delta: float) -> void:
+	if not _warming.is_empty():
+		var w = _warming[0]
+		if not is_instance_valid(w) or GoreRig.warm_step(w):
+			_warming.pop_front()
 	for e in _pools:
 		if e["t"] < POOL_TIME:
 			e["t"] += delta

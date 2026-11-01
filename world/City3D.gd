@@ -278,6 +278,10 @@ func _ready() -> void:
 		block.name = "ZombieBlock"
 		add_child(block)
 		block.setup(self)
+		# The gore, the impacts, every gun, the quake and the tsunami drawn once behind the black.
+		var warm: Node = preload("res://fx/Prewarm.gd").new()
+		block.add_child(warm)
+		warm.start(block)
 		ready_ms = Time.get_ticks_msec() - t0
 		return
 	var scenes: Node3D = preload("res://world/StreetScenes.gd").new()
@@ -490,9 +494,15 @@ func _spawn_scheduled_people() -> void:
 ## Called by SceneLoader behind the black before it fades in: makes the people
 ## whose bodies are in (a few a frame); true once everybody is made. A cap on
 ## the wait leaves the stragglers to _process.
+func arrival_hold_msec() -> int:
+	# (The dead block's prewarm takes a couple of seconds; the people of the story street need 1.5 at most.)
+	return 5000 if zombie_mode else 1500
+
 func finish_arrival() -> bool:
 	if zombie_mode:
-		return true
+		# The dead block draws its gore, impacts and guns once behind the black (fx/Prewarm.gd).
+		var warm := get_node_or_null("ZombieBlock/Prewarm")
+		return warm == null or warm.critical_done
 	for i in 3:
 		if not people_pending.is_empty():
 			_build_next_person()

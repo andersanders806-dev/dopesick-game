@@ -774,6 +774,48 @@ func _muzzle_flash(d: WD) -> void:
 		_light.light_energy = rng.randf_range(2.8, 4.4)
 		_light.global_position = _muzzle_world() + camera.global_transform.basis * Vector3(0.0, 0.0, -0.25)
 
+## What the first shot makes (fx/Prewarm.gd): a tracer, a shell and the muzzle light, made now and handed
+## back as the pooled nodes to draw once at `at`, in the prewarm's entry format. unwarm() puts them away.
+func warm(at: Vector3) -> Array:
+	var out: Array = []
+	if camera == null or not is_inside_tree():
+		return out
+	_spawn_tracer(at, at + Vector3(0.0, 0.0, 3.0))
+	if _vm() != null:
+		_eject_shell(null)
+	if not is_instance_valid(_light):
+		_light = OmniLight3D.new()
+		_light.name = "MuzzleLight"
+		_light.omni_range = 4.0
+		_light.light_energy = 2.4
+		_light.light_color = Color(1.0, 0.68, 0.36)
+		_light.shadow_enabled = false
+		camera.add_child(_light)
+	# The light is on while the pools are drawn (a visible light changes how the street's materials are drawn).
+	_light.global_position = at + Vector3(0.0, 0.5, 0.0)
+	_light.visible = true
+	for t in _tracer_pool:
+		t["on"] = false
+		out.append(_warm_entry(t["node"]))
+	for s in _shell_pool:
+		s["on"] = false
+		out.append(_warm_entry(s["node"]))
+	return out
+
+func _warm_entry(n: Node3D) -> Dictionary:
+	n.visible = false
+	return {"n": n, "kind": "h", "vis": false, "xf": n.global_transform, "mode": n.process_mode}
+
+func unwarm() -> void:
+	if is_instance_valid(_light):
+		_light.visible = false
+	for t in _tracer_pool:
+		t["on"] = false
+		(t["node"] as Node3D).visible = false
+	for s in _shell_pool:
+		s["on"] = false
+		(s["node"] as Node3D).visible = false
+
 func _eject_shell(_d: WD) -> void:
 	var vm := _vm()
 	if vm == null or camera == null:

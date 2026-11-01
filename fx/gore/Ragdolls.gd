@@ -48,6 +48,11 @@ func active() -> int:
 			n += 1
 	return n
 
+## Forgets every rig (the prewarm's dummy was freed with its bodies).
+func reset() -> void:
+	_rigs.clear()
+	started = 0
+
 func total() -> int:
 	return _rigs.size()
 

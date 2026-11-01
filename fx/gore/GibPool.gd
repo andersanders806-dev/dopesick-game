@@ -57,6 +57,17 @@ func _ready() -> void:
 		add_child(g.node)
 		_chunks.append(g)
 
+## Every gib put away, the counters at zero.
+func clear() -> void:
+	for g: Gib in _gibs + _chunks:
+		g.node.visible = false
+		g.resting = true
+		g.vel = Vector3.ZERO
+	spawned = 0
+	chunks_spawned = 0
+	_next = 0
+	_chunk_next = 0
+
 ## Throws a gib: `data` from GoreRig.limb(), carrying `materials` (per source surface) and the
 ## zombie's rot / seed; its world transform, a launch velocity and the ground height under it.
 func spawn(data: Dictionary, materials: Array, rot: float, seed_value: float, xf: Transform3D, vel: Vector3, ground: float, cap_mat: Material, cap_radius: float) -> Gib:

@@ -334,11 +334,20 @@ func _tick_sounds() -> void:
 
 # --- The Drowned --------------------------------------------------------------------------------------
 
+## true: the sites are picked in one frame and each Drowned is made in a frame of its own (each costs
+## 40 to 50 ms to build, and together they were one 150 ms frame). fx/Prewarm.gd turns it on; the tests
+## keep it all at once.
+var spread_spawn := false
+
 func _spawn_drowned() -> void:
 	drowned = []
 	var sites := _pick_sites(NEED)
 	var holder: Node = spawner.holder if spawner != null else city
 	for s in sites:
+		if spread_spawn:
+			await get_tree().process_frame
+			if not is_inside_tree() or phase != Phase.COUNTDOWN:
+				return
 		var z: CharacterBody3D = DrownedScript.new()
 		z.setup_drowned(maxi(ZombieMode.round, 1), rng)
 		z.position = s["pos"]
@@ -365,7 +374,7 @@ func _pick_sites(n: int) -> Array:
 	var cands: Array[Vector3] = []
 	for min_d in [38.0, 26.0, 14.0]:
 		if ent != null:
-			for i in 160:
+			for i in 48:
 				var p: Vector3 = ent._random_ground()
 				if p == Vector3.INF or not ent.is_clear(p):
 					continue

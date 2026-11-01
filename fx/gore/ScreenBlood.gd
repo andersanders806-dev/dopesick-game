@@ -71,6 +71,13 @@ func _process(delta: float) -> void:
 		r.position.y += delta * 14.0 * u
 		r.modulate.a = 0.95 * (1.0 - smoothstep(0.35, 1.0, u))
 
+## Wipes the lens.
+func clear() -> void:
+	for e in _items:
+		(e[0] as Control).visible = false
+		e[1] = 99.0
+	_next = 0
+
 func shown() -> int:
 	var n := 0
 	for e in _items:

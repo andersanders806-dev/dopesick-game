@@ -80,6 +80,8 @@ var needed := 2
 var targets: Array = []
 var wave_dir := Vector3.ZERO
 var wave_marker := false
+var safe_at := Vector3.ZERO
+var safe_marker := false
 var dread := 0.0
 var pulse := 0.0
 var shown := false
@@ -149,7 +151,7 @@ func _label(text: String, size: int, color: Color, parent: Node) -> Label:
 func _build_strip() -> void:
 	strip = Control.new()
 	strip.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	strip.offset_bottom = 34.0
+	strip.offset_bottom = 24.0
 	strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.clip_contents = true
 	add_child(strip)
@@ -158,8 +160,8 @@ func _build_strip() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	strip.add_child(bg)
-	strip_label = _label(STRIP_TEXT + STRIP_TEXT, 20, PAPER, strip)
-	strip_label.position = Vector2(0, 2)
+	strip_label = _label(STRIP_TEXT + STRIP_TEXT, 15, PAPER, strip)
+	strip_label.position = Vector2(0, -2)
 	var scan := _rect(SCAN)
 	remove_child(scan)
 	strip.add_child(scan)
@@ -168,6 +170,8 @@ func _build_strip() -> void:
 func _build_banner() -> void:
 	banner = Control.new()
 	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	# not over the seismograph (top right, 330 wide) while the quake is still on
+	banner.offset_right = -372.0
 	banner.offset_bottom = 190.0
 	banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(banner)
@@ -318,7 +322,7 @@ func _set_shown(on: bool) -> void:
 	markers.visible = on
 
 ## The warning card slides in, holds and goes; the strip, clock and tracker stay.
-func start(total_seconds: float, need: int) -> void:
+func start(total_seconds: float, need: int, banner_delay := 0.0) -> void:
 	total = total_seconds
 	remaining = total_seconds
 	needed = need
@@ -334,6 +338,8 @@ func start(total_seconds: float, need: int) -> void:
 		_banner_tween.kill()
 	banner.position.y = -260.0
 	_banner_tween = create_tween()
+	if banner_delay > 0.0:
+		_banner_tween.tween_interval(banner_delay)
 	_banner_tween.tween_property(banner, "position:y", 0.0, 0.45).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_banner_tween.tween_interval(6.0)
 	_banner_tween.tween_property(banner, "position:y", -260.0, 0.6).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -370,6 +376,11 @@ func set_hint(text: String) -> void:
 func set_targets(list: Array) -> void:
 	targets = list
 
+## The high ground's marker (a world point, shown while `on`).
+func set_safe(at: Vector3, on: bool) -> void:
+	safe_at = at
+	safe_marker = on
+
 func set_wave(dir: Vector3, on: bool) -> void:
 	wave_dir = dir
 	wave_marker = on
@@ -382,8 +393,8 @@ func flash(strength := 0.8) -> void:
 	pulse = maxf(pulse, strength)
 
 ## The relief card.
-func show_cancelled(bonus: int) -> void:
-	cancel_label.text = "TSUNAMI CANCELLED"
+func show_cancelled(bonus: int, title := "TSUNAMI CANCELLED") -> void:
+	cancel_label.text = title
 	bonus_label.text = "+%d" % bonus
 	timer_label.visible = false
 	tracker_label.visible = false
@@ -439,18 +450,23 @@ func _draw_markers() -> void:
 	for t in targets:
 		if not is_instance_valid(t) or not t.has_method("is_alive") or not t.is_alive():
 			continue
-		_mark(cam, rect, (t as Node3D).global_position + Vector3(0, 2.9, 0), "DROWNED", Color(1.0, 0.35, 0.28), t)
+		var warn := int(t.get("charge")) == 1
+		var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.025)
+		var col := Color(1.0, 0.9, 0.2).lerp(Color(1.0, 0.2, 0.1), flash) if warn else Color(1.0, 0.35, 0.28)
+		_mark(cam, rect, (t as Node3D).global_position + Vector3(0, 2.9, 0), "CHARGE!" if warn else "DROWNED", col, t)
+	if safe_marker:
+		_mark(cam, rect, safe_at, "HIGH GROUND", Color(0.45, 1.0, 0.55), null, true)
 	if wave_marker and wave_dir != Vector3.ZERO:
 		var far := cam.global_position + wave_dir * 400.0 + Vector3(0, 30.0, 0)
 		_mark(cam, rect, far, "WAVE", SEA, null)
 
-func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color, who: Node) -> void:
+func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color, who: Node, show_dist := false) -> void:
 	var local := cam.global_transform.affine_inverse() * at
 	var dist := cam.global_position.distance_to(at)
 	var margin := 64.0
 	var sp := cam.unproject_position(at) if local.z < 0.0 else Vector2(-9999, -9999)
 	var inside := rect.grow(-margin).has_point(sp)
-	var meters := "%dm" % int(dist) if who != null else ""
+	var meters := "%dm" % int(dist) if (who != null or show_dist) else ""
 	if inside:
 		var p := Vector2(sp.x, maxf(sp.y - 26.0, 232.0))
 		var s := clampf(1.3 - dist / 70.0, 0.75, 1.3)
@@ -464,7 +480,7 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 			markers.draw_rect(Rect2(bar.position, Vector2(bar.size.x * ratio, bar.size.y)), color)
 			if bool(who.get("helmet_on")):
 				markers.draw_rect(Rect2(bar.position + Vector2(0, bar.size.y + 3), Vector2(bar.size.x * clampf(float(who.get("helmet")) / maxf(float(who.get("helmet_max")), 1.0), 0.0, 1.0), 4.0 * s)), Color(0.8, 0.8, 0.7))
-		markers.draw_string(_font, p + Vector2(-60, -22) * s, ("%s %s" % [label, meters]).strip_edges(), HORIZONTAL_ALIGNMENT_CENTER, 120.0, int(18 * s), color)
+		markers.draw_string(_font, p + Vector2(-100, -22) * s, ("%s %s" % [label, meters]).strip_edges(), HORIZONTAL_ALIGNMENT_CENTER, 200.0, int(18 * s), color)
 	else:
 		# off screen: an arrow on the edge, pointing the way to turn
 		var dir := Vector2(local.x, -local.y)
@@ -488,11 +504,11 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 		for attempt in 4:
 			var clash := false
 			for q in _placed:
-				if p.distance_to(q) < 92.0:
+				if absf(p.x - q.x) < 190.0 and absf(p.y - q.y) < 56.0:
 					clash = true
 			if not clash:
 				break
-			p += tangent * 96.0
+			p += tangent * 70.0
 			p.x = clampf(p.x, 70.0, rect.size.x - 70.0)
 			p.y = clampf(p.y, box_top, box_bottom)
 			if attempt == 1:
@@ -506,5 +522,8 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 			pts.append(xf * q)
 		markers.draw_colored_polygon(pts, Color(0, 0, 0, 0.62))
 		markers.draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[3], pts[0]]), color, 3.0, true)
-		var text_at := p - dir * 46.0 + Vector2(-60, 6)
-		markers.draw_string(_font, text_at, ("%s %s" % [label, meters]).strip_edges(), HORIZONTAL_ALIGNMENT_CENTER, 120.0, 17, color)
+		var text := ("%s %s" % [label, meters]).strip_edges()
+		var tw := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+		# the words go inward of the arrow, never on it
+		var centre_text := p - Vector2(signf(dir.x) * (38.0 + tw * 0.5), -6.0) if absf(dir.x) >= absf(dir.y) * 0.8 else p - Vector2(0.0, signf(dir.y) * 34.0 - 6.0)
+		markers.draw_string(_font, centre_text - Vector2(tw * 0.5, 0.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, color)

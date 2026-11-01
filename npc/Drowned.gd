@@ -15,21 +15,24 @@ const DrownedShader := preload("res://npc/drowned.gdshader")
 const SFX_DIR := "res://assets/sfx/tsunami/"
 const BIG_BODIES := ["Construction_Male_08", "Male_Adult_11", "Male_Adult_06", "Male_Adult_09"]
 
-## Health compared with a normal zombie of the round.
-const HEALTH_MULT := 25.0
+## Health compared with a normal zombie of the round: a brute to look at, not a sponge (one rifle magazine to the body).
+const HEALTH_MULT := 3.0
 const SCALE := 2.1
 ## Walking pace (m/s); it quickens as the sea gets nearer (`urgency`).
 const WALK_SPEED_DROWNED := 1.5
 const CLAW_DAMAGE := 50.0
 const CHARGE_DAMAGE := 40.0
-## The part of its health the helmet takes before it breaks; headshots count this much while it holds.
-const HELMET_SHARE := 0.05
-const HELMET_HEAD_MULT := 0.5
-## A single hit this strong staggers it.
-const HEAVY_HIT := 160.0
+## The helmet breaks off after this many hits to the head (a heavy one counts double); the bullet itself
+## does its full damage.
+const HELMET_HITS := 3.0
+## It staggers from one hit of this share of its health (a shotgun blast, a magnum, a sniper round), or
+## from hits that add up to BURST_SHARE within BURST_TIME (three quick rifle hits).
+const HEAVY_SHARE := 0.08
+const BURST_SHARE := 0.12
+const BURST_TIME := 0.6
 ## Charge: from this far to this far, a roar of WINDUP seconds, then up to RUSH_TIME at up to RUSH_SPEED.
 const CHARGE_RANGE := Vector2(5.5, 24.0)
-const WINDUP := 1.0
+const WINDUP := 1.3
 const RUSH_TIME := 1.7
 const RUSH_SPEED := 8.5
 const RECOVER := 1.4
@@ -59,6 +62,10 @@ var charge_hits := 0
 ## Where it stands in the world on the sea side/etc: free text for the tests and the HUD.
 var side := ""
 
+var _burst := 0.0
+var _burst_t := 0.0
+## Charges stopped by a hit to the head (the tests read it).
+var interrupted := 0
 var _charge_t := 0.0
 var _charge_cd := 3.0
 var _charge_dir := Vector3.FORWARD
@@ -96,7 +103,7 @@ func setup_drowned(round_no: int, rng: RandomNumberGenerator = null) -> void:
 	set_meta("body", BIG_BODIES[rng.randi() % BIG_BODIES.size()])
 	max_health = float(ZombieMode.zombie_health(round_no)) * HEALTH_MULT
 	health = max_health
-	helmet_max = max_health * HELMET_SHARE
+	helmet_max = HELMET_HITS
 	helmet = helmet_max
 	_base_speed = WALK_SPEED_DROWNED * rng.randf_range(0.95, 1.1)
 	speed = _base_speed
@@ -534,6 +541,9 @@ func roar(loud := 0.0, pitch := 1.0) -> void:
 
 func _physics_process(delta: float) -> void:
 	if state < State.DYING:
+		_burst_t -= delta
+		if _burst_t <= 0.0:
+			_burst = 0.0
 		_charge_cd -= delta
 		_roar_t -= delta
 		if _roar_t <= 0.0 and charge == Charge.NONE and state != State.ENTER:
@@ -582,7 +592,7 @@ func _chase(delta: float) -> Vector3:
 			return Vector3.ZERO
 	if _stagger <= 0.0:
 		speed = _base_speed * urgency
-		if _charge_cd <= 0.0 and legless == false:
+		if _charge_cd <= 0.0 and legless == false and absf(target.global_position.y - global_position.y) < 2.4:
 			var to := target.global_position - global_position
 			to.y = 0.0
 			var d := to.length()
@@ -605,8 +615,9 @@ func _start_windup(to: Vector3) -> void:
 	_charge_dir = to.normalized()
 	_charge_landed = false
 	_stagger = WINDUP + 0.05
-	var dur := anim.play_once("z_scream", 2.4)
-	_charge_t = maxf(WINDUP, minf(dur, 1.3))
+	var dur := anim.play_once("z_scream", 1.9)
+	_charge_t = maxf(WINDUP, minf(dur, 1.4))
+	_stomp_dust()
 	_stagger = _charge_t + 0.05
 	roar(6.0, 0.8)
 	if _eye_light != null:
@@ -642,7 +653,7 @@ func _rush(delta: float) -> Vector3:
 		_charge_dir = _charge_dir.slerp(want, step).normalized() if _charge_dir.dot(want) > -0.99 else _charge_dir
 	var elapsed := RUSH_TIME - _charge_t
 	speed = lerpf(4.0, RUSH_SPEED, clampf(elapsed / 0.5, 0.0, 1.0))
-	if d < 2.2 and not _charge_landed:
+	if d < 2.2 and not _charge_landed and absf(target.global_position.y - global_position.y) < 2.4:
 		_charge_landed = true
 		_hit_with_charge(to)
 		_end_rush(true)
@@ -710,11 +721,13 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 	if state >= State.DYING:
 		return
 	if part == "head" and helmet_on and not ZombieMode.insta_kill:
-		dmg *= HELMET_HEAD_MULT
-		helmet -= dmg
+		helmet -= 2.0 if dmg >= max_health * HEAVY_SHARE else 1.0
 		if helmet <= 0.0:
 			_break_helmet(dir)
 	super.take_hit(part, dmg, dir, weapon, melee, at)
+	# A bullet in the head stops a charge dead.
+	if part == "head" and state < State.DYING and (charge == Charge.WINDUP or charge == Charge.RUSH):
+		_interrupt_charge()
 
 func _break_helmet(dir: Vector3) -> void:
 	helmet_on = false
@@ -758,10 +771,61 @@ func _shower(at: Vector3, dir: Vector3) -> void:
 
 ## Only a heavy hit makes it stagger; a bullet is a bee sting.
 func _react(part: String, dmg: float) -> void:
-	if dmg < HEAVY_HIT or state != State.CHASE or charge != Charge.NONE:
+	if state != State.CHASE or charge != Charge.NONE:
 		return
+	_burst += dmg
+	_burst_t = BURST_TIME
+	if dmg < max_health * HEAVY_SHARE and _burst < max_health * BURST_SHARE:
+		return
+	_burst = 0.0
 	_stagger = 0.55
 	anim.play_once("z_hit_knockback", 1.3)
+
+## Stopped in its tracks: a short stumble, and a good while before it tries again.
+func _interrupt_charge() -> void:
+	interrupted += 1
+	charge = Charge.RECOVER
+	_charge_t = 0.9
+	_charge_cd = randf_range(CHARGE_PERIOD.x, CHARGE_PERIOD.y)
+	_move_clip = "z_walk2"
+	speed = _base_speed * urgency
+	_stagger = _charge_t
+	velocity = Vector3.ZERO
+	if _eye_light != null:
+		_eye_light.light_energy = 0.45
+	anim.play_once("z_hit_head", 1.0)
+	roar(-1.0, 1.15)
+
+## Dust kicked up where it plants itself: the charge's warning.
+func _stomp_dust() -> void:
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.emitting = false
+	p.amount = 26
+	p.lifetime = 0.9
+	p.explosiveness = 0.85
+	p.local_coords = false
+	p.direction = Vector3.UP
+	p.spread = 80.0
+	p.initial_velocity_min = 1.0
+	p.initial_velocity_max = 3.0
+	p.gravity = Vector3(0, -2.0, 0)
+	p.scale_amount_min = 1.0
+	p.scale_amount_max = 2.2
+	var quad := QuadMesh.new()
+	quad.size = Vector2(0.4, 0.4)
+	var dm := StandardMaterial3D.new()
+	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	dm.albedo_texture = _dot_texture()
+	dm.albedo_color = Color(0.35, 0.37, 0.36, 0.5)
+	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	quad.material = dm
+	p.mesh = quad
+	get_parent().add_child(p)
+	p.global_position = global_position + Vector3(0, 0.15, 0)
+	p.emitting = true
+	get_tree().create_timer(1.6).timeout.connect(p.queue_free)
 
 func _begin_kneel() -> void:
 	pass

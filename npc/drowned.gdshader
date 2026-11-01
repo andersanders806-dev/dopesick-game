@@ -127,7 +127,7 @@ void fragment() {
 
 	// Flesh: opaque, pale grey-green and bloated, mottled with bruises and sickly yellow patches,
 	// dark veins in a ridged network.
-	vec3 flesh = vec3(0.5, 0.58, 0.49) * (0.62 + luma * 0.65);
+	vec3 flesh = vec3(0.52, 0.6, 0.47) * (0.66 + luma * 0.65);
 	float bruise = smoothstep(0.5, 0.78, n_lo * 0.75 + n_mid * 0.45);
 	float jaundice = smoothstep(0.55, 0.8, n_mid * 0.6 + (1.0 - n_lo) * 0.4);
 	flesh = mix(flesh, vec3(0.2, 0.11, 0.18) * (0.8 + n_hi * 0.5), bruise * 0.75);
@@ -150,7 +150,7 @@ void fragment() {
 	float algae = smoothstep(0.42, 0.66, n_mid * 0.6 + n_lo * 0.6) * (0.2 + 0.8 * low);
 	col = mix(col, vec3(0.04, 0.14, 0.07) * (0.6 + n_hi), algae * 0.7);
 	float crust_n = texture(noise_tex, v_uv * 13.0 + so * 2.0).g;
-	float crust = smoothstep(0.72, 0.76, crust_n + low * 0.08) * (0.3 + 0.7 * smoothstep(0.35, 0.65, n_lo)) * (kind == 1 ? 0.0 : 1.0);
+	float crust = smoothstep(0.8, 0.84, crust_n + low * 0.08) * (0.3 + 0.7 * smoothstep(0.35, 0.65, n_lo)) * (kind == 1 ? 0.0 : 1.0);
 	col = mix(col, vec3(0.6, 0.62, 0.55) * (0.6 + 0.5 * n_hi), crust);
 
 	// Wet: slick, with a clear coat of water over the skin; dry and rough only where the crust is.

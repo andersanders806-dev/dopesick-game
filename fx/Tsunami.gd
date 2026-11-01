@@ -1,7 +1,8 @@
 extends Node3D
-## THE TSUNAMI: after the Richter 8.0 surge (the first one always, later ones one time in two) the
-## city's warning system goes off and a two minute countdown starts. Two Drowned (npc/Drowned.gd)
-## come up out of the street, on different sides. Kill both before 0:00 and the wave is cancelled
+## THE TSUNAMI: when the Richter 8.0 surge hits (the first one always, later ones one time in two) the
+## city's warning system goes off AT THE QUAKE and a two minute countdown starts, so the surge's horde
+## and the hunt for the Drowned overlap. Two Drowned (npc/Drowned.gd) come up out of the street during
+## the shake, on different sides. Kill both before 0:00 and the wave is cancelled
 ## (+2000, relief, a slow-motion beat on the second kill). If the clock runs out the wave hits and
 ## the run ends: "Drowned by the tsunami".
 ##
@@ -38,8 +39,14 @@ const BONUS := 2000
 ## The sea is at this end of the street.
 const SEA_DIR := Vector3(-1.0, 0.0, 0.0)
 const CAUSE := "Drowned by the tsunami"
-## Seconds after the quake's last zombie is out before the warning starts.
-const START_DELAY := 2.5
+## What living through it on the high ground pays (killing both Drowned pays BONUS).
+const SURVIVE_BONUS := 500
+const FLOOD_LEVEL := 4.4
+## Seconds after the quake hits before the warning starts (0: at once).
+const START_DELAY := 0.0
+## The broadcast card, its tone and the sirens come in this long after the quake starts, so the
+## RICHTER 8.0 readout (top right) is not covered and the quake's own noise is heard first.
+const INTRO := 3.2
 ## The wave's run down the street, and how long the water has the screen before the game over.
 const RUSH := 1.9
 const UNDER_TIME := 2.6
@@ -52,6 +59,8 @@ enum Phase { IDLE, COUNTDOWN, CANCELLED, WAVE, DONE }
 
 var city: Node3D
 var spawner: Node
+## world/HighGround.gd: the one place the wave does not reach.
+var high: Node3D
 var phase: Phase = Phase.IDLE
 var remaining := DURATION
 var duration := DURATION
@@ -80,8 +89,18 @@ var wave_h := 0.0
 var started_count := 0
 var fired := {}
 var slowmo_active := false
+## The high ground: whether this wave found the player in the safe zone, how many waves were lived through,
+## how many of the dead it swept away, and how long the flood stays and takes to go (tests shorten them).
+var survive := false
+var survived := 0
+var swept := 0
+var flood_hold := 15.0
+var flood_recede := 6.0
 
 var _pending := -1.0
+var _intro := 0.0
+## Whether the warning has been given (the clock runs from then).
+var warned := false
 ## true while a skip replays the events: the loops and the HUD states start, the one-shots do not.
 var _quiet := false
 var _w := 0.0
@@ -115,7 +134,7 @@ func _ready() -> void:
 	add_child(hud)
 	wave = WaveScript.new()
 	add_child(wave)
-	ZombieMode.surge_ended.connect(_on_surge_ended)
+	ZombieMode.surge_started.connect(_on_surge_started)
 
 func _exit_tree() -> void:
 	_restore_hard()
@@ -127,13 +146,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # --- When it starts ---------------------------------------------------------------------------
 
-func _on_surge_ended() -> void:
+func _on_surge_started() -> void:
 	if not auto or phase != Phase.IDLE or not ZombieMode.active or ZombieMode.over:
 		return
 	quakes += 1
 	if quakes > 1 and rng.randf() >= later_chance:
 		return
-	_pending = start_delay
+	if start_delay <= 0.0:
+		start()
+	else:
+		_pending = start_delay
 
 ## Starts the countdown now. False if one is on or the run is not.
 func start(seconds := DURATION) -> bool:
@@ -153,21 +175,37 @@ func start(seconds := DURATION) -> bool:
 	ZombieMode.tsunami_active = true
 	started_count += 1
 	_capture_env()
-	_build_audio()
 	_build_water()
 	_spawn_drowned()
-	hud.start(seconds, NEED)
-	hud.set_hint("KILL BOTH BEFORE THE WAVE")
-	_play("broadcast_tone", -1.0)
-	_play("broadcast_static", -12.0)
+	# The Drowned rise as the quake hits; the warning (banner, clock, marker, beacon, sirens) is given INTRO
+	# seconds later and the full two minutes run from then: the wave comes at 0:00 on that clock.
+	_intro = INTRO
+	warned = false
 	_fire("start")
 	started.emit()
+	if INTRO <= 0.0:
+		_give_warning()
 	return true
+
+## The warning: the card, the clock at 2:00, the marker and the beacon, the sirens.
+func _give_warning() -> void:
+	warned = true
+	remaining = duration
+	_build_audio()
+	hud.start(duration, NEED, 0.0)
+	hud.set_hint("KILL BOTH DROWNED  -  OR REACH THE HIGH GROUND")
+	if high != null:
+		high.beacon(true)
+	_play("broadcast_tone", -1.0)
+	_play("broadcast_static", -12.0)
 
 ## Jumps the clock to `r` seconds left without playing what lies between (captures and tests).
 func skip_to(r: float) -> void:
-	remaining = r
 	_quiet = true
+	if phase == Phase.COUNTDOWN and not warned:
+		_intro = 0.0
+		_give_warning()
+	remaining = r
 	for pair in _events():
 		if r <= pair[0] and not fired.has(pair[1]):
 			fired[pair[1]] = true
@@ -222,6 +260,10 @@ func _process(delta: float) -> void:
 		if _pending < 0.0:
 			start()
 	_slowmo_tick()
+	if phase == Phase.COUNTDOWN and _intro > 0.0:
+		_intro -= delta
+		if _intro <= 0.0:
+			_give_warning()
 	match phase:
 		Phase.COUNTDOWN:
 			_countdown(delta)
@@ -233,6 +275,10 @@ func _process(delta: float) -> void:
 func _countdown(delta: float) -> void:
 	if ZombieMode.over or not ZombieMode.active:
 		_abort()
+		return
+	if not warned:
+		# the quake is still on: the clock has not started, but the Drowned can already be killed
+		_check_drowned()
 		return
 	remaining = maxf(remaining - delta, 0.0)
 	_check_events()
@@ -250,6 +296,7 @@ func _countdown(delta: float) -> void:
 	_hurry()
 	hud.set_time(remaining)
 	hud.set_targets(drowned)
+	_point_to_high_ground()
 	hud.set_dread(smoothstep(30.0, 0.0, remaining) * 0.85 + dread * 0.12)
 	if remaining <= 0.0:
 		_begin_wave()
@@ -374,6 +421,9 @@ func _cancel() -> void:
 		ZombieMode.points += BONUS
 		ZombieMode.points_changed.emit(ZombieMode.points, BONUS, "tsunami")
 	hud.show_cancelled(BONUS)
+	hud.set_safe(Vector3.ZERO, false)
+	if high != null:
+		high.beacon(false)
 	_play("cancel_relief", 0.0)
 	_start_slowmo()
 	_stop_loop("heart")
@@ -413,10 +463,25 @@ func _cancelled_tick(delta: float) -> void:
 
 # --- The wave ---------------------------------------------------------------------------------------
 
+## The marker for the high ground: the beacon from far off, the foot of the stair when near, the zone once up there.
+func _point_to_high_ground() -> void:
+	if high == null or _player == null or not is_instance_valid(_player):
+		return
+	var p := _player.global_position
+	var at: Vector3 = high.beacon_head.global_position + Vector3(0, 7.0, 0)
+	if high.is_up(_player):
+		at = high.zone_center() + Vector3(0, 2.5, 0)
+	elif Vector2(p.x - high.stair_base().x, p.z - high.stair_base().z).length() < 32.0:
+		at = high.stair_base() + Vector3(0, 3.0, 0)
+	hud.set_safe(at, true)
+
 func _begin_wave() -> void:
 	phase = Phase.WAVE
 	_w = 0.0
 	waves_hit += 1
+	survive = high != null and _player != null and is_instance_valid(_player) and high.zone_contains(_player.global_position)
+	if survive:
+		hud.set_safe(Vector3.ZERO, false)
 	ZombieMode.tsunami_active = false
 	_stop_loop("heart")
 	_stop_loop("heart2")
@@ -434,6 +499,9 @@ func _begin_wave() -> void:
 
 ## The 1.9 s run, then the screen is the sea, then the end.
 func _wave_tick(delta: float) -> void:
+	if survive:
+		_survive_tick(delta)
+		return
 	_w += delta
 	var k := clampf(_w / RUSH, 0.0, 1.0)
 	var eased := k * k
@@ -501,6 +569,77 @@ func _wave_tick(delta: float) -> void:
 			ZombieMode.game_over()
 		finished.emit()
 
+## On the high ground: the wave thunders through the street below (lower than the deck), the street's dead are
+## swept away, the water stands about 15 s and goes; play goes on.
+func _survive_tick(delta: float) -> void:
+	_w += delta
+	var k := clampf(_w / RUSH, 0.0, 1.0)
+	if _w < RUSH:
+		wave_dist = lerpf(WAVE_DIST.y, -70.0, k * k)
+		wave_h = lerpf(WAVE_HEIGHT.y, 9.0, smoothstep(0.0, 0.6, k))
+		_place_wave()
+		dread = 1.0
+		_apply_env(1.0)
+		_turn_to_wave(k, -0.3)
+		trauma_target = lerpf(0.1, 0.45, k * k)
+		_apply_shake()
+		var rush := _loop("rushloud")
+		if rush != null:
+			rush.volume_db = lerpf(-30.0, -4.0, k * k)
+		hud.set_dread(1.0)
+		return
+	var u := _w - RUSH
+	if not fired.has("impact"):
+		fired["impact"] = true
+		_play("wave_impact", 2.0)
+		hud.flash(0.7)
+		_sweep_street()
+		survived += 1
+		if ZombieMode.active and not ZombieMode.over:
+			ZombieMode.points += SURVIVE_BONUS
+			ZombieMode.points_changed.emit(ZombieMode.points, SURVIVE_BONUS, "high ground")
+		hud.show_cancelled(SURVIVE_BONUS, "YOU MADE IT")
+		# the spawner waits out the flood
+		ZombieMode.surge_busy = true
+	# the wave passes on, the water comes up under the deck
+	wave_dist = lerpf(wave_dist, -300.0, minf(delta * 0.8, 1.0))
+	_place_wave()
+	if u > 1.2:
+		wave.show_debris(false)
+	var hold_end := 2.5 + flood_hold
+	if u < 2.5:
+		water_level = FLOOD_LEVEL * smoothstep(0.0, 2.5, u)
+	elif u < hold_end:
+		water_level = FLOOD_LEVEL + 0.12 * sin(u * 1.7)
+	else:
+		water_level = FLOOD_LEVEL * (1.0 - smoothstep(0.0, flood_recede, u - hold_end))
+	seep = 1.0
+	_update_water()
+	var recede := smoothstep(0.0, flood_recede, u - hold_end)
+	dread = 1.0 - recede
+	_apply_env(dread)
+	trauma_target = lerpf(0.5, 0.0, smoothstep(0.0, 2.0, u))
+	_apply_shake()
+	var ru := _loop("rushloud")
+	if ru != null:
+		ru.volume_db = lerpf(-6.0, -40.0, maxf(smoothstep(0.0, 6.0, u), recede))
+	hud.set_dread(dread * 0.3)
+	if u >= hold_end + flood_recede:
+		ZombieMode.surge_busy = false
+		_finish()
+
+## The street's dead go: shoved along and gone (no points); whoever is up on the high ground stays.
+func _sweep_street() -> void:
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not is_instance_valid(z) or not z.has_method("take_hit"):
+			continue
+		if high != null and high.is_up(z):
+			continue
+		if z.has_method("knock"):
+			z.knock(-SEA_DIR * 8.0)
+		z.take_hit("torso", 1.0e9, -SEA_DIR)
+		swept += 1
+
 func _sweep_player(delta: float, u: float) -> void:
 	if _player == null or not is_instance_valid(_player) or not (_player is CharacterBody3D):
 		return
@@ -509,7 +648,7 @@ func _sweep_player(delta: float, u: float) -> void:
 		(_player as CharacterBody3D).move_and_collide(push * delta)
 
 ## First person: the head swings round to the sea (not with Camera motion off).
-func _turn_to_wave(k: float) -> void:
+func _turn_to_wave(k: float, pitch_to := 0.34) -> void:
 	if _player == null or not Graphics.camera_motion or not _player.has_method("set_look"):
 		return
 	if not bool(_player.get("_first_person")):
@@ -518,7 +657,7 @@ func _turn_to_wave(k: float) -> void:
 	var yaw := float(_player.get("_look_yaw"))
 	var step := clampf(3.5 * get_process_delta_time(), 0.0, 1.0) * smoothstep(0.0, 0.5, k)
 	var pitch := float(_player.get("_look_pitch"))
-	_player.call("set_look", lerp_angle(yaw, want, step), lerpf(pitch, 0.34, step))
+	_player.call("set_look", lerp_angle(yaw, want, step), lerpf(pitch, pitch_to, step))
 
 func _place_wave() -> void:
 	var from := _player.global_position if _player != null and is_instance_valid(_player) else Vector3.ZERO
@@ -707,12 +846,14 @@ func _build_audio() -> void:
 
 ## The mix follows the dread: sirens, wind and the roar all rise with the clock.
 func _apply_audio(_delta: float, k30: float) -> void:
+	# the sirens come in a few seconds into the quake
+	var quiet := 0.0
 	var s2 := _loop("siren2")
 	if s2 != null:
-		s2.volume_db = lerpf(-14.0, -4.0, dread)
+		s2.volume_db = lerpf(-14.0, -4.0, dread) + quiet
 	var s := _loop("siren")
 	if s != null:
-		s.volume_db = lerpf(-40.0, -9.0, smoothstep(0.15, 1.0, dread))
+		s.volume_db = lerpf(-40.0, -9.0, smoothstep(0.15, 1.0, dread)) + quiet
 	var w := _loop("wind")
 	if w != null:
 		w.volume_db = lerpf(-40.0, -7.0, pow(dread, 1.1))
@@ -836,6 +977,9 @@ func _abort() -> void:
 
 func _teardown() -> void:
 	ZombieMode.tsunami_active = false
+	if high != null:
+		high.beacon(false)
+	hud.set_safe(Vector3.ZERO, false)
 	hud.clear()
 	for k in _audio.keys():
 		_stop_loop(k)

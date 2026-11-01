@@ -17,7 +17,7 @@ const BIG_BODIES := ["Construction_Male_08", "Male_Adult_11", "Male_Adult_06", "
 
 ## Health compared with a normal zombie of the round.
 const HEALTH_MULT := 25.0
-const SCALE := 1.9
+const SCALE := 2.1
 ## Walking pace (m/s); it quickens as the sea gets nearer (`urgency`).
 const WALK_SPEED_DROWNED := 1.5
 const CLAW_DAMAGE := 50.0

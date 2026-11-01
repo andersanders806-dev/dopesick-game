@@ -82,6 +82,8 @@ var fired := {}
 var slowmo_active := false
 
 var _pending := -1.0
+## true while a skip replays the events: the loops and the HUD states start, the one-shots do not.
+var _quiet := false
 var _w := 0.0
 var _sink := 0.0
 var _player: Node3D
@@ -165,9 +167,12 @@ func start(seconds := DURATION) -> bool:
 ## Jumps the clock to `r` seconds left without playing what lies between (captures and tests).
 func skip_to(r: float) -> void:
 	remaining = r
+	_quiet = true
 	for pair in _events():
-		if r <= pair[0]:
+		if r <= pair[0] and not fired.has(pair[1]):
 			fired[pair[1]] = true
+			_event(pair[1])
+	_quiet = false
 
 # --- The events, by time left -----------------------------------------------------------------
 
@@ -658,6 +663,8 @@ func _amb_bus() -> String:
 
 ## A one-shot sound, fire and forget.
 func _play(sound: String, db := 0.0, pitch := 1.0) -> AudioStreamPlayer:
+	if _quiet:
+		return null
 	var p := AudioStreamPlayer.new()
 	p.stream = _load(sound, false)
 	p.bus = _bus()

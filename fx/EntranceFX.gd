@@ -100,12 +100,12 @@ func _build() -> void:
 		add_child(d)
 		_cracks.append(d)
 	var dirt_mat: StandardMaterial3D = _particle_material(Color(0.2, 0.14, 0.1), false)
-	var dust_mat: StandardMaterial3D = _particle_material(Color(0.5, 0.45, 0.4), false)
+	var dust_mat: StandardMaterial3D = _particle_material(Color(0.24, 0.2, 0.17), false)
 	var glass_mat: StandardMaterial3D = _particle_material(Color(0.8, 0.9, 1.0), true)
 	for i in DIRT:
 		_dirt.append(_burst(dirt_mat, 46, 1.3, 0.06, 0.2, 3.0, 8.0, 32.0, Vector3(0, -13.0, 0), Color(0.22, 0.15, 0.1, 1.0), Color(0.15, 0.1, 0.07, 0.0), 0.0))
 	for i in DUST:
-		_dust.append(_burst(dust_mat, 14, 1.6, 0.35, 0.8, 0.6, 2.6, 80.0, Vector3(0, 0.3, 0), Color(0.5, 0.45, 0.4, 0.5), Color(0.42, 0.38, 0.34, 0.0), 2.0))
+		_dust.append(_burst(dust_mat, 14, 1.5, 0.25, 0.6, 0.6, 2.4, 80.0, Vector3(0, 0.3, 0), Color(0.42, 0.36, 0.3, 0.42), Color(0.3, 0.26, 0.22, 0.0), 1.6))
 	for i in GLASS:
 		_glass.append(_burst(glass_mat, 36, 1.1, 0.02, 0.07, 2.0, 7.0, 55.0, Vector3(0, -12.0, 0), Color(0.85, 0.95, 1.0, 0.95), Color(0.6, 0.8, 0.9, 0.0), 0.0))
 	for i in VOICES:

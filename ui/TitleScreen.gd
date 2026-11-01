@@ -75,7 +75,8 @@ void fragment() {
 	# No Continue: it's a survival run, and every start is a fresh one --
 	# you die, you start over.
 	var first := _button("New run", _choose_view.bind(_start_run))
-	_button("Zombies", _choose_view.bind(_start_zombies, true))
+	# Dead Block is a shooter: straight in, first person (gore and damage numbers live in the pause menu).
+	_button("Zombies", _start_zombies.bind(true))
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)

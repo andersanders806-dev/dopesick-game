@@ -854,6 +854,7 @@ func _run() -> void:
 	await _zombie_dead_checks(gs)
 	await _zombie_weapons_checks(gs)
 	await _zombie_fp_checks(gs)
+	await _zombie_horde_checks(gs)
 	await _zombie_gore_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
@@ -5566,12 +5567,12 @@ func _zombie_shell_checks(gs: Node) -> void:
 		"  health: 150 at round 1, 950 at 9, 1045 at 10 (%d, %d, %d)" % [zm.zombie_health(1), zm.zombie_health(9), zm.zombie_health(10)])
 	_check(absi(zm.zombie_health(20) - 2710) <= 5, "  health at round 20 is about 2710 (%d)" % zm.zombie_health(20))
 	var counts: Array = [6, 7, 8, 9, 10].map(func(r): return zm.zombies_in_round(r))
-	_check(counts == [27, 28, 28, 29, 33], "  zombies per round 6..10 are 27, 28, 28, 29, 33 (%s)" % [counts])
+	_check(counts == [68, 70, 70, 73, 83], "  zombies per round 6..10 are 68, 70, 70, 73, 83 (2.5x the first design) (%s)" % [counts])
 	var early: Array = [1, 2, 3, 4, 5].map(func(r): return zm.zombies_in_round(r))
 	var rising := true
 	for i in range(1, early.size()):
 		rising = rising and early[i] > early[i - 1]
-	_check(early[0] == 6 and rising and early[4] < counts[0], "  rounds 1..5 ramp up from 6 and stay under round 6 (%s)" % [early])
+	_check(early[0] == 15 and rising and early[4] < counts[0], "  rounds 1..5 ramp up from 15 and stay under round 6 (%s)" % [early])
 
 	# Points. A run has to be on for earning.
 	zm.begin(false)
@@ -5747,19 +5748,16 @@ func _zombie_shell_checks(gs: Node) -> void:
 	var entry := _buttons_named(title, "Zombies")
 	_check(entry.size() == 1, "  the title screen has a Zombies button")
 	if entry.size() == 1:
+		root.get_node("Graphics").set_first_person(false)
 		entry[0].pressed.emit()
+		_check(_buttons_named(title, "Third person").is_empty(), "  it asks no view: Dead Block is first person")
+		while root.get_node("SceneLoader").busy():
+			await process_frame
+		await _frames(15)
+		_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
+			"  Zombies starts the run on the zombie block, in first person")
+		zm.game_over()
 		await _frames(2)
-		var fp := _buttons_named(title, "First person")
-		_check(not _buttons_named(title, "Third person").is_empty() and fp.size() == 1, "  it asks first person or third")
-		if fp.size() == 1:
-			fp[0].pressed.emit()
-			while root.get_node("SceneLoader").busy():
-				await process_frame
-			await _frames(15)
-			_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
-				"  First person starts the run on the zombie block")
-			zm.game_over()
-			await _frames(2)
 	for s in root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")):
 		s.queue_free()
 	paused = false
@@ -6111,6 +6109,8 @@ func _zombie_dead_checks(gs: Node) -> void:
 
 	# --- Spawning ---
 	spawner.time_scale = 0.01
+	spawner.adaptive = false
+	zm.max_alive = 32
 	for r in [5, 6, 15]:
 		for old in get_nodes_in_group("zombies"):
 			old.free()
@@ -6129,7 +6129,7 @@ func _zombie_dead_checks(gs: Node) -> void:
 			for zz in get_nodes_in_group("zombies"):
 				zz.set_physics_process(false)
 			max_alive = maxi(max_alive, spawner.alive())
-			if spawner.alive() >= zm.MAX_ALIVE:
+			if spawner.alive() >= zm.max_alive:
 				at_cap = true
 				# Mow down five and let the reserve come out.
 				var live := get_nodes_in_group("zombies")
@@ -6140,8 +6140,8 @@ func _zombie_dead_checks(gs: Node) -> void:
 		for k in made:
 			kinds[k] += 1
 		spawner.spawned.disconnect(on_spawn)
-		_check(made.size() == zm.zombies_in_round(r) and max_alive <= zm.MAX_ALIVE and (at_cap or zm.zombies_in_round(r) <= zm.MAX_ALIVE),
-			"  round %d: exactly %d came out, never more than %d alive (made %d, peak %d, capped %s)" % [r, zm.zombies_in_round(r), zm.MAX_ALIVE, made.size(), max_alive, at_cap])
+		_check(made.size() == zm.zombies_in_round(r) and max_alive <= zm.max_alive and (at_cap or zm.zombies_in_round(r) <= zm.max_alive),
+			"  round %d: exactly %d came out, never more than %d alive (made %d, peak %d, capped %s)" % [r, zm.zombies_in_round(r), zm.max_alive, made.size(), max_alive, at_cap])
 		if r == 5:
 			_check(kinds["runner"] == 0, "  ...all walkers in round 5 (%s)" % [kinds])
 		elif r == 6:
@@ -9327,3 +9327,323 @@ func _rag_head_y(z: Node, head_bone: int) -> float:
 				if int(e["bone"]) == head_bone:
 					return (e["held"] as Transform3D).origin.y
 	return (z._skeleton.global_transform * z._skeleton.get_bone_global_pose(head_bone)).origin.y
+
+# --- Dead Block: the bigger horde, its entrances and the Richter 8.0 surge (task Z4c) -------------
+
+func _zombie_horde_checks(gs: Node) -> void:
+	await _section("Dead Block: bigger horde -- adaptive cap, round sizes, entrances all round, the surge")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	DirAccess.remove_absolute(zm.PATH)
+	var Budget := preload("res://npc/HordeBudget.gd")
+	var EntrancesScript := preload("res://npc/Entrances.gd")
+
+	# --- The adaptive cap (pure logic, made-up frame times) ---
+	var b = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	_check(zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 24..48")
+	var lo := 99
+	var hi := 0
+	for i in 60 * 90:
+		b.feed(16.0, b.cap, 1.0 / 60.0)
+		lo = mini(lo, b.cap)
+		hi = maxi(hi, b.cap)
+	_check(b.cap == 48 and lo >= 32 and hi == 48, "  60 fps with the horde at its cap: climbs to 48 and no further (cap %d)" % b.cap)
+	var floor_seen := 99
+	for i in 60 * 30:
+		b.feed(40.0, b.cap, 1.0 / 60.0)
+		floor_seen = mini(floor_seen, b.cap)
+	_check(b.cap == 24 and floor_seen == 24, "  25 fps (40 ms): drops to 24 and never below (cap %d)" % b.cap)
+	# Hysteresis: after a drop it holds, then needs two good windows in a row.
+	var b2 = Budget.new(40, 24, 48)
+	for i in 60 * 3 + 5:
+		b2.feed(40.0, 40, 1.0 / 60.0)
+	var after_drop: int = b2.cap
+	var climbed_at := -1.0
+	for i in 60 * 40:
+		if b2.feed(15.0, b2.cap, 1.0 / 60.0) and climbed_at < 0.0:
+			climbed_at = i / 60.0
+	_check(after_drop == 36 and climbed_at >= 8.9, "  after a drop it holds, then climbs only after two good windows (cap %d, first climb at %.1f s)" % [after_drop, climbed_at])
+	var b3 = Budget.new(32, 24, 48)
+	for i in 60 * 60:
+		b3.feed(20.2, b3.cap, 1.0 / 60.0)
+	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (20 ms) does not move it (cap %d)" % b3.cap)
+	var b4 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b4.feed(16.0, 10, 1.0 / 60.0)
+	_check(b4.cap == 32, "  it does not climb while the horde is nowhere near the cap (cap %d)" % b4.cap)
+	var b5 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b5.feed(900.0 if i % 90 == 0 else 16.0, b5.cap, 1.0 / 60.0)
+	_check(b5.lowered == 0 and b5.cap >= 32, "  a load hitch (900 ms) is not the horde's doing (cap %d)" % b5.cap)
+	var b6 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b6.feed(50.0 if i % 8 == 0 else 14.0, b6.cap, 1.0 / 60.0)
+	_check(b6.cap < 32, "  a steady stutter (1 frame in 8 over 33 ms) lowers it (cap %d)" % b6.cap)
+
+	# --- Round sizes: 2.5x ---
+	var old := [6, 8, 13, 18, 24]
+	var sizes: Array = [1, 2, 3, 4, 5].map(func(r): return zm.zombies_in_round(r))
+	var ratio_ok := true
+	for i in 5:
+		ratio_ok = ratio_ok and absf(float(sizes[i]) / float(old[i]) - 2.5) < 0.12
+	_check(sizes[0] == 15 and ratio_ok, "  rounds 1..5 come to %s: 15 in round 1, 2.5x the first design" % [sizes])
+	_check(zm.zombies_in_round(6) > sizes[4] and zm.zombies_in_round(20) > zm.zombies_in_round(10), "  and it keeps rising (r6 %d, r10 %d, r20 %d)" % [zm.zombies_in_round(6), zm.zombies_in_round(10), zm.zombies_in_round(20)])
+
+	# --- The block ---
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(8)
+	var block := city.get_node("ZombieBlock")
+	var spawner: Node = block.spawner
+	var surge: Node = block.surge
+	spawner.enabled = false
+	spawner.adaptive = false
+	surge.enabled = true
+	for old_z in get_nodes_in_group("zombies"):
+		old_z.free()
+	_check(spawner.GAP_BASE <= 1.2 and spawner.GAP_MIN <= 0.25, "  spawn gaps are shorter (%.2f s base, %.2f s min)" % [spawner.GAP_BASE, spawner.GAP_MIN])
+	var player := _player()
+	var ent = spawner.entrances
+	_check(ent.manholes.size() >= 5 and ent.escapes.size() >= 10 and ent.shops.size() >= 15,
+		"  the block's entrances are found: %d manholes, %d fire escapes, %d shop fronts" % [ent.manholes.size(), ent.escapes.size(), ent.shops.size()])
+
+	# --- Entrance points: valid on the navmesh, and all round the player ---
+	player.global_position = Vector3(0.0, 0.0, -45.0)
+	player.velocity = Vector3.ZERO
+	await _frames(3)
+	var cam := player.get_viewport().get_camera_3d()
+	var from: Vector3 = player.global_position
+	var bad := []
+	var by_type := {"rise": 0, "drop": 0, "smash": 0, "plain": 0}
+	var sectors := {}
+	var min_d := 999.0
+	var plain_seen := 0
+	var roofs := 0
+	var manhole_rises := 0
+	for i in 400:
+		var e: Dictionary = ent.pick(from, cam)
+		by_type[e["type"]] += 1
+		sectors[ent.sector_of(e["pos"], from, cam)] = true
+		if not ent.on_navmesh(e["pos"], 0.4):
+			bad.append("%s off the navmesh at %s" % [e["type"], e["pos"]])
+		if not ent.is_clear(e["pos"]):
+			bad.append("%s inside something solid at %s" % [e["type"], e["pos"]])
+		var d := Vector2(e["pos"].x - from.x, e["pos"].z - from.z).length()
+		if e["type"] == "plain":
+			plain_seen += 1
+			var head: Vector3 = e["pos"] + Vector3.UP
+			if not (cam.is_position_behind(head) or not cam.is_position_in_frustum(head)):
+				var q := PhysicsRayQueryParameters3D.create(cam.global_position, head)
+				q.collision_mask = 1
+				if city.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+					bad.append("plain spawn in plain view at %s" % [e["pos"]])
+			if d < 20.0:
+				bad.append("plain spawn %.1f m away" % d)
+		else:
+			min_d = minf(min_d, d)
+			if d < 8.0 or d > 58.5:
+				bad.append("%s %.1f m away" % [e["type"], d])
+		if e["type"] == "drop":
+			roofs += 1 if e["roof"] else 0
+			if e["start"].y < 3.0 or e["fall"] < 0.5:
+				bad.append("drop from %.1f m" % e["start"].y)
+		if e["type"] == "smash" and Vector2(e["start"].x - e["pos"].x, e["start"].z - e["pos"].z).length() > 3.2:
+			bad.append("smash start far from landing")
+		if e["type"] == "rise" and e["node"] != null:
+			manhole_rises += 1
+	_check(bad.is_empty(), "  400 entrances: all on the navmesh and clear of solids, shown ones 8..58 m off, hidden ones out of sight and 20+ m (%s)" % [bad.slice(0, 3)])
+	_check(by_type["rise"] > 40 and by_type["drop"] > 20 and by_type["smash"] > 20 and by_type["plain"] > 20,
+		"  all four kinds come: %s (roof drops %d, manhole rises %d)" % [by_type, roofs, manhole_rises])
+	_check(sectors.size() >= 7, "  from %d of 8 eighths of the compass round the player" % sectors.size())
+	# Facing north at a corner of the map still gets hits all round (those that have ground).
+	var ring := {}
+	for ang in [0.0, 90.0, 180.0, 270.0]:
+		var q2 := {}
+		player.global_position = Vector3(-40.0, 0.0, -45.0) if ang == 0.0 else Vector3(40.0, 0.0, -45.0) if ang == 90.0 else Vector3(0.0, 0.0, -20.0) if ang == 180.0 else Vector3(0.0, 0.0, -70.0)
+		var p0: Vector3 = player.global_position
+		for i in 120:
+			q2[ent.sector_of(ent.pick(p0, cam)["pos"], p0, cam)] = true
+		ring[ang] = q2.size()
+	_check(ring.values().all(func(n): return n >= 5), "  and from other spots too, never down one street (sectors hit %s)" % [ring])
+	player.global_position = from
+
+	# --- A spawner uses them ---
+	spawner.enabled = true
+	spawner.time_scale = 0.01
+	spawner.round_no = 1
+	spawner.total = 40
+	spawner.released = 0
+	spawner._kinds = spawner._plan_kinds(1, 40)
+	spawner._timer = 0.0
+	surge.enabled = false
+	zm.max_alive = 48
+	var kinds_out := {}
+	var spawned_now := []
+	var on_spawn := func(zz): spawned_now.append(zz)
+	spawner.spawned.connect(on_spawn)
+	var f := 0
+	while spawner.released < 40 and f < 2000:
+		await physics_frame
+		f += 1
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+	spawner.enabled = false
+	spawner.spawned.disconnect(on_spawn)
+	for zz in spawned_now:
+		kinds_out[zz.entrance] = int(kinds_out.get(zz.entrance, 0)) + 1
+	_check(spawner.released == 40 and spawner.alive() == 40 and kinds_out.size() >= 3,
+		"  a round's dead come by several ways (%s)" % [kinds_out])
+	for zz in get_nodes_in_group("zombies"):
+		zz.free()
+
+	# --- The ways in, one by one ---
+	var fx = preload("res://fx/EntranceFX.gd").of(city)
+	var cr0: int = fx.cracks_made
+	player.global_position = Vector3(0.0, 0.0, -45.0)
+	var land: Vector3 = ent.snap(Vector3(-8.0, 0.0, -1.5))
+	var zr = spawner.spawn_entrance("walker", {"type": "rise", "pos": land, "start": land + Vector3(0, -2.1, 0), "out": Vector3.FORWARD, "fall": 0.0, "node": null, "roof": false})
+	await physics_frame
+	_check(zr.state == zr.State.ENTER and zr._model_root.position.y < -1.5 and zr.collision_layer == 0 and fx.bursts >= 1 and fx.cracks_made > cr0,
+		"  a rise starts under the street (%.1f m), no collision, with a ground burst and a crack" % zr._model_root.position.y)
+	await _frames(60)
+	var mid_y: float = zr._model_root.position.y
+	_check(zr.state == zr.State.ENTER and mid_y > -1.9 and mid_y < -0.1, "  ...climbs out (%.2f m after a second)" % mid_y)
+	await _frames(70)
+	_check(zr.state != zr.State.ENTER and absf(zr._model_root.position.y) < 0.01 and zr.collision_layer == zr.BODY_LAYER and absf(zr.global_position.y) < 0.2,
+		"  ...and is a zombie on the street (state %d, y %.2f)" % [zr.state, zr.global_position.y])
+	zr.free()
+	# Shot while climbing: no corpse half under the street.
+	var zk = spawner.spawn_entrance("walker", {"type": "rise", "pos": land, "start": land + Vector3(0, -2.1, 0), "out": Vector3.FORWARD, "fall": 0.0, "node": null, "roof": false})
+	await _frames(20)
+	zk.take_hit("torso", 1.0e6, Vector3.FORWARD, null)
+	_check(not zk.is_alive() and absf(zk._model_root.position.y) < 0.01, "  killed while climbing out it lies on the street, not under it")
+	zk.free()
+	var esc: Dictionary = ent.escapes[0]
+	var drop_e := {}
+	for i in 60:
+		var cand: Dictionary = ent._candidates("drop", esc["pos"] + esc["out"] * 14.0, cam).pop_back() if not ent._candidates("drop", esc["pos"] + esc["out"] * 14.0, cam).is_empty() else {}
+		if not cand.is_empty():
+			drop_e = cand
+			break
+	_check(not drop_e.is_empty(), "  a drop site is found near the first fire escape")
+	if not drop_e.is_empty():
+		var zd = spawner.spawn_entrance("runner", drop_e)
+		await physics_frame
+		var y0: float = zd.global_position.y
+		await _frames(int(drop_e["fall"] * 60.0 * 0.5))
+		var y_half: float = zd.global_position.y
+		await _frames(int(drop_e["fall"] * 60.0) + 12)
+		_check(y0 > 3.0 and y_half < y0 - 0.5 and y_half > 0.1 and zd.state != zd.State.ENTER and zd.global_position.distance_to(drop_e["pos"]) < 3.5 and absf(zd.global_position.y) < 0.2 and fx.landings >= 1,
+			"  a drop falls from %.1f m (%.1f halfway), lands on its spot and the landing is shown" % [y0, y_half])
+		zd.free()
+	var sm: Dictionary = {}
+	for c in ent._candidates("smash", from, cam):
+		sm = c
+		break
+	if not sm.is_empty():
+		var zs = spawner.spawn_entrance("runner", sm)
+		var p_start: Vector3 = zs.global_position
+		await _frames(30)
+		var moved: float = Vector2(zs.global_position.x - p_start.x, zs.global_position.z - p_start.z).length()
+		_check(fx.smashes >= 1 and moved > 1.0 and zs.state != zs.State.ENTER, "  a smash shoves it out through the shop front (%.1f m in half a second) with glass" % moved)
+		zs.free()
+	_check(fx.visible_cracks() >= 1 and fx.visible_cracks() <= fx.CRACKS, "  cracks are pooled (%d of %d showing)" % [fx.visible_cracks(), fx.CRACKS])
+
+	# --- The surge ---
+	spawner.round_no = 0
+	spawner.enabled = true
+	surge.enabled = true
+	surge.time_scale = 0.02
+	zm.round = 4
+	var log := []
+	var w := func(): log.append("warning")
+	var s := func(): log.append("started")
+	var e_ := func(): log.append("ended")
+	zm.surge_warning.connect(w)
+	zm.surge_started.connect(s)
+	zm.surge_ended.connect(e_)
+	var base_pts: int = zm.points
+	zm.add_points(10, "t")
+	var normal_pay: int = zm.points - base_pts
+	var made := []
+	var on_surge := func(zz): made.append(zz)
+	surge.spawned.connect(on_surge)
+	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
+	_check(not surge.trigger(10), "  ...and not another while one is on")
+	var pay_warn: int = zm.points
+	zm.add_points(10, "t")
+	var warn_pay: int = zm.points - pay_warn
+	var double_seen := false
+	var max_alive_seen := 0
+	var f2 := 0
+	while zm.surge_busy and f2 < 4000:
+		await physics_frame
+		f2 += 1
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+		max_alive_seen = maxi(max_alive_seen, spawner.alive())
+		if zm.surge_active and not double_seen:
+			var p1: int = zm.points
+			zm.add_points(10, "t")
+			double_seen = zm.points - p1 == 20
+	_check(log == ["warning", "started", "ended"], "  the signals come in order: %s" % [log])
+	_check(normal_pay == 10 and warn_pay == 10 and double_seen, "  points: 10 normally and in the warning, 20 in the quake")
+	var runners := 0
+	var types := {}
+	for zz in made:
+		runners += 1 if zz.kind == "runner" else 0
+		types[zz.entrance] = int(types.get(zz.entrance, 0)) + 1
+	_check(made.size() == 32 and spawner.alive() == 32, "  the surge let out exactly 32 (%d, alive %d)" % [made.size(), spawner.alive()])
+	_check(runners >= 24 and runners <= 27, "  mostly runners (%d of 32)" % runners)
+	var from_ground_air := int(types.get("rise", 0)) + int(types.get("drop", 0)) + int(types.get("smash", 0))
+	_check(from_ground_air >= 26 and types.size() >= 3, "  from the ground, the fire escapes and the shop fronts (%s)" % [types])
+	_check(surge.entrance_counts.size() >= 3 and max_alive_seen <= zm.SURGE_HARD_CAP, "  hard cap respected (peak %d of %d)" % [max_alive_seen, zm.SURGE_HARD_CAP])
+	_check(zm.surge_active and not zm.surge_busy, "  after the last one is out the round may end, double points linger")
+	var f3 := 0
+	while zm.surge_active and f3 < 2000:
+		await physics_frame
+		f3 += 1
+	var p2: int = zm.points
+	zm.add_points(10, "t")
+	_check(not zm.surge_active and zm.points - p2 == 10 and surge.phase == surge.Phase.IDLE, "  and then single points again")
+	_check(surge.next_round - zm.round >= 3 and surge.next_round - zm.round <= 4 and surge.last_round == zm.round,
+		"  the next one is 3 or 4 rounds on (round %d -> %d)" % [zm.round, surge.next_round])
+	zm.surge_warning.disconnect(w)
+	zm.surge_started.disconnect(s)
+	zm.surge_ended.disconnect(e_)
+	surge.spawned.disconnect(on_surge)
+	for zz in get_nodes_in_group("zombies"):
+		zz.free()
+
+	# --- When it comes ---
+	spawner.round_no = 0
+	var sch := 0
+	surge.next_round = 3
+	surge.last_round = -99
+	surge.plan_in = -1.0
+	surge._on_round_started(1)
+	var none_r1: bool = surge.plan_in < 0.0 and surge.next_round >= 3 and surge.next_round <= 4
+	surge.next_round = 3
+	surge._on_round_started(3)
+	var planned_r3: bool = surge.plan_in >= 0.0
+	surge.plan_in = -1.0
+	var randoms := 0
+	for i in 400:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 2
+		surge._on_round_started(6)
+		randoms += 1 if surge.plan_in >= 0.0 else 0
+	var near := 0
+	for i in 200:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 5
+		surge._on_round_started(6)
+		near += 1 if surge.plan_in >= 0.0 else 0
+	surge.plan_in = -1.0
+	_check(none_r1 and planned_r3, "  scheduled: none in round 1, one planned from round 3")
+	_check(randoms >= 10 and randoms <= 80 and near == 0, "  and now and then at random (%d of 400 rounds), never within 2 rounds of the last (%d)" % [randoms, near])
+	_check(surge.surge_size(1) >= 25 and surge.surge_size(30) <= 40, "  25 to 40 of them (%d at round 1, %d at round 30)" % [surge.surge_size(1), surge.surge_size(30)])
+	surge.enabled = false
+	spawner.enabled = false

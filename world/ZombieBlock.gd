@@ -17,6 +17,7 @@ const UpgradeMachineScript := preload("res://world/UpgradeMachine.gd")
 const CarPaint := preload("res://world/CarPaint.gd")
 const BarricadeScript := preload("res://world/Barricade.gd")
 const SpawnerScript := preload("res://npc/ZombieSpawner.gd")
+const SurgeScript := preload("res://npc/ZombieSurge.gd")
 ## The block's navmesh as zombies need it: with the buildings' masses and the
 ## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
 const NAVMESH := "res://world/block/zombie_navmesh.res"
@@ -108,6 +109,8 @@ const FIRE_RANGE := 7.0
 var city: Node3D
 var hud: CanvasLayer
 var spawner: Node
+## The Richter 8.0 surge's director (npc/ZombieSurge.gd).
+var surge: Node
 var barricades: Array[Node3D] = []
 var holder: Node
 var wall_buys: Array = []
@@ -139,6 +142,10 @@ func setup(block: Node3D) -> void:
 	spawner.holder = city
 	spawner.spawn_points.assign(SPAWN_POINTS)
 	add_child(spawner)
+	spawner.setup_entrances(city)
+	surge = SurgeScript.new()
+	surge.spawner = spawner
+	add_child(surge)
 	_arm_player()
 	_build_purchases()
 	ZombieMode.start_round()

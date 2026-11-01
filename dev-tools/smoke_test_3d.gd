@@ -8608,11 +8608,16 @@ func _zombie_fp_checks(gs: Node) -> void:
 		hm._process(0.01)
 	_check(still and not hm.showing(), "  it is still up at 0.07 s and gone by 0.13 s")
 	zed.health = 20.0
+	# The first shot's recoil and the head snap moved the aim: aim again, as a player would.
+	feel.reset_state()
+	await _zw_aim_part(holder, zed, "head")
 	holder._cooldown = 0.0
 	holder.fire()
+	# Read it the moment the shot lands: a slow first death frame (gore, ragdoll) must not hide it.
+	var kill_up: bool = hm.showing()
 	await process_frame
 	await process_frame
-	_check(hm.showing() and hm.kind == "kill" and hm.KILL.r > 0.8 and hm.KILL.g < 0.2 and hm.KILL.b < 0.2, "  the kill shot's hitmarker is red")
+	_check(kill_up and hm.kind == "kill" and hm.KILL.r > 0.8 and hm.KILL.g < 0.2 and hm.KILL.b < 0.2, "  the kill shot's hitmarker is red")
 	_check(feel.recent.has("hit_kill") and feel.recent.has("hit_head"), "  and the hit ticks, the kill its own heavy thump (%s)" % [feel.recent])
 	hm.flash("torso", false)
 	_check(hm.kind == "body" and hm.BODY == Color(1, 1, 1), "  a body hit is white")

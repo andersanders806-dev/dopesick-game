@@ -1,7 +1,8 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://player/Player3D.gd" id="1"]
 [ext_resource type="PackedScene" path="res://assets/rocketbox/Male_Adult_20.glb" id="2"]
+[ext_resource type="Script" path="res://player/ShoulderCam.gd" id="3"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.32
@@ -35,12 +36,12 @@ shadow_enabled = false
 position = Vector3(0, 1.0, 0)
 
 [node name="CameraMount" type="Node3D" parent="."]
-position = Vector3(0, 9, 6.5)
+position = Vector3(0.55, 1.55, 2.4)
+script = ExtResource("3")
 
 [node name="Camera3D" type="Camera3D" parent="CameraMount"]
-rotation_degrees = Vector3(-55, 0, 0)
 current = true
-fov = 50.0
+fov = 60.0
 
 [node name="InteractZone" type="Area3D" parent="."]
 collision_layer = 0

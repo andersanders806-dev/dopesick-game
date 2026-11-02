@@ -849,6 +849,7 @@ func _run() -> void:
 	await _block_cells_checks(gs)
 	await _walk_in_checks(gs)
 	await _schedules_checks(gs)
+	await _camera_checks(gs)
 	await _zombie_shell_checks(gs)
 	await _zombie_anim_checks(gs)
 	await _zombie_dead_checks(gs)
@@ -2118,7 +2119,7 @@ func _round4_checks(gs: Node) -> void:
 	# The camera eases after you and settles back on you.
 	_player().global_position.x += 3.0
 	await _frames(90)
-	var off: Vector3 = _player()._cam_focus - _player().global_position
+	var off: Vector3 = _player().rig._focus - _player().global_position
 	_check(Vector2(off.x, off.z).length() < 0.2, "  the camera settles back on you (%.2f m off)" % Vector2(off.x, off.z).length())
 	# The notebook.
 	var book = load("res://ui/Notebook.gd").new()
@@ -3191,11 +3192,11 @@ func _controller_checks(gs: Node) -> void:
 	_stick(JOY_AXIS_LEFT_X, 0.0)
 	await _frames(1)
 	_check(InputMap.action_get_events("interact").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "  square is use")
-	var z0: float = p._user_zoom
+	var pitch0: float = p.rig.pitch
 	_stick(JOY_AXIS_RIGHT_Y, 1.0)
 	await _frames(20)
 	_stick(JOY_AXIS_RIGHT_Y, 0.0)
-	_check(p._user_zoom > z0, "  the right stick pulls the camera back (%.2f -> %.2f)" % [z0, p._user_zoom])
+	_check(p.rig.pitch < pitch0, "  the right stick orbits the camera (pitch %.2f -> %.2f)" % [pitch0, p.rig.pitch])
 	await _tap(JOY_BUTTON_TOUCHPAD)
 	var book := _find_root_child("_draw_map")
 	_check(book != null, "  the touchpad opens the notebook")
@@ -3358,12 +3359,12 @@ func _view_checks(gs: Node) -> void:
 	# The street, in first person.
 	await _load("res://world/City3D.tscn")
 	_check(_player().camera.global_position.y < 2.0 and current_scene.find_child("FPCeiling", true, false) == null, "  out on the street: eye level, open sky")
-	# Third person is the old camera, high and behind.
+	# Third person is the shoulder camera, close behind you.
 	gfx.set_first_person(false)
 	await _load("res://world/Apartment3D.tscn")
 	p = _player()
 	await _frames(3)
-	_check(p.camera.global_position.y > 4.0 and current_scene.find_child("FPCeiling", true, false) == null, "  third person: the camera's back up over the room, no lid on it")
+	_check(p.camera.global_position.y > 1.0 and p.camera.global_position.y < 3.5 and p.camera.global_position.distance_to(p.global_position) > 1.5 and current_scene.find_child("FPCeiling", true, false) == null, "  third person: the shoulder camera hangs behind you (%.1f m up), no lid on it" % p.camera.global_position.y)
 	var shown: Array = p.model.find_children("*", "GeometryInstance3D", true, false)
 	_check(shown.all(func(m): return m.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY), "  ...and you can see yourself")
 	# Switchable mid-run from settings.
@@ -4675,7 +4676,7 @@ func _smooth_quick_checks(gs: Node) -> void:
 	# screen isn't three frames behind.
 	var P = load("res://player/Player3D.gd")
 	_check(P.ACCEL >= 40.0 and P.DECEL >= 45.0, "  up to speed in a tenth of a second (accel %.0f)" % P.ACCEL)
-	_check(P.CAM_FOLLOW >= 14.0, "  the camera keeps up (follow %.0f)" % P.CAM_FOLLOW)
+	_check(load("res://player/ShoulderCam.gd").FOLLOW >= 14.0, "  the camera keeps up (follow %.0f)" % load("res://player/ShoulderCam.gd").FOLLOW)
 	_check(int(ProjectSettings.get_setting("rendering/rendering_device/vsync/swapchain_image_count", 3)) == 2, "  two frames in the swapchain, not three")
 	_check(gfx.VSYNC == DisplayServer.VSYNC_ENABLED, "  plain vsync: one frame per refresh, one physics step per frame")
 	# Every passerby look drawn once while the street loads (under the
@@ -4718,7 +4719,14 @@ func _smooth_quick_checks(gs: Node) -> void:
 	_check(mount.global_position.distance_to(pl.get_global_transform_interpolated().origin + Vector3(0, pl.EYE_HEIGHT, 0)) < 0.01, "  ...from where the body is drawn")
 	gfx.set_first_person(false)
 	await _frames(2)
-	_check(mount.physics_interpolation_mode != Node.PHYSICS_INTERPOLATION_MODE_OFF, "  third person: interpolated as before")
+	# Third person is driven the same way now: the shoulder camera follows the
+	# body's interpolated position every drawn frame (not the physics tick).
+	pl.rig.yaw = 0.4
+	pl._process(0.016)
+	var head: Vector3 = pl.get_global_transform_interpolated().origin + Vector3(0, 1.55, 0)
+	_check(mount.physics_interpolation_mode == Node.PHYSICS_INTERPOLATION_MODE_OFF and mount.global_position.distance_to(head) < 3.0 and absf(angle_difference(mount.rotation.y, 0.4)) < 0.4,
+		"  third person: the shoulder camera is drawn every frame from the interpolated body, not stepped on the physics tick"
+	)
 	# Mailbox vsync doesn't cap anything: the title screen ran at 515 FPS on
 	# the UHD 620, heating it into throttling. Off, it's held at the screen's
 	# refresh (60 where there's no screen to ask).
@@ -5051,10 +5059,12 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 			if not inside:
 				strays.append("%s/%s" % [cn, cell.get_path_to(n)])
 	_check(strays.is_empty(), "  everything in a cell lies inside its bounds (%d strays: %s)" % [strays.size(), strays.slice(0, 5)])
-	# The overpass: nothing hangs below the camera's highest zoom plus half
-	# a metre (its pillars aside).
+	# The overpass: nothing hangs below the shoulder camera's highest reach
+	# (looking down from the top of its orbit, furthest out) plus half a
+	# metre (its pillars aside).
 	var player := _player()
-	var cam_top: float = player._cam_offset.y * player.CAM_ZOOM * player.CAM_USER_ZOOM.y
+	var shoulder_cam = load("res://player/ShoulderCam.gd")
+	var cam_top: float = shoulder_cam.OFFSET.y + shoulder_cam.OFFSET.z * shoulder_cam.USER_ZOOM.y * sin(-shoulder_cam.PITCH_MIN)
 	var low := []
 	for mi in city.get_node("Overpass").find_children("*", "VisualInstance3D", true, false):
 		if String(mi.name).begins_with("Pillar") or String(mi.get_parent().name).begins_with("Pillar"):
@@ -5332,13 +5342,13 @@ func _block_cells_checks(gs: Node) -> void:
 			in_wall.append("x%.0f %s cam %s %.1f m from you" % [bx, inside.map(func(r): return r["collider"].name), player.camera.global_position, dist])
 	_check(in_wall.is_empty(), "  on Back Street's south sidewalk the camera stays out of the buildings behind you (%s)" % [in_wall.slice(0, 3)])
 	# The walls: standing at the service lane's east end, a shop's roof and
-	# walls are between you and the camera (which is out in the open above
-	# them), and they're cutaway material.
+	# walls are between you and a viewpoint out in the open above them (the
+	# photo-mode camera, the old high rig's spot: the shoulder camera is
+	# pulled in by walls instead), and they're cutaway material.
 	player.global_position = Vector3(16.0, 0, -18.0)
 	player.reset_physics_interpolation()
 	await _frames(BLOCK_SETTLE_FRAMES)
-	var cam: Camera3D = player.camera
-	var from := cam.global_position
+	var from := player.global_position + Vector3(0, 6.75, 4.9)
 	var to := player.global_position + Vector3(0, 1.0, 0)
 	var between := []
 	var plain := []
@@ -6464,12 +6474,17 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	# --- Boxed in, out of sight: put back on the map; in sight: left alone ---
 	player.global_position = home
 	player.velocity = Vector3.ZERO
+	# (The shoulder camera hangs 2.4 m behind you: to look along the street,
+	# where there is floor under the spot ahead, turn it that way.)
+	player.rig.yaw = -PI / 2.0
+	player.rig.follow(0.0, player.global_position)
 	await _frames(40)
 	var cam: Camera3D = root.get_viewport().get_camera_3d()
 	var fwd := -cam.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
-	var behind := cam.global_position - fwd * 8.0
+	# Out of the view: across the road to the side, as the old camera's back was.
+	var behind := cam.global_position + Vector3(0.0, 0.0, 8.0)
 	behind.y = 0.0
 	var ahead := cam.global_position + fwd * 6.0
 	ahead.y = 0.0
@@ -8384,3 +8399,255 @@ func _schedules_checks(gs: Node) -> void:
 	_check(present.is_empty() and city.get_node_or_null("People") == null, "  Dead Block has no scheduled people, passers-by or beat cop (%s)" % [present])
 	gs.mode = "story"
 	gs.start_run()
+
+# --- The story's over-the-shoulder camera (harbour Task H1) -------------------
+
+## Spots the shoulder camera is swept round (name, position): Main Street, the
+## two alleys (1.8 m between the walls, centred on x 13.6 and 21.4), the block
+## corners, inside a walk-in shop and in a shop doorway.
+## (Loaded when first used: its Facades preload needs the autoloads, which a -s script is compiled before.)
+var SC: GDScript
+const CAMERA_SPOTS := [
+	["Main Street mid", Vector3(3.5, 0.0, -2.6)],
+	["alley x=14 (13.6, 1.8 m wide)", Vector3(13.6, 0.0, -9.0)],
+	["alley x=21 (21.4, 1.8 m wide)", Vector3(21.4, 0.0, -9.0)],
+	["block corner (NW)", Vector3(-66.5, 0.0, -86.5)],
+	["block corner (inner NE)", Vector3(37.5, 0.0, -86.5)],
+	["inside the liquor store", Vector3(10.5, 0.0, -7.0)],
+	["the corner shop's doorway", Vector3(3.5, 0.0, -4.3)],
+]
+
+func _camera_checks(gs: Node) -> void:
+	await _section("The shoulder camera: behind and to the right, orbiting, never inside geometry")
+	SC = load("res://player/ShoulderCam.gd")
+	_close_menus()
+	gs.start_run()
+	gs.mode = "story"
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var gfx := root.get_node("Graphics")
+	gfx.set_first_person(false)
+	var city := await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	var p := _player()
+	p.global_position = Vector3(3.5, 0.0, -2.6)
+	p.reset_physics_interpolation()
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var rig = p.rig
+	_check(rig == p.get_node("CameraMount") and rig.top_level and p.camera.get_parent() == rig, "  the camera mount is the ShoulderCam rig")
+	# At rest it hangs behind-right of you, a little above, in the camera's turned frame.
+	rig.yaw = 0.0
+	rig.pitch = SC.REST_PITCH
+	rig.follow(0.0, p.global_position)
+	var rel: Vector3 = rig.global_position - p.global_position
+	var basis_y := Basis.from_euler(Vector3(0.0, rig.yaw, 0.0))
+	var local := Vector3(rel.dot(basis_y.x), rel.y, rel.dot(basis_y.z))
+	_check(local.x > 0.3 and local.z > 1.8 and local.y > 1.0, "  at rest it is behind and to the right of you (right %.2f, up %.2f, back %.2f)" % [local.x, local.y, local.z])
+	_check(rig.global_position.y < 3.0 and SC.OFFSET == Vector3(0.55, 1.55, 2.4), "  ...close by (%.1f m up), not the old 9 m rig" % rig.global_position.y)
+	# The mouse turns it by the first-person sensitivity.
+	var yaw0: float = rig.yaw
+	p.mouse_look(Vector2(100.0, 0.0))
+	_check(is_equal_approx(absf(rig.yaw - yaw0), 100.0 * p.MOUSE_SENS * gfx.look_sensitivity) and rig.yaw < yaw0, "  100 px of mouse turns it %.3f rad (right: it turns right)" % absf(rig.yaw - yaw0))
+	var pitch0: float = rig.pitch
+	p.mouse_look(Vector2(0.0, 40.0))
+	_check(rig.pitch < pitch0, "  ...mouse down looks down")
+	gfx.set_invert_look(true)
+	var pitch1: float = rig.pitch
+	p.mouse_look(Vector2(0.0, 40.0))
+	_check(rig.pitch > pitch1, "  ...and the Y-invert setting is honoured")
+	gfx.set_invert_look(false)
+	rig.orbit(0.0, 99.0)
+	var hi: float = rig.pitch
+	rig.orbit(0.0, -99.0)
+	_check(is_equal_approx(hi, SC.PITCH_MAX) and is_equal_approx(rig.pitch, SC.PITCH_MIN), "  pitch is clamped to %.0f..%.0f deg" % [rad_to_deg(SC.PITCH_MIN), rad_to_deg(SC.PITCH_MAX)])
+	# The other shoulder mirrors the offset.
+	rig.yaw = 0.0
+	rig.pitch = SC.REST_PITCH
+	rig.shoulder = 1
+	rig.follow(0.0, p.global_position)
+	var right_x: float = (rig.global_position - p.global_position).x
+	rig.swap_shoulder()
+	rig.follow(0.0, p.global_position)
+	var left_x: float = (rig.global_position - p.global_position).x
+	_check(rig.shoulder == -1 and is_equal_approx(left_x, -right_x) and right_x > 0.3, "  swap_shoulder mirrors it (x %.2f -> %.2f)" % [right_x, left_x])
+	rig.swap_shoulder()
+	_check(rig.shoulder == 1, "  ...and swaps back")
+	# The swap key, the pad button, and Dead Block's controls leaving both alone.
+	var swap_keys: Array = InputMap.action_get_events("shoulder_swap")
+	_check(swap_keys.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_Q), "  shoulder swap is Q on the keyboard")
+	_check(swap_keys.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_DPAD_LEFT and e.device == -1), "  ...and D-pad left on any pad")
+	var ZC := load("res://player/ZombieControls.gd")
+	ZC.apply()
+	var kept := InputMap.action_get_events("shoulder_swap").size()
+	var melee_r3: bool = InputMap.action_get_events("melee").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_RIGHT_STICK)
+	ZC.restore()
+	_check(kept == swap_keys.size() and melee_r3 and InputMap.action_get_events("shoulder_swap").size() == swap_keys.size(), "  Dead Block keeps the swap and puts R3 on the knife, and leaving it restores the story's (%d events)" % kept)
+	var swap_ev := InputEventKey.new()
+	swap_ev.physical_keycode = KEY_Q
+	swap_ev.pressed = true
+	p._unhandled_input(swap_ev)
+	_check(rig.shoulder == -1, "  pressing it swaps the player's camera")
+	rig.shoulder = 1
+	# Walking goes where the camera looks.
+	p.global_position = Vector3(3.5, 0.0, -2.6)
+	p.reset_physics_interpolation()
+	rig.yaw = PI / 2.0
+	rig.follow(0.0, p.global_position)
+	var ff: Vector3 = rig.forward_flat()
+	_check(ff.distance_to(Vector3(-1, 0, 0)) < 0.001 and absf(ff.y) < 0.001, "  forward_flat after a quarter turn left points west (%s)" % ff)
+	var x0: float = p.global_position.x
+	Input.action_press("move_up")
+	await _frames(30)
+	Input.action_release("move_up")
+	var moved := p.global_position - Vector3(x0, 0.0, -2.6)
+	_check(moved.x < -0.5 and absf(moved.z) < 0.15, "  move-forward walks along it (moved %s)" % moved)
+	await _frames(20)
+	# The stick turns it with the same sensitivity, on any pad.
+	rig.yaw = 0.0
+	_stick(JOY_AXIS_RIGHT_X, 1.0)
+	await _settle()
+	await _frames(20)
+	_stick(JOY_AXIS_RIGHT_X, 0.0)
+	await _settle()
+	_check(rig.yaw < -0.2, "  the right stick orbits the camera (yaw %.2f)" % rig.yaw)
+	var mouse_yaw: float = rig.yaw
+	_stick(JOY_AXIS_RIGHT_Y, 1.0)
+	await _settle()
+	await _frames(20)
+	_stick(JOY_AXIS_RIGHT_Y, 0.0)
+	await _settle()
+	_check(rig.pitch < SC.REST_PITCH - 0.05 and is_equal_approx(rig.yaw, mouse_yaw), "  ...and pulling down looks down, not zooms (pitch %.0f deg)" % rad_to_deg(rig.pitch))
+	# First person and back.
+	rig.yaw = 0.7
+	rig.pitch = -0.2
+	gfx.set_first_person(true)
+	await _frames(4)
+	var fp_yaw: float = rig.yaw
+	p.set_look(2.0, 0.1)
+	await _frames(4)
+	gfx.set_first_person(false)
+	await _frames(6)
+	_check(is_equal_approx(rig.yaw, 0.7) and is_equal_approx(fp_yaw, 0.7) and is_equal_approx(rig.pitch, -0.2) and is_equal_approx(p.camera.fov, p._tp_fov), "  first person and back: the third-person orbit is where it was (yaw %.2f)" % rig.yaw)
+	_check(p.camera.get_parent().global_position.distance_to(p.get_global_transform_interpolated().origin + Vector3(0, SC.OFFSET.y, 0)) > 1.5, "  ...with the camera out behind you again")
+	# The mouse: captured in the story's third person; free in a conversation, and in Dead Block.
+	# (An earlier section's run-end screen may still be up on the root.)
+	for c in root.get_children():
+		if c is CanvasLayer and c.has_method("show_summary"):
+			c.free()
+	_check(p.wants_mouse_captured(), "  the mouse steers the story's third-person camera")
+	p.dialogue_active = true
+	_check(not p.wants_mouse_captured(), "  ...but not in a conversation")
+	p.dialogue_active = false
+	gs.mode = "zombies"
+	_check(not p.wants_mouse_captured(), "  ...and in Dead Block's third person the pointer still aims")
+	gs.mode = "story"
+	# A door or spawn swings the camera in behind you.
+	var marker := city.get_node("SpawnFromLiquor") as Marker3D
+	var turned := marker.rotation.y
+	marker.rotation.y = 1.0
+	gs.pending_spawn = "SpawnFromLiquor"
+	rig.yaw = -2.0
+	city._place_player_at_spawn()
+	_check(is_equal_approx(rig.yaw, 1.0) and is_equal_approx(p.model.rotation.y, 1.0 + PI) and is_equal_approx(rig.pitch, SC.REST_PITCH), "  a spawn snaps the camera behind you (yaw %.2f)" % rig.yaw)
+	p.arrive(0.5)
+	_check(is_equal_approx(wrapf(rig.yaw - PI, -PI, PI), 0.5) and rig.forward_flat().dot(Vector3(sin(0.5), 0.0, cos(0.5))) > 0.999, "  snap_behind: the camera looks the way you face")
+	marker.rotation.y = turned
+	# Geometry: sweep the yaw at seven spots, at three pitches.
+	await _camera_sweep_checks(city, p)
+	await _camera_pull_in_checks(city, p)
+	rig.yaw = 0.0
+	rig.pitch = SC.REST_PITCH
+	p.global_position = Vector3(3.5, 0.0, -2.6)
+	p.reset_physics_interpolation()
+
+func _camera_sweep_checks(city: Node, p: Node3D) -> void:
+	var rig = p.rig
+	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
+	var bad := []
+	var tested := 0
+	var worst_dist := 99.0
+	for spot in CAMERA_SPOTS:
+		p.global_position = spot[1]
+		p.reset_physics_interpolation()
+		await _frames(BLOCK_SETTLE_FRAMES)
+		# The two shop spots stand where a built room is, so its walls are
+		# colliders and the camera may be inside the building's box (in the room).
+		var in_room := String(spot[0]).begins_with("inside") or String(spot[0]).contains("doorway")
+		if in_room:
+			await _wait_loaded(city.get_node("Cell_Main/WalkIn_Liquor" if String(spot[0]).begins_with("inside") else "Cell_Main/WalkIn_Convenience"))
+			await _frames(10)
+		var feet: Vector3 = p.global_position
+		var head := feet + Vector3(0, SC.OFFSET.y, 0)
+		for shoulder in [1, -1]:
+			rig.shoulder = shoulder
+			for pitch in [SC.PITCH_MIN, SC.REST_PITCH, SC.PITCH_MAX]:
+				for step in 24:
+					rig.yaw = wrapf(deg_to_rad(15.0 * step), -PI, PI)
+					rig.pitch = pitch
+					rig.follow(0.0, feet)
+					var cam: Vector3 = rig.global_position
+					tested += 1
+					var ray := PhysicsRayQueryParameters3D.create(head, cam, SC.SOLID_MASK, [p.get_rid()])
+					var hit: Dictionary = space.intersect_ray(ray)
+					var pq := PhysicsPointQueryParameters3D.new()
+					pq.position = cam
+					pq.collision_mask = SC.SOLID_MASK
+					var inside: Array = space.intersect_point(pq, 4)
+					var why := ""
+					if not hit.is_empty():
+						why = "ray hits %s" % hit["collider"].name
+					elif not inside.is_empty():
+						why = "inside %s" % inside[0]["collider"].name
+					elif not in_room and load("res://world/Facades.gd").in_building(cam, 0.0):
+						why = "inside a building's box"
+					if why != "":
+						bad.append("%s yaw %d pitch %d side %d: %s" % [spot[0], rad_to_deg(rig.yaw), rad_to_deg(pitch), shoulder, why])
+					worst_dist = minf(worst_dist, cam.distance_to(head))
+	rig.shoulder = 1
+	_check(bad.is_empty(), "camera_never_inside_geometry: %d camera positions at 7 spots, nothing hit or inside (%s)" % [tested, bad.slice(0, 4)])
+	_check(worst_dist >= SC.MIN_ARM - 0.01, "  ...and never closer to your head than %.2f m (closest %.2f)" % [SC.MIN_ARM, worst_dist])
+
+func _camera_pull_in_checks(city: Node, p: Node3D) -> void:
+	var rig = p.rig
+	# The checks step the rig by hand: the player's own _process must not.
+	p.set_process(false)
+	# A wall near you: in at once, then out slowly once it is gone.
+	p.global_position = Vector3(13.6, 0.0, -9.0)
+	p.reset_physics_interpolation()
+	await _frames(BLOCK_SETTLE_FRAMES)
+	var feet: Vector3 = p.global_position
+	rig.pitch = SC.REST_PITCH
+	var open_yaw := 0.0
+	var tight_yaw := 0.0
+	var open_arm := 0.0
+	var tight_arm := 1.0
+	for step in 24:
+		rig.yaw = wrapf(deg_to_rad(15.0 * step), -PI, PI)
+		rig.follow(0.0, feet)
+		if rig.arm_free > open_arm:
+			open_arm = rig.arm_free
+			open_yaw = rig.yaw
+		if rig.arm_free < tight_arm:
+			tight_arm = rig.arm_free
+			tight_yaw = rig.yaw
+	_check(tight_arm < 0.8 and open_arm > tight_arm + 0.2, "  in the alley some angles are cut short by a wall (arm %.0f%%) and some are not (%.0f%%)" % [tight_arm * 100.0, open_arm * 100.0])
+	# From the open side to the walled side: one frame is enough to come in.
+	rig.yaw = open_yaw
+	rig.follow(0.0, feet)
+	rig.yaw = tight_yaw
+	rig._yaw_r = tight_yaw
+	rig.follow(0.016, feet)
+	var one_in: float = rig.arm_free
+	_check(one_in < open_arm - 0.1 and absf(one_in - tight_arm) < 0.02, "  it comes in at once (%.0f%% -> %.0f%% in one frame, wall %.0f%%)" % [open_arm * 100.0, one_in * 100.0, tight_arm * 100.0])
+	# And back: eased out slowly.
+	rig.yaw = open_yaw
+	rig._yaw_r = open_yaw
+	rig.follow(0.016, feet)
+	var one_out: float = rig.arm_free
+	for i in 30:
+		rig.follow(0.016, feet)
+	var half_s: float = rig.arm_free
+	for i in 240:
+		rig.follow(0.016, feet)
+	_check(one_out < tight_arm + 0.1 and half_s < open_arm - 0.15 and rig.arm_free > open_arm - 0.02, "  ...and eases out slowly (%.0f%% after a frame, %.0f%% after half a second, %.0f%% after 4 s)" % [one_out * 100.0, half_s * 100.0, rig.arm_free * 100.0])
+	p.set_process(true)

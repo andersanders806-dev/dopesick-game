@@ -170,11 +170,12 @@ func _apply_volume(bus: String) -> void:
 	AudioServer.set_bus_mute(i, v <= 0.01)
 	AudioServer.set_bus_volume_db(i, _bus_base_db.get(bus, 0.0) + linear_to_db(maxf(v, 0.01)))
 
-## In first person the mouse steers the view, so it's captured -- except
-## when a menu, a conversation or a minigame needs a pointer.
+## The mouse steers the view (first person, and the story's shoulder camera),
+## so it's captured -- except when a menu, a conversation or a minigame needs
+## a pointer (Player3D.wants_mouse_captured decides).
 func _update_mouse_mode() -> void:
 	var player := get_tree().get_first_node_in_group("player")
-	var want: bool = first_person and player != null and player.has_method("wants_mouse_captured") and player.wants_mouse_captured()
+	var want: bool = player != null and player.has_method("wants_mouse_captured") and player.wants_mouse_captured()
 	var mode := Input.MOUSE_MODE_CAPTURED if want else Input.MOUSE_MODE_VISIBLE
 	if Input.mouse_mode != mode and not DisplayServer.get_name() == "headless":
 		Input.mouse_mode = mode

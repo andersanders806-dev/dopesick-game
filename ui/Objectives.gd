@@ -38,7 +38,7 @@ static func current() -> String:
 ## The very first run's walk-through, one toast at a time (HUD), never again
 ## once seen (MetaProgress.hints_seen).
 const FIRST_STEPS := [
-	["move", "WASD to walk, Shift to run. E uses whatever's in front of you."],
+	["move", "WASD to walk where the camera looks, mouse to look round, Q to swap shoulders, Shift to run. E uses whatever's in front of you."],
 	["craving", "Top left: CRAVING. When it runs out you're dope sick -- shaking, slow, seeing things."],
 	["body", "Under it: HEALTH, fed by FOOD, WARMTH and REST. Let them all run out and you die."],
 	["keys", "J opens your notebook. C crafts from what you scavenge. Esc pauses."],

@@ -1127,6 +1127,7 @@ func _setup_input_actions() -> void:
 	_bind("look_right", [])
 	_bind("look_up", [])
 	_bind("look_down", [])
+	_bind("shoulder_swap", [KEY_Q])
 	_bind("fire", [KEY_SPACE])
 	_bind("steady", [KEY_SHIFT])
 	_bind("drift", [KEY_SPACE, KEY_SHIFT])
@@ -1175,6 +1176,7 @@ const PAD := {
 	"look_right": [[JOY_AXIS_RIGHT_X, 1.0]],
 	"look_up": [[JOY_AXIS_RIGHT_Y, -1.0]],
 	"look_down": [[JOY_AXIS_RIGHT_Y, 1.0]],
+	"shoulder_swap": [JOY_BUTTON_DPAD_LEFT],
 	"interact": [JOY_BUTTON_X, JOY_BUTTON_A],
 	"sprint": [JOY_BUTTON_LEFT_STICK],
 	"cancel_ui": [JOY_BUTTON_B],
@@ -1239,10 +1241,10 @@ func control_name(action: String) -> String:
 
 const PAD_NAMES := {"interact": "Square", "cancel_ui": "Circle", "pause": "Options", "fire": "R2",
 	"steady": "L2", "sprint": "L3", "notebook": "Touchpad", "craft": "L1", "walkman": "Triangle",
-	"walkman_next": "D-pad right", "page": "L1/R1", "aim": "Left stick", "look": "Right stick",
+	"shoulder_swap": "D-pad left", "walkman_next": "D-pad right", "page": "L1/R1", "aim": "Left stick", "look": "Right stick",
 	"drift": "R1", "throttle": "R2", "brake": "L2", "steer": "Left stick", "accept": "Cross"}
 const KEY_NAMES := {"interact": "E", "cancel_ui": "Esc", "pause": "Esc", "fire": "Space",
-	"steady": "Shift", "sprint": "Shift", "notebook": "J", "craft": "C", "walkman": "T", "walkman_next": "N",
+	"steady": "Shift", "sprint": "Shift", "notebook": "J", "craft": "C", "walkman": "T", "shoulder_swap": "Q", "walkman_next": "N",
 	"page": "Tab/arrows", "aim": "Mouse", "look": "Wheel", "drift": "Shift/Space", "throttle": "W",
 	"brake": "S", "steer": "A/D", "accept": "E/Enter"}
 

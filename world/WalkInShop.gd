@@ -266,8 +266,11 @@ func _show_out() -> void:
 	if hud and hud.dialogue_panel.visible:
 		hud.advance_or_close_dialogue()
 	player.dialogue_active = false
-	player.global_position = (get_node("OutsideSpawn") as Marker3D).global_position
+	var out := get_node("OutsideSpawn") as Marker3D
+	player.global_position = out.global_position
 	player.reset_physics_interpolation()
+	if player.has_method("arrive"):
+		player.arrive(out.global_rotation.y + PI)
 
 ## Racks of tapes aren't the catalogue's: whatever you haven't got.
 func _shuffle_items() -> void:

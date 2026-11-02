@@ -1,6 +1,7 @@
 extends CharacterBody3D
 
 const PauseMenuScript := preload("res://ui/PauseMenu.gd")
+const ShoulderCamScript := preload("res://player/ShoulderCam.gd")
 const FirstPersonRoom := preload("res://world/FirstPersonRoom.gd")
 const NotebookScript := preload("res://ui/Notebook.gd")
 ## A walk: the clip plants its feet up to 1.8x its own pace (0.98 m/s on
@@ -48,6 +49,8 @@ const SHAKE_ROLL_DEG := 1.6
 @onready var interact_zone: Area3D = $InteractZone
 @onready var model: Node3D = $Model
 @onready var camera: Camera3D = $CameraMount/Camera3D
+## The third-person camera: over the shoulder (player/ShoulderCam.gd).
+@onready var rig: ShoulderCamScript = $CameraMount
 
 var nearby: Array = []
 var dialogue_active: bool = false
@@ -65,34 +68,11 @@ var _theft_serial: int = 0
 var _camera_base: Transform3D
 
 # --- Camera framing ---------------------------------------------------------
-## The rig floats free of the player (top_level) and eases after them, so
-## the character stays in the middle of the screen wherever they walk. It
-## is the same distance in every room, so a room's size reads as its size:
-## the old rig zoomed in on small rooms and pinned itself to the walls,
-## which made rooms jump in scale and left you walking off-centre. The
-## scroll wheel moves it in and out.
-const CAM_FOLLOW := 15.0
-## Of the scene file's 9 m-high rig: close enough to read faces and hands.
-const CAM_ZOOM := 0.75
-const CAM_USER_ZOOM := Vector2(0.7, 1.4)
-var _cam_offset: Vector3
-var _cam_focus: Vector3
-## Where the camera's line to you is cut short by a building behind it
-## (Facades.camera_clip), 0..1, how far of the line it keeps.
-var _cam_clip := 1.0
-const Facades := preload("res://world/Facades.gd")
-## Chest height the camera's line to you starts at, and how far off a wall
-## it stays (its near plane stays clear), and how fast it eases back out.
-const CAM_CHEST := 1.2
-const CAM_WALL_PAD := 0.6
-const CAM_CLIP_OUT := 3.0
-## Of its height, at least, the camera keeps when a wall has pulled it in.
-const CAM_CLIPPED_HEIGHT := 0.55
-var _user_zoom: float = 1.0
-## Zoom per second at full right-stick tilt.
-const PAD_ZOOM_RATE := 0.8
+## Third person is player/ShoulderCam.gd: the mount floats free of the body
+## (top_level), follows its drawn position every frame, and the mouse or right
+## stick swings it round you. Walking goes where it looks. The scroll wheel
+## moves it in and out a little (story).
 var _sprint_latched: bool = false
-var _cam_ready: bool = false
 
 # --- First person ------------------------------------------------------------
 ## Graphics.first_person: the camera at your eyes, the mouse or right stick
@@ -107,7 +87,6 @@ const PITCH_LIMIT := deg_to_rad(80.0)
 var _first_person: bool = false
 var _look_yaw: float = 0.0
 var _look_pitch: float = 0.0
-var _tp_camera_base: Transform3D
 var _tp_fov: float
 var _shake_t: float = 0.0
 ## A jolt that dies away fast: a punch, a fall, a knife (kick()).
@@ -120,11 +99,13 @@ func _ready() -> void:
 	anim = CharacterAnimator.new(model)
 	# Hear the world from the character, not the camera hanging 9 m above.
 	$Listener.make_current()
-	_camera_base = camera.transform
-	_tp_camera_base = _camera_base
+	_camera_base = Transform3D()
 	_tp_fov = camera.fov
-	_cam_offset = $CameraMount.position
-	$CameraMount.top_level = true
+	rig.ignore = get_rid()
+	# Both views are driven every drawn frame from the body's interpolated
+	# position (_process), not stepped on the physics tick -- the fix Godot's
+	# jitter/stutter guide gives for first-person cameras.
+	$CameraMount.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
@@ -134,25 +115,40 @@ func _ready() -> void:
 
 func _apply_view(on: bool) -> void:
 	_first_person = on
-	for m in model.find_children("*", "GeometryInstance3D", true, false):
-		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	# First person: drawn every frame from where the body is drawn and the
-	# latest mouse look (_process), not stepped on the physics tick -- the
-	# fix Godot's jitter/stutter guide gives for first-person cameras.
-	$CameraMount.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF if on else Node.PHYSICS_INTERPOLATION_MODE_INHERIT
+	_set_body_drawn(not on)
 	if on:
 		# Look the way you were facing.
 		set_look(_facing_angle + PI, 0.0)
-		_camera_base = Transform3D()
 		camera.fov = FP_FOV
 		camera.near = 0.05
 	else:
-		_camera_base = _tp_camera_base
+		# Back to third person: the orbit is where you left it.
 		camera.fov = _tp_fov
-		$CameraMount.rotation = Vector3.ZERO
-		_cam_ready = false
+		camera.transform = _camera_base
 	FirstPersonRoom.apply(get_tree().current_scene, on)
 	_update_camera_rig(0.0)
+
+## Your body is drawn, or only casts its shadow: not in first person (you do
+## not see the inside of your own head), and not when a wall has pulled the
+## shoulder camera right in against your head.
+var _body_drawn := true
+func _set_body_drawn(drawn: bool) -> void:
+	_body_drawn = drawn
+	for m in model.find_children("*", "GeometryInstance3D", true, false):
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if drawn else GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+
+## Closer than this to your head the camera is inside the picture: step out of it.
+const BODY_HIDE_DIST := 0.8
+const BODY_SHOW_DIST := 1.0
+
+func _update_body_visibility() -> void:
+	if _first_person:
+		return
+	var d := rig.arm_length()
+	if _body_drawn and d < BODY_HIDE_DIST:
+		_set_body_drawn(false)
+	elif not _body_drawn and d > BODY_SHOW_DIST:
+		_set_body_drawn(true)
 
 ## Where you're looking, in radians: yaw round from -Z, pitch up from level.
 func set_look(yaw: float, pitch: float) -> void:
@@ -161,10 +157,12 @@ func set_look(yaw: float, pitch: float) -> void:
 
 ## Graphics asks, each frame: should the mouse be steering the view?
 func wants_mouse_captured() -> bool:
-	if not _first_person or dialogue_active or get_tree().paused:
+	# Third person turns the camera with the mouse too, except in Dead Block,
+	# where the pointer still aims (until the shoulder aim, Task Z5).
+	if (not _first_person and GameState.mode == "zombies") or dialogue_active or get_tree().paused:
 		return false
 	for c in get_tree().root.get_children():
-		if c is CanvasLayer and (c.has_method("open") or c.has_method("open_with") or c.has_method("start")):
+		if c is CanvasLayer and (c.has_method("open") or c.has_method("open_with") or c.has_method("start") or c.has_method("show_summary")):
 			return false
 	return true
 
@@ -173,39 +171,23 @@ func _update_camera_rig(delta: float) -> void:
 	if _first_person:
 		_update_fp_camera()
 		return
-	var target := global_position
-	# Snap after a spawn or a door; ease otherwise.
-	if not _cam_ready or _cam_focus.distance_to(target) > 8.0:
-		_cam_focus = target
-		_cam_ready = true
-	else:
-		_cam_focus = _cam_focus.lerp(target, 1.0 - exp(-CAM_FOLLOW * delta))
-	var want := _cam_focus + _cam_offset * CAM_ZOOM * _user_zoom
-	# On the block the camera never goes into a building: it comes in along
-	# its line to you at once, and eases back out.
-	var chest := _cam_focus + Vector3(0, CAM_CHEST, 0)
-	var clip := 1.0
-	if get_tree().get_first_node_in_group("block_cells") != null:
-		clip = Facades.camera_clip(chest, want, CAM_WALL_PAD)
-	if clip < _cam_clip or delta <= 0.0:
-		_cam_clip = clip
-	else:
-		_cam_clip = lerpf(_cam_clip, clip, 1.0 - exp(-CAM_CLIP_OUT * delta))
-	var pos := chest.lerp(want, _cam_clip)
-	var tilt := 0.0
-	if _cam_clip < 0.999:
-		# Not straight in: it keeps most of its height (looking down on
-		# you from just off the wall) when that's clear, and tilts to keep
-		# you in the middle.
-		var off := want - chest
-		var lifted := chest + Vector3(off.x * _cam_clip, off.y * maxf(_cam_clip, CAM_CLIPPED_HEIGHT), off.z * _cam_clip)
-		if not Facades.in_building(lifted, CAM_WALL_PAD * 0.5):
-			pos = lifted
-		var to_you := chest - pos
-		var down := atan2(-to_you.y, Vector2(to_you.x, to_you.z).length())
-		tilt = (-down - _tp_camera_base.basis.get_euler().x) * (1.0 - _cam_clip)
-	$CameraMount.global_position = pos
-	$CameraMount.rotation = Vector3(tilt, 0.0, 0.0)
+	rig.follow(delta, get_global_transform_interpolated().origin)
+	_update_body_visibility()
+
+## The camera swings in behind you at once (a door, a spawn): `heading` is the
+## way you now face (0 faces +Z, south, as the model does).
+func arrive(heading: float) -> void:
+	_facing_angle = heading
+	model.rotation.y = heading
+	rig.snap_behind(heading)
+	if not _first_person:
+		rig.follow(0.0, get_global_transform_interpolated().origin)
+
+## Orbit by a mouse movement, in pixels; the same sensitivity and Y-invert
+## as first person. (Third person, mouse captured.)
+func mouse_look(relative: Vector2) -> void:
+	var m := MOUSE_SENS * Graphics.look_sensitivity
+	rig.orbit(-relative.x * m, -relative.y * m * (-1.0 if Graphics.invert_look else 1.0))
 
 ## The block's walls between the camera and you dither out
 ## (world/Cutaway.gd): its shader reads where you are, every drawn frame,
@@ -219,9 +201,18 @@ func _process(delta: float) -> void:
 	cutaway_globals = [get_global_transform_interpolated().origin, 0.0 if _first_person else Cutaway.RADIUS]
 	RenderingServer.global_shader_parameter_set("player_world_pos", cutaway_globals[0])
 	RenderingServer.global_shader_parameter_set("cutaway_radius", cutaway_globals[1])
-	if _first_person:
-		_update_camera_shake(delta)
-		_update_fp_camera()
+	if not dialogue_active and not get_tree().paused:
+		# The right stick looks round, as the mouse does.
+		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
+		if look.length() > 0.0:
+			var k := LOOK_SPEED * Graphics.look_sensitivity * delta
+			var vert := look.y * k * (-1.0 if Graphics.invert_look else 1.0)
+			if _first_person:
+				set_look(_look_yaw - look.x * k, _look_pitch - vert)
+			else:
+				rig.orbit(-look.x * k, -vert)
+	_update_camera_shake(delta)
+	_update_camera_rig(delta)
 
 func _update_fp_camera() -> void:
 	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
@@ -279,22 +270,6 @@ func _update_cramps(delta: float) -> void:
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
 func _physics_process(delta: float) -> void:
-	if _first_person:
-		# The right stick looks round, as the mouse does.
-		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-		if look.length() > 0.0 and not dialogue_active:
-			var k := LOOK_SPEED * Graphics.look_sensitivity * delta
-			set_look(_look_yaw - look.x * k, _look_pitch - look.y * k * (-1.0 if Graphics.invert_look else 1.0))
-	else:
-		# The right stick pulls the camera in and out, as the wheel does.
-		var zoom := Input.get_axis("look_up", "look_down")
-		if absf(zoom) > 0.0:
-			_user_zoom = clampf(_user_zoom + zoom * PAD_ZOOM_RATE * delta, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
-	# Third person on the physics tick, so interpolation smooths the shake
-	# with the rest; first person every frame (_process).
-	if not _first_person:
-		_update_camera_shake(delta)
-		_update_camera_rig(delta)
 	if dialogue_active:
 		velocity = Vector3.ZERO
 		move_and_slide()
@@ -326,9 +301,8 @@ func _physics_process(delta: float) -> void:
 		Input.get_action_strength("move_down") - Input.get_action_strength("move_up")
 	)
 	dir = dir.normalized()
-	if _first_person:
-		# Forward is where you're looking.
-		dir = dir.rotated(Vector3.UP, _look_yaw)
+	# Forward is where the camera looks, in either view.
+	dir = dir.rotated(Vector3.UP, _look_yaw if _first_person else rig.yaw)
 
 	var speed := BASE_SPEED
 	var sick := GameState.withdrawn(SICK_THRESHOLD)
@@ -418,9 +392,17 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float, interval :
 	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _first_person:
-		var m := MOUSE_SENS * Graphics.look_sensitivity
-		set_look(_look_yaw - event.relative.x * m, _look_pitch - event.relative.y * m * (-1.0 if Graphics.invert_look else 1.0))
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		if _first_person:
+			var m := MOUSE_SENS * Graphics.look_sensitivity
+			set_look(_look_yaw - event.relative.x * m, _look_pitch - event.relative.y * m * (-1.0 if Graphics.invert_look else 1.0))
+		elif not dialogue_active:
+			mouse_look(event.relative)
+		return
+	if event.is_action_pressed("shoulder_swap") and not event.is_echo() and not _first_person and not dialogue_active and not get_tree().paused:
+		rig.swap_shoulder()
+		# A strap and a shuffle of cloth: the camera moved, so something did.
+		SFX.play("steal", -14.0, 1.25)
 		return
 	if event is InputEventJoypadButton and event.is_action_pressed("sprint"):
 		_sprint_latched = true
@@ -440,7 +422,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			book.open()
 	elif event is InputEventMouseButton and event.pressed and not _first_person and GameState.mode != "zombies" and (event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		var step := -0.06 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.06
-		_user_zoom = clampf(_user_zoom + step, CAM_USER_ZOOM.x, CAM_USER_ZOOM.y)
+		rig.user_zoom = clampf(rig.user_zoom + step, ShoulderCamScript.USER_ZOOM.x, ShoulderCamScript.USER_ZOOM.y)
 	elif event.is_action_pressed("cancel_ui") or event.is_action_pressed("pause"):
 		# Menus parented to the root (the shoebox, the pusher, pool) get Esc
 		# before this does; anything reaching here means the world has it.

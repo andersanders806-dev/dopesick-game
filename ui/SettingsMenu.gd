@@ -120,7 +120,7 @@ func open() -> void:
 	var calm := _check("Fade the HUD while walking", Graphics.immersive_hud, Graphics.set_immersive_hud)
 	calm.name = "ImmersiveHud"
 	col.add_child(calm)
-	var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options", 12, Color(0.6, 0.58, 0.54))
+	var keys := _label("Move  WASD / left stick     Interact  E / Square     Sprint  Shift / L3\nNotebook  J / touchpad     Walkman  T / Triangle     Pause  Esc / Options\nCamera  mouse / right stick     Swap shoulder  Q / D-pad left", 12, Color(0.6, 0.58, 0.54))
 	col.add_child(keys)
 
 	var back := Button.new()

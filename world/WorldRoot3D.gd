@@ -104,6 +104,10 @@ func _place_player_at_spawn() -> Marker3D:
 		player.global_position = marker.global_position
 		# A spawn is a teleport, not movement: don't smear it across a tick.
 		player.reset_physics_interpolation()
+		# ...and the camera swings in behind you. A marker faces where it
+		# looks (-Z); an unturned one sends you north, the camera's own way.
+		if player.has_method("arrive"):
+			player.arrive(marker.global_rotation.y + PI)
 	GameState.pending_spawn = ""
 	return marker
 

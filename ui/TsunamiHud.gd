@@ -40,6 +40,7 @@ const WATER := """shader_type canvas_item;
 uniform sampler2D screen : hint_screen_texture, repeat_disable, filter_linear;
 uniform float foam = 0.0;
 uniform float under = 0.0;
+uniform float spray = 0.0;
 void fragment() {
 	vec2 w = vec2(sin(UV.y * 38.0 + TIME * 3.1), cos(UV.x * 27.0 + TIME * 2.4)) * 0.006 * under;
 	vec3 c = textureLod(screen, SCREEN_UV + w, 0.0).rgb;
@@ -55,6 +56,26 @@ void fragment() {
 	vec3 f = vec3(0.7, 0.85, 0.82);
 	float n = 0.5 + 0.5 * sin(UV.x * 23.0 + sin(UV.y * 11.0 + TIME * 6.0) * 2.0);
 	float fm = clamp(foam * (0.75 + 0.5 * n), 0.0, 1.0);
+	// spray thrown at the lens: a mist at the edges and drops that run down
+	float rim = smoothstep(0.3, 0.95, length((UV - 0.5) * vec2(1.5, 1.0)));
+	c = mix(c, f * 0.85, clamp(spray * rim * (0.55 + 0.7 * n), 0.0, 0.9));
+	for (int k = 0; k < 2; k++) {
+		float sc = k == 0 ? 11.0 : 19.0;
+		vec2 g = UV * vec2(sc * 1.78, sc);
+		float col = floor(g.x);
+		float hc = fract(sin(col * 91.7 + float(k) * 13.1) * 43758.5453);
+		g.y -= TIME * (0.25 + hc * 0.55) * (k == 0 ? 0.6 : 1.0);
+		vec2 id = floor(g);
+		vec2 fr = fract(g) - 0.5;
+		float hh = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
+		float h2 = fract(hh * 7.31);
+		vec2 off = vec2(hh - 0.5, h2 - 0.5) * 0.5;
+		float rad = 0.07 + h2 * 0.14;
+		float drop = step(0.62, hh) * smoothstep(rad, rad * 0.55, length((fr - off) * vec2(1.0, 0.8)));
+		// a trail above each one
+		float trail = step(0.62, hh) * smoothstep(0.03, 0.0, abs(fr.x - off.x)) * step(fr.y, off.y) * smoothstep(-0.5, off.y, fr.y) * 0.35;
+		c = mix(c, c * 0.72 + f * 0.4, clamp(drop + trail, 0.0, 1.0) * spray);
+	}
 	COLOR = vec4(mix(c, f, fm), 1.0);
 }"""
 
@@ -82,6 +103,8 @@ var wave_dir := Vector3.ZERO
 var wave_marker := false
 var safe_at := Vector3.ZERO
 var safe_marker := false
+## Standing in the safe zone: no marker, a small SAFE chip instead.
+var safe_here := false
 var dread := 0.0
 var pulse := 0.0
 var shown := false
@@ -376,6 +399,9 @@ func set_hint(text: String) -> void:
 func set_targets(list: Array) -> void:
 	targets = list
 
+func set_safe_here(on: bool) -> void:
+	safe_here = on
+
 ## The high ground's marker (a world point, shown while `on`).
 func set_safe(at: Vector3, on: bool) -> void:
 	safe_at = at
@@ -419,12 +445,13 @@ func show_cancelled(bonus: int, title := "TSUNAMI CANCELLED") -> void:
 	pulse = 0.0
 
 ## The screen taken by the water: foam 0..1 (the white wall arriving) and under 0..1 (the sea).
-func set_engulf(foam: float, under: float) -> void:
-	var on := foam > 0.001 or under > 0.001
+func set_engulf(foam: float, under: float, spray := 0.0) -> void:
+	var on := foam > 0.001 or under > 0.001 or spray > 0.001
 	water.visible = on
 	var m := water.material as ShaderMaterial
 	m.set_shader_parameter("foam", foam)
 	m.set_shader_parameter("under", under)
+	m.set_shader_parameter("spray", spray)
 	bubbles.emitting = under > 0.4
 
 ## The HUD's own bits put away (the run is over or the countdown was cancelled).
@@ -434,6 +461,7 @@ func clear() -> void:
 	if _cancel_tween != null:
 		_cancel_tween.kill()
 	_set_shown(false)
+	safe_here = false
 	cancel_banner.modulate.a = 0.0
 	set_dread(0.0)
 	pulse = 0.0
@@ -454,11 +482,23 @@ func _draw_markers() -> void:
 		var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.025)
 		var col := Color(1.0, 0.9, 0.2).lerp(Color(1.0, 0.2, 0.1), flash) if warn else Color(1.0, 0.35, 0.28)
 		_mark(cam, rect, (t as Node3D).global_position + Vector3(0, 2.9, 0), "CHARGE!" if warn else "DROWNED", col, t)
-	if safe_marker:
+	if safe_here:
+		_draw_safe_chip(rect)
+	elif safe_marker:
 		_mark(cam, rect, safe_at, "HIGH GROUND", Color(0.45, 1.0, 0.55), null, true)
 	if wave_marker and wave_dir != Vector3.ZERO:
 		var far := cam.global_position + wave_dir * 400.0 + Vector3(0, 30.0, 0)
 		_mark(cam, rect, far, "WAVE", SEA, null)
+
+## A small chip under the clock block: you are on the high ground.
+func _draw_safe_chip(rect: Rect2) -> void:
+	var text := "SAFE  -  HIGH GROUND"
+	var tw := _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x
+	var box := Rect2(Vector2(rect.size.x * 0.5 - tw * 0.5 - 14.0, 224.0), Vector2(tw + 28.0, 28.0))
+	var green := Color(0.45, 1.0, 0.55)
+	markers.draw_rect(box, Color(0, 0, 0, 0.6))
+	markers.draw_rect(box, green, false, 2.0)
+	markers.draw_string(_font, box.position + Vector2(14.0, 20.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, green)
 
 func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color, who: Node, show_dist := false) -> void:
 	var local := cam.global_transform.affine_inverse() * at
@@ -468,7 +508,7 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 	var inside := rect.grow(-margin).has_point(sp)
 	var meters := "%dm" % int(dist) if (who != null or show_dist) else ""
 	if inside:
-		var p := Vector2(sp.x, maxf(sp.y - 26.0, 232.0))
+		var p := Vector2(sp.x, maxf(sp.y - 26.0, 300.0))
 		var s := clampf(1.3 - dist / 70.0, 0.75, 1.3)
 		var pts := PackedVector2Array([p + Vector2(0, 16) * s, p + Vector2(-14, 0) * s, p + Vector2(0, -16) * s, p + Vector2(14, 0) * s])
 		markers.draw_colored_polygon(pts, Color(0, 0, 0, 0.6))
@@ -493,7 +533,7 @@ func _mark(cam: Camera3D, rect: Rect2, at: Vector3, label: String, color: Color,
 			# behind: the side it is on, along the lower part of the screen
 			dir = Vector2(signf(local.x) if absf(local.x) > 0.05 else 1.0, 0.55).normalized()
 		# the arrow rides the edge of a box that keeps clear of the clock, the points and the ammo
-		var box_top := 130.0
+		var box_top := 240.0
 		var box_bottom := rect.size.y - 270.0
 		var centre := Vector2(rect.size.x * 0.5, (box_top + box_bottom) * 0.5)
 		var sx := (rect.size.x * 0.5 - 70.0) / maxf(absf(dir.x), 0.0001)

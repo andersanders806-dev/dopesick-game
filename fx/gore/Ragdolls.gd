@@ -37,6 +37,8 @@ class Rig:
 	var modifier: SkeletonModifier3D
 	var age := 0.0
 	var frozen := false
+	## > 0 while something (the tsunami's flood) is carrying it: it does not freeze.
+	var carried := 0.0
 
 var _rigs: Array = []
 var started := 0
@@ -161,6 +163,27 @@ func start(z: Node, dir: Vector3, power: float, at := Vector3.INF) -> bool:
 	_trim()
 	return true
 
+## Carries a running ragdoll along: `vel` is the push on the ground plane (m/s), `surface_y` the height it floats at
+## (the flood). Call it every physics tick while it is carried; it does not freeze meanwhile. False if `z` has none.
+func carry(z: Node, vel: Vector3, surface_y: float, tumble := 1.0) -> bool:
+	for r: Rig in _rigs:
+		if r.zombie != z or r.frozen:
+			continue
+		r.carried = 0.3
+		for b in r.bodies.values():
+			var rb := b as RigidBody3D
+			if rb == null or not is_instance_valid(rb):
+				continue
+			rb.sleeping = false
+			var v := rb.linear_velocity
+			v.x = lerpf(v.x, vel.x, 0.1)
+			v.z = lerpf(v.z, vel.z, 0.1)
+			v.y = clampf((surface_y - rb.global_position.y) * 3.0, -9.0, 9.0)
+			rb.linear_velocity = v
+			rb.angular_velocity = rb.angular_velocity.lerp(Vector3(sin(float(rb.get_instance_id() % 97)), 0.4, cos(float(rb.get_instance_id() % 89))) * 2.5 * tumble, 0.05)
+		return true
+	return false
+
 func _trim() -> void:
 	# Forget rigs of freed zombies.
 	_rigs = _rigs.filter(func(r): return is_instance_valid(r.zombie))
@@ -190,6 +213,10 @@ func _physics_process(delta: float) -> void:
 		if not is_instance_valid(r.zombie):
 			dirty = true
 			r.frozen = true
+			continue
+		if r.carried > 0.0:
+			r.carried -= delta
+			r.age = 0.0
 			continue
 		r.age += delta
 		if r.age >= FREEZE_AFTER:

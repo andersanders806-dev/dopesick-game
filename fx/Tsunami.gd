@@ -49,6 +49,12 @@ const START_DELAY := 0.0
 const INTRO := 3.2
 ## The wave's run down the street, and how long the water has the screen before the game over.
 const RUSH := 1.9
+## On the high ground the wave is seen coming: a slower run, then it breaks over the block and runs on as a bore.
+const SURVIVE_RUSH := 3.4
+const BORE_SPEED := 38.0
+## Wet ground left behind lasts this long.
+const WET_TIME := 16.0
+const GoreScript := preload("res://fx/gore/Gore.gd")
 const UNDER_TIME := 2.6
 const SINK_TIME := 4.0
 const WAVE_DIST := Vector2(520.0, 270.0)
@@ -95,9 +101,16 @@ var survive := false
 var survived := 0
 var swept := 0
 var flood_hold := 15.0
-var flood_recede := 6.0
+var flood_recede := 9.0
 
 var _pending := -1.0
+## The flood as a bore: its front (world x), how much of the flood look is on (0 = the old flat water), the wet left.
+var front_x := 1.0e6
+var flood_mode := 0.0
+var _wet := 0.0
+var _swept_list: Array = []
+var _bore_spray: CPUParticles3D
+var _sprays: Array = []
 var _intro := 0.0
 ## Whether the warning has been given (the clock runs from then).
 var warned := false
@@ -172,6 +185,8 @@ func start(seconds := DURATION) -> bool:
 	_sink = 0.0
 	_fade = 0.0
 	_last_sec = -1
+	_wet = 0.0
+	flood_mode = 0.0
 	ZombieMode.tsunami_active = true
 	started_count += 1
 	_capture_env()
@@ -255,6 +270,12 @@ func _event(e: String) -> void:
 # --- The frame -----------------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if _wet > 0.0:
+		_wet = maxf(_wet - delta / WET_TIME, 0.0)
+		if phase == Phase.IDLE or phase == Phase.DONE:
+			seep = 1.1 * _wet
+			water_level = 0.0
+			_update_water()
 	if _pending >= 0.0:
 		_pending -= delta
 		if _pending < 0.0:
@@ -477,6 +498,12 @@ func _point_to_high_ground() -> void:
 	if high == null or _player == null or not is_instance_valid(_player):
 		return
 	var p := _player.global_position
+	# standing in the zone: no marker, just a small SAFE chip
+	var inside: bool = high.zone_contains(p)
+	hud.set_safe_here(inside)
+	if inside:
+		hud.set_safe(Vector3.ZERO, false)
+		return
 	var at: Vector3 = high.beacon_head.global_position + Vector3(0, 7.0, 0)
 	if high.is_up(_player):
 		at = high.zone_center() + Vector3(0, 2.5, 0)
@@ -491,6 +518,9 @@ func _begin_wave() -> void:
 	survive = high != null and _player != null and is_instance_valid(_player) and high.zone_contains(_player.global_position)
 	if survive:
 		hud.set_safe(Vector3.ZERO, false)
+		hud.set_safe_here(false)
+		front_x = -1000.0
+		_swept_list = []
 	ZombieMode.tsunami_active = false
 	_stop_loop("heart")
 	_stop_loop("heart2")
@@ -578,31 +608,46 @@ func _wave_tick(delta: float) -> void:
 			ZombieMode.game_over()
 		finished.emit()
 
-## On the high ground: the wave thunders through the street below (lower than the deck), the street's dead are
-## swept away, the water stands about 15 s and goes; play goes on.
+## On the high ground: the wave is seen coming down the street, breaks over the block as you watch (the crest
+## collapses, spray bursts up past the deck), and runs on east as a bore with the flood behind it. The street's
+## dead are picked up as it passes and carried (ragdolls); the water churns about 15 s, drains, wet ground stays.
 func _survive_tick(delta: float) -> void:
 	_w += delta
-	var k := clampf(_w / RUSH, 0.0, 1.0)
-	if _w < RUSH:
-		wave_dist = lerpf(WAVE_DIST.y, -70.0, k * k)
-		wave_h = lerpf(WAVE_HEIGHT.y, 9.0, smoothstep(0.0, 0.6, k))
+	var px := _player.global_position.x if _player != null and is_instance_valid(_player) else 0.0
+	flood_mode = 1.0
+	seep = 1.0
+	water_level = FLOOD_LEVEL
+	if _w < SURVIVE_RUSH:
+		var k := clampf(_w / SURVIVE_RUSH, 0.0, 1.0)
+		var e := pow(k, 1.25)
+		wave_dist = lerpf(WAVE_DIST.y, 0.0, e)
+		# the crest curls over further and the face goes white as it comes in
+		var c := smoothstep(0.45, 1.0, e)
+		wave_h = lerpf(WAVE_HEIGHT.y, 22.0, c)
+		wave.set_break(c)
 		_place_wave()
+		front_x = px - wave_dist
+		_update_water()
+		_sweep_ahead()
+		_carry_swept(delta)
+		_bore_spray_at(front_x, 0.0, true)
 		dread = 1.0
 		_apply_env(1.0)
 		_turn_to_wave(k, -0.3)
-		trauma_target = lerpf(0.1, 0.45, k * k)
+		trauma_target = lerpf(0.1, 0.6, e)
 		_apply_shake()
 		var rush := _loop("rushloud")
 		if rush != null:
-			rush.volume_db = lerpf(-30.0, -4.0, k * k)
+			rush.volume_db = lerpf(-30.0, -3.0, e)
 		hud.set_dread(1.0)
+		hud.set_engulf(0.0, 0.0, smoothstep(0.75, 1.0, k) * 0.35)
 		return
-	var u := _w - RUSH
+	var u := _w - SURVIVE_RUSH
 	if not fired.has("impact"):
 		fired["impact"] = true
-		_play("wave_impact", 2.0)
-		hud.flash(0.7)
-		_sweep_street()
+		_play("wave_impact", 6.0)
+		_play("wave_roar_near", 0.0)
+		hud.flash(0.9)
 		survived += 1
 		if ZombieMode.active and not ZombieMode.over:
 			ZombieMode.points += SURVIVE_BONUS
@@ -610,32 +655,178 @@ func _survive_tick(delta: float) -> void:
 		hud.show_cancelled(SURVIVE_BONUS, "YOU MADE IT")
 		# the spawner waits out the flood
 		ZombieMode.surge_busy = true
-	# the wave passes on, the water comes up under the deck
-	wave_dist = lerpf(wave_dist, -300.0, minf(delta * 0.8, 1.0))
+		_break_over_block()
+		wave.float_debris(Rect2(34.0, -78.0, 46.0, 66.0), FLOOD_LEVEL - 0.1, 2.5)
+	# the bore runs on east, slower as it spreads; the wave on its head shrinks to nothing
+	front_x += lerpf(BORE_SPEED, 9.0, smoothstep(0.0, 7.0, u)) * delta
+	wave_dist = px - front_x
+	wave_h = lerpf(22.0, 0.0, smoothstep(0.0, 3.2, u))
+	wave.set_break(1.0)
 	_place_wave()
-	if u > 1.2:
-		wave.show_debris(false)
+	_sweep_ahead()
+	_carry_swept(delta)
+	_bore_spray_at(front_x, u, u < 6.0)
 	var hold_end := 2.5 + flood_hold
-	if u < 2.5:
-		water_level = FLOOD_LEVEL * smoothstep(0.0, 2.5, u)
-	elif u < hold_end:
+	if u < hold_end:
 		water_level = FLOOD_LEVEL + 0.12 * sin(u * 1.7)
 	else:
 		water_level = FLOOD_LEVEL * (1.0 - smoothstep(0.0, flood_recede, u - hold_end))
-	seep = 1.0
 	_update_water()
 	var recede := smoothstep(0.0, flood_recede, u - hold_end)
-	dread = 1.0 - recede
+	# the sky stays dark teal while it rages and clears over the drain
+	dread = lerpf(1.0, 0.55, smoothstep(0.0, 4.0, u)) * (1.0 - recede)
 	_apply_env(dread)
-	trauma_target = lerpf(0.5, 0.0, smoothstep(0.0, 2.0, u))
+	# the impact: a heavy shake that settles over a few seconds
+	trauma_target = lerpf(0.95, 0.0, smoothstep(0.0, 3.5, u))
 	_apply_shake()
-	var ru := _loop("rushloud")
-	if ru != null:
-		ru.volume_db = lerpf(-6.0, -40.0, maxf(smoothstep(0.0, 6.0, u), recede))
+	hud.set_engulf(0.3 * (1.0 - smoothstep(0.0, 0.5, u)), 0.0, 0.7 * (1.0 - smoothstep(0.1, 2.4, u)))
+	if u > 1.2:
+		var ru := _loop("rushloud")
+		if ru != null:
+			ru.volume_db = lerpf(-4.0, -40.0, maxf(smoothstep(0.0, 8.0, u), recede))
 	hud.set_dread(dread * 0.3)
 	if u >= hold_end + flood_recede:
 		ZombieMode.surge_busy = false
 		_finish()
+
+## The break: a wall of spray from the crest's collapse thrown up past the deck edge, mist rolling after it.
+func _break_over_block() -> void:
+	var pz := _player.global_position.z if _player != null and is_instance_valid(_player) else -30.0
+	var px := _player.global_position.x if _player != null and is_instance_valid(_player) else 60.0
+	# the crest coming down, along the whole front, flung up and east over the deck
+	_spray_burst(Vector3(px - 9.0, 9.0, pz), Vector3(3.0, 4.0, 34.0), 380, Vector3(0.75, 0.8, 0), 12.0, 30.0, Vector2(3.0, 9.0), 3.4, Color(0.62, 0.76, 0.72, 0.85))
+	# a nearer, fierce burst up the deck's edge, over the player
+	_spray_burst(Vector3(px - 5.5, 10.5, pz), Vector3(1.5, 1.0, 12.0), 260, Vector3(0.4, 1.0, 0), 14.0, 26.0, Vector2(1.5, 5.0), 2.8, Color(0.75, 0.86, 0.82, 0.9))
+	# the heavy mist that rolls on
+	_spray_burst(Vector3(px - 14.0, 6.0, pz), Vector3(4.0, 3.0, 36.0), 60, Vector3(1.0, 0.25, 0), 4.0, 11.0, Vector2(10.0, 20.0), 6.0, Color(0.5, 0.64, 0.62, 0.08))
+
+static var _soft_tex_s: Texture2D
+
+static func _soft_tex() -> Texture2D:
+	if _soft_tex_s == null:
+		var g := GradientTexture2D.new()
+		var grad := Gradient.new()
+		grad.set_color(0, Color(1, 1, 1, 1))
+		grad.set_color(1, Color(1, 1, 1, 0))
+		g.gradient = grad
+		g.fill = GradientTexture2D.FILL_RADIAL
+		g.fill_from = Vector2(0.5, 0.5)
+		g.fill_to = Vector2(1.0, 0.5)
+		g.width = 64
+		g.height = 64
+		_soft_tex_s = g
+	return _soft_tex_s
+
+func _spray_particles(amount: int, life: float, size: Vector2, col: Color, grav := 9.0) -> CPUParticles3D:
+	var sp := CPUParticles3D.new()
+	sp.amount = amount
+	sp.lifetime = life
+	sp.local_coords = false
+	sp.gravity = Vector3(0, -grav, 0)
+	sp.damping_min = 0.4
+	sp.damping_max = 1.2
+	sp.scale_amount_min = size.x
+	sp.scale_amount_max = size.y
+	var q := QuadMesh.new()
+	q.size = Vector2(1.0, 1.0)
+	var qm := StandardMaterial3D.new()
+	qm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	qm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	qm.billboard_keep_scale = true
+	qm.vertex_color_use_as_albedo = true
+	qm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	qm.albedo_texture = _soft_tex()
+	qm.fog_enabled = false
+	q.material = qm
+	sp.mesh = q
+	var grad := Gradient.new()
+	grad.set_color(0, Color(col.r, col.g, col.b, 0.0))
+	grad.add_point(0.12, col)
+	grad.add_point(0.6, Color(col.r * 0.85, col.g * 0.88, col.b * 0.88, col.a * 0.6))
+	grad.set_color(grad.get_point_count() - 1, Color(col.r * 0.7, col.g * 0.8, col.b * 0.8, 0.0))
+	sp.color_ramp = grad
+	sp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return sp
+
+func _spray_burst(at: Vector3, extents: Vector3, amount: int, dir: Vector3, v0: float, v1: float, size: Vector2, life: float, col: Color) -> void:
+	var sp := _spray_particles(amount, life, size, col)
+	sp.one_shot = true
+	sp.explosiveness = 0.85
+	sp.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	sp.emission_box_extents = extents
+	sp.direction = dir.normalized()
+	sp.spread = 38.0
+	sp.initial_velocity_min = v0
+	sp.initial_velocity_max = v1
+	sp.emitting = false
+	city.add_child(sp)
+	sp.global_position = at
+	sp.emitting = true
+	_sprays.append(sp)
+	get_tree().create_timer(life + 1.5).timeout.connect(func():
+		if is_instance_valid(sp):
+			sp.queue_free()
+		_sprays.erase(sp))
+
+## The bore's own spray, riding its front (a low line of foam thrown up as it runs over the ground).
+func _bore_spray_at(x: float, u: float, on: bool) -> void:
+	if _bore_spray == null:
+		_bore_spray = _spray_particles(220, 1.5, Vector2(2.0, 5.5), Color(0.66, 0.8, 0.76, 0.6), 7.0)
+		_bore_spray.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+		_bore_spray.emission_box_extents = Vector3(1.5, 0.5, 44.0)
+		_bore_spray.direction = Vector3(0.5, 1.0, 0)
+		_bore_spray.spread = 28.0
+		_bore_spray.initial_velocity_min = 4.0
+		_bore_spray.initial_velocity_max = 11.0
+		_bore_spray.emitting = false
+		city.add_child(_bore_spray)
+	var pz := _player.global_position.z if _player != null and is_instance_valid(_player) else -30.0
+	_bore_spray.global_position = Vector3(x, 1.2, pz)
+	_bore_spray.emitting = on and x > -140.0 and x < 150.0
+
+## The bore picks up the street's dead as its front reaches them.
+func _sweep_ahead() -> void:
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not is_instance_valid(z) or not z.has_method("take_hit") or _swept_list.has(z):
+			continue
+		if z.has_method("is_alive") and not z.is_alive():
+			continue
+		var zp := (z as Node3D).global_position
+		# whoever is climbing the stair (off the ground) or up on the deck stays: it is a fight, not a flood
+		if zp.x > front_x or zp.y > 0.4 or (high != null and high.is_up(z)):
+			continue
+		_sweep_one(z)
+
+func _sweep_one(z: Node) -> void:
+	_swept_list.append(z)
+	swept += 1
+	if z.has_method("knock"):
+		z.knock(-SEA_DIR * 8.0)
+	z.take_hit("torso", 1.0e9, -SEA_DIR)
+	# a dead body in the flood is a ragdoll, thrown ahead of the bore
+	# (the Drowned are too big to float about: they just go down)
+	if float(z.get("body_scale")) > 1.6:
+		return
+	var gore := GoreScript.of(z)
+	if gore != null:
+		gore.ragdoll(z, -SEA_DIR, 9.0)
+
+## The carried keep moving with the flood while it stands (ragdolls ride the surface and drift east).
+func _carry_swept(_delta: float) -> void:
+	var gore: Node = null
+	for z in _swept_list:
+		if not is_instance_valid(z):
+			continue
+		if gore == null:
+			gore = GoreScript.of(z)
+			if gore == null:
+				return
+		var zp := (z as Node3D).global_position
+		if zp.y > 8.0:
+			continue
+		var ramp := smoothstep(-1.0, 34.0, front_x - zp.x)
+		var surf := water_level * ramp - 0.5
+		gore.ragdolls.carry(z, -SEA_DIR * lerpf(11.0, 3.0, ramp), maxf(surf, 0.0))
 
 ## The street's dead go: shoved along and gone (no points); whoever is up on the high ground stays.
 func _sweep_street() -> void:
@@ -644,10 +835,8 @@ func _sweep_street() -> void:
 			continue
 		if high != null and high.is_up(z):
 			continue
-		if z.has_method("knock"):
-			z.knock(-SEA_DIR * 8.0)
-		z.take_hit("torso", 1.0e9, -SEA_DIR)
-		swept += 1
+		if not _swept_list.has(z):
+			_sweep_one(z)
 
 func _sweep_player(delta: float, u: float) -> void:
 	if _player == null or not is_instance_valid(_player) or not (_player is CharacterBody3D):
@@ -689,30 +878,60 @@ func _build_water() -> void:
 		return
 	var plane := PlaneMesh.new()
 	plane.size = Vector2(420.0, 420.0)
+	plane.subdivide_width = 140
+	plane.subdivide_depth = 140
 	_water = MeshInstance3D.new()
 	_water.mesh = plane
 	_water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_water.custom_aabb = AABB(Vector3(-210, -8, -210), Vector3(420, 20, 420))
 	var sh := Shader.new()
 	sh.code = """shader_type spatial;
 render_mode blend_mix, cull_disabled, depth_draw_never, specular_schlick_ggx;
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
 uniform float cover = 0.0;
+uniform float flood = 0.0;
+uniform float front = 1000000.0;
+uniform float lvl = 0.0;
 varying vec3 wp;
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+varying float behind;
+void vertex() {
+	vec3 w = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	wp = w;
+	behind = front - w.x;
+	// the flood: a bore heaped at its front, rolling swell behind it; ahead of the front the sheet lies on the ground
+	float ramp = smoothstep(-1.0, 34.0, behind);
+	float swell = sin(w.x * 0.17 + TIME * 2.1) * cos(w.z * 0.13 - TIME * 1.6) * 0.5
+		+ sin(w.x * 0.31 - TIME * 2.9 + w.z * 0.07) * 0.28 + sin(w.z * 0.23 + TIME * 2.3) * 0.2;
+	float head = exp(-pow((behind - 3.0) / 5.5, 2.0)) * 2.4;
+	VERTEX.y += flood * (swell * (0.35 + 0.65 * ramp) + head - (1.0 - ramp) * lvl);
+}
 void fragment() {
 	float n = texture(noise, wp.xz * 0.028).r * 0.55 + texture(noise, wp.xz * 0.09).g * 0.35 + texture(noise, wp.xz * 0.31).b * 0.1;
 	float edge = cover * 1.25 - n * 0.9;
 	float a = smoothstep(0.0, 0.07, edge);
 	vec2 r1 = texture(noise, wp.xz * 0.45 + vec2(TIME * 0.04, 0.0)).rg;
 	vec2 r2 = texture(noise, wp.xz * 0.33 - vec2(0.0, TIME * 0.05)).gb;
-	NORMAL_MAP = vec3(0.5 + (r1.x + r2.x - 1.0) * 0.4, 0.5 + (r1.y + r2.y - 1.0) * 0.4, 1.0);
+	float amp = 0.4 + flood * 0.6;
+	NORMAL_MAP = vec3(0.5 + (r1.x + r2.x - 1.0) * amp, 0.5 + (r1.y + r2.y - 1.0) * amp, 1.0);
 	float rim = smoothstep(0.0, 0.025, edge) * (1.0 - smoothstep(0.025, 0.08, edge));
-	ALBEDO = mix(vec3(0.012, 0.06, 0.065), vec3(0.45, 0.58, 0.55), rim * 0.7);
-	ROUGHNESS = 0.03;
+	vec3 col_p = mix(vec3(0.012, 0.06, 0.065), vec3(0.45, 0.58, 0.55), rim * 0.7);
+	// flood: foam streaks sliding east with the current, a white head at the front, boils of turbulence
+	float f1 = texture(noise, vec2(wp.x * 0.05 - TIME * 0.42, wp.z * 0.05)).r;
+	float f2 = texture(noise, vec2(wp.x * 0.07 - TIME * 0.75, wp.z * 0.55)).g;
+	float f3 = texture(noise, wp.xz * 0.33 + vec2(-TIME * 0.95, TIME * 0.18)).b;
+	float turb = f1 * 0.45 + f2 * 0.35 + f3 * 0.3;
+	float fresh = 1.0 - smoothstep(0.0, 30.0, behind);
+	float headm = 1.0 - smoothstep(0.0, 11.0, abs(behind - 3.0));
+	float foam = clamp(smoothstep(0.6 - fresh * 0.12, 0.84, turb) + headm * 0.85, 0.0, 1.0);
+	vec3 col_f = mix(vec3(0.012, 0.09, 0.09), vec3(0.1, 0.4, 0.36), f1 * 0.8 + 0.1 * f3);
+	col_f = mix(col_f, vec3(0.72, 0.84, 0.8), foam);
+	float a_f = smoothstep(-0.6, 0.9, behind) * 0.97;
+	ALBEDO = mix(col_p, col_f, flood);
+	ALPHA = mix(a * 0.9, a_f, flood);
+	ROUGHNESS = mix(0.03, mix(0.1, 0.65, foam), flood);
 	SPECULAR = 0.9;
 	METALLIC = 0.0;
-	EMISSION = vec3(0.01, 0.05, 0.045) * a;
-	ALPHA = a * 0.9;
+	EMISSION = mix(vec3(0.01, 0.05, 0.045) * a, col_f * 0.55 + vec3(0.0, 0.03, 0.026), flood);
 }
 """
 	_water_mat = ShaderMaterial.new()
@@ -742,6 +961,9 @@ func _update_water() -> void:
 	# follows the player in whole steps (the puddles are tied to the world by the shader)
 	_water.global_position = Vector3(snappedf(p.x, 8.0), 0.03 + water_level + seep * 0.05, snappedf(p.z, 8.0))
 	_water_mat.set_shader_parameter("cover", 1.0 if water_level > 0.01 else seep)
+	_water_mat.set_shader_parameter("flood", flood_mode * smoothstep(0.05, 1.2, water_level))
+	_water_mat.set_shader_parameter("front", front_x)
+	_water_mat.set_shader_parameter("lvl", water_level)
 
 # --- Sky and fog -------------------------------------------------------------------------------------
 
@@ -994,8 +1216,18 @@ func _teardown() -> void:
 		_stop_loop(k)
 	wave.show_debris(false)
 	wave.visible = false
+	var was_flood := flood_mode > 0.0
+	flood_mode = 0.0
+	front_x = 1.0e6
+	_swept_list = []
+	if _bore_spray != null:
+		_bore_spray.emitting = false
 	seep = 0.0
 	water_level = 0.0
+	# after a flood the ground stays wet a while
+	if was_flood and ZombieMode.active and not ZombieMode.over:
+		_wet = 1.0
+		seep = 1.1
 	_update_water()
 	_restore_env()
 	_remove_lowpass()

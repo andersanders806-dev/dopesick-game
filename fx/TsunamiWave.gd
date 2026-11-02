@@ -27,6 +27,7 @@ uniform float curl = 0.55;
 uniform float flow = 0.0;
 uniform float glow = 1.0;
 uniform float flash = 0.0;
+uniform float broken = 0.0;
 varying float v_v;
 varying vec3 v_n;
 varying vec2 v_xy;
@@ -95,7 +96,8 @@ void fragment() {
 	float lip = smoothstep(0.69, 0.98, v) * (0.7 + 0.3 * streak);
 	float foam = clamp(foam_face + crest * 0.8 + lip * 0.9, 0.0, 1.0);
 	vec3 foam_col = vec3(0.62, 0.74, 0.7) * (0.8 + 0.4 * streak2);
-	col = mix(col, foam_col, foam);
+	foam = clamp(foam + broken * (0.22 + 0.25 * streak) * smoothstep(0.0, 0.5, v + 0.3), 0.0, 1.0);
+	col = mix(col, foam_col * mix(1.0, 0.7, broken), foam);
 	// a mist of spray at the foot
 	float mist = smoothstep(0.1, 0.0, v);
 	col = mix(col, vec3(0.28, 0.36, 0.35), mist * 0.9);
@@ -146,10 +148,17 @@ func _process(delta: float) -> void:
 ## Puts it `dist` metres from `from`, on the side `dir` (a unit vector on the ground), `h` metres high.
 func place(from: Vector3, dir: Vector3, dist: float, h: float) -> void:
 	height = h
-	visible = h > 0.5
+	mesh_node.visible = h > 0.5
+	visible = mesh_node.visible or _floating
 	global_transform = Transform3D(Basis.looking_at(dir, Vector3.UP), Vector3(from.x, 0.0, from.z) + dir * dist)
 	if material != null:
 		material.set_shader_parameter("H", maxf(h, 0.01))
+
+## The wave breaking over the block (0 standing, 1 collapsed): the crest curls over further, the face goes white.
+func set_break(c: float) -> void:
+	if material != null:
+		material.set_shader_parameter("curl", lerpf(0.55, 1.5, c))
+		material.set_shader_parameter("broken", c)
 
 func set_flash(f: float) -> void:
 	if material != null:
@@ -204,3 +213,52 @@ func _build_debris() -> void:
 func show_debris(on: bool) -> void:
 	if _debris_root != null:
 		_debris_root.visible = on
+		if not on:
+			_floating = false
+			_debris_root.top_level = false
+			_debris_root.position = Vector3.ZERO
+			visible = mesh_node.visible
+
+var _floating := false
+var _float_home: Array[Vector3] = []
+var _float_y := 4.4
+var _float_speed := 0.0
+
+## The debris let go of the wave and ride the flood on its surface: scattered over `area` (x, z ranges), bobbing at
+## `surface`, drifting east at `speed` (they wrap round the area).
+func float_debris(area: Rect2, surface: float, speed: float, seed_: int = 5) -> void:
+	if _debris_root == null:
+		return
+	_floating = true
+	visible = true
+	_float_y = surface
+	_float_speed = speed
+	_floating_area = area
+	_debris_root.top_level = true
+	_debris_root.global_transform = Transform3D.IDENTITY
+	_debris_root.visible = true
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_
+	_float_home.clear()
+	for i in _debris.size():
+		_debris[i].top_level = false
+		var q := Vector3(rng.randf_range(area.position.x, area.end.x), surface, rng.randf_range(area.position.y, area.end.y))
+		_debris[i].position = q + Vector3(0, 6.0 + rng.randf() * 6.0, 0)
+		_float_home.append(q)
+
+var _floating_area := Rect2()
+
+func _physics_process(delta: float) -> void:
+	if not _floating or _debris_root == null:
+		return
+	for i in _debris.size():
+		var m := _debris[i]
+		var q := _float_home[i]
+		q.x += _float_speed * delta
+		if q.x > _floating_area.end.x:
+			q.x = _floating_area.position.x
+		_float_home[i] = q
+		var bob := sin(_t * 1.6 + float(i) * 1.7) * 0.25
+		# falls from where the wave dropped it to the surface, then rides it
+		var y := lerpf(m.position.y, q.y + bob, minf(delta * 3.0, 1.0))
+		m.position = Vector3(q.x, y, q.z)

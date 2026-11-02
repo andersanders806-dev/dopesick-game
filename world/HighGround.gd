@@ -24,6 +24,13 @@ const DECK_Y := 11.65
 const ZONE_X := Vector2(56.4, 65.6)
 const ZONE_Z := Vector2(-42.0, -17.0)
 const NAV_LIFT := 0.3
+## The way in for the player: the lot's east fence (x 56) is opened here, in line with the gap that the camp's
+## fence (x 65.2, z -44..-40) already has, so the stair can be walked to from the east avenue and, from Main
+## Street, without passing the alley barricades (which block the player by design).
+const FENCE_X := 56.0
+const GAP_Z := -42.0
+## What is left of the way in after the fence panels are taken out: [z0, z1].
+var gap_span := Vector2(GAP_Z - 1.5, GAP_Z + 1.5)
 ## Godot wants navigation polygons wound a certain way seen from above; set by what the probe showed.
 const WIND_REVERSED := false
 
@@ -51,6 +58,7 @@ func _ready() -> void:
 	add_to_group("high_ground")
 	_make_materials()
 	_clear_props()
+	_open_lot_fence()
 	_build_stair()
 	_build_walls()
 	_build_deck()
@@ -95,6 +103,69 @@ func _clear_props() -> void:
 				continue
 			n.queue_free()
 			_freed += 1
+
+## Takes the fence panels (and the posts between them) out of the lot's east fence round GAP_Z and splits its
+## solid body to match, so there is a way in from the camp under the deck. The baked zombie navmesh is NOT told
+## (a rebake would also open the shops' doorways, and a route across the lot would cut through the stair's side
+## walls): the dead keep coming by their own routes (the service lane, the alleys) and the gap is the player's way in.
+func _open_lot_fence() -> void:
+	var fence := city.get_node_or_null("Cell_Inner/LotFenceE") as Node3D
+	if fence == null:
+		return
+	var panels := fence.get_node_or_null("Panels") as MultiMeshInstance3D
+	var posts := fence.get_node_or_null("Posts") as MultiMeshInstance3D
+	var solid := fence.get_node_or_null("Solid") as StaticBody3D
+	if panels == null or solid == null:
+		return
+	var mm := panels.multimesh
+	var cs := solid.get_child(0) as CollisionShape3D
+	var box := cs.shape as BoxShape3D
+	# panel centres in world z (instance transforms are offset by the mesh centre, so use the fence's own grid)
+	var length := box.size.x
+	var count := mm.instance_count
+	var w := length / maxi(count, 1)
+	var z_lo := 1.0e9
+	var z_hi := -1.0e9
+	for i in count:
+		var zc := _fence_z(fence, -length / 2.0 + (i + 0.5) * w)
+		if absf(zc - GAP_Z) < w * 0.5 + 0.9:
+			z_lo = minf(z_lo, zc - w * 0.5)
+			z_hi = maxf(z_hi, zc + w * 0.5)
+			var xf := mm.get_instance_transform(i)
+			mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ZERO), xf.origin))
+	if z_lo > z_hi:
+		return
+	gap_span = Vector2(z_lo, z_hi)
+	if posts != null:
+		var pm := posts.multimesh
+		for i in pm.instance_count:
+			var zp := _fence_z(fence, -length / 2.0 + i * w)
+			if zp > z_lo + 0.05 and zp < z_hi - 0.05:
+				var xf2 := pm.get_instance_transform(i)
+				pm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3.ZERO), xf2.origin))
+	# the solid: two boxes either side of the gap
+	var a_local := cs.to_local(Vector3(FENCE_X, 0.0, z_lo)).x
+	var b_local := cs.to_local(Vector3(FENCE_X, 0.0, z_hi)).x
+	var lo := minf(a_local, b_local)
+	var hi := maxf(a_local, b_local)
+	var half := length / 2.0
+	var keep: Array = [Vector2(-half, lo), Vector2(hi, half)]
+	cs.queue_free()
+	for k in keep:
+		var seg := k as Vector2
+		if seg.y - seg.x < 0.1:
+			continue
+		var c2 := CollisionShape3D.new()
+		var b2 := BoxShape3D.new()
+		b2.size = Vector3(seg.y - seg.x, box.size.y, box.size.z)
+		c2.shape = b2
+		c2.transform = cs.transform
+		c2.position.x = cs.position.x + (seg.x + seg.y) * 0.5
+		solid.add_child(c2)
+
+## World z of the point `lx` along the fence's own axis.
+func _fence_z(fence: Node3D, lx: float) -> float:
+	return fence.to_global(Vector3(lx, 0, 0)).z
 
 ## The stair's height at x (0 at the foot, DECK_Y at the deck).
 static func height_at_x(x: float) -> float:
@@ -207,12 +278,19 @@ func _build_deck() -> void:
 			_box(st, Vector3(x, DECK_Y + 0.95, zend), Vector3(0.9, 0.2, 0.4), Color(0.85, 0.84, 0.8))
 			x += 1.7
 	# the edges of the deck: the existing barrier meshes get a solid core
-	for ex in [ZONE_X.x - 0.1, ZONE_X.y + 0.1]:
+	# (the west one is open where the stair comes up)
+	var z_a := ZONE_Z.x - 0.8
+	var z_b := ZONE_Z.y + 0.8
+	var open_a := STAIR_Z - STAIR_HALF - 0.3
+	var open_b := STAIR_Z + STAIR_HALF + 0.3
+	var edge_boxes: Array = [[ZONE_X.y + 0.1, z_a, z_b], [ZONE_X.x - 0.1, z_a, open_a], [ZONE_X.x - 0.1, open_b, z_b]]
+	for eb in edge_boxes:
+		var ex: float = eb[0]
 		var cs2 := CollisionShape3D.new()
 		var bs2 := BoxShape3D.new()
-		bs2.size = Vector3(0.6, 3.0, ZONE_Z.y - ZONE_Z.x + 1.6)
+		bs2.size = Vector3(0.6, 3.0, float(eb[2]) - float(eb[1]))
 		cs2.shape = bs2
-		cs2.position = Vector3(ex + (-0.3 if ex < 61.0 else 0.3), DECK_Y + 1.5, (ZONE_Z.x + ZONE_Z.y) * 0.5)
+		cs2.position = Vector3(ex + (-0.3 if ex < 61.0 else 0.3), DECK_Y + 1.5, (float(eb[1]) + float(eb[2])) * 0.5)
 		body.add_child(cs2)
 	st.generate_normals()
 	var mi := MeshInstance3D.new()
@@ -224,10 +302,11 @@ func _build_deck() -> void:
 	m.roughness = 0.9
 	mi.material_override = m
 	add_child(mi)
-	# the zone, painted: a dashed green outline and the words
+	# the zone, painted on the road like the rest of the road's markings: worn yellow dashes (lit, so they sit in
+	# the night with everything else) and the stencilled words
 	var gm := StandardMaterial3D.new()
-	gm.albedo_color = Color(0.25, 0.8, 0.4)
-	gm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	gm.albedo_color = Color(0.62, 0.5, 0.12)
+	gm.roughness = 0.95
 	var pst := SurfaceTool.new()
 	pst.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var zx0 := ZONE_X.x + 0.5
@@ -236,13 +315,13 @@ func _build_deck() -> void:
 	var zz1 := ZONE_Z.y - 1.1
 	var xx := zx0
 	while xx < zx1:
-		_box(pst, Vector3(xx + 0.7, DECK_Y + 0.015, zz0), Vector3(1.4, 0.01, 0.22), Color.WHITE)
-		_box(pst, Vector3(xx + 0.7, DECK_Y + 0.015, zz1), Vector3(1.4, 0.01, 0.22), Color.WHITE)
+		_box(pst, Vector3(xx + 0.7, DECK_Y + 0.015, zz0), Vector3(1.4, 0.01, 0.16), Color.WHITE)
+		_box(pst, Vector3(xx + 0.7, DECK_Y + 0.015, zz1), Vector3(1.4, 0.01, 0.16), Color.WHITE)
 		xx += 2.4
 	var zz := zz0
 	while zz < zz1:
-		_box(pst, Vector3(zx0, DECK_Y + 0.015, zz + 0.7), Vector3(0.22, 0.01, 1.4), Color.WHITE)
-		_box(pst, Vector3(zx1, DECK_Y + 0.015, zz + 0.7), Vector3(0.22, 0.01, 1.4), Color.WHITE)
+		_box(pst, Vector3(zx0, DECK_Y + 0.015, zz + 0.7), Vector3(0.16, 0.01, 1.4), Color.WHITE)
+		_box(pst, Vector3(zx1, DECK_Y + 0.015, zz + 0.7), Vector3(0.16, 0.01, 1.4), Color.WHITE)
 		zz += 2.4
 	var paint := MeshInstance3D.new()
 	paint.name = "ZonePaint"
@@ -254,9 +333,9 @@ func _build_deck() -> void:
 	label.text = "HIGH GROUND"
 	label.font_size = 220
 	label.pixel_size = 0.012
-	label.modulate = Color(0.55, 1.0, 0.65, 0.9)
+	label.modulate = Color(0.82, 0.74, 0.45, 0.8)
 	label.outline_size = 0
-	label.shaded = false
+	label.shaded = true
 	label.rotation_degrees = Vector3(-90, 90, 0)
 	label.position = Vector3(61.0, DECK_Y + 0.03, -29.5)
 	label.double_sided = false

@@ -33,6 +33,123 @@ func _tsunami_block() -> Node:
 func _kill(z: Node) -> void:
 	z.take_hit("torso", 1.0e9, Vector3.FORWARD)
 
+# --- The physical walk to the high ground (the navmesh ignores barricades; the player cannot) ---
+
+## The way to the stair that never passes an alley barricade: from where you start to the east end of Main
+## Street, down the east avenue, through the camp fence's gap and the lot fence's gap (world/HighGround.gd), across
+## the lot to the stair's foot and up. Hand anchors, joined by navmesh paths between them.
+const WALK_ANCHORS := [Vector3(75.5, 0, -3.0), Vector3(75.5, 0, -40.5), Vector3(68.0, 0, -41.0)]
+## Then by hand (the baked zombie navmesh has the lot's fence closed): through the gap in the camp's fence and the
+## lot's, across the lot to the stair's foot, up the stair and onto the deck.
+const GATE_RUN := [Vector3(57.5, 0, -42.5), Vector3(46.0, 0, -40.0), Vector3(38.5, 0, -36.0), Vector3(38.5, 0, -29.5),
+	Vector3(46.0, 0, -29.5), Vector3(62.0, 0, -29.5)]
+
+func _walk_route(map: RID, start: Vector3, anchors: Array) -> PackedVector3Array:
+	var pts := PackedVector3Array([start])
+	var from := start
+	for a in anchors:
+		var seg: PackedVector3Array = NavigationServer3D.map_get_path(map, from, a, true)
+		for i in range(1, seg.size()):
+			pts.append(Vector3(seg[i].x, 0.0, seg[i].z))
+		from = a
+	for q in GATE_RUN:
+		pts.append(q)
+	return pts
+
+## Distance (on the ground plane) from `p` to a barricade's boards (a segment `width` wide through its centre).
+func _barricade_gap(b: Node3D, p: Vector3) -> float:
+	var half: float = float(b.get("width")) * 0.5
+	var axis := b.global_transform.basis.x
+	var c := b.global_position
+	var a2 := Vector2(c.x - axis.x * half, c.z - axis.z * half)
+	var b2 := Vector2(c.x + axis.x * half, c.z + axis.z * half)
+	var q := Vector2(p.x, p.z)
+	var ab := b2 - a2
+	var t := clampf((q - a2).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+	return q.distance_to(a2 + ab * t)
+
+func _high_ground_walk_checks(block: Node, player: CharacterBody3D, hg: Node3D) -> void:
+	var bars: Array = get_nodes_in_group("barricades")
+	var boarded := bars.size() >= 2
+	for b in bars:
+		boarded = boarded and int(b.get("boards")) == int(b.get("BOARD_COUNT"))
+	_check(boarded, "  walk to the high ground: all %d barricades fully boarded" % bars.size())
+	var gs := root.get_node("GameState")
+	var was_sick: bool = gs.no_sickness
+	gs.no_sickness = true
+	hg.up.clear()
+	var map: RID = block.city.get_world_3d().navigation_map
+	var starts := {
+		"Main Street west end": Vector3(-60.0, 0.0, -3.0), "Main Street east end": Vector3(60.0, 0.0, -3.0),
+		"west avenue": Vector3(-68.0, 0.0, -30.0), "east avenue": Vector3(74.0, 0.0, -30.0)}
+	var worst := 0.0
+	for label in starts:
+		var start: Vector3 = starts[label]
+		var anchors: Array = WALK_ANCHORS.duplicate()
+		if label == "west avenue":
+			anchors = [Vector3(-68.0, 0, -3.0)] + anchors
+		elif label == "east avenue":
+			anchors = anchors.slice(1)
+		var route := _walk_route(map, start, anchors)
+		var near := 1.0e9
+		for pt in route:
+			for b in bars:
+				near = minf(near, _barricade_gap(b, pt))
+		_check(near > 1.5, "  %s: the route (%d points) stays %.1f m from the boards" % [label, route.size(), near])
+		player.global_position = start
+		player.velocity = Vector3.ZERO
+		await _frames(3)
+		var r := await _walk_route_physically(player, route, hg, 90.0, bars)
+		worst = maxf(worst, float(r["secs"]))
+		_check(bool(r["ok"]), "  %s: the real player ends in the zone after %.0f s (stuck at %s, nearest board %.1f m)" % [label, r["secs"], r["where"], r["near"]])
+		_check(float(r["near"]) > 1.0, "  %s: never closer than %.1f m to a board" % [label, r["near"]])
+	print("WALK worst run time to the zone: %.1f s" % worst)
+	_check(worst < 70.0, "  the farthest start is %.0f s from the zone at a sprint (well inside 2:00)" % worst)
+	Input.action_release("move_up")
+	Input.action_release("sprint")
+	gs.no_sickness = was_sick
+	hg.up.clear()
+	player.global_position = Vector3(10.0, 0.0, 1.5)
+	player.velocity = Vector3.ZERO
+	await _frames(3)
+
+## Drives the real CharacterBody3D along `route` with the move/sprint input (physics ticks, so the seconds are
+## game seconds). Returns {ok, secs, where, near}.
+func _walk_route_physically(player: CharacterBody3D, route: PackedVector3Array, hg: Node3D, limit: float, bars: Array) -> Dictionary:
+	var ticks := 0
+	var i := 1
+	var near := 1.0e9
+	var last := player.global_position
+	var stuck := 0
+	Input.action_press("move_up")
+	Input.action_press("sprint")
+	var max_ticks := int(limit * Engine.physics_ticks_per_second)
+	while ticks < max_ticks and not hg.zone_contains(player.global_position):
+		await physics_frame
+		ticks += 1
+		var pos := player.global_position
+		for b in bars:
+			near = minf(near, _barricade_gap(b, pos))
+		var target: Vector3 = route[mini(i, route.size() - 1)]
+		var to := target - pos
+		to.y = 0.0
+		if to.length() < 0.9 and i < route.size() - 1:
+			i += 1
+			continue
+		# past the last point of the route: keep to the deck
+		player.set_look(atan2(-to.x, -to.z), 0.0)
+		if Vector2(pos.x - last.x, pos.z - last.z).length() < 0.01:
+			stuck += 1
+		else:
+			stuck = 0
+		last = pos
+		if stuck > 120:
+			break
+	Input.action_release("move_up")
+	Input.action_release("sprint")
+	return {"ok": hg.zone_contains(player.global_position), "secs": float(ticks) / Engine.physics_ticks_per_second,
+		"where": player.global_position.snapped(Vector3(0.1, 0.1, 0.1)), "near": near}
+
 func _zombie_tsunami_checks(_gs: Node) -> void:
 	await _section("Dead Block: the tsunami -- countdown, two Drowned, cancel, wave")
 	_close_menus()
@@ -274,6 +391,7 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	for i in range(1, far.size()):
 		far_len += far[i].distance_to(far[i - 1])
 	_check(far.size() > 5 and far_len > 100.0 and far_len < 260.0, "  from the far west end it is %.0f m, about %.0f s at a run" % [far_len, far_len / (player.BASE_SPEED * player.SPRINT_MULT)])
+	await _high_ground_walk_checks(block, player, hg)
 	player.global_position = Vector3(46.0, 0.0, -29.5)
 	await _frames(4)
 	_check(absf(player.global_position.y - hg.height_at_x(46.0)) < 0.05 and not hg.is_up(player), "  on the stair the player is lifted along it (y %.2f of %.2f)" % [player.global_position.y, hg.height_at_x(46.0)])
@@ -315,9 +433,13 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	_check(not hg.lit and not ts.hud.safe_marker, "  no beacon or marker before the warning is given")
 	await _wait_until(func(): return ts.warned, 6.0)
 	await _frames(4)
-	_check(hg.lit and ts.hud.safe_marker, "  the beacon is lit and the HIGH GROUND marker is on the HUD")
-	var marker_before: Vector3 = ts.hud.safe_at
-	_check(marker_before.y > 12.0, "  pointing at the beacon (%.0f m up)" % marker_before.y)
+	_check(hg.lit and ts.hud.safe_here and not ts.hud.safe_marker, "  the beacon is lit; standing in the zone shows a SAFE chip, not the marker")
+	hg.up.clear()
+	player.global_position = Vector3(-20.0, 0.0, -3.0)
+	await _frames(3)
+	_check(ts.hud.safe_marker and not ts.hud.safe_here and ts.hud.safe_at.y > 12.0, "  out in the street the HIGH GROUND marker points at the beacon (%.0f m up)" % ts.hud.safe_at.y)
+	hg.put_up(player, hg.zone_center())
+	await _frames(3)
 	for dd in ts.drowned:
 		dd.global_position = Vector3(500, -50, 500)
 		dd.set_physics_process(false)
@@ -336,7 +458,9 @@ func _zombie_tsunami_checks(_gs: Node) -> void:
 	_check(ts.water_level > 3.0 and ts._water.visible, "  the water stands in the street (%.1f m)" % ts.water_level)
 	_check(zm.surge_busy, "  the horde waits while it does")
 	var ended := await _wait_until(func(): return ts.phase == ts.Phase.IDLE, 10.0)
-	_check(ended and not ts._water.visible and not zm.surge_busy and not zm.over and zm.active, "  the water goes and play goes on")
+	_check(ended and ts.water_level < 0.05 and not zm.surge_busy and not zm.over and zm.active, "  the water goes and play goes on")
+	_check(ts._wet > 0.3 and ts._water.visible and ts.flood_mode == 0.0, "  and the ground stays wet (puddles %.2f)" % ts._wet)
+	_check(is_equal_approx(ts.dread, 0.0) or ts.dread < 0.01, "  the sky is back to the night (dread %.2f)" % ts.dread)
 	_check(not hg.lit and not zm.tsunami_active and ts.survived == 1, "  the beacon is out")
 	if is_instance_valid(roof_dead):
 		roof_dead.queue_free()

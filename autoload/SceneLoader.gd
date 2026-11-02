@@ -287,7 +287,8 @@ func go(path: String, spawn := "") -> void:
 	var room := tree.current_scene
 	if not hidden and room != null and room.has_method("finish_arrival"):
 		var t_hold := Time.get_ticks_msec()
-		while not room.finish_arrival() and Time.get_ticks_msec() - t_hold < ARRIVAL_HOLD_MSEC:
+		var hold: int = int(room.call("arrival_hold_msec")) if room.has_method("arrival_hold_msec") else ARRIVAL_HOLD_MSEC
+		while not room.finish_arrival() and Time.get_ticks_msec() - t_hold < hold:
 			await tree.process_frame
 	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
 	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]

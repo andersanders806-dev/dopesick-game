@@ -40,6 +40,7 @@ Crafting="*res://autoload/Crafting.gd"
 Camp="*res://autoload/Camp.gd"
 ZombieMode="*res://autoload/ZombieMode.gd"
 Schedules="*res://autoload/Schedules.gd"
+DualSense="*res://autoload/DualSense.gd"
 _mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]

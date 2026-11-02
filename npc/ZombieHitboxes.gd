@@ -1,6 +1,10 @@
 extends RefCounted
 ## The hit zones of a Rocketbox body: one Area3D with a capsule per body part,
-## each on a BoneAttachment3D so it follows the animation. Eleven parts
+## laid on the bones. They are NOT glued to the bones frame by frame (twenty
+## zombies is 220 moving areas, which cost the physics server 1 to 4 ms every
+## tick): sync() puts them where the animation has the bones, and the weapons
+## call it for the zombies near a shot's line just before they cast (see
+## WeaponHolder._cast), so a ray always meets the pose on screen. Eleven parts
 ## (head, neck, torso, upper/lower arms and legs, left and right); the Area3D
 ## carries meta `part` and `zombie`, which is what a hitscan ray reads off
 ## its hit (collide_with_areas, mask HITBOX_LAYER).
@@ -33,11 +37,14 @@ const LAYOUT := {
 ## Builds the zombie's hitboxes under `skeleton`, which must already be in the
 ## tree (its scale is how metres turn into skeleton units). Returns part ->
 ## Area3D.
-static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
+static func build(skeleton: Skeleton3D, zombie: Node, grow := 1.0) -> Dictionary:
 	var out := {}
 	var unit := skeleton.global_transform.basis.get_scale().x
 	if unit <= 0.0:
 		return out
+	var zones := Node3D.new()
+	zones.name = "HitZones"
+	zombie.add_child(zones)
 	for part in PARTS:
 		var spec: Array = LAYOUT[part]
 		var bone := skeleton.find_bone(spec[0])
@@ -45,22 +52,19 @@ static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
 			continue
 		var a := _point(skeleton, spec[1])
 		var b := _point(skeleton, spec[2])
-		var attach := BoneAttachment3D.new()
-		attach.name = "Hit_" + part
-		attach.bone_name = spec[0]
-		skeleton.add_child(attach)
 		var area := Area3D.new()
-		area.name = "Box"
+		area.name = "Hit_" + part
+		area.set_meta("bone", bone)
 		area.collision_layer = HITBOX_LAYER
 		area.collision_mask = 0
 		area.monitoring = false
 		area.monitorable = true
 		area.set_meta("part", part)
 		area.set_meta("zombie", zombie)
-		attach.add_child(area)
+		zones.add_child(area)
 		var shape := CollisionShape3D.new()
 		var cap := CapsuleShape3D.new()
-		var radius: float = spec[3] / unit
+		var radius: float = spec[3] * grow / unit
 		if part == "head":
 			# The skull starts at the head bone, so its round bottom doesn't swallow the neck.
 			a += Vector3.UP * radius
@@ -84,7 +88,19 @@ static func build(skeleton: Skeleton3D, zombie: Node) -> Dictionary:
 		shape.transform = rest.affine_inverse() * world_xf
 		area.add_child(shape)
 		out[part] = area
+	sync(skeleton, out)
 	return out
+
+## Puts every zone on its bone as the skeleton stands right now.
+static func sync(skeleton: Skeleton3D, zones: Dictionary) -> void:
+	var sk := skeleton.global_transform
+	for part in zones:
+		var area := zones[part] as Area3D
+		if area == null or not area.is_inside_tree():
+			continue
+		area.global_transform = sk * skeleton.get_bone_global_pose(int(area.get_meta("bone")))
+		# Transform changes reach the physics server at the next frame; a ray cast now needs it now.
+		area.force_update_transform()
 
 ## A skeleton-space rest position: a bone, or the head's eye line lifted to the
 ## crown ("eyes_up").

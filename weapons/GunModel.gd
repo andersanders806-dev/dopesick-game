@@ -10,6 +10,20 @@ const WD := preload("res://weapons/WeaponData.gd")
 ## Where the pivot sits along the gun, from the back (0) to the muzzle (1): the grip.
 const GRIP_AT := 0.32
 
+static var _scenes := {}
+
+## A model's scene, kept for the session: a gun swapped away from and back to (or the red dot that the
+## next gun also wears) would load again, 100 to 500 ms each time.
+static func scene(path: String) -> PackedScene:
+	if not _scenes.has(path):
+		_scenes[path] = load(path) as PackedScene
+	return _scenes[path]
+
+## Hands a scene loaded elsewhere (fx/Prewarm.gd loads them on worker threads) to the cache.
+static func keep(path: String, ps: PackedScene) -> void:
+	if ps != null and not _scenes.has(path):
+		_scenes[path] = ps
+
 static func build(d: WD) -> Node3D:
 	var root := Node3D.new()
 	root.name = "Gun_" + d.id
@@ -25,7 +39,7 @@ static func build(d: WD) -> Node3D:
 
 static func _load(d: WD) -> Node3D:
 	var holder := Node3D.new()
-	var ps := load(d.model) as PackedScene
+	var ps := scene(d.model)
 	if ps == null:
 		return holder
 	var model := ps.instantiate() as Node3D

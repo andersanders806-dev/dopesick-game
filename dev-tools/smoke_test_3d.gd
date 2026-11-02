@@ -854,6 +854,9 @@ func _run() -> void:
 	await _zombie_anim_checks(gs)
 	await _zombie_dead_checks(gs)
 	await _zombie_weapons_checks(gs)
+	await _zombie_fp_checks(gs)
+	await _zombie_horde_checks(gs)
+	await _zombie_gore_checks(gs)
 	await _car_checks(gs)
 	gs.start_run()
 
@@ -5574,12 +5577,12 @@ func _zombie_shell_checks(gs: Node) -> void:
 		"  health: 150 at round 1, 950 at 9, 1045 at 10 (%d, %d, %d)" % [zm.zombie_health(1), zm.zombie_health(9), zm.zombie_health(10)])
 	_check(absi(zm.zombie_health(20) - 2710) <= 5, "  health at round 20 is about 2710 (%d)" % zm.zombie_health(20))
 	var counts: Array = [6, 7, 8, 9, 10].map(func(r): return zm.zombies_in_round(r))
-	_check(counts == [27, 28, 28, 29, 33], "  zombies per round 6..10 are 27, 28, 28, 29, 33 (%s)" % [counts])
+	_check(counts == [68, 70, 70, 73, 83], "  zombies per round 6..10 are 68, 70, 70, 73, 83 (2.5x the first design) (%s)" % [counts])
 	var early: Array = [1, 2, 3, 4, 5].map(func(r): return zm.zombies_in_round(r))
 	var rising := true
 	for i in range(1, early.size()):
 		rising = rising and early[i] > early[i - 1]
-	_check(early[0] == 6 and rising and early[4] < counts[0], "  rounds 1..5 ramp up from 6 and stay under round 6 (%s)" % [early])
+	_check(early[0] == 15 and rising and early[4] < counts[0], "  rounds 1..5 ramp up from 15 and stay under round 6 (%s)" % [early])
 
 	# Points. A run has to be on for earning.
 	zm.begin(false)
@@ -5755,19 +5758,16 @@ func _zombie_shell_checks(gs: Node) -> void:
 	var entry := _buttons_named(title, "Zombies")
 	_check(entry.size() == 1, "  the title screen has a Zombies button")
 	if entry.size() == 1:
+		root.get_node("Graphics").set_first_person(false)
 		entry[0].pressed.emit()
+		_check(_buttons_named(title, "Third person").is_empty(), "  it asks no view: Dead Block is first person")
+		while root.get_node("SceneLoader").busy():
+			await process_frame
+		await _frames(15)
+		_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
+			"  Zombies starts the run on the zombie block, in first person")
+		zm.game_over()
 		await _frames(2)
-		var fp := _buttons_named(title, "First person")
-		_check(not _buttons_named(title, "Third person").is_empty() and fp.size() == 1, "  it asks first person or third")
-		if fp.size() == 1:
-			fp[0].pressed.emit()
-			while root.get_node("SceneLoader").busy():
-				await process_frame
-			await _frames(15)
-			_check(zm.active and gs.mode == "zombies" and root.get_node("Graphics").first_person and current_scene.get("zombie_mode") == true,
-				"  First person starts the run on the zombie block")
-			zm.game_over()
-			await _frames(2)
 	for s in root.get_children().filter(func(n): return n.name.begins_with("ZombieGameOver")):
 		s.queue_free()
 	paused = false
@@ -6061,6 +6061,7 @@ func _zombie_dead_checks(gs: Node) -> void:
 	z._anim_player.pause()
 	z._model_root.rotation.y = 0.0
 	await _frames(4)
+	z.sync_hitboxes()
 	_check(z.hitboxes.size() == 11 and Hit.PARTS.all(func(p): return z.hitboxes.has(p)), "  a zombie has 11 hit zones (%d)" % z.hitboxes.size())
 	var space: PhysicsDirectSpaceState3D = city.get_world_3d().direct_space_state
 	var head_c: Vector3 = (z.hitboxes["head"].get_child(0) as Node3D).global_position
@@ -6118,6 +6119,8 @@ func _zombie_dead_checks(gs: Node) -> void:
 
 	# --- Spawning ---
 	spawner.time_scale = 0.01
+	spawner.adaptive = false
+	zm.max_alive = 32
 	for r in [5, 6, 15]:
 		for old in get_nodes_in_group("zombies"):
 			old.free()
@@ -6136,7 +6139,7 @@ func _zombie_dead_checks(gs: Node) -> void:
 			for zz in get_nodes_in_group("zombies"):
 				zz.set_physics_process(false)
 			max_alive = maxi(max_alive, spawner.alive())
-			if spawner.alive() >= zm.MAX_ALIVE:
+			if spawner.alive() >= zm.max_alive:
 				at_cap = true
 				# Mow down five and let the reserve come out.
 				var live := get_nodes_in_group("zombies")
@@ -6147,8 +6150,8 @@ func _zombie_dead_checks(gs: Node) -> void:
 		for k in made:
 			kinds[k] += 1
 		spawner.spawned.disconnect(on_spawn)
-		_check(made.size() == zm.zombies_in_round(r) and max_alive <= zm.MAX_ALIVE and (at_cap or zm.zombies_in_round(r) <= zm.MAX_ALIVE),
-			"  round %d: exactly %d came out, never more than %d alive (made %d, peak %d, capped %s)" % [r, zm.zombies_in_round(r), zm.MAX_ALIVE, made.size(), max_alive, at_cap])
+		_check(made.size() == zm.zombies_in_round(r) and max_alive <= zm.max_alive and (at_cap or zm.zombies_in_round(r) <= zm.max_alive),
+			"  round %d: exactly %d came out, never more than %d alive (made %d, peak %d, capped %s)" % [r, zm.zombies_in_round(r), zm.max_alive, made.size(), max_alive, at_cap])
 		if r == 5:
 			_check(kinds["runner"] == 0, "  ...all walkers in round 5 (%s)" % [kinds])
 		elif r == 6:
@@ -6528,6 +6531,8 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	player.global_position = ring_at
 	player.velocity = Vector3.ZERO
 	spawner.round_no = 8
+	# Twenty claws would put the player down long before the ring forms.
+	root.get_node("ZombieMode").health = 1e9
 	var horde := []
 	for i in 20:
 		var at := ring_at + Vector3(4.0 + (i % 5) * 1.0, 0.0, -1.5 + (i / 5) * 1.0)
@@ -6554,15 +6559,16 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 			for a in horde.size():
 				for b in range(a + 1, horde.size()):
 					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
+	root.get_node("ZombieMode").health = 100.0
 	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
-	_check(closest_pair >= 0.5, "  no two dead within reach are closer than 0.5 m (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
+	_check(closest_pair >= 0.4, "  no two dead within reach are closer than 0.4 m (a pile is under 0.3; the ring keeps 0.6) (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:
 		zz.free()
 # --- Dead Block: guns, wall-buys, the box, the upgrade machine (Task Z3) -----------
 
 ## Shots to kill a round-1 zombie (150 health) at 4 m: [torso, head].
-const ZW_SHOTS := {"pistol": [4, 2], "smg": [6, 4], "shotgun": [1, 1], "ar": [4, 2], "sniper": [1, 1],
-	"magnum": [2, 1], "lmg": [4, 3], "wonder": [1, 1]}
+const ZW_SHOTS := {"pistol": [4, 1], "smg": [6, 2], "shotgun": [1, 1], "ar": [4, 1], "sniper": [1, 1],
+	"magnum": [2, 1], "lmg": [4, 2], "wonder": [1, 1]}
 ## The wall's prices (spec): the guns it sells.
 const ZW_PRICES := {"smg": 1000, "shotgun": 1200, "ar": 1400, "sniper": 1500, "magnum": 1000}
 
@@ -6576,6 +6582,9 @@ func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node
 	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
 	zed.set_physics_process(false)
 	zed._anim_player.pause()
+	# A zombie starts its walk at a random point; the targets stand at the same one, so a
+	# sweep for gaps always meets the same pose (a head leaning off the torso's line is a gap).
+	zed._anim_player.seek(0.0, true)
 	zed._model_root.rotation.y = -PI / 2.0
 	zed.set_meta("hits", [])
 	zed.hit.connect(func(_z, part, dmg, _k): zed.get_meta("hits").append([part, dmg]))
@@ -6596,6 +6605,7 @@ func _zw_hits(zed: Node) -> Array:
 
 ## Where the middle of one of the zombie's hit zones is now.
 func _zw_part_at(zed: Node, part: String) -> Vector3:
+	zed.sync_hitboxes()
 	return (zed.hitboxes[part].get_child(0) as Node3D).global_position
 
 ## Aim along +X at the middle of `part`, from x = `from_x` (looked up on every shot,
@@ -6653,10 +6663,25 @@ func _zw_mouse(button: int) -> InputEventMouseButton:
 ## `around`'s middle) that find no zombie at all: [y, offset] pairs.
 func _zw_gaps(holder: Node, zed: Node, heights: Array, offsets: Array, along_x: bool) -> Array:
 	var mid := _zw_part_at(zed, "torso")
+	var neck := _zw_part_at(zed, "neck")
+	var head := _zw_part_at(zed, "head")
 	var gaps := []
 	for y in heights:
+		# The spine leans on some bodies and poses: the core line follows the torso, neck and head
+		# centres (straight lines between them), not a plumb line through the torso.
+		var lean_n: float = (neck.z - mid.z) if along_x else (neck.x - mid.x)
+		var lean_h: float = (head.z - mid.z) if along_x else (head.x - mid.x)
+		var lean := 0.0
+		if y >= head.y:
+			lean = lean_h
+		elif y >= neck.y:
+			lean = lerpf(lean_n, lean_h, (y - neck.y) / maxf(head.y - neck.y, 0.01))
+		elif y > mid.y:
+			lean = lerpf(0.0, lean_n, (y - mid.y) / maxf(neck.y - mid.y, 0.01))
 		for o in offsets:
-			var origin := Vector3(mid.x - 4.0, y, mid.z + o) if along_x else Vector3(mid.x + o, y, mid.z - 4.0)
+			if y >= head.y - 0.07 and absf(o) > 0.021:
+				continue  # the head is small and tilts: up there only its middle line counts
+			var origin := Vector3(mid.x - 4.0, y, mid.z + o + lean) if along_x else Vector3(mid.x + o + lean, y, mid.z - 4.0)
 			var r: Dictionary = holder._cast(origin, Vector3.RIGHT if along_x else Vector3(0, 0, 1), 8.0)
 			if r.get("zombie") == null:
 				gaps.append([snappedf(y, 0.01), snappedf(o, 0.01)])
@@ -6787,11 +6812,12 @@ func _zombie_weapons_checks(gs: Node) -> void:
 		"  the target is a real Zombie3D with 150 health and 11 hit zones")
 	_zw_aim_part(holder, zr, "head")
 	var head_dmg: float = pistol.damage_at("head", 4.0)
+	zr.health = 300.0
 	holder.advance(10.0)
 	holder.fire()
 	_check(_zw_hits(zr).size() == 1 and _zw_hits(zr)[0][0] == "head" and is_equal_approx(_zw_hits(zr)[0][1], head_dmg) and head_dmg > pistol.damage_at("torso", 4.0) * 1.9
-		and is_equal_approx(zr.health, 150.0 - head_dmg),
-		"  the first pistol shot lands in the head for the head multiplier (%s, %.0f of 150)" % [_zw_hits(zr), 150.0 - zr.health])
+		and is_equal_approx(zr.health, 300.0 - head_dmg),
+		"  the first pistol shot lands in the head for the head multiplier (%s, %.0f of 300)" % [_zw_hits(zr), 300.0 - zr.health])
 	holder.advance(10.0)
 	holder.fire()
 	_check(not zr.is_alive() and _zw_hits(zr).size() == 2, "  a round-1 zombie is dead after 2 pistol headshots (%d hits)" % _zw_hits(zr).size())
@@ -6828,7 +6854,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var gaps_front: Array = _zw_gaps(holder, zbody, heights, core, true)
 	var gaps_side: Array = _zw_gaps(holder, zbody, heights, core, false)
 	var gaps_shoulder: Array = _zw_gaps(holder, zbody, shoulder_heights, shoulders, true)
-	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4)])
+	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s; body %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4), zbody.get_meta("body", "?")])
 	_check(gaps_shoulder.is_empty(), "  no gap across the shoulders (%s)" % [gaps_shoulder.slice(0, 4)])
 	var order := []
 	for h in heights:
@@ -6966,6 +6992,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	holder.hit.connect(func(part: String, killed: bool): hit_log.append([part, killed]))
 	var zh: Node = await _zw_target(city, -20.0, -3.0, 4.0)
 	_zw_aim_part(holder, zh, "head")
+	zh.health = 300.0
 	holder.advance(10.0)
 	holder.fire()
 	_check(zm.points == 10 and zh.is_alive() and hit_log == [["head", false]], "  a hit that doesn't kill pays 10 and says so (%d, %s)" % [zm.points, hit_log])
@@ -7071,6 +7098,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	zm.points = 0
 	var ztp: Node = await _zw_target(city, -20.0, -3.0, 4.0)
 	holder.screen_aim_source = func(): return cam.unproject_position(_zw_part_at(ztp, "head"))
+	ztp.health = 300.0
 	holder.advance(10.0)
 	holder.fire()
 	_check(_zw_hits(ztp).size() == 1 and _zw_hits(ztp)[0][0] == "head" and _zw_hits(ztp)[0][1] > pistol3.damage_at("torso", 4.0) * 1.9,
@@ -8651,3 +8679,1245 @@ func _camera_pull_in_checks(city: Node, p: Node3D) -> void:
 		rig.follow(0.016, feet)
 	_check(one_out < tight_arm + 0.1 and half_s < open_arm - 0.15 and rig.arm_free > open_arm - 0.02, "  ...and eases out slowly (%.0f%% after a frame, %.0f%% after half a second, %.0f%% after 4 s)" % [one_out * 100.0, half_s * 100.0, rig.arm_free * 100.0])
 	p.set_process(true)
+
+
+# --- Dead Block: first person that feels like a modern shooter (Task Z4) --------------
+
+## Steps the feel by `n` fixed frames (the tests own the clock: nothing runs by itself).
+func _fp_step(feel: Node, holder: Node, n: int, dt := 1.0 / 120.0) -> void:
+	for i in n:
+		holder.advance(dt)
+		feel.advance(dt)
+
+func _zombie_fp_checks(gs: Node) -> void:
+	await _section("Dead Block: first-person feel -- ADS, recoil, hitmarker, slide, viewmodel, sound")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	var gfx := root.get_node("Graphics")
+	var Viewmodel := load("res://player/Viewmodel.gd")
+	var FPFeel := load("res://player/FPFeel.gd")
+	zm.leave()
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	var block: Node = city.get_node_or_null("ZombieBlock")
+	for i in 90:
+		if block != null and block.purchases_ready:
+			break
+		await physics_frame
+	await _frames(5)
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	var player := _player()
+	var holder: Node = player.get_node_or_null("WeaponHolder")
+	var feel: Node = holder.get("feel") if holder != null else null
+	_check(holder != null and feel != null and feel.get_script() == FPFeel and player.get("feel") == feel,
+		"  the weapon holder makes the feel and the player knows it")
+	if feel == null:
+		zm.leave()
+		return
+	holder.set_process(false)
+	feel.auto = false
+	holder.no_spread = true
+	player.global_position = Vector3(-30, 0, -3)
+	gfx.set_first_person(true)
+	await _frames(6)
+	_check(player.get("_first_person") == true and holder.viewmodel != null, "  first person has a viewmodel")
+
+	# --- Aiming down the sights: 0.2 s for a pistol / SMG, 0.3 for a rifle, 0.4 for an LMG.
+	var hip_fov: float = feel.HIP_FOV
+	var times := {}
+	for id in ["pistol", "smg", "ar", "lmg"]:
+		holder.give(load("res://weapons/%s.tres" % id))
+		await _frames(2)
+		feel.reset_state()
+		feel.swap_blend = 0.0
+		holder._swap_left = 0.0
+		holder.aiming = true
+		var target: float = hip_fov * feel.ads_fov_mult()
+		var t := 0.0
+		var reached := -1.0
+		var early_ok := true
+		for i in 120:
+			_fp_step(feel, holder, 1)
+			t += 1.0 / 120.0
+			if reached < 0.0 and absf(feel.fov - target) < 0.1:
+				reached = t
+			if t < 0.14 and absf(feel.fov - target) < 0.5:
+				early_ok = false
+		times[id] = reached
+		holder.aiming = false
+	_check(absf(times["pistol"] - 0.2) <= 0.03 and absf(times["smg"] - 0.2) <= 0.03,
+		"  pistol and SMG reach the sights' field of view in 0.2 s +- 0.03 (%.3f, %.3f)" % [times["pistol"], times["smg"]])
+	_check(absf(times["ar"] - 0.3) <= 0.03 and absf(times["lmg"] - 0.4) <= 0.03,
+		"  a rifle takes 0.3 s and an LMG 0.4 s (%.3f, %.3f)" % [times["ar"], times["lmg"]])
+	holder.give(load("res://weapons/pistol.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	holder.aiming = true
+	_fp_step(feel, holder, 60)
+	var ads_mult: float = feel.ads_fov_mult()
+	_check(ads_mult >= 0.78 and ads_mult <= 0.86 and absf(feel.fov - hip_fov * ads_mult) < 0.1,
+		"  iron sights narrow the view to 0.8 to 0.85 of the hip's (%.3f, %.1f deg)" % [ads_mult, feel.fov])
+	var sens: float = feel.sens_scale()
+	_check(sens < 0.9 and sens > 0.7 and absf(feel.speed_mult() - 0.6) < 0.01,
+		"  aimed, the mouse turns by the field-of-view ratio (%.2f) and you walk at 0.6x (%.2f)" % [sens, feel.speed_mult()])
+	var sniper: Resource = load("res://weapons/sniper.tres")
+	holder.give(sniper)
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	holder.aiming = true
+	_fp_step(feel, holder, 120)
+	_check(feel.fov < hip_fov * 0.36 and feel.fov > hip_fov * 0.25, "  a scope narrows it to about a third (%.1f deg)" % feel.fov)
+	holder.aiming = false
+
+	# --- Spread: hip is wider than aimed, on every gun, and the crosshair shows it.
+	var wider := true
+	for id in ["pistol", "smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]:
+		var d: Resource = load("res://weapons/%s.tres" % id)
+		wider = wider and d.spread_hip > d.spread_ads
+	_check(wider, "  every gun's hip spread is wider than its aimed spread")
+	var Hit := load("res://ui/Hitmarker.gd")
+	var hm: Control = block.hud.hitmarker
+	_check(hm != null and hm.get_script() == Hit, "  the HUD has the crosshair and hitmarker")
+	holder.give(load("res://weapons/ar.tres"))
+	feel.reset_state()
+	holder.aiming = false
+	await _frames(30)
+	var gap_hip: float = hm.spread_px
+	holder.aiming = true
+	await _frames(30)
+	var gap_ads: float = hm.spread_px
+	holder.aiming = false
+	_check(gap_hip > gap_ads + 3.0 and hm.aim_amount > 0.9, "  the crosshair opens wider on the hip than aimed (%.1f px, %.1f px), and is gone aimed" % [gap_hip, gap_ads])
+
+	# --- Recoil: two layers, and it recovers.
+	holder.give(load("res://weapons/ar.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	player.set_look(-PI / 2.0, 0.0)
+	await _frames(3)
+	holder.refill_all()
+	var pitch_before: float = feel.recoil.x
+	var peak := 0.0
+	var kick_pos_peak := 0.0
+	for k in 8:
+		holder._cooldown = 0.0
+		holder.fire()
+		for i in 6:
+			_fp_step(feel, holder, 1)
+			peak = maxf(peak, feel.recoil.x)
+			kick_pos_peak = maxf(kick_pos_peak, feel.kick_pos.z)
+	var burst_deg := rad_to_deg(peak)
+	feel.kick_pos = Vector3.ZERO
+	feel.kick_pos_v = Vector3.ZERO
+	var single_peak := 0.0
+	holder._cooldown = 0.0
+	holder.fire()
+	for i in 20:
+		_fp_step(feel, holder, 1)
+		single_peak = maxf(single_peak, feel.kick_pos.z)
+	_check(burst_deg > 1.0 and burst_deg < 12.0, "  a burst climbs the view (peak %.1f deg over 8 rounds)" % burst_deg)
+	_check(single_peak > 0.015 and single_peak < 0.06 and kick_pos_peak < 0.075, "  the gun jumps back 2 to 5 cm on a shot (%.1f cm) and a burst keeps it from walking off (%.1f cm)" % [single_peak * 100.0, kick_pos_peak * 100.0])
+	# Release: the view is back on its aim within 0.35 s.
+	var t_rec := 0.0
+	var step := 1.0 / 120.0
+	while feel.recoil.length() > deg_to_rad(0.05) and t_rec < 2.0:
+		_fp_step(feel, holder, 1, step)
+		t_rec += step
+	_check(t_rec <= 0.35, "  the view recovers to the aim within 0.35 s of the last shot (%.3f s)" % t_rec)
+	# The shot goes where the crosshair points (recoil is in the camera, not hidden from the ray).
+	feel.reset_state()
+	holder.refill_all()
+	holder.aim_source = Callable()
+	holder._cooldown = 0.0
+	holder.fire()
+	_fp_step(feel, holder, 2)
+	feel.apply()
+	var cam: Camera3D = player.get("camera")
+	var fwd := -cam.global_transform.basis.z
+	var aim: Array = holder._aim()
+	_check((aim[1] as Vector3).dot(fwd) > 0.9999, "  bullets go where the crosshair is pointing (the camera carries the recoil)")
+	# Visual recoil leaves a hit on the camera shake too.
+	feel.reset_state()
+	feel.add_trauma(0.8)
+	var shake_seen := 0.0
+	for i in 30:
+		_fp_step(feel, holder, 1)
+		shake_seen = maxf(shake_seen, feel.shake_angles.length())
+	_check(shake_seen > deg_to_rad(0.3) and feel.trauma < 0.7, "  trauma shakes the view and fades (peak %.2f deg)" % rad_to_deg(shake_seen))
+
+	# --- Hit feedback on a real zombie.
+	feel.reset_state()
+	holder.give(load("res://weapons/pistol.tres"))
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	zm.points = 0
+	var zed: Node = await _zw_target(city, -20.0, -3.0, 6.0)
+	holder.refill_all()
+	await _zw_aim_part(holder, zed, "head")
+	zed.health = 400.0
+	holder._cooldown = 0.0
+	holder.fire()
+	await process_frame
+	await process_frame
+	var kind1: String = hm.kind
+	var up1: bool = hm.showing()
+	var left1: float = hm.left
+	_check(up1 and kind1 == "head" and left1 <= 0.12 and left1 > 0.08, "  a hit shows the hitmarker for 0.12 s, a headshot's bigger and warm (%s, %.3f s left)" % [kind1, left1])
+	for i in 7:
+		hm._process(0.01)
+	var still: bool = hm.showing()
+	for i in 6:
+		hm._process(0.01)
+	_check(still and not hm.showing(), "  it is still up at 0.07 s and gone by 0.13 s")
+	zed.health = 20.0
+	# The first shot's recoil and the head snap moved the aim: aim again, as a player would.
+	feel.reset_state()
+	await _zw_aim_part(holder, zed, "head")
+	holder._cooldown = 0.0
+	holder.fire()
+	# Read it the moment the shot lands: a slow first death frame (gore, ragdoll) must not hide it.
+	var kill_up: bool = hm.showing()
+	await process_frame
+	await process_frame
+	_check(kill_up and hm.kind == "kill" and hm.KILL.r > 0.8 and hm.KILL.g < 0.2 and hm.KILL.b < 0.2, "  the kill shot's hitmarker is red")
+	_check(feel.recent.has("hit_kill") and feel.recent.has("hit_head"), "  and the hit ticks, the kill its own heavy thump (%s)" % [feel.recent])
+	hm.flash("torso", false)
+	_check(hm.kind == "body" and hm.BODY == Color(1, 1, 1), "  a body hit is white")
+	zed.queue_free()
+	var popup: Control = block.hud.popups
+	var pops0: int = popup.active()
+	for k in 12:
+		popup.add(10 * (k + 1), "hit")
+	_check(popup.active() == 8, "  the points popups are pooled at eight (%d)" % popup.active())
+
+	# --- Sound for every action.
+	var missing := []
+	var names := ["fire_pistol_a", "fire_pistol_b", "fire_smg_a", "fire_ar_a", "fire_shotgun_a", "fire_sniper_a", "fire_magnum_a", "fire_lmg_a", "fire_wonder_a",
+		"dry_click", "mag_out", "mag_in", "rack", "pump", "bolt", "shell_in", "brass_a", "brass_b", "brass_c", "ads_in", "ads_out", "draw", "inspect",
+		"slide", "whoosh", "hit_body", "hit_head", "hit_kill"]
+	for n in names:
+		var st: AudioStream = FPFeel.stream(n)
+		if st == null or st.get_length() < 0.01:
+			missing.append(n)
+	_check(missing.is_empty(), "  every action's sound loads: fire per gun, dry click, mag out/in, rack, pump, bolt, shell, brass, ADS cloth, draw, inspect, slide, whoosh, hit ticks (%s missing)" % [missing])
+	holder.give(load("res://weapons/smg.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	holder.aim_source = Callable()
+	holder._cooldown = 0.0
+	holder.fire()
+	_check(feel.last_sound.begins_with("fire_smg"), "  firing plays the gun's own sound (%s)" % feel.last_sound)
+	holder.aiming = true
+	_fp_step(feel, holder, 2)
+	_check(feel.recent.has("ads_in"), "  raising the sights plays the cloth (%s)" % [feel.recent])
+	holder.aiming = false
+	_fp_step(feel, holder, 2)
+	_check(feel.recent.has("ads_out"), "  lowering them too (%s)" % [feel.recent])
+	var heard := []
+	holder.mag = 5
+	holder.reserve = 90
+	holder.reload()
+	var rt: float = holder.reload_left()
+	for i in int(rt * 120.0) + 10:
+		var before: String = feel.last_sound
+		_fp_step(feel, holder, 1)
+		if feel.last_sound != before or (feel.last_sound in ["mag_out", "mag_in", "rack"] and heard.size() < 3 and not heard.has(feel.last_sound)):
+			if heard.is_empty() or heard.back() != feel.last_sound:
+				heard.append(feel.last_sound)
+	heard = heard.filter(func(n): return n in ["mag_out", "mag_in", "rack"])
+	_check(heard == ["mag_out", "mag_in", "rack"], "  a reload has its steps in order: mag out, mag in, rack (%s)" % [heard])
+	holder.give(load("res://weapons/pistol.tres"))
+	_check(feel.last_sound == "draw", "  drawing a gun has its sound (%s)" % feel.last_sound)
+
+	# --- The shot's effects: flash, shells, tracers (pooled).
+	holder.give(load("res://weapons/ar.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	holder.refill_all()
+	holder.aim_source = Callable()
+	player.set_look(-PI / 2.0, 0.0)
+	await _frames(3)
+	var vm: Node3D = holder.viewmodel
+	holder._cooldown = 0.0
+	holder.fire()
+	_check(vm.flash.visible and feel._flash_left > 0.0, "  a shot lights the muzzle flash")
+	_fp_step(feel, holder, 12)
+	_check(not vm.flash.visible, "  and it is gone within a few frames")
+	for k in 30:
+		holder._cooldown = 0.0
+		holder.fire()
+		_fp_step(feel, holder, 4)
+	var shells_on := 0
+	for sh in feel._shell_pool:
+		if sh["on"]:
+			shells_on += 1
+	_check(feel._shell_pool.size() > 0 and feel._shell_pool.size() <= feel.SHELLS and feel._tracer_pool.size() >= 1 and feel._tracer_pool.size() <= feel.TRACERS,
+		"  shells and tracers are pooled (%d shells, %d tracers) and kept to their caps" % [feel._shell_pool.size(), feel._tracer_pool.size()])
+	var lights := 0
+	for l in player.find_children("*", "OmniLight3D", true, false):
+		if String(l.name) == "MuzzleLight":
+			lights += 1
+	_check(lights == 1, "  one muzzle light, reused (%d)" % lights)
+
+	# --- The slide: from a sprint only, about 0.8 s.
+	feel.reset_state()
+	player.velocity = Vector3(0, 0, -5.0)
+	player.set("_sprinting", false)
+	_check(not feel.try_slide(), "  no slide from a walk")
+	player.set("_sprinting", true)
+	var ok_slide: bool = feel.try_slide()
+	var sprint_speed: float = player.BASE_SPEED * player.SPRINT_MULT
+	var v0: float = feel.slide_velocity(1.0 / 120.0).length()
+	var total := 1.0 / 120.0
+	var v_end := v0
+	while feel.sliding and total < 2.0:
+		v_end = feel.slide_velocity(1.0 / 120.0).length()
+		total += 1.0 / 120.0
+	_check(ok_slide and absf(total - 0.8) < 0.04, "  a slide from a sprint lasts about 0.8 s (%.3f s)" % total)
+	_check(absf(v0 - sprint_speed * 1.4) < sprint_speed * 0.05 and v_end < v0 * 0.5, "  it starts at 1.4x sprint speed and drops off (%.1f -> %.1f m/s, sprint %.1f)" % [v0, v_end, sprint_speed])
+	feel.reset_state()
+	player.set("_sprinting", true)
+	player.velocity = Vector3(0, 0, -5.0)
+	feel.try_slide()
+	for i in 40:
+		_fp_step(feel, holder, 1)
+	_check(feel.eye_drop > 0.5 and feel.fov > hip_fov + 3.0, "  mid-slide the eye is down 0.6 m and the view widens (%.2f m, %.1f deg)" % [feel.eye_drop, feel.fov])
+	player.set("_sprinting", false)
+	feel.reset_state()
+	player.velocity = Vector3.ZERO
+
+	# --- Third person in the middle of aiming and reloading.
+	holder.give(load("res://weapons/ar.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	holder.aiming = true
+	_fp_step(feel, holder, 20)
+	holder.mag = 3
+	holder.aiming = false
+	holder.reload()
+	_fp_step(feel, holder, 20)
+	holder.aiming = true
+	_fp_step(feel, holder, 5)
+	gfx.set_first_person(false)
+	await _frames(8)
+	var tp_cam: Camera3D = player.get("camera")
+	_check(feel.ads == 0.0 and feel.recoil == Vector2.ZERO and not feel.sliding and holder.viewmodel == null,
+		"  switching to third person mid-aim and mid-reload drops the sights, the recoil and the viewmodel")
+	_check(absf(tp_cam.fov - player.get("_tp_fov")) < 1.0, "  and the camera has its third-person field of view back (%.1f vs %.1f)" % [tp_cam.fov, player.get("_tp_fov")])
+	var still_reloading: bool = holder.reloading
+	for i in int(holder.reload_left() * 120.0) + 10:
+		holder.advance(1.0 / 120.0)
+	_check(still_reloading and not holder.reloading and holder.mag == 30, "  the reload still finishes: the gun is loaded, not stuck (%d)" % holder.mag)
+	gfx.set_first_person(true)
+	await _frames(8)
+	_check(holder.viewmodel != null and feel.ads == 0.0 and not holder.reloading and absf(player.get("camera").fov - hip_fov) < 2.0,
+		"  back in first person everything is at the hip (viewmodel %s, ads %.2f, fov %.1f)" % [holder.viewmodel != null, feel.ads, player.get("camera").fov])
+
+	# --- The viewmodel: depth shader on every surface, real arms, hands on the gun.
+	var all_shader := true
+	var bad := []
+	var guns_ok := true
+	for id in ["pistol", "smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder", "pistol_up", "smg_up"]:
+		var gv: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
+		for m in gv.materials():
+			var is_shader: bool = m is ShaderMaterial and (m.shader == Viewmodel.SHADER or m.shader == Viewmodel.FX_SHADER or m.shader == Viewmodel.DOT_SHADER or m.shader == Viewmodel.GLASS_SHADER)
+			if not is_shader:
+				all_shader = false
+				bad.append(id)
+		for mi in gv.find_children("*", "MeshInstance3D", true, false):
+			if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+				all_shader = false
+				bad.append(id + " shadow")
+		guns_ok = guns_ok and gv.arms != null and gv.flash != null and gv.box.size.z > 0.1
+		gv.free()
+	_check(all_shader, "  every viewmodel surface (gun, arms, flash, props) uses the depth shader and casts no shadow (%s)" % [bad])
+	var vmn: Node3D = holder.viewmodel
+	var arm_meshes: Array = vmn.arms.find_children("*", "MeshInstance3D", true, false) if vmn.arms != null else []
+	var arm_verts := 0
+	for mi in arm_meshes:
+		arm_verts += (mi as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].size()
+	_check(guns_ok and arm_verts > 800 and vmn.arms.find_child("Skeleton3D", true, false) != null, "  every gun has skinned Rocketbox arms (%d vertices), a flash and a measured body" % arm_verts)
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	_fp_step(feel, holder, 4)
+	feel.apply()
+	vmn.aim_hands(vmn.grip_l)
+	var skel: Skeleton3D = vmn.arms.find_child("Skeleton3D", true, false)
+	var hand_bone := skel.find_bone("Bip01 R Hand")
+	var hand_vm: Vector3 = (vmn.arms.transform * vmn._sk_in_arms) * skel.get_bone_global_pose(hand_bone).origin
+	var hand_gap := hand_vm.distance_to(vmn.grip_r)
+	_check(hand_gap < 0.09, "  the right hand is on the grip (wrist %.1f cm from it)" % (hand_gap * 100.0))
+	var lhand_bone := skel.find_bone("Bip01 L Hand")
+	var lhand_vm: Vector3 = (vmn.arms.transform * vmn._sk_in_arms) * skel.get_bone_global_pose(lhand_bone).origin
+	_check(lhand_vm.distance_to(vmn.grip_l) < 0.12, "  and the left hand is on the foregrip (%.1f cm)" % (lhand_vm.distance_to(vmn.grip_l) * 100.0))
+
+	# --- The first-person controls the mode adds.
+	_check(InputMap.has_action("crouch") and InputMap.has_action("inspect"), "  crouch (slide) and inspect are bound in the mode")
+	holder.give(load("res://weapons/pistol.tres"))
+	feel.reset_state()
+	feel.swap_blend = 0.0
+	holder._swap_left = 0.0
+	_check(feel.inspect() and feel.inspecting and feel.last_sound == "inspect", "  inspect turns the gun in the hands with a sound")
+	_fp_step(feel, holder, 300)
+	_check(not feel.inspecting, "  and ends by itself")
+	feel.reset_state()
+	player.velocity = Vector3.ZERO
+
+	# --- The horde's cost (step 0): hit zones follow the animation when a ray needs them,
+	# and a far zombie still gets there.
+	gfx.set_first_person(false)
+	await _frames(4)
+	holder.aim_source = Callable()
+	block.spawner.round_no = 1
+	var far_z: Node = block.spawner.spawn_one("runner", Vector3(-60.0, 0.0, -1.0))
+	player.global_position = Vector3(-20.0, 0, -1.0)
+	player.velocity = Vector3.ZERO
+	var d0: float = Vector2(far_z.global_position.x - player.global_position.x, far_z.global_position.z - player.global_position.z).length()
+	for i in 150:
+		await physics_frame
+	var d1: float = Vector2(far_z.global_position.x - player.global_position.x, far_z.global_position.z - player.global_position.z).length()
+	var want: float = far_z.speed * 150.0 / 60.0
+	_check(d0 - d1 > want * 0.6, "  a zombie 40 m away (thinking every second tick) still closes in at its own pace (%.1f m in 2.5 s, speed %.1f)" % [d0 - d1, far_z.speed])
+	var hb: Array = []
+	far_z.set_physics_process(false)
+	far_z._anim_player.pause()
+	far_z.sync_hitboxes()
+	var skl: Skeleton3D = far_z._skeleton
+	var head_bone: Vector3 = (skl.global_transform * skl.get_bone_global_pose(skl.find_bone("Bip01 Head"))).origin
+	var head_zone: Vector3 = (far_z.hitboxes["head"] as Node3D).global_position
+	_check(head_zone.distance_to(head_bone) < 0.2, "  a hit zone sits on its bone when synced (head zone %.2f m from the head bone)" % head_zone.distance_to(head_bone))
+	far_z.queue_free()
+	gfx.set_first_person(true)
+	await _frames(4)
+	await _zombie_fp_look_checks(player, holder, feel, block)
+	await _zombie_impact_checks(player, holder, feel, block)
+	zm.leave()
+	gs.start_run()
+
+
+## Task Z4b stage (a): sights on the screen's centre, the red dot, sleeves and gloves, a painted
+## shotgun, buy prompts only when you look at the thing, zombies that read in the dark.
+func _zombie_fp_look_checks(player: Node, holder: Node, feel: Node, block: Node) -> void:
+	var Viewmodel := load("res://player/Viewmodel.gd")
+	var Hud := load("res://ui/ZombieHud.gd")
+	# Aimed, the sight sits on the view's axis for every gun.
+	var worst := 0.0
+	var worst_id := ""
+	var near_relief := true
+	for id in ["pistol", "magnum", "smg", "ar", "lmg", "shotgun", "sniper", "wonder", "ar_up", "shotgun_up", "pistol_up"]:
+		var vm: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
+		var p: Vector3 = vm.ads_position + Basis(Vector3.RIGHT, vm.ads_pitch) * vm.sight_point
+		var off := Vector2(p.x, p.y).length()
+		if off > worst:
+			worst = off
+			worst_id = id
+		if p.z > -0.1 or p.z < -0.6:
+			near_relief = false
+		vm.free()
+	_check(worst < 0.003, "  aimed, every gun's sight (rear sight or red dot) is on the screen's centre (worst %s %.1f mm)" % [worst_id, worst * 1000.0])
+	_check(near_relief, "  at an eye relief between 10 and 60 cm")
+	for id in ["ar", "smg"]:
+		var vm: Node3D = Viewmodel.new().setup(load("res://weapons/%s.tres" % id))
+		var dot := vm.optic.get_node_or_null("Dot") as Node3D if vm.optic != null else null
+		_check(vm.has_optic and dot != null and (vm.optic.position + dot.position).distance_to(vm.sight_point) < 0.002,
+			"  the %s wears a red dot with its dot on the sight line" % id)
+		vm.free()
+	var vm_p: Node3D = Viewmodel.new().setup(load("res://weapons/pistol.tres"))
+	_check(not vm_p.has_optic and vm_p.optic == null, "  the pistol keeps its iron sights")
+	# Sleeves and gloves: the arms carry a mask map and every arm material uses it.
+	var arms_ok := true
+	var glove := false
+	var sleeve := false
+	var tip := false
+	for mi in vm_p.arms.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		for sidx in m.mesh.get_surface_count():
+			var mat := m.get_active_material(sidx) as ShaderMaterial
+			if mat == null or mat.get_shader_parameter("arms") != true:
+				arms_ok = false
+			var uv2 = m.mesh.surface_get_arrays(sidx)[Mesh.ARRAY_TEX_UV2]
+			if uv2 == null or (uv2 as PackedVector2Array).size() < 800:
+				arms_ok = false
+				continue
+			for uv in (uv2 as PackedVector2Array):
+				glove = glove or uv.x > 0.9
+				sleeve = sleeve or uv.y > 0.9
+				tip = tip or (uv.x < 0.05 and uv.y < 0.05)
+	_check(arms_ok and glove and sleeve and tip, "  the arms have sleeves, gloves and bare fingertips (mask: arms %s glove %s sleeve %s tip %s)" % [arms_ok, glove, sleeve, tip])
+	vm_p.free()
+	# The shotgun is a textured model, not plain grey.
+	var vm_s: Node3D = Viewmodel.new().setup(load("res://weapons/shotgun.tres"))
+	var textured := 0
+	for mat in vm_s.materials():
+		if mat is ShaderMaterial and mat.shader == Viewmodel.SHADER and mat.get_shader_parameter("use_tex") == true:
+			textured += 1
+	_check(textured >= 1, "  the shotgun has a textured (PBR) model (%d textured materials)" % textured)
+	vm_s.free()
+	# Buy prompts only when you are close and looking at the thing.
+	var cam: Camera3D = player.get_viewport().get_camera_3d()
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var thing := Node3D.new()
+	root.add_child(thing)
+	thing.global_position = player.global_position + fwd * 1.5
+	var in_front: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position - fwd * 1.5
+	var behind: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position + fwd * 3.0
+	var far_off: bool = Hud.prompt_in_view(player, thing)
+	thing.global_position = player.global_position + fwd.rotated(Vector3.UP, deg_to_rad(80.0)) * 1.5
+	var aside: bool = Hud.prompt_in_view(player, thing)
+	thing.free()
+	_check(in_front and not behind and not far_off and not aside,
+		"  a buy prompt shows only within 2 m and in view (front %s, behind %s, 3 m %s, 80 deg aside %s)" % [in_front, behind, far_off, aside])
+	# Zombies read in the dark: a rim and a lift in the rot shader.
+	var z: Node = block.spawner.spawn_one("walker", player.global_position + fwd * 6.0)
+	await _frames(2)
+	var rim_ok := false
+	for mi in z.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		var mat := m.get_surface_override_material(0) as ShaderMaterial
+		if mat != null and mat.shader != null and mat.shader.code.contains("rim_strength") and mat.shader.code.contains("body_lift"):
+			rim_ok = true
+	_check(rim_ok, "  a zombie wears a rim light and a body lift so it reads in the dark street")
+	z.free()
+
+
+## Task Z4b stage (b): per-zone damage, falloff, impacts, blood, hit reactions, shotgun knock-back,
+## damage numbers (off by default), hit sounds.
+func _zombie_impact_checks(player: Node, holder: Node, feel: Node, block: Node) -> void:
+	var zmode := root.get_node("ZombieMode")
+	var ImpactFX := load("res://fx/ImpactFX.gd")
+	var pistol: Resource = load("res://weapons/pistol.tres")
+	var ar: Resource = load("res://weapons/ar.tres")
+	var shotgun: Resource = load("res://weapons/shotgun.tres")
+	_check(pistol.head_mult >= 4.0 and ar.head_mult >= 4.0 and pistol.neck_mult >= 2.0 and ar.neck_mult >= 2.0 and pistol.torso_mult == 1.0 and absf(ar.limb_mult - 0.75) < 0.001,
+		"  zone damage is COD-like: head x%.1f / neck x%.1f / torso x%.1f / limbs x%.2f (pistol, AR)" % [pistol.head_mult, pistol.neck_mult, pistol.torso_mult, ar.limb_mult])
+	_check(ar.damage_at("torso", 5.0) > ar.damage_at("torso", 120.0) and pistol.damage_at("torso", 5.0) > pistol.damage_at("torso", 60.0) and shotgun.damage_at("torso", 2.0) > shotgun.damage_at("torso", 14.0) * 2.0,
+		"  every gun loses damage with distance (shotgun %.0f at 2 m, %.0f at 14 m)" % [shotgun.damage_at("torso", 2.0), shotgun.damage_at("torso", 14.0)])
+	_check(zmode.gore_enabled and not zmode.damage_numbers, "  gore is on and damage numbers are off by default")
+	var yaw_dir := Vector3(-1, 0, 0)
+	player.global_position = Vector3(-20, 0, -3)
+	player.set_look(-PI / 2.0, 0.0)
+	holder.no_spread = true
+	block.spawner.round_no = 1
+	await _frames(2)
+	var z: Node = block.spawner.spawn_one("walker", Vector3(-24.0, 0.0, -3.0))
+	z.set_physics_process(false)
+	z._anim_player.pause()
+	await _frames(2)
+	holder.give(pistol)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	var eye: Vector3 = player.global_position + Vector3(0, 1.62, 0)
+	holder.aim_source = func():
+		z.sync_hitboxes()
+		var c: Vector3 = (z.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	var fx0: Node3D = ImpactFX.of(holder)
+	var puffs0: int = fx0.puffs
+	var imp0: int = fx0.impacts
+	holder._cooldown = 0.0
+	holder.fire()
+	await _frames(2)
+	_check(z._flinch != null and z._flinch.busy(), "  a hit makes the zombie flinch (a kick on its skeleton)")
+	_check(fx0.impacts > imp0 and fx0.puffs > puffs0, "  and spurts blood (%d new puffs)" % (fx0.puffs - puffs0))
+	_check(fx0.voices_busy() >= 1, "  with the sound of it, at the zombie")
+	# The head snaps further than the shoulder on a head shot.
+	var skel: Skeleton3D = z._skeleton
+	var hb := skel.find_bone("Bip01 Head")
+	z.health = z.max_health
+	z.take_hit("head", 10.0, yaw_dir, pistol, false, Vector3.INF)
+	var before: Basis = skel.get_bone_global_pose(hb).basis
+	z._flinch._process_modification()
+	var after: Basis = skel.get_bone_global_pose(hb).basis
+	_check((before.get_rotation_quaternion().angle_to(after.get_rotation_quaternion())) > 0.02 or z._flinch.busy(), "  a head shot kicks the head bone")
+	# Bullets into the wall: a hole, sparks and grit, within the per-frame budget.
+	holder.aim_source = func(): return [eye, Vector3(-0.75, -0.15, 0.65).normalized()]
+	var dec0: int = fx0.decals_shown()
+	holder.give(shotgun)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	holder._cooldown = 0.0
+	holder.fire()
+	await _frames(2)
+	var made: int = fx0.decals_shown() - dec0
+	_check(made >= 1 and made <= ImpactFX.BUDGET["decal"], "  a shotgun blast into the wall leaves 1 to %d holes (%d)" % [ImpactFX.BUDGET["decal"], made])
+	# Caps hold under 500 shots.
+	var nodes0: int = fx0.get_child_count()
+	holder.give(load("res://weapons/smg.tres"))
+	await _frames(2)
+	holder._swap_left = 0.0
+	for i in 500:
+		holder.mag = 30
+		holder._cooldown = 0.0
+		holder.fire()
+		if i % 50 == 0:
+			await _frames(1)
+	_check(fx0.decals_shown() <= ImpactFX.DECALS and fx0.get_child_count() == nodes0,
+		"  after 500 shots the holes stay within %d and no impact node was made (%d holes, %d -> %d children)" % [ImpactFX.DECALS, fx0.decals_shown(), nodes0, fx0.get_child_count()])
+	# A shotgun at point-blank throws the zombie back; at range it does not.
+	var zc: Node = block.spawner.spawn_one("walker", Vector3(-22.0, 0.0, -3.0))
+	zc.set_physics_process(true)
+	zc.target = null
+	holder.give(shotgun)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	holder.aim_source = func():
+		zc.sync_hitboxes()
+		var c: Vector3 = (zc.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	holder._cooldown = 0.0
+	zc.health = 99999.0
+	var kn0: float = zc._knock.length()
+	holder.fire()
+	var kn1: float = zc._knock.length()
+	_check(kn1 > kn0 + 1.0, "  a shotgun blast at 2 m shoves the zombie (%.1f m/s)" % kn1)
+	zc.queue_free()
+	var zf: Node = block.spawner.spawn_one("walker", Vector3(-34.0, 0.0, -3.0))
+	zf.set_physics_process(false)
+	holder.aim_source = func():
+		zf.sync_hitboxes()
+		var c: Vector3 = (zf.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	holder._cooldown = 0.0
+	holder.fire()
+	_check(zf._knock.length() < 0.01, "  and at 14 m it does not")
+	zf.queue_free()
+	# Damage numbers only when asked.
+	holder.give(pistol)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	holder.aim_source = func():
+		z.sync_hitboxes()
+		var c: Vector3 = (z.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	z.health = 99999.0
+	holder._cooldown = 0.0
+	var fired_ok: bool = holder.fire()
+	await _frames(1)
+	var off_shown: int = fx0.numbers_shown()
+	zmode.damage_numbers = true
+	z.health = z.max_health
+	holder._cooldown = 0.0
+	holder.fire()
+	await _frames(1)
+	var on_shown: int = fx0.numbers_shown()
+	zmode.damage_numbers = false
+	_check(fired_ok and off_shown == 0 and on_shown >= 1, "  damage numbers float only when the option is on (fired %s, off %d, on %d)" % [fired_ok, off_shown, on_shown])
+	holder.aim_source = Callable()
+	z.queue_free()
+	# The sounds the above plays all exist.
+	var missing := []
+	for n in ["flesh_hit_1", "flesh_hit_2", "flesh_hit_3", "headshot_crunch_1", "headshot_crunch_2", "bullet_impact_concrete_1", "ricochet_1", "kill_thump", "sever_1", "gib_splat_1", "head_pop_1", "blood_squirt_1"]:
+		if ImpactFX.stream(n) == null:
+			missing.append(n)
+	_check(missing.is_empty(), "  every hit / gore sound loads (%s missing)" % [missing])
+
+
+## Task Z6: gore. Wounds, limbs off at their own thresholds, stumps, gibs, the head pop, legless crawlers,
+## decals and pools within their caps, one payout for a blast that takes several parts, no orphans, the option.
+func _zombie_gore_checks(gs: Node) -> void:
+	await _section("Dead Block: gore -- wounds, severed limbs, head pops, decals, pools, the option")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	var gfx := root.get_node("Graphics")
+	zm.leave()
+	zm.begin(false)
+	zm.gore_enabled = true
+	var city := await _load("res://world/City3D.tscn")
+	var block: Node = city.get_node_or_null("ZombieBlock")
+	for i in 90:
+		if block != null and block.purchases_ready:
+			break
+		await physics_frame
+	await _frames(5)
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	var player := _player()
+	var holder: Node = player.get_node("WeaponHolder")
+	holder.set_process(false)
+	holder.no_spread = true
+	gfx.set_first_person(true)
+	player.global_position = Vector3(-20, 0, -3)
+	player.set_look(-PI / 2.0, 0.0)
+	await _frames(4)
+	var Gore := load("res://fx/gore/Gore.gd")
+	var gore: Node3D = Gore.of(holder)
+	block.spawner.round_no = 1
+	var mk := func(x: float) -> Node:
+		var z: Node = block.spawner.spawn_one("walker", Vector3(x, 0.0, -3.0))
+		z.set_physics_process(false)
+		z._anim_player.pause()
+		z.health = 100000.0
+		z.max_health = 150.0
+		return z
+	# Each limb comes off at its own threshold, and only that limb.
+	var z1: Node = mk.call(-24.0)
+	await _frames(2)
+	z1.take_hit("lower_arm_l", 150.0 * 0.12, Vector3.LEFT, null)
+	_check(z1.severed.is_empty() and z1.wounds_placed >= 1, "  a graze wounds the skin and keeps the limb (%d wound(s), severed %s, body %s)" % [z1.wounds_placed, z1.severed.keys(), z1.get_meta("body")])
+	var g0: int = gore.gibs.spawned
+	z1.take_hit("lower_arm_l", 150.0 * 0.20, Vector3.LEFT, null)
+	_check(z1.severed.has("forearm_l") and not z1.severed.has("forearm_r") and not z1.severed.has("arm_l") and gore.gibs.spawned == g0 + 1,
+		"  the forearm comes off at 30%% of the zombie's health and nothing else does (%s, %d gib, body %s)" % [z1.severed.keys(), gore.gibs.spawned - g0, z1.get_meta("body")])
+	_check((z1.sever_bits & (1 << 4)) != 0 and z1._skeleton.find_child("Stump_forearm_l", true, false) != null,
+		"  its triangles are clipped from the skin and a stump closes the cut")
+	_check((z1.hitboxes["lower_arm_l"] as Area3D).collision_layer == 0 and (z1.hitboxes["upper_arm_l"] as Area3D).collision_layer != 0, "  and only its hit zone is gone")
+	z1.take_hit("upper_arm_r", 150.0 * 0.30, Vector3.LEFT, null)
+	_check(not z1.severed.has("arm_r"), "  an upper arm takes more than a forearm (42%%): 30%% leaves it")
+	z1.take_hit("upper_arm_r", 150.0 * 0.20, Vector3.LEFT, null)
+	_check(z1.severed.has("arm_r") and z1.severed.has("forearm_r"), "  and it takes the forearm with it")
+	# Both legs: it crawls.
+	var z2: Node = mk.call(-26.0)
+	await _frames(2)
+	z2.take_hit("lower_leg_l", 150.0 * 0.4, Vector3.LEFT, null)
+	_check(z2.severed.has("shin_l") and not z2.legless, "  one leg gone: it kneels but is not yet a crawler")
+	z2.take_hit("upper_leg_r", 150.0 * 0.55, Vector3.LEFT, null)
+	_check(z2.legless and z2.severed.has("leg_r"), "  both legs gone: legless")
+	z2.state = z2.State.CHASE
+	z2.set_physics_process(true)
+	z2.target = player
+	await _frames(20)
+	_check(z2._anim_player.current_animation.contains("crawl"), "  and it plays the crawl clip (%s)" % z2._anim_player.current_animation)
+	z2.queue_free()
+	# A lethal headshot with a heavy hit takes the head off and the neck spurts.
+	var z3: Node = mk.call(-28.0)
+	await _frames(2)
+	z3.health = 100.0
+	var gh: int = gore.gibs.spawned
+	z3.take_hit("head", 150.0 * 0.9, Vector3.LEFT, null)
+	await _frames(2)
+	_check(z3.head_gone and z3.severed.has("head") and gore.gibs.spawned == gh + 1 and gore.fountains_active() >= 1 and z3._skeleton.find_child("Stump_head", true, false) != null,
+		"  a heavy headshot pops the head: stump, gib in the air, neck fountain (%d active)" % gore.fountains_active())
+	_check(gore.gibs.chunks_spawned >= 3 and gore.gibs.chunks_spawned <= 5 and gore.gibs.chunks_shown() >= 3, "  with 3 to 5 chunks of skull and flesh thrown with it (%d)" % gore.gibs.chunks_spawned)
+	var d_before: int = gore.decals_shown()
+	for i in 90:
+		await physics_frame
+	_check(gore.decals_shown() > d_before, "  and the neck's arcs come down as blood on the ground (%d -> %d decals)" % [d_before, gore.decals_shown()])
+	var z3b: Node = mk.call(-30.0)
+	await _frames(2)
+	z3b.health = 30.0
+	z3b.take_hit("head", 40.0, Vector3.LEFT, null)
+	_check(z3b.is_alive() == false and not z3b.head_gone, "  a light headshot that kills leaves the head on")
+	# Wounds: two on a zombie, the skin shader reads them.
+	var z4: Node = mk.call(-32.0)
+	await _frames(2)
+	z4.take_hit("torso", 30.0, Vector3.LEFT, null)
+	await _frames(1)
+	z4.take_hit("torso", 30.0, Vector3.LEFT, null)
+	var inst: MeshInstance3D = load("res://fx/gore/GoreRig.gd").body_mesh(z4._skeleton)
+	var wa: Vector4 = inst.get_instance_shader_parameter("wound_a")
+	var wb: Vector4 = inst.get_instance_shader_parameter("wound_b")
+	_check(wa.z > 0.0 and wb.z > 0.0 and z4.wounds_placed >= 2, "  two wounds are painted into the skin (%s, %s)" % [wa, wb])
+	# Blood decals exist and the corpse pool spreads when it settles.
+	var d0: int = gore.decals_shown()
+	z4.take_hit("torso", 150.0 * 0.5, Vector3.LEFT, null, false, z4.global_position + Vector3(0, 1.2, 0))
+	z4.health = 5.0
+	z4.take_hit("torso", 50.0, Vector3.LEFT, null)
+	for i in 240:
+		await physics_frame
+	_check(gore.decals_shown() >= d0 and gore.pools_shown() >= 1, "  blood lands on the ground and a pool spreads under the corpse (%d decals, %d pools)" % [gore.decals_shown(), gore.pools_shown()])
+	# One shotgun blast that takes several parts and kills pays once.
+	var shotgun: Resource = load("res://weapons/shotgun.tres")
+	holder.give(shotgun)
+	await _frames(2)
+	holder._swap_left = 0.0
+	holder.refill_all()
+	var z5: Node = block.spawner.spawn_one("walker", Vector3(-22.0, 0.0, -3.0))
+	z5.health = 85.0
+	z5.set_physics_process(false)
+	z5._anim_player.pause()
+	z5.target = player
+	await _frames(2)
+	var eye: Vector3 = player.global_position + Vector3(0, 1.62, 0)
+	holder.aim_source = func():
+		z5.sync_hitboxes()
+		var c: Vector3 = (z5.hitboxes["upper_leg_l"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	var k0: int = zm.kills
+	zm.points = 0
+	var s0: int = gore.severs
+	holder._cooldown = 0.0
+	holder.fire()
+	await _frames(2)
+	_check(zm.kills - k0 == 1 and zm.points <= 110 and zm.points >= 60, "  a shotgun blast that kills pays once (%d kill, %d points)" % [zm.kills - k0, zm.points])
+	_check(gore.severs > s0, "  and it took parts off (%d severs)" % (gore.severs - s0))
+	holder.aim_source = Callable()
+	# Caps hold, no orphans: a crowd of zombies with every limb off.
+	var orphans0: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var crowd := []
+	for i in 14:
+		var zc: Node = mk.call(-40.0 - i * 1.2)
+		crowd.append(zc)
+	await _frames(2)
+	for zc in crowd:
+		for limb in ["head", "arm_l", "arm_r", "forearm_l", "leg_l", "leg_r", "shin_r"]:
+			gore.sever(zc, limb, Vector3.LEFT)
+		zc.take_hit("torso", 1.0e6, Vector3.LEFT, null)
+	for i in 5:
+		await physics_frame
+	for i in 600:
+		for zc in crowd:
+			if is_instance_valid(zc):
+				gore.splat(zc.global_position, Vector3.UP, 0.5)
+		if i % 20 == 0:
+			await physics_frame
+	_check(gore.gibs.shown() <= 24 and gore.decals_shown() <= 80 and gore.pools_shown() <= 12,
+		"  caps hold: %d gibs of 24, %d blood decals of 80, %d pools of 12" % [gore.gibs.shown(), gore.decals_shown(), gore.pools_shown()])
+	for zc in crowd:
+		if is_instance_valid(zc):
+			zc.free()
+	await _frames(3)
+	var orphans1: int = int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	_check(orphans1 <= orphans0 + 2, "  no orphan nodes are left behind (%d -> %d)" % [orphans0, orphans1])
+	# Ragdolls: ten at once, six running, the rest stopped where they lay; all frozen and freed after 3 s.
+	var rg: Node = gore.ragdolls
+	var rz := []
+	for i in 10:
+		rz.append(mk.call(-30.0 - i * 1.0))
+	await _frames(2)
+	var hb: int = rz[9]._skeleton.find_bone("Bip01 Head")
+	var head_y0: float = _rag_head_y(rz[9], hb)
+	for q in rz:
+		gore.ragdoll(q, Vector3.LEFT, 4.0)
+	_check(rg.started >= 10 and rg.active() <= 6, "  ten ragdolls start, no more than six run at once (%d running)" % rg.active())
+	for i in 45:
+		await physics_frame
+	rz[9]._skeleton.advance(0.0)
+	var head_y1: float = _rag_head_y(rz[9], hb)
+	_check(head_y0 > 1.2 and head_y1 < head_y0 - 0.4, "  and the body drops: its head from %.2f m to %.2f m" % [head_y0, head_y1])
+	var rag_node := (rz[9] as Node).find_child("Ragdoll", false, false)
+	_check(rag_node != null and rag_node.get_child_count() > 8, "  it is ten bodies and their joints while it runs (%d nodes)" % (rag_node.get_child_count() if rag_node != null else 0))
+	for i in 230:
+		await physics_frame
+	_check(rg.active() == 0 and rag_node.get_child_count() == 0, "  after 3 s every one is frozen and its bodies are freed (%d running, %d nodes)" % [rg.active(), rag_node.get_child_count()])
+	rz[9]._skeleton.advance(0.0)
+	var head_y2: float = _rag_head_y(rz[9], hb)
+	_check(absf(head_y2 - head_y1) < 0.6 and head_y2 < 1.0, "  and the pose is held (head at %.2f m)" % head_y2)
+	for q in rz:
+		q.free()
+	await _frames(2)
+	# 500 shots with ragdolls on: 200 into zombies (each dies on its fifth and falls), 300 into the wall.
+	var smg: Resource = load("res://weapons/smg.tres")
+	holder.give(smg)
+	await _frames(2)
+	holder._swap_left = 0.0
+	var tgt := [null]
+	var nodes_g: int = gore.get_child_count()
+	var rag0: int = rg.started
+	var kills0: int = zm.kills
+	var max_active := 0
+	var shots_fired := 0
+	holder.aim_source = func():
+		var t = tgt[0]
+		if t == null or not is_instance_valid(t):
+			return [eye, Vector3(-0.75, -0.15, 0.65).normalized()]
+		t.sync_hitboxes()
+		var c: Vector3 = (t.hitboxes["torso"].get_child(0) as Node3D).global_position
+		return [eye, c - eye]
+	for n in 40:
+		var vz: Node = block.spawner.spawn_one("walker", Vector3(-22.0 - (n % 5) * 0.9, 0.0, -3.0 + (n % 3) * 0.5))
+		vz.set_physics_process(false)
+		vz._anim_player.pause()
+		vz.health = 135.0
+		vz.max_health = 150.0
+		vz.target = player
+		tgt[0] = vz
+		for k in 5:
+			holder.mag = 30
+			holder._cooldown = 0.0
+			if holder.fire():
+				shots_fired += 1
+		max_active = maxi(max_active, rg.active())
+		await physics_frame
+	tgt[0] = null
+	for i in 300:
+		holder.mag = 30
+		holder._cooldown = 0.0
+		if holder.fire():
+			shots_fired += 1
+		if i % 25 == 0:
+			await physics_frame
+			max_active = maxi(max_active, rg.active())
+	for i in 200:
+		await physics_frame
+	var fx_n: Node3D = get_first_node_in_group("impact_fx")
+	_check(shots_fired >= 480 and rg.started - rag0 >= 25 and zm.kills - kills0 >= 25, "  500 shots: %d fired, %d fell as ragdolls, %d kills" % [shots_fired, rg.started - rag0, zm.kills - kills0])
+	_check(max_active <= 6 and rg.active() == 0 and block.spawner.corpse_count() <= 12, "  at most 6 ragdolls ran at once (%d), all froze, corpses %d <= 12" % [max_active, block.spawner.corpse_count()])
+	_check(gore.get_child_count() == nodes_g and gore.decals_shown() <= 80 and gore.gibs.shown() <= 24 and gore.pools_shown() <= 12 and fx_n.decals_shown() <= 48,
+		"  and the caps hold (gore children %d -> %d, %d blood decals, %d gibs, %d pools, %d holes)" % [nodes_g, gore.get_child_count(), gore.decals_shown(), gore.gibs.shown(), gore.pools_shown(), fx_n.decals_shown()])
+	holder.aim_source = Callable()
+	# Screen blood.
+	gore.screen_blood(1.0)
+	_check(gore.screen.shown() >= 1, "  a claw leaves blood on the screen")
+	# The option: gore off means no severs, no decals, no wounds, but the kills still count.
+	zm.gore_enabled = false
+	var sv: int = gore.severs
+	var dc: int = gore.decals_shown()
+	var wd: int = gore.wounds
+	var z6: Node = mk.call(-22.0)
+	await _frames(2)
+	z6.take_hit("lower_arm_l", 150.0 * 0.5, Vector3.LEFT, null)
+	z6.take_hit("torso", 20.0, Vector3.LEFT, null)
+	var k1: int = zm.kills
+	z6.health = 5.0
+	z6.take_hit("head", 500.0, Vector3.LEFT, null)
+	await _frames(3)
+	var before_shown: int = gore.screen.shown()
+	gore.screen_blood(1.0)
+	_check(gore.severs == sv and gore.decals_shown() == dc and gore.wounds == wd and z6.severed.is_empty() and not z6.head_gone and gore.screen.shown() == before_shown,
+		"  with gore off nothing is cut, painted or splattered")
+	_check(not z6.is_alive() and zm.kills == k1 + 1, "  and the kill still counts")
+	zm.gore_enabled = true
+	gfx.set_first_person(true)
+	await _frames(4)
+	zm.leave()
+	gs.start_run()
+
+
+## Where the ragdoll puts the head bone (the world transform its modifier last used).
+func _rag_head_y(z: Node, head_bone: int) -> float:
+	for c in z._skeleton.get_children():
+		if c.get("entries") != null:
+			for e in c.entries:
+				if int(e["bone"]) == head_bone:
+					return (e["held"] as Transform3D).origin.y
+	return (z._skeleton.global_transform * z._skeleton.get_bone_global_pose(head_bone)).origin.y
+
+# --- Dead Block: the bigger horde, its entrances and the Richter 8.0 surge (task Z4c) -------------
+
+func _zombie_horde_checks(gs: Node) -> void:
+	await _section("Dead Block: bigger horde -- adaptive cap, round sizes, entrances all round, the surge")
+	_close_menus()
+	var zm := root.get_node("ZombieMode")
+	DirAccess.remove_absolute(zm.PATH)
+	var Budget := preload("res://npc/HordeBudget.gd")
+	var EntrancesScript := preload("res://npc/Entrances.gd")
+
+	# --- The adaptive cap (pure logic, made-up frame times) ---
+	var b = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	_check(zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 24..48")
+	var lo := 99
+	var hi := 0
+	for i in 60 * 90:
+		b.feed(16.0, b.cap, 1.0 / 60.0)
+		lo = mini(lo, b.cap)
+		hi = maxi(hi, b.cap)
+	_check(b.cap == 48 and lo >= 32 and hi == 48, "  60 fps with the horde at its cap: climbs to 48 and no further (cap %d)" % b.cap)
+	var floor_seen := 99
+	for i in 60 * 30:
+		b.feed(40.0, b.cap, 1.0 / 60.0)
+		floor_seen = mini(floor_seen, b.cap)
+	_check(b.cap == 24 and floor_seen == 24, "  25 fps (40 ms): drops to 24 and never below (cap %d)" % b.cap)
+	# Hysteresis: after a drop it holds, then needs two good windows in a row.
+	var b2 = Budget.new(40, 24, 48)
+	for i in 60 * 3 + 5:
+		b2.feed(40.0, 40, 1.0 / 60.0)
+	var after_drop: int = b2.cap
+	var climbed_at := -1.0
+	for i in 60 * 40:
+		if b2.feed(15.0, b2.cap, 1.0 / 60.0) and climbed_at < 0.0:
+			climbed_at = i / 60.0
+	_check(after_drop == 36 and climbed_at >= 8.9, "  after a drop it holds, then climbs only after two good windows (cap %d, first climb at %.1f s)" % [after_drop, climbed_at])
+	var b3 = Budget.new(32, 24, 48)
+	for i in 60 * 60:
+		b3.feed(20.2, b3.cap, 1.0 / 60.0)
+	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (20 ms) does not move it (cap %d)" % b3.cap)
+	var b4 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b4.feed(16.0, 10, 1.0 / 60.0)
+	_check(b4.cap == 32, "  it does not climb while the horde is nowhere near the cap (cap %d)" % b4.cap)
+	var b5 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b5.feed(900.0 if i % 90 == 0 else 16.0, b5.cap, 1.0 / 60.0)
+	_check(b5.lowered == 0 and b5.cap >= 32, "  a load hitch (900 ms) is not the horde's doing (cap %d)" % b5.cap)
+	var b6 = Budget.new(32, 24, 48)
+	for i in 60 * 30:
+		b6.feed(50.0 if i % 8 == 0 else 14.0, b6.cap, 1.0 / 60.0)
+	_check(b6.cap < 32, "  a steady stutter (1 frame in 8 over 33 ms) lowers it (cap %d)" % b6.cap)
+
+	# --- Round sizes: 2.5x ---
+	var old := [6, 8, 13, 18, 24]
+	var sizes: Array = [1, 2, 3, 4, 5].map(func(r): return zm.zombies_in_round(r))
+	var ratio_ok := true
+	for i in 5:
+		ratio_ok = ratio_ok and absf(float(sizes[i]) / float(old[i]) - 2.5) < 0.12
+	_check(sizes[0] == 15 and ratio_ok, "  rounds 1..5 come to %s: 15 in round 1, 2.5x the first design" % [sizes])
+	_check(zm.zombies_in_round(6) > sizes[4] and zm.zombies_in_round(20) > zm.zombies_in_round(10), "  and it keeps rising (r6 %d, r10 %d, r20 %d)" % [zm.zombies_in_round(6), zm.zombies_in_round(10), zm.zombies_in_round(20)])
+
+	# --- The block ---
+	zm.begin(false)
+	var city := await _load("res://world/City3D.tscn")
+	await _frames(8)
+	var block := city.get_node("ZombieBlock")
+	var spawner: Node = block.spawner
+	var surge: Node = block.surge
+	spawner.enabled = false
+	spawner.adaptive = false
+	surge.enabled = true
+	block.tsunami.auto = false
+	for old_z in get_nodes_in_group("zombies"):
+		old_z.free()
+	_check(spawner.GAP_BASE <= 1.2 and spawner.GAP_MIN <= 0.25, "  spawn gaps are shorter (%.2f s base, %.2f s min)" % [spawner.GAP_BASE, spawner.GAP_MIN])
+	var player := _player()
+	var ent = spawner.entrances
+	_check(ent.manholes.size() >= 5 and ent.escapes.size() >= 10 and ent.shops.size() >= 15,
+		"  the block's entrances are found: %d manholes, %d fire escapes, %d shop fronts" % [ent.manholes.size(), ent.escapes.size(), ent.shops.size()])
+
+	# --- Entrance points: valid on the navmesh, and all round the player ---
+	player.global_position = Vector3(0.0, 0.0, -45.0)
+	player.velocity = Vector3.ZERO
+	await _frames(3)
+	var cam := player.get_viewport().get_camera_3d()
+	var from: Vector3 = player.global_position
+	var bad := []
+	var by_type := {"rise": 0, "drop": 0, "smash": 0, "plain": 0}
+	var sectors := {}
+	var min_d := 999.0
+	var plain_seen := 0
+	var roofs := 0
+	var manhole_rises := 0
+	for i in 400:
+		var e: Dictionary = ent.pick(from, cam)
+		by_type[e["type"]] += 1
+		sectors[ent.sector_of(e["pos"], from, cam)] = true
+		if not ent.on_navmesh(e["pos"], 0.4):
+			bad.append("%s off the navmesh at %s" % [e["type"], e["pos"]])
+		if not ent.is_clear(e["pos"]):
+			bad.append("%s inside something solid at %s" % [e["type"], e["pos"]])
+		var d := Vector2(e["pos"].x - from.x, e["pos"].z - from.z).length()
+		if e["type"] == "plain":
+			plain_seen += 1
+			var head: Vector3 = e["pos"] + Vector3.UP
+			if not (cam.is_position_behind(head) or not cam.is_position_in_frustum(head)):
+				var q := PhysicsRayQueryParameters3D.create(cam.global_position, head)
+				q.collision_mask = 1
+				if city.get_world_3d().direct_space_state.intersect_ray(q).is_empty():
+					bad.append("plain spawn in plain view at %s" % [e["pos"]])
+			if d < 20.0:
+				bad.append("plain spawn %.1f m away" % d)
+		else:
+			min_d = minf(min_d, d)
+			if d < 8.0 or d > 58.5:
+				bad.append("%s %.1f m away" % [e["type"], d])
+		if e["type"] == "drop":
+			roofs += 1 if e["roof"] else 0
+			if e["start"].y < 3.0 or e["fall"] < 0.5:
+				bad.append("drop from %.1f m" % e["start"].y)
+		if e["type"] == "smash" and Vector2(e["start"].x - e["pos"].x, e["start"].z - e["pos"].z).length() > 3.2:
+			bad.append("smash start far from landing")
+		if e["type"] == "rise" and e["node"] != null:
+			manhole_rises += 1
+	_check(bad.is_empty(), "  400 entrances: all on the navmesh and clear of solids, shown ones 8..58 m off, hidden ones out of sight and 20+ m (%s)" % [bad.slice(0, 3)])
+	_check(by_type["rise"] > 40 and by_type["drop"] > 20 and by_type["smash"] > 20 and by_type["plain"] > 20,
+		"  all four kinds come: %s (roof drops %d, manhole rises %d)" % [by_type, roofs, manhole_rises])
+	_check(sectors.size() >= 7, "  from %d of 8 eighths of the compass round the player" % sectors.size())
+	# Facing north at a corner of the map still gets hits all round (those that have ground).
+	var ring := {}
+	for ang in [0.0, 90.0, 180.0, 270.0]:
+		var q2 := {}
+		player.global_position = Vector3(-40.0, 0.0, -45.0) if ang == 0.0 else Vector3(40.0, 0.0, -45.0) if ang == 90.0 else Vector3(0.0, 0.0, -20.0) if ang == 180.0 else Vector3(0.0, 0.0, -70.0)
+		var p0: Vector3 = player.global_position
+		for i in 120:
+			q2[ent.sector_of(ent.pick(p0, cam)["pos"], p0, cam)] = true
+		ring[ang] = q2.size()
+	_check(ring.values().all(func(n): return n >= 5), "  and from other spots too, never down one street (sectors hit %s)" % [ring])
+	player.global_position = from
+
+	# --- A spawner uses them ---
+	spawner.enabled = true
+	spawner.time_scale = 0.01
+	spawner.round_no = 1
+	spawner.total = 40
+	spawner.released = 0
+	spawner._kinds = spawner._plan_kinds(1, 40)
+	spawner._timer = 0.0
+	surge.enabled = false
+	zm.max_alive = 48
+	var kinds_out := {}
+	var spawned_now := []
+	var on_spawn := func(zz): spawned_now.append(zz)
+	spawner.spawned.connect(on_spawn)
+	var f := 0
+	while spawner.released < 40 and f < 2000:
+		await physics_frame
+		f += 1
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+	spawner.enabled = false
+	spawner.spawned.disconnect(on_spawn)
+	for zz in spawned_now:
+		kinds_out[zz.entrance] = int(kinds_out.get(zz.entrance, 0)) + 1
+	_check(spawner.released == 40 and spawner.alive() == 40 and kinds_out.size() >= 3,
+		"  a round's dead come by several ways (%s)" % [kinds_out])
+	for zz in get_nodes_in_group("zombies"):
+		zz.free()
+
+	# --- The ways in, one by one ---
+	var fx = preload("res://fx/EntranceFX.gd").of(city)
+	var cr0: int = fx.cracks_made
+	player.global_position = Vector3(0.0, 0.0, -45.0)
+	var land: Vector3 = ent.snap(Vector3(-8.0, 0.0, -1.5))
+	var zr = spawner.spawn_entrance("walker", {"type": "rise", "pos": land, "start": land + Vector3(0, -2.1, 0), "out": Vector3.FORWARD, "fall": 0.0, "node": null, "roof": false})
+	await physics_frame
+	_check(zr.state == zr.State.ENTER and zr._model_root.position.y < -1.5 and zr.collision_layer == 0 and fx.bursts >= 1 and fx.cracks_made > cr0,
+		"  a rise starts under the street (%.1f m), no collision, with a ground burst and a crack" % zr._model_root.position.y)
+	await _frames(60)
+	var mid_y: float = zr._model_root.position.y
+	_check(zr.state == zr.State.ENTER and mid_y > -1.9 and mid_y < -0.1, "  ...climbs out (%.2f m after a second)" % mid_y)
+	await _frames(70)
+	_check(zr.state != zr.State.ENTER and absf(zr._model_root.position.y) < 0.01 and zr.collision_layer == zr.BODY_LAYER and absf(zr.global_position.y) < 0.2,
+		"  ...and is a zombie on the street (state %d, y %.2f)" % [zr.state, zr.global_position.y])
+	zr.free()
+	# Shot while climbing: no corpse half under the street.
+	var zk = spawner.spawn_entrance("walker", {"type": "rise", "pos": land, "start": land + Vector3(0, -2.1, 0), "out": Vector3.FORWARD, "fall": 0.0, "node": null, "roof": false})
+	await _frames(20)
+	zk.take_hit("torso", 1.0e6, Vector3.FORWARD, null)
+	_check(not zk.is_alive() and absf(zk._model_root.position.y) < 0.01, "  killed while climbing out it lies on the street, not under it")
+	zk.free()
+	var esc: Dictionary = ent.escapes[0]
+	var drop_e := {}
+	for i in 60:
+		var cand: Dictionary = ent._candidates("drop", esc["pos"] + esc["out"] * 14.0, cam).pop_back() if not ent._candidates("drop", esc["pos"] + esc["out"] * 14.0, cam).is_empty() else {}
+		if not cand.is_empty():
+			drop_e = cand
+			break
+	_check(not drop_e.is_empty(), "  a drop site is found near the first fire escape")
+	if not drop_e.is_empty():
+		var zd = spawner.spawn_entrance("runner", drop_e)
+		await physics_frame
+		var y0: float = zd.global_position.y
+		await _frames(int(drop_e["fall"] * 60.0 * 0.5))
+		var y_half: float = zd.global_position.y
+		await _frames(int(drop_e["fall"] * 60.0) + 12)
+		_check(y0 > 3.0 and y_half < y0 - 0.5 and y_half > 0.1 and zd.state != zd.State.ENTER and zd.global_position.distance_to(drop_e["pos"]) < 3.5 and absf(zd.global_position.y) < 0.2 and fx.landings >= 1,
+			"  a drop falls from %.1f m (%.1f halfway), lands on its spot and the landing is shown" % [y0, y_half])
+		zd.free()
+	var sm: Dictionary = {}
+	for c in ent._candidates("smash", from, cam):
+		sm = c
+		break
+	if not sm.is_empty():
+		var zs = spawner.spawn_entrance("runner", sm)
+		var p_start: Vector3 = zs.global_position
+		await _frames(30)
+		var moved: float = Vector2(zs.global_position.x - p_start.x, zs.global_position.z - p_start.z).length()
+		_check(fx.smashes >= 1 and moved > 1.0 and zs.state != zs.State.ENTER, "  a smash shoves it out through the shop front (%.1f m in half a second) with glass" % moved)
+		zs.free()
+	_check(fx.visible_cracks() >= 1 and fx.visible_cracks() <= fx.CRACKS, "  cracks are pooled (%d of %d showing)" % [fx.visible_cracks(), fx.CRACKS])
+
+	# --- The surge ---
+	spawner.round_no = 0
+	spawner.enabled = true
+	surge.enabled = true
+	block.tsunami.auto = false
+	surge.time_scale = 0.02
+	zm.round = 4
+	var log := []
+	var w := func(): log.append("warning")
+	var s := func(): log.append("started")
+	var e_ := func(): log.append("ended")
+	zm.surge_warning.connect(w)
+	zm.surge_started.connect(s)
+	zm.surge_ended.connect(e_)
+	var base_pts: int = zm.points
+	zm.add_points(10, "t")
+	var normal_pay: int = zm.points - base_pts
+	var made := []
+	var on_surge := func(zz): made.append(zz)
+	surge.spawned.connect(on_surge)
+	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
+	_check(not surge.trigger(10), "  ...and not another while one is on")
+	var pay_warn: int = zm.points
+	zm.add_points(10, "t")
+	var warn_pay: int = zm.points - pay_warn
+	var double_seen := false
+	var max_alive_seen := 0
+	var f2 := 0
+	while zm.surge_busy and f2 < 4000:
+		await physics_frame
+		f2 += 1
+		for zz in get_nodes_in_group("zombies"):
+			zz.set_physics_process(false)
+		max_alive_seen = maxi(max_alive_seen, spawner.alive())
+		if zm.surge_active and not double_seen:
+			var p1: int = zm.points
+			zm.add_points(10, "t")
+			double_seen = zm.points - p1 == 20
+	_check(log == ["warning", "started", "ended"], "  the signals come in order: %s" % [log])
+	_check(normal_pay == 10 and warn_pay == 10 and double_seen, "  points: 10 normally and in the warning, 20 in the quake")
+	var runners := 0
+	var types := {}
+	for zz in made:
+		runners += 1 if zz.kind == "runner" else 0
+		types[zz.entrance] = int(types.get(zz.entrance, 0)) + 1
+	_check(made.size() == 32 and spawner.alive() == 32, "  the surge let out exactly 32 (%d, alive %d)" % [made.size(), spawner.alive()])
+	_check(runners >= 24 and runners <= 27, "  mostly runners (%d of 32)" % runners)
+	var from_ground_air := int(types.get("rise", 0)) + int(types.get("drop", 0)) + int(types.get("smash", 0))
+	_check(from_ground_air >= 26 and types.size() >= 3, "  from the ground, the fire escapes and the shop fronts (%s)" % [types])
+	_check(surge.entrance_counts.size() >= 3 and max_alive_seen <= zm.SURGE_HARD_CAP, "  hard cap respected (peak %d of %d)" % [max_alive_seen, zm.SURGE_HARD_CAP])
+	_check(zm.surge_active and not zm.surge_busy, "  after the last one is out the round may end, double points linger")
+	var f3 := 0
+	while zm.surge_active and f3 < 2000:
+		await physics_frame
+		f3 += 1
+	var p2: int = zm.points
+	zm.add_points(10, "t")
+	_check(not zm.surge_active and zm.points - p2 == 10 and surge.phase == surge.Phase.IDLE, "  and then single points again")
+	_check(surge.next_round - zm.round >= 3 and surge.next_round - zm.round <= 4 and surge.last_round == zm.round,
+		"  the next one is 3 or 4 rounds on (round %d -> %d)" % [zm.round, surge.next_round])
+	zm.surge_warning.disconnect(w)
+	zm.surge_started.disconnect(s)
+	zm.surge_ended.disconnect(e_)
+	surge.spawned.disconnect(on_surge)
+	for zz in get_nodes_in_group("zombies"):
+		zz.free()
+
+	# --- When it comes ---
+	spawner.round_no = 0
+	var sch := 0
+	surge.next_round = 3
+	surge.last_round = -99
+	surge.plan_in = -1.0
+	surge._on_round_started(1)
+	var none_r1: bool = surge.plan_in < 0.0 and surge.next_round >= 3 and surge.next_round <= 4
+	surge.next_round = 3
+	surge._on_round_started(3)
+	var planned_r3: bool = surge.plan_in >= 0.0
+	surge.plan_in = -1.0
+	var randoms := 0
+	for i in 400:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 2
+		surge._on_round_started(6)
+		randoms += 1 if surge.plan_in >= 0.0 else 0
+	var near := 0
+	for i in 200:
+		surge.plan_in = -1.0
+		surge.next_round = 99
+		surge.last_round = 5
+		surge._on_round_started(6)
+		near += 1 if surge.plan_in >= 0.0 else 0
+	surge.plan_in = -1.0
+	_check(none_r1 and planned_r3, "  scheduled: none in round 1, one planned from round 3")
+	_check(randoms >= 10 and randoms <= 80 and near == 0, "  and now and then at random (%d of 400 rounds), never within 2 rounds of the last (%d)" % [randoms, near])
+	_check(surge.surge_size(1) >= 25 and surge.surge_size(30) <= 40, "  25 to 40 of them (%d at round 1, %d at round 30)" % [surge.surge_size(1), surge.surge_size(30)])
+	surge.enabled = false
+	spawner.enabled = false

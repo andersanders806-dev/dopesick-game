@@ -4,7 +4,9 @@ extends SceneTree
 ## frames over 33 ms, CPU ms per frame. Needs a window.
 ##
 ##   flatpak run org.godotengine.Godot --path . --socket=wayland --display-driver wayland \
-##     -s res://dev-tools/zombie_perf_probe.gd -- [seconds=60] [Low|Medium|High] [zombies=20] [baseline] [route] [rounds]
+##     -s res://dev-tools/zombie_perf_probe.gd -- [seconds=60] [Low|Medium|High] [zombies=20, 40 or 48 for the raised horde] [baseline] [route] [rounds] [shoot] [fp]
+## `shoot` fires the assault rifle at the nearest zombie ten times a second (gore on: wounds, limbs, head pops,
+## ragdolls, decals) and replaces the dead so the horde stays at its size; `fp` plays it in first person.
 ## `baseline` runs the same street with no zombies, for the difference.
 ## `route` walks the player along the same fixed path down Main Street, with the
 ## same camera, in either run (so a baseline and a horde run can be compared
@@ -25,7 +27,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var seconds := float(args[0]) if args.size() > 0 else 60.0
 	var preset_name := args[1] if args.size() > 1 else "Low"
-	var count := int(args[2]) if args.size() > 2 else 20
+	var count := clampi(int(args[2]) if args.size() > 2 else 20, 0, 64)
 	var baseline := args.has("baseline")
 	# near: the whole horde starts on top of the player; exp=<x>: switch a cost off to measure it.
 	var near := args.has("near")
@@ -35,9 +37,10 @@ func _initialize() -> void:
 			experiment = a.substr(4)
 	var route := args.has("route")
 	var rounds_mode := args.has("rounds")
+	var shoot := args.has("shoot")
 	await process_frame
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
+	gfx.set_first_person(args.has("fp"))
 	gfx.set_preset(gfx.PRESET_NAMES.find(preset_name))
 	var zm := root.get_node("ZombieMode")
 	zm.begin(false)
@@ -59,9 +62,11 @@ func _initialize() -> void:
 		for i in count:
 			# A column down Main Street: from 10 m to 60 m either side.
 			var side := -1.0 if i % 2 == 0 else 1.0
-			var x := -8.0 + side * (10.0 + (i / 2) * 5.0)
+			# (40 or 48 of them are packed closer so the column still ends inside the street.)
+			var gap := minf(5.0, 56.0 / maxf(count / 2.0, 1.0))
+			var x := -8.0 + side * (10.0 + (i / 2) * gap)
 			var kind := "runner" if i % 3 == 0 else "walker"
-			var at := Vector3(clampf(x, -70.0, 70.0), 0.0, 1.0 + (i % 3) * 0.8)
+			var at := Vector3(clampf(x, -70.0, 70.0), 0.0, 1.0 + (i % 4) * 1.2)
 			if near:
 				at = player.global_position + Vector3(cos(i * 0.7), 0.0, sin(i * 0.7)) * (3.0 + (i % 4) * 0.8)
 			spawner.spawn_one(kind, at)
@@ -70,7 +75,7 @@ func _initialize() -> void:
 				z.set_physics_process(false)
 			elif experiment == "nohit":
 				for p in z.hitboxes:
-					z.hitboxes[p].get_parent().queue_free()
+					z.hitboxes[p].queue_free()
 			elif experiment == "disabled":
 				z.process_mode = Node.PROCESS_MODE_DISABLED
 			elif experiment == "noshape":
@@ -80,6 +85,22 @@ func _initialize() -> void:
 			elif experiment == "noshadow":
 				for mi in z.model.find_children("*", "MeshInstance3D", true, false):
 					mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var holder: Node = player.get_node_or_null("WeaponHolder")
+	var aim_at := [null]
+	if shoot and holder != null:
+		holder.give(load("res://weapons/ar.tres"))
+		holder.refill_all()
+		holder.aim_source = func():
+			var t = aim_at[0]
+			var eye: Vector3 = player.global_position + Vector3(0, 1.6, 0)
+			if t == null or not is_instance_valid(t):
+				return [eye, Vector3.RIGHT]
+			t.sync_hitboxes()
+			var c: Vector3 = (t.hitboxes["torso"].get_child(0) as Node3D).global_position
+			return [eye, c - eye]
+	var shoot_in := 0.0
+	var shots_fired := 0
+	var kills0: int = zm.kills
 	_vp_rid = root.get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(_vp_rid, true)
 	for i in 120:
@@ -115,12 +136,35 @@ func _initialize() -> void:
 		var dt := (now - last) / 1000.0
 		last = now
 		frames += 1
+		# Claws hurt now: the player outlives the measurement (a dead player ends the run).
+		zm.health = zm.MAX_HEALTH
 		if not shot and Time.get_ticks_msec() > shot_at:
 			shot = true
 			root.get_texture().get_image().save_png("res://.pilot/zhorde_%s.png" % ("base" if baseline else "horde"))
 			# (Saving the picture is a stall of its own: not counted.)
 			last = Time.get_ticks_usec()
 			continue
+		if shoot and not baseline and holder != null:
+			shoot_in -= dt / 1000.0
+			if shoot_in <= 0.0:
+				shoot_in = 0.1
+				var best: Node = null
+				var best_d := 30.0
+				for zz in get_nodes_in_group("zombies"):
+					var dd: float = zz.global_position.distance_to(player.global_position)
+					if dd < best_d:
+						best_d = dd
+						best = zz
+				aim_at[0] = best
+				holder.mag = 30
+				holder._cooldown = 0.0
+				if best != null and holder.fire():
+					shots_fired += 1
+				# The dead are replaced so the horde stays as big as it was.
+				var living := get_nodes_in_group("zombies").size()
+				if living < count:
+					var side := -1.0 if living % 2 == 0 else 1.0
+					spawner.spawn_one("walker", Vector3(clampf(player.global_position.x + side * (12.0 + living % 5 * 3.0), -70.0, 70.0), 0.0, 1.0 + (living % 3) * 0.8))
 		if route:
 			# A triangle wave down Main Street at a walk.
 			var t := (Time.get_ticks_msec() - start_ms) / 1000.0
@@ -155,6 +199,9 @@ func _initialize() -> void:
 	print("  GPU ms      avg %.2f  worst %.2f" % [gpu_sum / frames, gpu_worst])
 	print("  CPU ms      process %.2f  physics %.2f" % [cpu_sum / frames, phys_sum / frames])
 	print("  frame ms    worst %.1f   > 20 ms: %d   > 33 ms: %d" % [worst, over20, over33])
+	if shoot and not baseline:
+		var gore := get_first_node_in_group("gore")
+		print("  shooting    %d shots, %d kills, %s" % [shots_fired, zm.kills - kills0, "gore: %d severs, %d heads, %d wounds, %d ragdolls, %d decals" % [gore.severs, gore.heads_popped, gore.wounds, gore.ragdolls.started, gore.decals_shown()] if gore != null else "no gore node"])
 	print("  draw calls  %d   objects %d" % [RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 		RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)])
 	if rounds_mode and not baseline:

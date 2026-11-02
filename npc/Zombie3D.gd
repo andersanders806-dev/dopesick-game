@@ -22,9 +22,13 @@ signal attacked(zombie: Node, damage: float)
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
 const ZombieHitboxes := preload("res://npc/ZombieHitboxes.gd")
+const ZombieFlinch := preload("res://npc/ZombieFlinch.gd")
+const ImpactFX := preload("res://fx/ImpactFX.gd")
+const EntranceFX := preload("res://fx/EntranceFX.gd")
+const Gore := preload("res://fx/gore/Gore.gd")
 const ROT_SHADER := preload("res://npc/zombie_rot.gdshader")
 
-enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, DYING, DEAD }
+enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, ENTER, DYING, DEAD }
 
 ## Bodies the dead wear.
 const BODIES := [
@@ -50,10 +54,21 @@ const ATTACK_DAMAGE := 35.0
 const RUNNER_DAMAGE := 40.0
 ## Seconds between a zombie's board-tearing swings.
 const TEAR_PERIOD := 2.2
-## Beyond this from the player its animation runs on every second frame and
-## it casts no shadow.
-const FAR_DISTANCE := 15.0
+## Beyond this from the player its pose steps less often (LOD_MID) ...
+const FAR_DISTANCE := LOD_MID
+## ... and beyond this it casts no shadow.
 const SHADOW_DISTANCE := 12.0
+## Beyond this from the player it thinks and steps every second physics tick,
+## beyond FAR_THINK_2 every fourth (on owed time, so it covers the same ground).
+const FAR_THINK := 28.0
+const FAR_THINK_2 := 50.0
+## Animation LOD (see "Far away: cheaper"): from LOD_MID its pose is updated every 2nd
+## rendered frame, from LOD_FAR every 4th, from LOD_VFAR every 8th; from LOD_FAR the rot
+## shader skips its finest layer too. Rings of 2 m hysteresis keep one at a tier.
+const LOD_MID := 15.0
+const LOD_FAR := 32.0
+const LOD_VFAR := 55.0
+const LOD_HYST := 2.0
 const REPATH := Vector2(0.5, 1.0)
 const CORPSE_LIFE := 30.0
 ## A hit to the leg drops it to a knee for this long (the clip ends mid-fall,
@@ -84,10 +99,13 @@ static var _clip_library: Resource
 static var _slots := {}
 static var _horde_frame := -1
 static var _horde_cache: Array = []
+static var _horde_pos := PackedVector3Array()
 static var _gates_frame := -1
 static var _gates_cache: Array = []
 
 var kind := "walker"
+## How big the body is drawn and its capsule and hit zones are (1.5 for the dead; npc/Drowned.gd is bigger).
+var body_scale := 1.5
 var max_health := 150.0
 var health := 150.0
 ## Both legs gone: it crawls and its capsule and leg zones shrink with it
@@ -121,8 +139,27 @@ var _tear_hit_done := false
 var _stagger := 0.0
 var _kneel_t := 0.0
 var _slow := 0.0
+## A shove from a shotgun at close range (m/s on the ground, dying away).
+var _knock := Vector3.ZERO
+## Gore (fx/gore/Gore.gd): damage taken per hit zone, the limbs gone (limb -> true), the
+## skeleton modifier that holds them at nothing, wounds painted, whether the head is off.
+var limb_damage := {}
+var severed := {}
+var sever_bits := 0
+var wounds_placed := 0
+var head_gone := false
+var _flinch: SkeletonModifier3D
 var _frame := 0
 var _far := false
+## Animation LOD tier: 0 near (the AnimationPlayer runs itself), 1..3 stepped by hand in _process.
+var _lod := 0
+var _lod_phase := 0
+var _lod_acc := 0.0
+var _lod_ticks := 0
+## The body's meshes that wear the rot shader (they get the far_lod instance uniform).
+var _lod_meshes: Array = []
+## Time of a skipped tick, paid on the next (far zombies think every second tick).
+var _owed := 0.0
 var _shadows := true
 var _corpse_age := 0.0
 var _facing := 0.0
@@ -171,6 +208,8 @@ func _ready() -> void:
 	if not dummy:
 		add_to_group("zombies")
 	set_physics_process(not dummy)
+	# Only a far zombie steps its pose by hand (set_lod turns this on).
+	set_process(false)
 	collision_layer = BODY_LAYER
 	collision_mask = 1
 	# The block is flat and its floors sit on another layer: like the player,
@@ -178,14 +217,15 @@ func _ready() -> void:
 	motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
 	_shape = CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
-	cap.radius = 0.3
-	cap.height = 1.7
+	var grow := body_scale / 1.5
+	cap.radius = 0.3 * grow
+	cap.height = 1.7 * grow
 	_shape.shape = cap
-	_shape.position = Vector3(0, 0.85, 0)
+	_shape.position = Vector3(0, 0.85 * grow, 0)
 	add_child(_shape)
 	_model_root = Node3D.new()
 	_model_root.name = "ModelRoot"
-	_model_root.scale = Vector3.ONE * 1.5
+	_model_root.scale = Vector3.ONE * body_scale
 	add_child(_model_root)
 	var body: String = get_meta("body", BODIES[0])
 	model = CharacterCast.scene_for(MODEL_DIR + body + ".glb").instantiate()
@@ -195,13 +235,19 @@ func _ready() -> void:
 	anim.set_clips(_move_clip, "z_idle")
 	_skeleton = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	_anim_player = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if _skeleton and ZombieMode.gore_enabled:
+		# Limb ids on the body's vertices, so a lost limb can be clipped away (once per body;
+		# before the rot materials, since a new mesh drops the surface overrides).
+		Gore.GoreRig.prepare(self)
 	_apply_rot(float(get_meta("seed", 0.0)))
 	if _skeleton:
-		hitboxes = ZombieHitboxes.build(_skeleton, self)
+		hitboxes = ZombieHitboxes.build(_skeleton, self, body_scale / 1.5)
+
 	_facing = randf() * TAU
 	_model_root.rotation.y = _facing
 	_repath_in = randf_range(0.0, REPATH.y)
-	_frame = randi() % 2
+	_frame = randi() % 4
+	_lod_phase = randi() % 8
 	if target == null:
 		target = get_tree().get_first_node_in_group("player") as Node3D
 	# Starts into its walk at a random point, so a crowd isn't in step.
@@ -252,6 +298,7 @@ func _apply_rot(seed_value: float) -> void:
 				continue
 			inst.set_surface_override_material(i, _rot_material(src))
 		inst.set_instance_shader_parameter("rot", _rot_amount)
+		_lod_meshes.append(inst)
 		inst.set_instance_shader_parameter("seed", seed_value)
 
 static func _rot_material(src: BaseMaterial3D) -> Material:
@@ -288,7 +335,20 @@ func _physics_process(delta: float) -> void:
 			return
 		State.DYING:
 			return
+		State.ENTER:
+			_enter_tick(delta)
+			return
 	_frame += 1
+	# Far down the street it thinks and steps every second tick (every fourth beyond
+	# FAR_THINK_2), on owed time: nobody can see the difference at 30 m, and it
+	# thins out the far half of the horde.
+	if state == State.CHASE and target != null and is_instance_valid(target):
+		var away := target.global_position - global_position
+		if not _think_now(away.x * away.x + away.z * away.z):
+			_owed += delta
+			return
+	delta += _owed
+	_owed = 0.0
 	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
@@ -317,20 +377,31 @@ func _physics_process(delta: float) -> void:
 		_best_remaining = INF
 	_move(want, delta)
 
+## Puts the hit zones on the bones as the animation has them now. Weapons call
+## this for the zombies near a shot just before they cast; nothing keeps them
+## on the bones between shots (npc/ZombieHitboxes.gd says why).
+func sync_hitboxes() -> void:
+	if _skeleton != null and not hitboxes.is_empty():
+		ZombieHitboxes.sync(_skeleton, hitboxes)
+
 ## Where it wants to go this tick (a direction on the ground, zero to hold).
 func _chase(delta: float) -> Vector3:
 	if target == null:
 		anim.update(0.0)
 		return Vector3.ZERO
 	var to := target.global_position - global_position
+	var height_gap := absf(to.y)
 	to.y = 0.0
 	var dist := to.length()
+	# Not on its level (the player up on the high ground): no clawing through the floor, it has to find the way.
+	if height_gap > 2.4:
+		dist = maxf(dist, 99.0)
 	if dist < ATTACK_RANGE and _attack_cooldown <= 0.0 and _stagger <= 0.0:
 		_begin_attack(to)
 		return Vector3.ZERO
 	if _stagger > 0.0:
 		return Vector3.ZERO
-	var dir := to.normalized()
+	var dir := to.normalized() if to.length() > 0.001 else Vector3.FORWARD
 	_holding = false
 	# Near the target it takes a slot on the ring round it and goes to that.
 	var slot_goal := _slot_goal(dist, delta)
@@ -441,6 +512,10 @@ func _attack(delta: float) -> void:
 			_attack_hit_done = true
 			if to.length() <= ATTACK_RANGE + 0.35:
 				attacked.emit(self, damage)
+				if target.is_in_group("player") and ZombieMode.gore_enabled:
+					var gore := Gore.of(self)
+					if gore != null:
+						gore.screen_blood(clampf(damage / 35.0, 0.6, 1.6))
 				if target.has_method("take_zombie_hit"):
 					target.take_zombie_hit(damage, self)
 	if _attack_time >= _attack_len:
@@ -467,7 +542,18 @@ func _move(want: Vector3, delta: float) -> void:
 	velocity.x = move_toward(velocity.x, v.x, 14.0 * delta)
 	velocity.z = move_toward(velocity.z, v.z, 14.0 * delta)
 	velocity.y = 0.0
-	move_and_slide()
+	if _knock.length_squared() > 0.0001:
+		velocity += _knock
+		_knock = _knock.move_toward(Vector3.ZERO, 11.0 * delta)
+	# A tick that carries a skipped one steps twice as far.
+	var steps := delta / maxf(get_physics_process_delta_time(), 0.0001)
+	if steps > 1.5:
+		var keep := velocity
+		velocity *= steps
+		move_and_slide()
+		velocity = keep
+	else:
+		move_and_slide()
 	if state == State.CHASE and _stagger <= 0.0:
 		var moved := Vector2(velocity.x, velocity.z).length()
 		var clip := "z_crawl" if legless else _move_clip
@@ -477,28 +563,43 @@ func _move(want: Vector3, delta: float) -> void:
 			anim.play("z_idle", 1.0)
 
 ## A shove off its neighbours so a horde spreads instead of stacking (also
-## when standing still: a pile unpicks itself).
+## when standing still: a pile unpicks itself). Reads one snapshot of the living
+## dead's places per physics frame (_horde()), not twenty zombies asked twenty
+## times: this was a quarter of the horde's script time.
 func _separation() -> Vector3:
+	_horde()
 	var push := Vector3.ZERO
-	for o in _horde():
-		if o == self or not is_instance_valid(o) or not o.is_alive():
+	var me := global_position
+	var space2 := PERSONAL_SPACE * PERSONAL_SPACE
+	var spots := _horde_pos
+	for i in spots.size():
+		var o := spots[i]
+		var dx := me.x - o.x
+		var dz := me.z - o.z
+		var l2 := dx * dx + dz * dz
+		if l2 >= space2 or _horde_cache[i] == self:
 			continue
-		var d: Vector3 = global_position - (o as Node3D).global_position
-		d.y = 0.0
-		var l := d.length()
-		if l < PERSONAL_SPACE:
-			if l < 0.001:
-				d = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
-				l = 0.001
-			push += d / maxf(l, 0.001) * (PERSONAL_SPACE - l) / PERSONAL_SPACE * 2.2
+		var l := sqrt(l2)
+		var d := Vector3(dx, 0.0, dz)
+		if l < 0.001:
+			d = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
+			l = 0.001
+		push += d / maxf(l, 0.001) * (PERSONAL_SPACE - l) / PERSONAL_SPACE * 2.2
 	return push.limit_length(2.5)
 
-## The living dead, listed once per physics frame for everyone.
+## The living dead, listed once per physics frame for everyone (with where each
+## stood when the frame began; only the living are in it).
 static func _horde() -> Array:
 	var f := Engine.get_physics_frames()
 	if f != _horde_frame:
 		_horde_frame = f
-		_horde_cache = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("zombies")
+		var all: Array = (Engine.get_main_loop() as SceneTree).get_nodes_in_group("zombies")
+		_horde_cache = []
+		_horde_pos = PackedVector3Array()
+		for o in all:
+			if is_instance_valid(o) and o.is_alive():
+				_horde_cache.append(o)
+				_horde_pos.append((o as Node3D).global_position)
 	return _horde_cache
 
 static func _gates() -> Array:
@@ -642,31 +743,192 @@ func relocated() -> void:
 	_release_slot()
 	velocity = Vector3.ZERO
 
-# --- Far away: cheaper ---------------------------------------------------------
+# --- Entrances (npc/Entrances.gd) ---------------------------------------------------------------
 
-## Beyond FAR_DISTANCE of the player its animation advances every other
-## frame (twice as far each time) and it stops casting a shadow.
-func _update_lod(delta: float) -> void:
+## Seconds for a zombie to climb out of the ground, and how deep it starts.
+const RISE_TIME := 1.7
+const RISE_DEPTH := 2.1
+## Out through a shop front: the shove it comes out with (m/s along the ground).
+const SMASH_SHOVE := 6.5
+## How it came in ("", "rise", "drop", "smash", "plain"); the tests read it.
+var entrance := ""
+var _enter := {}
+var _enter_t := 0.0
+
+## Lets it come in the way `e` says (an Entrances.pick() result); call it right after adding the
+## zombie to the tree. A rise starts under the street and climbs out, a drop falls from a fire
+## escape or roof and lands, a smash is shoved out through a shop front; a plain one just walks in.
+func begin_entrance(e: Dictionary) -> void:
+	entrance = String(e.get("type", "plain"))
+	_enter = e
+	_enter_t = 0.0
+	var fx := EntranceFX.of(self) if entrance != "plain" else null
+	match entrance:
+		"rise":
+			state = State.ENTER
+			global_position = e["pos"]
+			_ghost(true)
+			_model_root.position.y = -RISE_DEPTH
+			anim.play(_move_clip, 0.7)
+			if fx != null:
+				fx.ground_burst(e["pos"], e.get("node"))
+		"drop":
+			state = State.ENTER
+			global_position = e["start"]
+			_ghost(true)
+			anim.play("z_idle", 1.0)
+			_face_dir(e["out"])
+		"smash":
+			global_position = e["start"]
+			_face_dir(e["out"])
+			_knock = (e["out"] as Vector3).normalized() * SMASH_SHOVE
+			_stagger = 0.15
+			if fx != null:
+				fx.smash(e["facade"], e["out"])
+
+func _face_dir(dir: Vector3) -> void:
+	if dir.length() > 0.01:
+		_facing = atan2(dir.x, dir.z)
+		_model_root.rotation.y = _facing
+
+## Climbing out of the ground, or falling in; hands over to the chase when it is done.
+func _enter_tick(delta: float) -> void:
+	_enter_t += delta
+	match entrance:
+		"rise":
+			var k := clampf(_enter_t / RISE_TIME, 0.0, 1.0)
+			# A pause while the dirt flies, then up with a heave.
+			var u := smoothstep(0.12, 1.0, k)
+			_model_root.position.y = -RISE_DEPTH * (1.0 - u)
+			if k >= 1.0:
+				_finish_entrance(0.2)
+		"drop":
+			var fall := maxf(float(_enter.get("fall", 0.5)), 0.2)
+			var k := clampf(_enter_t / fall, 0.0, 1.0)
+			var start: Vector3 = _enter["start"]
+			var land: Vector3 = _enter["pos"]
+			var at := start.lerp(land, k)
+			at.y = start.y * (1.0 - k * k)
+			global_position = at
+			if k >= 1.0:
+				global_position = land
+				var fx := EntranceFX.of(self)
+				if fx != null:
+					fx.landing(land, bool(_enter.get("roof", false)))
+				# A runner is off at once; a walker takes a moment to find its feet.
+				_finish_entrance(0.2 if kind == "runner" else 0.8)
+		_:
+			_finish_entrance(0.0)
+
+func _finish_entrance(stagger: float) -> void:
+	_end_entrance()
+	state = State.CHASE
+	_stagger = stagger
+	_repath_in = 0.0
+	anim.play(_move_clip, 1.0)
+
+## Back to a body in the world: the capsule on, the model at its feet.
+func _end_entrance() -> void:
+	if state != State.ENTER:
+		return
+	_model_root.position.y = 0.0
+	_ghost(false)
+	velocity = Vector3.ZERO
+
+## No body for the world while it climbs out or falls in (the player walks through it; hit
+## zones stay): the layers off rather than the shape, which would make it a new body to push out.
+func _ghost(on: bool) -> void:
+	collision_layer = 0 if on else BODY_LAYER
+	collision_mask = 0 if on else 1
+
+# --- Far away: cheaper ---------------------------------------------------------
+# Distance tiers, all of them invisible within the fog and the size on screen:
+#   shadow   beyond SHADOW_DISTANCE no shadow caster;
+#   think    beyond FAR_THINK / FAR_THINK_2 the brain and the step run every 2nd / 4th tick;
+#   pose     beyond LOD_MID / LOD_FAR / LOD_VFAR the AnimationPlayer is stepped by hand every
+#            2nd / 4th / 8th rendered frame (the skeleton, its skinning and the shadow pass
+#            only get new work then), with the elapsed time, so the walk keeps its pace;
+#   shader   beyond LOD_FAR the rot shader leaves out its finest veins (instance uniform).
+# The hit zones are not part of this: sync_hitboxes() reads the pose on screen at any distance.
+
+## Whether this physics tick is one the brain runs, for a squared ground distance.
+func _think_now(d2: float) -> bool:
+	if d2 > FAR_THINK_2 * FAR_THINK_2:
+		return _frame % 4 == 0
+	if d2 > FAR_THINK * FAR_THINK:
+		return _frame % 2 == 1
+	_owed = 0.0
+	return true
+
+## The tier (0..3) for a distance, with hysteresis round the one it is in.
+static func lod_for(d: float, current: int) -> int:
+	var edges := [LOD_MID, LOD_FAR, LOD_VFAR]
+	var tier := 0
+	for i in 3:
+		var e: float = edges[i] - (LOD_HYST if current > i else 0.0)
+		if d > e:
+			tier = i + 1
+	return tier
+
+## Pose update period in rendered frames for a tier.
+static func lod_period(tier: int) -> int:
+	return 1 << tier if tier > 0 else 1
+
+## Called from the physics tick: sets the tier, the hand-stepped mode, the shadow and the shader.
+func _update_lod(_delta: float) -> void:
 	if _anim_player == null or target == null:
 		return
 	var d := global_position.distance_to(target.global_position)
-	var far := d > FAR_DISTANCE if not _far else d > FAR_DISTANCE - 2.0
-	if far != _far:
-		_far = far
-		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if far else AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
-	if _far and _frame % 2 == 0:
-		_anim_player.advance(delta * 2.0)
+	var tier := lod_for(d, _lod)
+	if tier != _lod:
+		set_lod(tier)
 	var shadows := d < SHADOW_DISTANCE if _shadows else d < SHADOW_DISTANCE - 2.0
 	if shadows != _shadows:
 		_shadows = shadows
 		for mi in model.find_children("*", "MeshInstance3D", true, false):
 			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
+## Puts the zombie on a tier (tests may force one; the next physics tick sets it by distance again).
+func set_lod(tier: int) -> void:
+	if _anim_player == null:
+		return
+	var was_far := _lod > 0
+	_lod = tier
+	_far = tier > 0
+	_lod_ticks = 0
+	if _far != was_far:
+		_lod_acc = 0.0
+		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL if _far else AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+	for mi in _lod_meshes:
+		(mi as MeshInstance3D).set_instance_shader_parameter("far_lod", 1.0 if tier >= 2 else 0.0)
+	set_process(_far and state < State.DYING)
+
+## Rendered frames: a far zombie's pose is stepped here, by the time owed since its last step.
+func _process(delta: float) -> void:
+	if _lod == 0 or _anim_player == null:
+		return
+	_lod_acc += delta
+	_lod_ticks += 1
+	if (_lod_ticks + _lod_phase) % lod_period(_lod) != 0:
+		return
+	_anim_player.advance(_lod_acc)
+	_lod_acc = 0.0
+
+## Back to the AnimationPlayer running itself (a death plays out in full).
+func _lod_release() -> void:
+	set_process(false)
+	if _anim_player != null and _lod > 0:
+		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+		for mi in _lod_meshes:
+			(mi as MeshInstance3D).set_instance_shader_parameter("far_lod", 0.0)
+	_lod = 0
+	_far = false
+
 # --- Hits ----------------------------------------------------------------------
 
 ## `damage` is final (the weapon already scaled it for `part`). `melee` marks
 ## a knife/kick kill for the points.
-func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, melee := false) -> void:
+func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, melee := false, at := Vector3.INF) -> void:
 	if state >= State.DYING:
 		return
 	if weapon != null and weapon.get("melee") == true:
@@ -677,14 +939,101 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 	health -= dmg
 	var killed := health <= 0.0
 	hit.emit(self, part, dmg, killed)
+	_hit_fx(part, dmg, dir, at, killed, melee)
+	if ZombieMode.gore_enabled and is_inside_tree() and not bool(get_meta("prewarm", false)):
+		var gore := Gore.of(self)
+		if gore != null:
+			gore.on_hit(self, part, dmg, dir, at, killed, weapon)
 	if killed:
 		_die(part, melee, dir)
+		var power := _ragdoll_power(dmg, weapon, melee)
+		if power > 0.0 and ZombieMode.gore_enabled and is_inside_tree() and not bool(get_meta("prewarm", false)):
+			var gore := Gore.of(self)
+			if gore != null:
+				gore.ragdoll(self, dir, power, at)
 		return
 	_react(part, dmg)
+	_flinch_part(part, dir, dmg)
+
+## Blood, the sound of it, a floating number: where the bullet went in (or where the part is).
+func _hit_fx(part: String, dmg: float, dir: Vector3, at: Vector3, killed: bool, melee: bool) -> void:
+	if not is_inside_tree() or bool(get_meta("prewarm", false)):
+		return
+	var pos := at
+	if pos == Vector3.INF:
+		sync_hitboxes()
+		var zone := hitboxes.get(part) as Node3D
+		pos = zone.global_position if zone != null else global_position + Vector3(0, 1.1, 0)
+	var fx := ImpactFX.of(self)
+	if fx == null:
+		return
+	fx.blood_hit(pos, dir if dir.length() > 0.01 else Vector3.BACK, part, killed, dmg / maxf(max_health * 0.3, 1.0))
+	fx.damage_number(pos, dmg, part, killed)
+
+## How hard a kill throws the body (m/s), 0 for one that just plays its death clip: a real hit
+## (15 % of its health or more), a headless one, or a shotgun close up (thrown hard).
+func _ragdoll_power(dmg: float, weapon: Resource, melee: bool) -> float:
+	if weapon == null or melee:
+		return 0.0
+	var close := -1.0
+	if int(weapon.get("pellets")) > 1 and target != null and is_instance_valid(target):
+		close = (target as Node3D).global_position.distance_to(global_position)
+	if close >= 0.0 and close < 6.0:
+		return 3.5 + 3.5 * (1.0 - close / 6.0)
+	if head_gone:
+		return 3.0
+	if dmg >= max_health * 0.15:
+		return 1.8 + minf(dmg / maxf(max_health, 1.0), 1.0) * 2.2
+	return 0.0
+
+## Which way it gives: the head snaps back, a shoulder twists, the body bends, a leg buckles.
+func _flinch_part(part: String, dir: Vector3, dmg: float) -> void:
+	if _skeleton == null or state >= State.DYING:
+		return
+	var d := Vector3(dir.x, 0.0, dir.z)
+	if d.length() < 0.01:
+		return
+	d = d.normalized()
+	var inv := _skeleton.global_transform.basis.orthonormalized().inverse()
+	var bend := inv * Vector3.UP.cross(d).normalized()
+	var spin := inv * Vector3.UP
+	var k := clampf(0.5 + dmg / maxf(max_health * 0.25, 1.0), 0.5, 1.6)
+	if _flinch == null:
+		_flinch = ZombieFlinch.new()
+		_skeleton.add_child(_flinch)
+	var f: Variant = _flinch
+	match part:
+		"head":
+			f.kick(_skeleton.find_bone("Bip01 Head"), bend, deg_to_rad(34.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Neck"), bend, deg_to_rad(14.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Spine1"), bend, deg_to_rad(6.0) * k)
+		"neck":
+			f.kick(_skeleton.find_bone("Bip01 Neck"), bend, deg_to_rad(24.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Head"), bend, deg_to_rad(16.0) * k)
+		"torso":
+			f.kick(_skeleton.find_bone("Bip01 Spine1"), bend, deg_to_rad(14.0) * k)
+			f.kick(_skeleton.find_bone("Bip01 Spine"), bend, deg_to_rad(8.0) * k)
+		_:
+			if part.contains("arm"):
+				var sgn := 1.0 if part.ends_with("_l") else -1.0
+				f.kick(_skeleton.find_bone("Bip01 Spine1"), spin, deg_to_rad(18.0) * k * sgn)
+				f.kick(_skeleton.find_bone("Bip01 " + ("L" if sgn > 0.0 else "R") + " UpperArm"), bend, deg_to_rad(30.0) * k)
+			elif part.contains("leg"):
+				f.kick(_skeleton.find_bone("Bip01 Pelvis"), -bend, deg_to_rad(13.0) * k)
+				f.kick(_skeleton.find_bone("Bip01 Spine"), -bend, deg_to_rad(10.0) * k)
+
+## A shove along the ground (a shotgun at close range).
+func knock(v: Vector3) -> void:
+	if state >= State.DYING:
+		return
+	v.y = 0.0
+	_knock += v
+	if _knock.length() > 7.0:
+		_knock = _knock.normalized() * 7.0
 
 func _react(part: String, dmg: float) -> void:
 	# A hit that matters makes it flinch; a graze doesn't.
-	if dmg < max_health * 0.12 or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP:
+	if dmg < max_health * 0.12 or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP or state == State.ENTER:
 		return
 	if part.contains("leg") and not legless:
 		_begin_kneel()
@@ -725,6 +1074,7 @@ func is_kneeling() -> bool:
 	return state == State.KNEEL
 
 func _die(part: String, melee: bool, _dir: Vector3) -> void:
+	_end_entrance()
 	state = State.DYING
 	_release_slot()
 	remove_from_group("zombies")
@@ -736,8 +1086,7 @@ func _die(part: String, melee: bool, _dir: Vector3) -> void:
 		area.set_deferred("monitorable", false)
 		area.collision_layer = 0
 	var dur := anim.play_once("z_death2" if (randf() < 0.4 and not legless) else "z_death", 1.0)
-	if _anim_player and _far:
-		_anim_player.callback_mode_process = AnimationPlayer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE
+	_lod_release()
 	died.emit(self, part, melee)
 	get_tree().create_timer(maxf(dur, 0.5) + 0.1).timeout.connect(_settle)
 
@@ -746,6 +1095,10 @@ func _settle() -> void:
 		return
 	state = State.DEAD
 	_shape.set_deferred("disabled", true)
+	if ZombieMode.gore_enabled and not bool(get_meta("prewarm", false)):
+		var gore := Gore.of(self)
+		if gore != null:
+			gore.pool_under(self)
 
 ## Both legs gone (gore, Z6): it crawls from now on. `false` gives the legs back.
 func set_legless(on := true) -> void:

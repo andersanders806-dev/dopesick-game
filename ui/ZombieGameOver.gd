@@ -6,6 +6,8 @@ extends CanvasLayer
 
 const BLOOD := Color(0.72, 0.08, 0.08)
 const PAPER := Color(0.93, 0.9, 0.82)
+const PadFocus := preload("res://ui/PadFocus.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 
 var again_button: Button
 var title_button: Button
@@ -30,7 +32,8 @@ func show_summary(s: Dictionary) -> void:
 	var font := FontVariation.new()
 	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
 	font.spacing_glyph = 6
-	var title := _label("YOU WERE OVERRUN", 52, BLOOD)
+	var cause := String(s.get("cause", ""))
+	var title := _label(cause.to_upper() if cause != "" else "YOU WERE OVERRUN", 52 if cause == "" else 40, BLOOD)
 	title.add_theme_font_override("font", font)
 	col.add_child(title)
 	var best_line := "Best: round %d" % int(s["best_round"])
@@ -51,6 +54,14 @@ func show_summary(s: Dictionary) -> void:
 		ZombieMode.leave()
 		get_tree().change_scene_to_file(ZombieMode.TITLE_SCENE))
 	col.add_child(title_button)
+	var hint := GlyphLabelScript.new()
+	hint.name = "PadHint"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 16)
+	hint.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
+	col.add_child(hint)
+	hint.markup = "{accept} Choose"
+	PadFocus.dress(col)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	get_tree().paused = true
 	again_button.grab_focus.call_deferred()

@@ -85,8 +85,15 @@ const LOOK_SPEED := 2.6
 const MOUSE_SENS := 0.0025
 const PITCH_LIMIT := deg_to_rad(80.0)
 var _first_person: bool = false
+## Dead Block's first-person feel (player/FPFeel.gd), if the mode made one: ADS, recoil, slide.
+var feel: Node
 var _look_yaw: float = 0.0
 var _look_pitch: float = 0.0
+## The pad's look: deadzone, curve, turn acceleration (player/PadLook.gd), and the aim assist the
+## weapon holder makes in zombie mode (player/AimAssist.gd; null elsewhere).
+const PadLook := preload("res://player/PadLook.gd")
+var pad_look_state := PadLook.new()
+var assist: Node
 var _tp_fov: float
 var _shake_t: float = 0.0
 ## A jolt that dies away fast: a punch, a fall, a knife (kick()).
@@ -201,18 +208,32 @@ func _process(delta: float) -> void:
 	cutaway_globals = [get_global_transform_interpolated().origin, 0.0 if _first_person else Cutaway.RADIUS]
 	RenderingServer.global_shader_parameter_set("player_world_pos", cutaway_globals[0])
 	RenderingServer.global_shader_parameter_set("cutaway_radius", cutaway_globals[1])
-	if not dialogue_active and not get_tree().paused:
-		# The right stick looks round, as the mouse does.
-		var look := Input.get_vector("look_left", "look_right", "look_up", "look_down")
-		if look.length() > 0.0:
-			var k := LOOK_SPEED * Graphics.look_sensitivity * delta
-			var vert := look.y * k * (-1.0 if Graphics.invert_look else 1.0)
-			if _first_person:
-				set_look(_look_yaw - look.x * k, _look_pitch - vert)
-			else:
-				rig.orbit(-look.x * k, -vert)
+	pad_look(delta)
 	_update_camera_shake(delta)
 	_update_camera_rig(delta)
+
+## The right stick looks round every drawn frame, as the mouse does: PadLook shapes it, the aim assist
+## (pad only, never the mouse, which has its own path in _unhandled_input) adds to it.
+func pad_look(delta: float) -> void:
+	if dialogue_active or get_tree().paused:
+		pad_look_state.reset()
+		return
+	var ads: float = feel.ads if feel != null else 0.0
+	var scale := _look_scale() * lerpf(1.0, Graphics.pad_ads_mult, ads)
+	var look := pad_look_state.step(PadLook.raw_stick(), delta, scale, Graphics.invert_look)
+	if assist != null:
+		var moving := Input.get_vector("move_left", "move_right", "move_up", "move_down").length() > 0.1
+		look = assist.adjust(look, delta, moving or pad_look_state.tilt > 0.0)
+	if look != Vector2.ZERO:
+		if _first_person:
+			set_look(_look_yaw - look.x, _look_pitch + look.y)
+		else:
+			rig.orbit(-look.x, look.y)
+
+## Look speed scale: aimed down the sights the zoomed view turns by the same
+## picture distance (FPFeel.sens_scale), otherwise 1.
+func _look_scale() -> float:
+	return feel.sens_scale() if (_first_person and feel != null) else 1.0
 
 func _update_fp_camera() -> void:
 	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
@@ -269,6 +290,10 @@ func _update_cramps(delta: float) -> void:
 	_busy_timer = anim.play_once_timed("pick-up", CRAMP_DURATION)
 	SFX.play("groan", -6.0, randf_range(0.9, 1.0))
 
+## Zombie mode: a claw from the dead (npc/Zombie3D.gd calls this).
+func take_zombie_hit(dmg: float, _from: Node) -> void:
+	ZombieMode.player_hit(dmg)
+
 func _physics_process(delta: float) -> void:
 	if dialogue_active:
 		velocity = Vector3.ZERO
@@ -295,6 +320,12 @@ func _physics_process(delta: float) -> void:
 			return
 		set_hiding(false)
 
+	if _first_person and feel != null and feel.sliding:
+		# Dead Block's slide: carried along, steering locked, for a moment.
+		velocity = feel.slide_velocity(delta)
+		move_and_slide()
+		return
+
 	var dir := Vector3(
 		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),
 		0.0,
@@ -320,6 +351,8 @@ func _physics_process(delta: float) -> void:
 		speed *= HURT_SPEED_MULT
 	if Jobs.carrying_box():
 		speed *= Jobs.CARRY_SPEED
+	if _first_person and feel != null:
+		speed *= feel.speed_mult()
 
 	var target := dir * speed
 	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
@@ -394,7 +427,7 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float, interval :
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		if _first_person:
-			var m := MOUSE_SENS * Graphics.look_sensitivity
+			var m := MOUSE_SENS * Graphics.look_sensitivity * _look_scale()
 			set_look(_look_yaw - event.relative.x * m, _look_pitch - event.relative.y * m * (-1.0 if Graphics.invert_look else 1.0))
 		elif not dialogue_active:
 			mouse_look(event.relative)

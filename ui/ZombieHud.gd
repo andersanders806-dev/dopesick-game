@@ -9,17 +9,40 @@ extends CanvasLayer
 const BLOOD := Color(0.72, 0.08, 0.08)
 const PAPER := Color(0.93, 0.9, 0.82)
 const POP_TIME := 1.1
+const HitmarkerScript := preload("res://ui/Hitmarker.gd")
+const PointsPopupScript := preload("res://ui/PointsPopup.gd")
+const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
+const SeismographScript := preload("res://ui/Seismograph.gd")
+const DOUBLE_GOLD := Color(0.96, 0.74, 0.16)
 
 var round_label: Label
 var points_label: Label
 var banner: Label
 var ammo_label: Label
 var gun_label: Label
+## ui/GlyphLabel.gd: shows the PlayStation button on the pad and the key otherwise.
 var prompt: Label
 var message: Label
-var _pops: Control
+var popups: Control
+var hitmarker: Control
 var _message_tween: Tween
 var _holder: Node
+## The RICHTER 8.0 surge: the seismograph (top right) and DOUBLE POINTS (fx/Quake.gd drives them).
+var seismo: Control
+var double_label: Label
+
+var hurt: ColorRect
+const HURT_SHADER := """shader_type canvas_item;
+uniform float amount = 0.0;
+void fragment() {
+	vec2 d = (UV - 0.5) * vec2(1.6, 1.0);
+	float edge = smoothstep(0.35, 0.95, length(d));
+	COLOR = vec4(0.45, 0.0, 0.0, clamp(edge * amount * 1.4, 0.0, 0.85));
+}"""
+
+func _on_health(hp: float) -> void:
+	var a := clampf(1.0 - hp / ZombieMode.MAX_HEALTH, 0.0, 1.0)
+	(hurt.material as ShaderMaterial).set_shader_parameter("amount", a)
 
 func _ready() -> void:
 	add_to_group("zombie_hud")
@@ -32,14 +55,15 @@ func _ready() -> void:
 	_pin_bottom_left(round_label, 28.0, 24.0)
 	points_label = _label(font, 30, PAPER, Vector2.ZERO)
 	_pin_bottom_left(points_label, 32.0, 100.0)
-	_pops = Control.new()
-	_pops.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_pops.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_pops)
+	# What each hit paid, floating up beside the points; the crosshair and the hitmarker.
+	popups = PointsPopupScript.new()
+	add_child(popups)
+	hitmarker = HitmarkerScript.new()
+	add_child(hitmarker)
 	# The full width of the window, text centred in it.
 	banner = _label(font, 72, BLOOD, Vector2.ZERO)
 	banner.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	banner.offset_top = 150.0
+	banner.offset_top = 70.0
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.modulate.a = 0.0
 	# The gun: pinned to the bottom-right corner, growing up and left.
@@ -48,18 +72,36 @@ func _ready() -> void:
 	gun_label = _label(font, 22, BLOOD, Vector2.ZERO)
 	_pin_bottom_right(gun_label, 34.0, 96.0)
 	# What E does, low in the middle; a word of refusal above it.
-	prompt = _label(font, 24, PAPER, Vector2.ZERO)
-	_pin_bottom_centre(prompt, 190.0)
+	prompt = _label(font, 19, PAPER, Vector2.ZERO, GlyphLabelScript.new())
+	_pin_bottom_centre(prompt, 150.0)
 	message = _label(font, 28, BLOOD, Vector2.ZERO)
 	_pin_bottom_centre(message, 240.0)
 	message.modulate.a = 0.0
+	seismo = SeismographScript.new()
+	add_child(seismo)
+	double_label = _label(font, 34, DOUBLE_GOLD, Vector2.ZERO)
+	_pin_bottom_left(double_label, 32.0, 146.0)
+	double_label.text = "DOUBLE POINTS"
+	double_label.visible = false
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
 	ZombieMode.game_over_started.connect(_on_game_over)
+	# Hurt: the edges of the view go red, as in COD, and clear as health returns.
+	hurt = ColorRect.new()
+	hurt.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hurt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sh := ShaderMaterial.new()
+	sh.shader = Shader.new()
+	sh.shader.code = HURT_SHADER
+	hurt.material = sh
+	add_child(hurt)
+	move_child(hurt, 0)
+	ZombieMode.health_changed.connect(_on_health)
+	_on_health(ZombieMode.health)
 	_refresh()
 
-func _label(font: Font, size: int, color: Color, at: Vector2) -> Label:
-	var l := Label.new()
+func _label(font: Font, size: int, color: Color, at: Vector2, made: Label = null) -> Label:
+	var l := made if made != null else Label.new()
 	l.position = at
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.add_theme_font_override("font", font)
@@ -101,8 +143,15 @@ func _pin_bottom_centre(l: Label, bottom: float) -> void:
 	l.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 
 func _process(_delta: float) -> void:
+	# Double Points (the surge's, or a power-up's) pulses over the points.
+	double_label.visible = ZombieMode.double_points or ZombieMode.surge_active
+	if double_label.visible:
+		double_label.modulate.a = 0.82 + 0.18 * sin(Time.get_ticks_msec() * 0.008)
+	popups.origin = points_label.global_position + Vector2(points_label.size.x + 14.0, 6.0)
 	_update_gun()
 	_update_prompt()
+	# Keep the banner off the sight picture while aimed.
+	banner.self_modulate.a = 0.15 if (is_instance_valid(_holder) and _holder.aiming) else 1.0
 
 func _update_gun() -> void:
 	if not is_instance_valid(_holder):
@@ -122,11 +171,38 @@ func _update_prompt() -> void:
 	var text := ""
 	if player != null and not player.dialogue_active and not get_tree().paused:
 		var target = player._nearest_interactable()
-		if target != null and target.has_method("prompt_text"):
-			text = target.prompt_text()
+		if target != null and prompt_in_view(player, target):
+			if target.has_method("prompt_text"):
+				text = target.prompt_text()
+			elif target.has_meta("prompt"):
+				text = str(target.get_meta("prompt"))
 	# On the pad the use button is also reload: buying is a hold.
-	var key := ("Hold " if GameState.using_pad else "") + GameState.control_name("interact")
-	prompt.text = "%s  %s" % [key, text] if text != "" else ""
+	prompt.markup = prompt_markup(text, GameState.using_pad)
+
+## What the prompt says for `text`: "E  Buy the SMG [1000]", or "Hold {Square}  Buy ..." on the pad.
+static func prompt_markup(text: String, pad: bool) -> String:
+	if text == "":
+		return ""
+	return ("Hold {interact}  " if pad else "{interact}  ") + text
+
+## A buy prompt only shows when the thing is close (under PROMPT_RANGE) and you are
+## looking at it, not whenever you stand somewhere near it.
+const PROMPT_RANGE := 2.0
+const PROMPT_FACING := 0.55
+
+static func prompt_in_view(player: Node3D, target: Node3D) -> bool:
+	var to := target.global_position - player.global_position
+	to.y = 0.0
+	if to.length() > PROMPT_RANGE:
+		return false
+	if not Graphics.first_person:
+		return true
+	var cam := player.get_viewport().get_camera_3d()
+	if cam == null or to.length() < 0.4:
+		return true
+	var fwd := -cam.global_transform.basis.z
+	fwd.y = 0.0
+	return fwd.normalized().dot(to.normalized()) >= PROMPT_FACING
 
 ## A line of refusal or news over the prompt ("Not enough points"), gone in a moment.
 func say(text: String) -> void:
@@ -150,20 +226,9 @@ func _on_round_started(r: int) -> void:
 	tw.tween_interval(1.8)
 	tw.tween_property(banner, "modulate:a", 0.0, 1.0)
 
-func _on_points_changed(_total: int, amount: int, _reason: String) -> void:
+func _on_points_changed(_total: int, amount: int, reason: String) -> void:
 	_refresh()
-	var pop := Label.new()
-	pop.text = "%+d" % amount
-	pop.position = points_label.position + Vector2(points_label.get_minimum_size().x + 14.0, 6.0)
-	pop.add_theme_font_size_override("font_size", 22)
-	pop.add_theme_color_override("font_color", PAPER if amount > 0 else BLOOD)
-	pop.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	pop.add_theme_constant_override("outline_size", 5)
-	_pops.add_child(pop)
-	var tw := create_tween().set_parallel()
-	tw.tween_property(pop, "position:y", pop.position.y - 34.0, POP_TIME)
-	tw.tween_property(pop, "modulate:a", 0.0, POP_TIME)
-	tw.chain().tween_callback(pop.queue_free)
+	popups.add(amount, reason)
 
 func _on_game_over(_summary: Dictionary) -> void:
 	visible = false

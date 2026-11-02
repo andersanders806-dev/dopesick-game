@@ -19,6 +19,13 @@ extends Node
 const WD := preload("res://weapons/WeaponData.gd")
 const GunModel := preload("res://weapons/GunModel.gd")
 const ZombieControls := preload("res://player/ZombieControls.gd")
+const Viewmodel := preload("res://player/Viewmodel.gd")
+const FPFeel := preload("res://player/FPFeel.gd")
+const ImpactFX := preload("res://fx/ImpactFX.gd")
+const AimAssist := preload("res://player/AimAssist.gd")
+const PadRumble := preload("res://player/PadRumble.gd")
+## A shotgun this close throws a zombie back.
+const KNOCK_RANGE := 4.5
 
 signal fired
 ## A zombie was hit: the hit zone's part, and whether that killed it.
@@ -27,6 +34,10 @@ signal weapon_changed(data: WD)
 signal ammo_changed
 signal reload_started
 signal reload_finished
+## The trigger was pulled on an empty gun with nothing to load.
+signal dry_fired
+## The knife went out: whether it found something.
+signal melee_swung(found: bool)
 ## A shot ended on world or air (for tracers and sparks): [from, to].
 signal traced(from: Vector3, to: Vector3)
 
@@ -65,6 +76,8 @@ var rng := RandomNumberGenerator.new()
 
 var player: Node3D
 var viewmodel: Node3D
+## player/FPFeel.gd: aiming, recoil, sway, slide, the effects of a shot.
+var feel: Node
 var melee_data: WD
 var _cooldown := 0.0
 var _swap_left := 0.0
@@ -101,6 +114,11 @@ func _ready() -> void:
 		give(load(START_WEAPON))
 	if Graphics.has_signal("view_changed"):
 		Graphics.view_changed.connect(func(_on: bool): _rebuild_viewmodel())
+	feel = FPFeel.new()
+	add_child(feel)
+	# The pad: aim assist on the look (first person) and rumble from this node's signals.
+	add_child(AimAssist.new())
+	add_child(PadRumble.new())
 
 # --- The guns you hold -------------------------------------------------------------
 
@@ -201,7 +219,7 @@ func _process(delta: float) -> void:
 	if down and current != null and (current.auto or not _trigger_down):
 		fire()
 	_trigger_down = down
-	aiming = Input.is_action_pressed("aim") and not reloading
+	aiming = Input.is_action_pressed("aim") and not reloading and not (player != null and player.has_method("is_sprinting") and player.is_sprinting())
 
 ## The one-shot buttons (a press is an event: the mouse wheel has no "held").
 func _unhandled_input(event: InputEvent) -> void:
@@ -307,7 +325,7 @@ func fire() -> bool:
 		if reserve > 0:
 			reload()
 		else:
-			SFX.play("latch", -10.0, 1.4)
+			dry_fired.emit()
 		return false
 	mag -= 1
 	_cooldown = d.interval() / maxf(rate_mult, 0.1)
@@ -315,7 +333,6 @@ func fire() -> bool:
 	_shoot(aim[0], aim[1])
 	fired.emit()
 	ammo_changed.emit()
-	SFX.play("punch", -9.0, 0.55 if d.pellets > 1 else 0.8)
 	if player != null and player.has_method("kick"):
 		player.kick(clampf(d.recoil * 0.12, 0.0, 0.6))
 	return true
@@ -328,6 +345,7 @@ func shoot_at(origin: Vector3, dir: Vector3) -> void:
 func _shoot(origin: Vector3, dir: Vector3) -> void:
 	var d := current
 	_wounded.clear()
+	var shoved := {}
 	var cone: float = 0.0 if no_spread else (d.spread_ads if aiming else d.spread_hip)
 	for i in d.pellets:
 		var v := _scatter(dir, cone)
@@ -338,11 +356,22 @@ func _shoot(origin: Vector3, dir: Vector3) -> void:
 		var z: Node = r.get("zombie")
 		traced.emit(origin, r.position)
 		if z == null:
+			var fx := ImpactFX.of(self)
+			if fx != null:
+				fx.bullet_hit(r.position, r.get("normal", Vector3.UP), r.get("collider"))
 			continue
 		var dist := origin.distance_to(r.position)
-		_hurt(z, r.part, d.damage_at(r.part, dist), v, d, false)
+		_hurt(z, r.part, d.damage_at(r.part, dist), v, d, false, r.position)
+		if d.pellets > 1 and dist < KNOCK_RANGE and z.has_method("knock"):
+			shoved[z] = (shoved.get(z, 0.0) as float) + 1.0
 		if d.splash_radius > 0.0:
 			_splash(z, r.position, d, v, dist)
+	# A shotgun's blast at close range throws them back.
+	for z in shoved:
+		if is_instance_valid(z):
+			var away: Vector3 = (z as Node3D).global_position - origin
+			var k := clampf(1.0 - away.length() / KNOCK_RANGE, 0.15, 1.0) * clampf(float(shoved[z]) / float(d.pellets) * 1.6, 0.3, 1.0)
+			z.knock(away.normalized() * 6.5 * k)
 	_pay_hits()
 
 func _scatter(dir: Vector3, cone_deg: float) -> Vector3:
@@ -361,11 +390,14 @@ func _scatter(dir: Vector3, cone_deg: float) -> Vector3:
 func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 	if player == null:
 		return {}
+	_sync_zones(origin, dir, length)
 	var space := player.get_world_3d().direct_space_state
 	var skip: Array[RID] = [(player as CollisionObject3D).get_rid()]
 	for n in 24:
 		var q := PhysicsRayQueryParameters3D.create(origin, origin + dir * length)
 		q.exclude = skip
+		# Not the dead's ragdoll bodies (fx/gore/Ragdolls.gd, layer 512): a shot goes through them.
+		q.collision_mask = 0xFFFFFFFF & ~512
 		q.collide_with_areas = true
 		q.collide_with_bodies = true
 		var r := space.intersect_ray(q)
@@ -383,8 +415,22 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 		if c.has_method("take_hit"):
 			skip.append(c.get_rid())
 			continue
-		return {"position": r.position, "collider": c, "zombie": null, "part": ""}
+		return {"position": r.position, "normal": r.normal, "collider": c, "zombie": null, "part": ""}
 	return {}
+
+## The hit zones are not kept on the bones every frame (npc/ZombieHitboxes.gd):
+## the zombies near this ray get them put where their animation has the bones,
+## just before the cast.
+func _sync_zones(origin: Vector3, dir: Vector3, length: float) -> void:
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not (z is Node3D) or not z.has_method("sync_hitboxes"):
+			continue
+		var c: Vector3 = (z as Node3D).global_position + Vector3(0.0, 0.9, 0.0)
+		var along := (c - origin).dot(dir)
+		if along < -1.5 or along > length + 1.5:
+			continue
+		if (c - (origin + dir * clampf(along, 0.0, length))).length_squared() < 2.6:
+			z.sync_hitboxes()
 
 ## "head", "neck", "torso", "upper_arm_l", ...: what a hit zone says it is.
 func _part_of(area: Node) -> String:
@@ -414,7 +460,7 @@ func _splash(first: Node, at: Vector3, d: WD, dir: Vector3, dist: float) -> void
 			_hurt(other, "torso", d.damage_at("torso", dist) * 0.5, dir, d, false)
 
 ## Hands the zombie its damage and pays for what happened.
-func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, melee_hit: bool) -> void:
+func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, melee_hit: bool, at := Vector3.INF) -> void:
 	if not z.has_method("take_hit") or (z.has_method("is_alive") and not z.is_alive()):
 		return
 	var on_hit := _on_zombie_hit
@@ -423,7 +469,7 @@ func _hurt(z: Node, part: String, dmg: float, dir: Vector3, weapon: Resource, me
 		z.connect("hit", on_hit)
 	if z.has_signal("died"):
 		z.connect("died", on_died)
-	z.take_hit(part, dmg, dir, weapon, melee_hit)
+	z.take_hit(part, dmg, dir, weapon, melee_hit, at)
 	if is_instance_valid(z):
 		if z.has_signal("hit") and z.is_connected("hit", on_hit):
 			z.disconnect("hit", on_hit)
@@ -464,13 +510,18 @@ func melee() -> bool:
 	_melee_cd = MELEE_COOLDOWN
 	var aim := _aim()
 	var r := _cast(aim[0], aim[1], MELEE_RANGE)
-	SFX.play("punch", -4.0, 1.1)
-	if r.is_empty() or r.get("zombie") == null:
+	var found: bool = not r.is_empty() and r.get("zombie") != null
+	melee_swung.emit(found)
+	if not found:
 		return true
+	SFX.play("punch", -4.0, 1.1)
 	_wounded.clear()
 	_in_melee = true
-	_hurt(r.zombie, r.part, melee_data.damage_at(r.part), aim[1], melee_data, true)
+	_hurt(r.zombie, r.part, melee_data.damage_at(r.part), aim[1], melee_data, true, r.position)
 	_in_melee = false
+	var gore := get_tree().get_first_node_in_group("gore")
+	if gore != null:
+		gore.screen_blood(0.6)
 	_pay_hits()
 	return true
 
@@ -518,8 +569,8 @@ func _facing() -> Vector3:
 
 # --- What you see -------------------------------------------------------------------
 
-## The gun in your hands, low on the right of the first-person view. (The
-## feel of it -- sway, reload dip, third-person hands -- is Z4/Z5's.)
+## The gun in your hands and the arms holding it (player/Viewmodel.gd), on the
+## camera; player/FPFeel.gd moves it. Nothing in third person.
 func _rebuild_viewmodel() -> void:
 	if is_instance_valid(viewmodel):
 		viewmodel.queue_free()
@@ -530,14 +581,11 @@ func _rebuild_viewmodel() -> void:
 	var cam := player.get("camera") as Camera3D
 	if cam == null:
 		return
-	viewmodel = Node3D.new()
-	viewmodel.name = "Viewmodel"
-	viewmodel.position = Vector3(0.15, -0.16, -0.42)
-	viewmodel.rotation_degrees.y = -2.0
-	var gun := GunModel.build(d)
-	viewmodel.add_child(gun)
+	viewmodel = Viewmodel.new().setup(d)
+	viewmodel.position = FPFeel.HIP_POS
 	# The night is red-dark; the gun gets a little light of its own.
 	var lamp := OmniLight3D.new()
+	lamp.name = "GunLamp"
 	lamp.light_energy = 0.9
 	lamp.omni_range = 1.6
 	lamp.shadow_enabled = false

@@ -1,11 +1,11 @@
 Model Information:
-* title:	Low-Poly Remington 870
-* source:	https://sketchfab.com/3d-models/low-poly-remington-870-8766498ce778479aa03c3b6078937510
-* author:	TastyTony (https://sketchfab.com/TastyTony)
+* title:	Mossberg500 Shotgun low-poly
+* source:	https://sketchfab.com/3d-models/mossberg500-shotgun-low-poly-5ae38a34bfed4c91a3dbe78aaea51790
+* author:	AK (https://sketchfab.com/skaf13)
 
 Model License:
 * license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 * requirements:	Author must be credited. Commercial use is allowed.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "Low-Poly Remington 870" (https://sketchfab.com/3d-models/low-poly-remington-870-8766498ce778479aa03c3b6078937510) by TastyTony (https://sketchfab.com/TastyTony) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+This work is based on "Mossberg500 Shotgun low-poly" (https://sketchfab.com/3d-models/mossberg500-shotgun-low-poly-5ae38a34bfed4c91a3dbe78aaea51790) by AK (https://sketchfab.com/skaf13) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

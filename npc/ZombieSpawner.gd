@@ -127,7 +127,9 @@ func _process(delta: float) -> void:
 		if _timer <= 0.0 and alive() < ZombieMode.max_alive:
 			_release()
 			_timer = _gap() * time_scale
-	elif alive() == 0:
+	elif alive() <= LAST_HURRY and alive() > 0:
+		_hurry_last()
+	if released >= total and alive() == 0:
 		if _break < 0.0:
 			_break = ROUND_BREAK * time_scale
 		else:
@@ -187,9 +189,24 @@ func spawn_one(kind: String, at := Vector3.INF, body := "") -> CharacterBody3D:
 	spawned.emit(z)
 	return z
 
+## The round's last few (all released, this many or fewer alive) break into a run, as in COD:
+## a straggler across the block must not hold the round up.
+const LAST_HURRY := 2
+
+func _hurry_last() -> void:
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not is_instance_valid(z) or z.get("kind") == "runner" or z.get_meta("hurried", false):
+			continue
+		if int(z.get("state")) >= 6:
+			continue
+		z.set_meta("hurried", true)
+		z.set("kind", "runner")
+		z.set("speed", _rng.randf_range(z.RUN_SPEED.x, z.RUN_SPEED.y))
+		z.set("_move_clip", "z_run")
+
 ## A spawn point away from the player and out of their view; failing that,
 ## the farthest one.
-func _pick_point(strict := false) -> Vector3:
+func _pick_point(strict := false, nearest := false) -> Vector3:
 	if spawn_points.is_empty():
 		return Vector3.INF if strict else holder.global_position
 	var player := get_tree().get_first_node_in_group("player") as Node3D
@@ -210,12 +227,16 @@ func _pick_point(strict := false) -> Vector3:
 	if good.is_empty():
 		# (strict: nowhere that doesn't pop in front of the player)
 		return Vector3.INF if strict else farthest
+	if nearest and player:
+		# The closest one the player can't see: a stuck one comes back into the fight.
+		good.sort_custom(func(a: Vector3, b: Vector3): return a.distance_squared_to(player.global_position) < b.distance_squared_to(player.global_position))
+		return good[0]
 	return good[_rng.randi() % good.size()]
 
 ## Puts a stuck zombie back on a spawn point out of the player's sight.
 ## False if there is none right now (it asks again later).
 func relocate(z: Node3D) -> bool:
-	var p := _pick_point(true)
+	var p := _pick_point(true, true)
 	if p == Vector3.INF:
 		return false
 	var map := z.get_world_3d().navigation_map

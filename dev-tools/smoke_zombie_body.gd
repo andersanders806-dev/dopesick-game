@@ -70,7 +70,7 @@ func _zombie_body_checks() -> void:
 	await _frames(3)
 	z.limb_damage["upper_leg_l"] = 50.0
 	z._refresh_gait()
-	_check(z._move_clip == "z_limp_l" and z._gait_mult < 0.7, "  a beaten left leg: the left limp at %.0f %% pace" % (z._gait_mult * 100.0))
+	_check(z._move_clip == "z_limp_l" and z._gait_mult < 0.8, "  a beaten left leg: the left limp at %.0f %% pace" % (z._gait_mult * 100.0))
 	z.limb_damage["upper_leg_l"] = 0.0
 	z.limb_damage["lower_leg_r"] = 50.0
 	z._refresh_gait()

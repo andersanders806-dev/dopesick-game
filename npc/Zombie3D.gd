@@ -45,7 +45,7 @@ const MODEL_DIR := "res://assets/rocketbox/"
 const WALK_CLIPS := ["z_walk", "z_walk", "z_walk2", "z_walk3", "z_walk4", "z_walk4"]
 const ATTACK_CLIPS := ["z_attack", "z_attack2", "z_attack3", "z_bite", "z_smash"]
 ## Where in each attack the blow lands (share of the clip); the others use ATTACK_HIT_AT.
-const ATTACK_HIT := {"z_bite": 0.5, "z_smash": 0.55, "z_attack3": 0.5}
+const ATTACK_HIT := {"z_bite": 0.4, "z_smash": 0.6, "z_attack3": 0.5}
 ## Share of its pace a hurt walker keeps: a bad leg, a bad arm.
 const LIMP_PACE := 0.75
 const HURT_ARM_PACE := 0.9
@@ -840,7 +840,7 @@ func relocated() -> void:
 const RISE_TIME := 3.0
 const RISE_DEPTH := 2.1
 ## How far under the street the body is when the hands first reach the surface.
-const RISE_HANDS := 0.5
+const RISE_HANDS := 0.3
 ## Out through a shop front: the shove it comes out with (m/s along the ground).
 const SMASH_SHOVE := 6.5
 ## How it came in ("", "rise", "drop", "smash", "plain"); the tests read it.
@@ -899,8 +899,8 @@ func _enter_tick(delta: float) -> void:
 			var k := clampf(_enter_t / _rise_len, 0.0, 1.0)
 			# A pause while the dirt flies, then the hands come up through it; the rest of the climb
 			# is the clip's own (the body is lying on the street as it drags itself out).
-			var y := -RISE_DEPTH + (RISE_DEPTH - RISE_HANDS) * smoothstep(0.05, 0.2, k)
-			y += RISE_HANDS * smoothstep(0.2, 0.5, k)
+			var y := -RISE_DEPTH + (RISE_DEPTH - RISE_HANDS) * smoothstep(0.03, 0.13, k)
+			y += RISE_HANDS * smoothstep(0.14, 0.42, k)
 			_model_root.position.y = minf(y, 0.0)
 			if k > 0.45 and not _groaned:
 				_groaned = true
@@ -1250,7 +1250,7 @@ func _react(part: String, dmg: float) -> void:
 		var hurt := 0.0
 		for p in ["upper_leg_l", "lower_leg_l", "upper_leg_r", "lower_leg_r"]:
 			hurt += float(limb_damage.get(p, 0.0))
-		if heavy or hurt >= max_health * 0.4 or _gait_mult < 1.0:
+		if dmg >= max_health * 0.18 or hurt >= max_health * 0.4 or _gait_mult < 1.0:
 			_kneel_left = part.ends_with("_l")
 			_begin_kneel()
 			return

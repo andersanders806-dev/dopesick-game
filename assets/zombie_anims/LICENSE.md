@@ -32,7 +32,7 @@ by `dev-tools/fetch_zombie_anims.py` + `dev-tools/retarget_to_bip01.py`.
     Community License** (https://www.llama.com/llama3/license/). Built with
     Meta Llama 3. It only turns our prompts into embeddings on the developer's
     machine; no Llama weights ship in the game. Generated motion is ours.
-  Used: z_attack, z_attack2, z_attack3, z_crawl, z_scream, p_kick, z_walk3, z_hit_leg, z_death2 (see "Kimodo clips" below).
+  Used: z_attack, z_attack2, z_attack3, z_crawl, z_scream, p_kick, z_walk3, z_hit_leg, z_death2, and (Z5, 2026-11-02) z_rise, z_land, z_hit_leg_l, z_hit_arm_l, z_hit_arm_r, z_stumble, z_walk4, z_limp_l, z_walk_hurt_l, z_walk_hurt_r, z_lunge, z_bite, z_smash (see "Kimodo clips" below).
 
 ## Modified for the game
 
@@ -67,6 +67,27 @@ clip's `source` metadata): see the table.
 | z_walk3 | z_walk3_a_s1 | 1 | 44 s | A person shambles forward, dragging the right foot, torso hunched forward, arms hanging and swaying, head tilted. |
 | z_hit_leg | z_hit_leg_a_s3 | 3 | 40 s | A person is struck in the right thigh, the leg buckles and they stumble and drop down onto one knee. |
 | z_death2 | z_death2_a_s2 | 2 | 36 s | A person falls forward onto their face and lies still on the ground. |
+
+Z5 clips (bodies that move like bodies), baked the same way (`dev-tools/retarget_to_bip01.py <clip> ...`
+merges just those clips into the library; prompts and every variant tried are in
+`dev-tools/fetch_zombie_anims.py` KIMODO_CLIPS; 2 seeds each, the take chosen by eye). `z_walk4` is slowed to
+5 s, `z_lunge` stays in place (the zombie supplies the ground covered).
+
+| Clip | Take | Seed | Generation time | Prompt |
+|---|---|---|---|---|
+| z_rise | z_rise_b_s1 | 1 | 119 s | A person lying on their stomach pushes both hands against the ground, heaves the chest up, pulls one knee under the body, then the other, and stands up slowly, hunched, arms hanging. |
+| z_land | z_land_b_s1 | 1 | 71 s | A person lands from a jump in a low crouch, knees bent deep, torso bent forward, then rises and staggers a step forward. |
+| z_hit_leg_l | z_hit_leg_l_a_s1 | 1 | 59 s | A person is struck in the left thigh, the leg buckles and they stumble and drop down onto one knee. |
+| z_hit_arm_l | z_hit_arm_l_a_s1 | 1 | 70 s | A person is struck in the left shoulder, the upper body spins to the left with the left arm thrown back, then they steady themselves. |
+| z_hit_arm_r | z_hit_arm_r_a_s2 | 2 | 56 s | A person is struck in the right shoulder, the upper body spins to the right with the right arm thrown back, then they steady themselves. |
+| z_stumble | z_stumble_a_s1 | 1 | 82 s | A person is shoved hard in the chest, staggers backwards several steps with the arms flailing, nearly falls and catches their balance. |
+| z_walk4 | z_walk4_a_s1 | 1 | 98 s | A person lurches forward unevenly, slow then sudden quicker steps, swaying from side to side, the head lolling, the arms swinging loosely. |
+| z_limp_l | z_limp_l_a_s2 | 2 | 129 s | A person shambles forward, dragging the left foot, torso hunched forward, arms hanging and swaying, head tilted. |
+| z_walk_hurt_l | z_walk_hurt_l_a_s2 | 2 | 132 s | A person walks slowly leaning heavily to the left, the left arm hanging limp and motionless, the right arm swinging, head tilted to the left. |
+| z_walk_hurt_r | z_walk_hurt_r_a_s2 | 2 | 114 s | A person walks slowly leaning heavily to the right, the right arm hanging limp and motionless, the left arm swinging, head tilted to the right. |
+| z_lunge | z_lunge_a_s1 | 1 | 106 s | A hunched person suddenly breaks into a fast lunging stride forward, both arms thrown out in front, hands clawing. |
+| z_bite | z_bite_a_s2 | 2 | 114 s | A person grabs someone in front by the shoulders with both hands, pulls them in close and jerks the head forward to bite, then shakes the head from side to side. |
+| z_smash | z_smash_a_s1 | 1 | 89 s | A person raises both fists together high above the head and slams them down hard in front of the body, bending forward. |
 
 HY-Motion/Hunyuan (EU territory exclusion), Mixamo and non-commercial
 datasets are not used.

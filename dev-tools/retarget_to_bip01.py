@@ -340,7 +340,7 @@ KIMODO_OPTS = {
     "z_limp_l":  {"loop": True, "loopify": 24, "dur": 4.2, "claw": 0.8},
     "z_walk_hurt_l": {"loop": True, "loopify": 24, "claw": 0.8},
     "z_walk_hurt_r": {"loop": True, "loopify": 24, "claw": 0.8},
-    "z_lunge":   {"root_xy": 0.3, "claw": 1.2},
+    "z_lunge":   {"root_xy": 0.0, "claw": 1.2},
     "z_bite":    {"root_xy": 0.3, "claw": 1.2},
     "z_smash":   {"root_xy": 0.3, "claw": 1.2},
 }

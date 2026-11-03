@@ -151,7 +151,7 @@ func _choose_view(start: Callable, zombie_options := false) -> void:
 	_choose_extra = 3
 	if zombie_options:
 		# The mode's options: gore on, damage numbers off, unless you change them.
-		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"]]:
+		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"], ["Mature language (Ghetto Wars)", "mature_language"]]:
 			var c := CheckButton.new()
 			c.text = opt[0]
 			c.button_pressed = bool(ZombieMode.get(opt[1]))

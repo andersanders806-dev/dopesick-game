@@ -106,6 +106,8 @@ var immersive_hud: bool = true
 ## Head bob and the sprint FOV push (player/Player3D.gd); off for anyone
 ## it makes queasy.
 var camera_motion: bool = true
+## Rain on the zombie block's night (fx/Rain.gd): streaks and splashes round the player.
+var rain_fx: bool = true
 signal view_changed(first_person: bool)
 var volumes := {"Master": 1.0, "Music": 1.0, "SFX": 1.0, "Voice": 1.0, "Walkman": 1.0}
 var _bus_base_db := {}
@@ -281,6 +283,10 @@ func set_immersive_hud(on: bool) -> void:
 
 func set_camera_motion(on: bool) -> void:
 	camera_motion = on
+	_save_settings()
+
+func set_rain_fx(on: bool) -> void:
+	rain_fx = on
 	_save_settings()
 
 func set_fullscreen(on: bool) -> void:
@@ -778,6 +784,7 @@ func _load_settings() -> void:
 		ds_lightbar = bool(cfg.get_value("controls", "ds_lightbar", true))
 		immersive_hud = bool(cfg.get_value("interface", "immersive_hud", true))
 		camera_motion = bool(cfg.get_value("controls", "camera_motion", true))
+		rain_fx = bool(cfg.get_value("graphics", "rain_fx", true))
 		for bus in VOLUME_BUSES:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
@@ -806,4 +813,5 @@ func _save_settings() -> void:
 	cfg.set_value("controls", "ds_lightbar", ds_lightbar)
 	cfg.set_value("interface", "immersive_hud", immersive_hud)
 	cfg.set_value("controls", "camera_motion", camera_motion)
+	cfg.set_value("graphics", "rain_fx", rain_fx)
 	cfg.save(SETTINGS_PATH)

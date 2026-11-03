@@ -22,6 +22,30 @@ extends SceneTree
 
 var _vp_rid: RID
 
+## exp=norain,nohalo,nowet,nosky,nofog (comma list): what the night's atmosphere (world/NightAtmos.gd) costs.
+func _atmos_experiment(city: Node, experiment: String, gfx: Node) -> void:
+	var atmos = city.get_node("ZombieBlock").atmos
+	if atmos == null:
+		return
+	for e in experiment.split(","):
+		match e:
+			"norain":
+				gfx.rain_fx = false
+			"nohalo":
+				for h in atmos._halos:
+					h[0].queue_free()
+				atmos._halos.clear()
+			"nowet":
+				for mi in city.find_children("*", "MeshInstance3D", true, false):
+					mi.material_override = null
+				atmos.set_process(false)
+			"nosky":
+				city._env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+				city._env.sky = null
+			"nofog":
+				city._env.fog_height_density = 0.0
+				city.get_node("ZombieBlock").set_process(false)
+
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	var args := OS.get_cmdline_user_args()
@@ -55,6 +79,7 @@ func _initialize() -> void:
 	spawner.enabled = false
 	for z in get_nodes_in_group("zombies"):
 		z.free()
+	_atmos_experiment(city, experiment, gfx)
 	var player := get_first_node_in_group("player") as Node3D
 	player.global_position = Vector3(-8.0, 0.0, -1.0)
 	spawner.round_no = 8

@@ -92,9 +92,13 @@ var _chunks: Array[RigidBody3D] = []
 var _chunk_next := 0
 
 static var _streams := {}
+const DustShader := preload("res://assets/shaders/soft_dust.gdshader")
+const NightAtmos := preload("res://world/NightAtmos.gd")
+
 static var _soft: Texture2D
 static var _crack_tex: Array[Texture2D] = []
 static var _crack_em: Array[Texture2D] = []
+static var _crack_nm: Array[Texture2D] = []
 
 func _init() -> void:
 	name = "Quake"
@@ -163,9 +167,9 @@ func _build() -> void:
 		v.max_distance = 90.0
 		add_child(v)
 		_voices.append(v)
-	var dust_mat := _particle_material(Color(0.66, 0.6, 0.52))
+	var dust_mat := _particle_material(Color(0.42, 0.38, 0.34))
 	var grit_mat := StandardMaterial3D.new()
-	grit_mat.albedo_color = Color(0.62, 0.58, 0.52)
+	grit_mat.albedo_color = Color(0.34, 0.31, 0.28)
 	grit_mat.roughness = 1.0
 	for i in DUST_SITES:
 		_dust.append(_curtain(dust_mat))
@@ -180,6 +184,8 @@ func _build() -> void:
 		var d := Decal.new()
 		d.texture_albedo = _crack_texture(i % 3)
 		d.texture_emission = _crack_em[i % 3]
+		d.texture_normal = _crack_nm[i % 3]
+		d.normal_fade = 0.2
 		d.emission_energy = 0.0
 		d.size = Vector3(3.0, 0.3, 3.0)
 		d.visible = false
@@ -215,15 +221,11 @@ static func _load(sound: String, loop: bool) -> AudioStream:
 	_streams[key] = s
 	return s
 
-static func _particle_material(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.vertex_color_use_as_albedo = true
-	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
-	m.billboard_keep_scale = true
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.albedo_texture = _soft_texture()
-	m.albedo_color = c
+static func _particle_material(c: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = DustShader
+	m.set_shader_parameter("noise_tex", NightAtmos.noise_texture())
+	m.set_shader_parameter("albedo", c)
 	return m
 
 static func _soft_texture() -> Texture2D:
@@ -246,7 +248,7 @@ static func _soft_texture() -> Texture2D:
 func _curtain(mat: Material) -> CPUParticles3D:
 	var p := CPUParticles3D.new()
 	p.emitting = false
-	p.amount = 34
+	p.amount = 22
 	p.lifetime = 2.6
 	p.local_coords = false
 	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
@@ -256,16 +258,16 @@ func _curtain(mat: Material) -> CPUParticles3D:
 	p.initial_velocity_min = 0.2
 	p.initial_velocity_max = 1.1
 	p.gravity = Vector3(0, -2.2, 0)
-	p.scale_amount_min = 0.35
-	p.scale_amount_max = 0.95
+	p.scale_amount_min = 1.2
+	p.scale_amount_max = 2.8
 	var curve := Curve.new()
 	curve.add_point(Vector2(0.0, 0.45))
 	curve.add_point(Vector2(1.0, 1.0))
 	p.scale_amount_curve = curve
 	var g := Gradient.new()
-	g.set_color(0, Color(0.66, 0.6, 0.52, 0.0))
-	g.add_point(0.18, Color(0.66, 0.6, 0.52, 0.5))
-	g.set_color(g.get_point_count() - 1, Color(0.5, 0.46, 0.4, 0.0))
+	g.set_color(0, Color(1.0, 1.0, 1.0, 0.0))
+	g.add_point(0.18, Color(1.0, 1.0, 1.0, 0.55))
+	g.set_color(g.get_point_count() - 1, Color(0.8, 0.78, 0.75, 0.0))
 	p.color_ramp = g
 	var q := QuadMesh.new()
 	q.size = Vector2.ONE
@@ -307,23 +309,23 @@ func _cloud(mat: Material) -> CPUParticles3D:
 	p.emitting = false
 	p.one_shot = true
 	p.explosiveness = 0.9
-	p.amount = 30
-	p.lifetime = 1.8
+	p.amount = 20
+	p.lifetime = 2.2
 	p.local_coords = false
 	p.direction = Vector3.UP
 	p.spread = 65.0
 	p.initial_velocity_min = 1.2
 	p.initial_velocity_max = 4.5
 	p.gravity = Vector3(0, -0.35, 0)
-	p.scale_amount_min = 0.7
-	p.scale_amount_max = 1.7
+	p.scale_amount_min = 1.2
+	p.scale_amount_max = 2.8
 	var curve := Curve.new()
 	curve.add_point(Vector2(0.0, 0.4))
 	curve.add_point(Vector2(1.0, 1.0))
 	p.scale_amount_curve = curve
 	var g := Gradient.new()
-	g.set_color(0, Color(0.62, 0.57, 0.5, 0.75))
-	g.set_color(1, Color(0.5, 0.46, 0.4, 0.0))
+	g.set_color(0, Color(1.0, 1.0, 1.0, 0.8))
+	g.set_color(1, Color(0.8, 0.78, 0.75, 0.0))
 	p.color_ramp = g
 	var q := QuadMesh.new()
 	q.size = Vector2.ONE
@@ -358,12 +360,14 @@ func _chunk(size: Vector3, mat: Material) -> RigidBody3D:
 	add_child(b)
 	return b
 
-## A crack network drawn here: a pale dusty halo, the dark split with branches, and a dull red
-## glow deep in the split (the emission map), so it reads on dark paving at night.
+## A crack network drawn here: the black split with its branches, a spill of grey-brown dust and chips
+## along the lips (speckled, not a clean halo), a normal map so the lamps catch the broken edges, and in
+## the emission map only a few tiny embers deep in the split.
 static func _crack_texture(variant: int) -> Texture2D:
 	while _crack_tex.size() <= variant:
 		_crack_tex.append(null)
 		_crack_em.append(null)
+		_crack_nm.append(null)
 	if _crack_tex[variant] != null:
 		return _crack_tex[variant]
 	var n := 192
@@ -375,8 +379,12 @@ static func _crack_texture(variant: int) -> Texture2D:
 	var arms := 5 + variant
 	for i in arms:
 		_crack_walk(r, segs, Vector2(n, n) * 0.5, TAU * (i + r.randf_range(-0.25, 0.25)) / arms, 4.2, 0.0, n * 0.46)
+	var core := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	var wide := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	for pass_i in 3:
+		var si := 0
 		for s in segs:
+			si += 1
 			var a: Vector2 = s[0]
 			var b: Vector2 = s[1]
 			var w: float = s[2]
@@ -384,13 +392,38 @@ static func _crack_texture(variant: int) -> Texture2D:
 			for k in steps + 1:
 				var p := a.lerp(b, float(k) / steps)
 				if pass_i == 0:
-					_stamp(img, p, w * 2.6 + 2.5, Color(0.58, 0.54, 0.48, 0.42), false)
+					_stamp(img, p, w * 5.0 + 4.0, Color(0.46, 0.42, 0.36, 0.8), false)
+					_stamp(wide, p, w * 3.0 + 2.5, Color(1, 1, 1, 1), false)
 				elif pass_i == 1:
-					_stamp(img, p, w, Color(0.012, 0.01, 0.01, 1.0), true)
-				else:
-					_stamp(glow, p, maxf(w * 0.5, 0.8), Color(0.9, 0.2, 0.05, 1.0), true)
+					_stamp(img, p, w, Color(0.008, 0.007, 0.007, 1.0), true)
+					_stamp(core, p, w, Color(1, 1, 1, 1), true)
+				elif si % 9 == 0 and w > 2.0:
+					# A glint of heat far down in a few of the wider stretches.
+					_stamp(glow, p, maxf(w * 0.28, 0.7), Color(0.75, 0.24, 0.05, 0.8), true)
+	# Speckle the dust spill: grains and chips, not a smooth halo.
+	for y in n:
+		for x in n:
+			var c := img.get_pixel(x, y)
+			if c.a > 0.0 and c.r > 0.1:
+				var g := r.randf()
+				var k := 0.35 + 0.9 * g * g
+				img.set_pixel(x, y, Color(c.r * (0.8 + 0.4 * r.randf()), c.g * (0.8 + 0.4 * r.randf()), c.b, minf(c.a * k, 0.9)))
+	# Height: the split sunk, the lips raised a little; the normals are its slope.
+	var h := PackedFloat32Array()
+	h.resize(n * n)
+	for y in n:
+		for x in n:
+			h[y * n + x] = wide.get_pixel(x, y).a * 0.55 - core.get_pixel(x, y).a * 1.4 + (r.randf() - 0.5) * 0.08 * wide.get_pixel(x, y).a
+	var nm := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var dx := h[y * n + mini(x + 1, n - 1)] - h[y * n + maxi(x - 1, 0)]
+			var dy := h[mini(y + 1, n - 1) * n + x] - h[maxi(y - 1, 0) * n + x]
+			var v := Vector3(-dx * 1.8, -dy * 1.8, 1.0).normalized()
+			nm.set_pixel(x, y, Color(v.x * 0.5 + 0.5, v.y * 0.5 + 0.5, v.z * 0.5 + 0.5, 1.0))
 	_crack_tex[variant] = ImageTexture.create_from_image(img)
 	_crack_em[variant] = ImageTexture.create_from_image(glow)
+	_crack_nm[variant] = ImageTexture.create_from_image(nm)
 	return _crack_tex[variant]
 
 static func _crack_walk(r: RandomNumberGenerator, segs: Array, from: Vector2, ang: float, width: float, travelled: float, limit: float) -> void:
@@ -849,7 +882,7 @@ func _update_cracks(delta: float) -> void:
 		_decal_a[i] = rise
 		var fade := _alarm_fade if phase == Phase.ENDING else 1.0
 		_decals[i].modulate = Color(1, 1, 1, rise * fade)
-		_decals[i].emission_energy = 1.1 * rise * fade * (0.8 + 0.2 * sin(_clock * 6.0 + i))
+		_decals[i].emission_energy = 0.2 * rise * fade * (0.5 + 0.5 * sin(_clock * 3.0 + i * 1.7))
 
 func cracks_visible() -> int:
 	var n := 0

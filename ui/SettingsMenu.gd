@@ -130,6 +130,10 @@ func open() -> void:
 	var motion := _check("Camera motion (head bob, sprint zoom)", Graphics.camera_motion, Graphics.set_camera_motion)
 	motion.name = "CameraMotion"
 	col.add_child(motion)
+	if GameState.mode == "zombies":
+		var rain := _check("Rain and splashes at night", Graphics.rain_fx, Graphics.set_rain_fx)
+		rain.name = "RainFx"
+		col.add_child(rain)
 	var calm := _check("Fade the HUD while walking", Graphics.immersive_hud, Graphics.set_immersive_hud)
 	calm.name = "ImmersiveHud"
 	col.add_child(calm)

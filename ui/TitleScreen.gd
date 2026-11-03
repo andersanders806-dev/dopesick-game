@@ -77,6 +77,8 @@ void fragment() {
 	var first := _button("New run", _choose_view.bind(_start_run))
 	# Dead Block is a shooter: straight in, first person (gore and damage numbers live in the pause menu).
 	_button("Zombies", _start_zombies.bind(true))
+	# Ghetto Wars: the same block, first person, held against a rival crew with guns.
+	_button("Ghetto Wars", _start_gangs)
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
 	_button("Credits", _on_credits)
@@ -187,6 +189,10 @@ func _start_run(first_person: bool) -> void:
 func _start_zombies(first_person: bool) -> void:
 	_fade_out()
 	ZombieMode.start(first_person)
+
+func _start_gangs() -> void:
+	_fade_out()
+	ZombieMode.start_gangs()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _choosing_view and event.is_action_pressed("cancel_ui"):

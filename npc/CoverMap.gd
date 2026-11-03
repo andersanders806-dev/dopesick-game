@@ -126,7 +126,9 @@ static func fire_pos(point: Dictionary, lean := 0.85) -> Vector3:
 	return pos + side * lean * float(point.get("lean_side", 1.0))
 
 ## Spots within `radius` of `around`, free, that hide from `threat`, nearest to `from` first.
-func candidates(around: Vector3, radius: float, threat: Vector3, from: Vector3, limit := 6, min_threat := 4.0) -> Array[int]:
+## `ok`, if given, is asked of each in turn (cheapest first) and only those it accepts count; no more than
+## 40 are asked.
+func candidates(around: Vector3, radius: float, threat: Vector3, from: Vector3, limit := 6, min_threat := 4.0, ok := Callable()) -> Array[int]:
 	var scored: Array = []
 	var r2 := radius * radius
 	for i in points.size():
@@ -143,7 +145,14 @@ func candidates(around: Vector3, radius: float, threat: Vector3, from: Vector3, 
 		scored.append([i, pos.distance_squared_to(from)])
 	scored.sort_custom(func(a, b): return a[1] < b[1])
 	var out: Array[int] = []
+	var asked := 0
 	for s in scored:
+		if ok.is_valid():
+			asked += 1
+			if asked > 40:
+				break
+			if not ok.call(s[0]):
+				continue
 		out.append(s[0])
 		if out.size() >= limit:
 			break
@@ -159,3 +168,11 @@ func release(who: int) -> void:
 
 func is_free(i: int) -> bool:
 	return not claimed.has(i)
+
+## Whether the navmesh has a way from `from` to the spot (not an island in a courtyard behind a wall).
+func reachable(map: RID, from: Vector3, i: int) -> bool:
+	var goal: Vector3 = points[i]["pos"]
+	var path := NavigationServer3D.map_get_path(map, from, goal, true)
+	if path.size() < 2:
+		return false
+	return Vector2(path[path.size() - 1].x - goal.x, path[path.size() - 1].z - goal.z).length() < 1.2

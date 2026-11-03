@@ -16,6 +16,7 @@ const CoverMapScript := preload("res://npc/CoverMap.gd")
 const Barks := preload("res://npc/Barks.gd")
 const GangFX := preload("res://fx/GangFX.gd")
 const GANG_SHADER := preload("res://npc/gangster.gdshader")
+const GangGrip := preload("res://npc/GangGrip.gd")
 
 enum Mode { ADVANCE, COVER, PEEK, FLANK, PUSH, RETREAT, THROW, HOLD }
 
@@ -31,16 +32,16 @@ const CREW_LOOK := {
 ## Per gun: damage per round (per pellet), rounds a second, burst (min, max), magazine, pellets, reach where the
 ## damage is gone (m), reload seconds, the weapon file whose model and shot it borrows.
 const GUNS := {
-	"pistol": {"dmg": 8.0, "rate": 3.4, "burst": [1, 3], "mag": 12, "pellets": 1, "reach": 70.0, "reload": 1.7},
-	"smg": {"dmg": 6.0, "rate": 11.0, "burst": [4, 9], "mag": 30, "pellets": 1, "reach": 50.0, "reload": 2.0},
-	"ar": {"dmg": 9.0, "rate": 8.0, "burst": [3, 6], "mag": 30, "pellets": 1, "reach": 100.0, "reload": 2.3},
-	"shotgun": {"dmg": 5.0, "rate": 0.9, "burst": [1, 1], "mag": 6, "pellets": 7, "reach": 24.0, "reload": 2.6},
-	"lmg": {"dmg": 8.0, "rate": 9.0, "burst": [8, 16], "mag": 100, "pellets": 1, "reach": 90.0, "reload": 4.0},
+	"pistol": {"dmg": 7.0, "rate": 3.4, "burst": [1, 3], "mag": 12, "pellets": 1, "reach": 70.0, "reload": 1.7},
+	"smg": {"dmg": 4.5, "rate": 11.0, "burst": [4, 9], "mag": 30, "pellets": 1, "reach": 50.0, "reload": 2.0},
+	"ar": {"dmg": 7.5, "rate": 8.0, "burst": [3, 6], "mag": 30, "pellets": 1, "reach": 100.0, "reload": 2.3},
+	"shotgun": {"dmg": 4.5, "rate": 0.9, "burst": [1, 1], "mag": 6, "pellets": 7, "reach": 24.0, "reload": 2.6},
+	"lmg": {"dmg": 6.5, "rate": 9.0, "burst": [8, 16], "mag": 100, "pellets": 1, "reach": 90.0, "reload": 4.0},
 }
 ## How fast it goes (m/s): a walk, a jog, a rush.
-const PACE_WALK := 1.7
-const PACE_JOG := 3.9
-const PACE_RUSH := 5.0
+const PACE_WALK := 1.5
+const PACE_JOG := 3.0
+const PACE_RUSH := 3.8
 const CROUCH_PACE := 2.0
 ## Seconds of exposure to the player for the aim to be at its best.
 const AIM_UP := 1.6
@@ -93,6 +94,7 @@ var _busy_t := 0.0
 var _want := Vector3.ZERO
 var _pace := PACE_JOG
 var _gun_node: Node3D
+var _grip: SkeletonModifier3D
 var _muzzle_local := Vector3.ZERO
 var _lean_pos := Vector3.INF
 var _throw_t := -1.0
@@ -104,6 +106,12 @@ var shots_fired := 0
 var hits_landed := 0
 var last_hit_chance := 0.0
 var _clip := ""
+## Downed: hit hard, gun dropped, crawling away and begging; bleeds out unless you finish it (it pays more).
+var downed := false
+var _bleed_t := 0.0
+var finished_by_player := false
+const BLEED_TIME := Vector2(9.0, 13.0)
+const FINISH_BONUS := 150
 var _skin_materials := {}
 ## For the tests and the spawner: sets the mood before the body exists.
 var aggression := 0.5
@@ -118,7 +126,7 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 	max_health = float(ZombieMode.gang_health(wave))
 	vest_hp = float(ZombieMode.gang_vest(wave))
 	gun_id = ZombieMode.gang_gun(wave, rng.randf())
-	skill = clampf(rng.randf_range(0.34, 0.5) + wave * 0.012, 0.3, 0.62)
+	skill = clampf(rng.randf_range(0.26, 0.4) + wave * 0.01, 0.25, 0.52)
 	aggression = rng.randf_range(0.25, 0.9)
 	_pace = PACE_JOG * rng.randf_range(0.92, 1.08)
 	if zkind == "vest":
@@ -206,13 +214,21 @@ func _attach_gear(look: Dictionary) -> void:
 	rh.bone_name = "Bip01 R Hand"
 	_skeleton.add_child(rh)
 	_gun_node = GunModelScript.build(wd)
-	_gun_node.scale = Vector3.ONE / unit
-	_gun_node.rotation_degrees = GUN_ROT
+	_gun_node.basis = Basis(GUN_QUAT) * Basis.from_scale(Vector3.ONE / unit)
 	_gun_node.position = GUN_POS / unit
 	rh.add_child(_gun_node)
 	for mi in _gun_node.find_children("*", "MeshInstance3D", true, false):
 		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_muzzle_local = Vector3(0, 0, -float(wd.get("model_length")) * (1.0 - GunModelScript.GRIP_AT))
+	var length := float(wd.get("model_length"))
+	_muzzle_local = Vector3(0, 0, -length * (1.0 - GunModelScript.GRIP_AT))
+	# The left hand: under a pistol's grip, out on the foregrip of anything longer.
+	_grip = GangGrip.new()
+	_grip.name = "GangGrip"
+	_grip.unit = unit
+	_grip.gun_pos = GUN_POS
+	_grip.gun_quat = GUN_QUAT
+	_grip.fore_m = Vector3(0, -0.045, -0.04) if gun_id == "pistol" else Vector3(0, -0.04, -length * (0.30 if gun_id != "lmg" else 0.34))
+	_skeleton.add_child(_grip)
 	# A bandana: a band round the head at the brow, in the crew's colour.
 	var hd := BoneAttachment3D.new()
 	hd.name = "Bandana"
@@ -220,9 +236,9 @@ func _attach_gear(look: Dictionary) -> void:
 	_skeleton.add_child(hd)
 	var band := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.098
-	cyl.bottom_radius = 0.098
-	cyl.height = 0.05
+	cyl.top_radius = 0.104
+	cyl.bottom_radius = 0.104
+	cyl.height = 0.075
 	cyl.cap_top = false
 	cyl.cap_bottom = false
 	band.mesh = cyl
@@ -238,10 +254,12 @@ func _attach_gear(look: Dictionary) -> void:
 	hd.add_child(band)
 
 ## Where the gun sits in the hand (bone-local, metres) and how it is turned; tuned against the aim pose.
-const GUN_ROT := Vector3(0, 0, 0)
-const GUN_POS := Vector3(0, 0, 0)
-const BAND_POS := Vector3(0.0, 0.09, 0.0)
-const BAND_ROT := Vector3(0, 0, 90)
+## (GUN_QUAT: the hand's rotation to a gun whose barrel runs along the aim pose's arm, upright, measured by
+## dev-tools/gang_fit_probe.gd on the ga_stand pose; the head's X axis is up and Y forward.)
+const GUN_QUAT := Quaternion(0.4014, -0.3619, -0.5198, 0.6616)
+const GUN_POS := Vector3(0.05, 0.0, 0.0)
+const BAND_POS := Vector3(0.062, 0.016, 0.0)
+const BAND_ROT := Vector3(0, 0, -90)
 
 # --- Brain ---------------------------------------------------------------------------
 
@@ -300,7 +318,7 @@ func _player_chest() -> Vector3:
 	var head := _player_head()
 	return Vector3(target.global_position.x, minf(target.global_position.y + 1.05, head.y - 0.3), target.global_position.z)
 
-func _blocked(from: Vector3, to: Vector3) -> bool:
+func _wall_between(from: Vector3, to: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.collision_mask = 1
 	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
@@ -311,12 +329,13 @@ func _sense(delta: float) -> void:
 	if _sense_t > 0.0:
 		return
 	_sense_t = 0.12 + randf() * 0.05
-	var from := eye()
+	# Sight is judged from the gun: if the muzzle can see you, a round can reach you.
+	var from := muzzle_pos() if _gun_node != null and not downed else eye()
 	var head := _player_head()
 	var chest := _player_chest()
-	_los_head = not _blocked(from, head)
+	_los_head = not _wall_between(from, head)
 	var was := _los
-	_los = _los_head or not _blocked(from, chest)
+	_los = _los_head or not _wall_between(from, chest)
 	if _los:
 		_last_seen = chest
 		_last_seen_t = 0.0
@@ -348,6 +367,9 @@ func bark(event: String, force := false) -> void:
 # -- Deciding --
 
 func _think(delta: float) -> void:
+	if downed:
+		_crawl(delta)
+		return
 	var to := target.global_position - global_position
 	to.y = 0.0
 	var dist := to.length()
@@ -361,13 +383,24 @@ func _think(delta: float) -> void:
 	match mode:
 		Mode.ADVANCE, Mode.FLANK, Mode.PUSH:
 			crouched = false
-			_walk_to_goal(delta, _pace * (1.2 if mode == Mode.FLANK else 1.0))
-			if _goal == Vector3.INF or _flat_dist(_goal) < 0.9 or _mode_t < -30.0:
+			if _goal == Vector3.INF and mode == Mode.ADVANCE and cover_i < 0:
+				_first_orders()
+			_walk_to_goal(delta, _pace * (1.25 if (mode == Mode.FLANK or dist > 35.0) else 1.0))
+			if _goal == Vector3.INF or _flat_dist(_goal) < (0.45 if cover_i >= 0 else 0.9):
 				_arrive()
+			elif _mode_t < -22.0:
+				# Not getting there: another spot (or the player's side of the street).
+				_mode_t = 0.0
+				if not _choose_cover(false, 0.0):
+					_arrive()
 			elif mode == Mode.ADVANCE and _los and dist < 14.0 and cover_i < 0:
 				_arrive()
 		Mode.COVER:
-			crouched = cover_i >= 0 and bool(_cover()["high"] or true)
+			crouched = cover_i >= 0
+			# Settle on the spot (coming back from leaning out).
+			if cover_i >= 0 and _goal != Vector3.INF and _flat_dist(_goal) > 0.3:
+				_want = Vector3(_goal.x - global_position.x, 0.0, _goal.z - global_position.z).normalized()
+				_pace_now = 2.2
 			if _reload_t > 0.0:
 				return
 			if mag <= 0:
@@ -390,6 +423,14 @@ func _think(delta: float) -> void:
 			_throw_tick(delta)
 		Mode.HOLD:
 			pass
+
+## Fresh off the spawn point: to the best cover near the player, or at least towards them.
+func _first_orders() -> void:
+	if _choose_cover(false, 0.0):
+		return
+	var pl := target.global_position
+	var away := Vector3(global_position.x - pl.x, 0, global_position.z - pl.z).normalized()
+	_goal = pl + away * 14.0
 
 func _flat_dist(p: Vector3) -> float:
 	return Vector2(p.x - global_position.x, p.z - global_position.z).length()
@@ -422,15 +463,10 @@ func _decide_from_cover(dist: float, player_reloading: bool) -> void:
 		_begin_throw(dist)
 		return
 	# Shoot from the cover point, standing or leaning out.
-	_lean_pos = CoverMapScript.fire_pos(cv) if not cv.is_empty() else Vector3.INF
-	if not cv.is_empty() and cv["high"]:
-		var d: Vector3 = cv["dir"]
-		var side := Vector3(-d.z, 0.0, d.x)
-		for s in [1.0, -1.0]:
-			var p: Vector3 = cv["pos"] + side * 0.85 * s
-			if not _blocked(p + Vector3(0, HEIGHT_STAND, 0), _player_head()):
-				_lean_pos = p
-				break
+	_lean_pos = _fire_spot(cv) if not cv.is_empty() else Vector3.INF
+	if _lean_pos == Vector3.INF and not cv.is_empty():
+		if _choose_cover(false, 0.0):
+			return
 	mode = Mode.PEEK
 	_peeks_left = 1 + (1 if randf() < aggression else 0)
 	_mode_t = randf_range(1.6, 3.2)
@@ -482,9 +518,11 @@ func _choose_cover(flank: bool, closer: float) -> bool:
 	var pl := target.global_position
 	var d_now := _flat_dist(pl)
 	var radius := 30.0
-	var options := cover_map.candidates(pl, radius, pl, me, 10, 7.0)
+	var options := cover_map.candidates(pl, radius, pl, me, 8, 7.0, cover_ok)
 	var best := -1
 	var best_score := -INF
+	var map := get_world_3d().navigation_map
+	var checked := 0
 	for i in options:
 		var p: Dictionary = cover_map.points[i]
 		var pos: Vector3 = p["pos"]
@@ -502,12 +540,49 @@ func _choose_cover(flank: bool, closer: float) -> bool:
 				continue
 			score += absf(a1) * 3.0
 		if score > best_score:
+			# Only a spot with a way to it counts (the path query is the dear part: the leader only).
+			if checked < 5:
+				checked += 1
+				if not cover_map.reachable(map, me, i):
+					continue
 			best_score = score
 			best = i
 	if best < 0:
 		return false
 	_take_cover(best)
 	return true
+
+## A cover point is worth having only if it hides you from the player and you can shoot them from it: some
+## fire position (standing over low cover, leaning out either side of high) has a clear line to their head.
+func cover_ok(i: int) -> bool:
+	if cover_map == null or i < 0 or i >= cover_map.points.size():
+		return false
+	var cv: Dictionary = cover_map.points[i]
+	if not CoverMapScript.hides(cv, target.global_position):
+		return false
+	return _fire_spot(cv) != Vector3.INF
+
+## Where to shoot from at a cover point: standing over low cover, else leaning out to a side (0.9 m, then 1.5 m)
+## that has a clear line to the player's head. INF if there is none.
+func _fire_spot(cv: Dictionary) -> Vector3:
+	var head := _player_head()
+	var pos: Vector3 = cv["pos"]
+	if not cv["high"] and not _wall_between(pos + Vector3(0, HEIGHT_STAND, 0), head):
+		return pos
+	var d: Vector3 = cv["dir"]
+	var side := Vector3(-d.z, 0.0, d.x)
+	for lean in [0.9, 1.5]:
+		for sgn in [1.0, -1.0]:
+			var p: Vector3 = pos + side * float(lean) * float(sgn)
+			if not _wall_between(p + Vector3(0, HEIGHT_STAND, 0), head) and _on_ground(p):
+				return p
+	return Vector3.INF
+
+## Whether a spot is somewhere to stand (not inside the thing it hides behind).
+func _on_ground(p: Vector3) -> bool:
+	var map := get_world_3d().navigation_map
+	var c := NavigationServer3D.map_get_closest_point(map, p)
+	return Vector2(c.x - p.x, c.z - p.z).length() < 0.6
 
 func _take_cover(i: int) -> void:
 	if cover_map != null and cover_i >= 0:
@@ -543,6 +618,45 @@ func _begin_reload() -> void:
 	_busy_t = _reload_t
 	anim.play_once("g_reload", 1.7 / _reload_t if _reload_t > 0.1 else 1.0)
 	bark("reload")
+
+# -- Downed --
+
+func _go_down(dir: Vector3) -> void:
+	downed = true
+	mode = Mode.HOLD
+	crouched = false
+	_burst_left = 0
+	_reload_t = 0.0
+	_bleed_t = randf_range(BLEED_TIME.x, BLEED_TIME.y)
+	if cover_map != null:
+		cover_map.release(get_instance_id())
+	if _gun_node != null:
+		_gun_node.visible = false
+	if _grip != null:
+		_grip.weight = 0.0
+	set_legless(true)
+	_busy_t = 0.0
+	_stagger = 0.0
+	bark("begging", true)
+	var fx := get_tree().get_first_node_in_group("gang_fx")
+	if fx != null and fx.has_method("_play_at"):
+		fx._play_at(global_position, "kill_thump", -6.0, 0.9)
+
+func _crawl(delta: float) -> void:
+	_bleed_t -= delta
+	_bark_cd = maxf(_bark_cd - 0.0, 0.0)
+	if _bleed_t <= 0.0:
+		bled_out = true
+		take_hit("torso", 99999.0, Vector3.DOWN)
+		return
+	var away := Vector3(global_position.x - target.global_position.x, 0, global_position.z - target.global_position.z)
+	if away.length() > 0.1 and _flat_dist(target.global_position) < 30.0:
+		_want = away.normalized()
+		_pace_now = 0.55
+	if _frame % 150 == 0 and randf() < 0.6:
+		bark("begging", true)
+
+var bled_out := false
 
 # -- Moving --
 
@@ -580,6 +694,8 @@ func _locomote(delta: float) -> void:
 	var firing := (_burst_left > 0 or mode == Mode.PEEK or _throw_t >= 0.0) and state == State.CHASE
 	if _want.length() > 0.01 and state == State.CHASE and _stagger <= 0.0 and _busy_t <= 0.0:
 		var pace := _pace_now if mode != Mode.COVER else CROUCH_PACE
+		if downed:
+			pace = 0.55
 		if crouched and mode != Mode.PEEK:
 			pace = minf(pace, CROUCH_PACE)
 		if _slow > 0.0:
@@ -622,6 +738,9 @@ func _animate() -> void:
 	if state != State.CHASE or _busy_t > 0.0 or _stagger > 0.0:
 		return
 	var moved := Vector2(velocity.x, velocity.z).length()
+	if downed:
+		anim.play("z_crawl", clampf(moved / 0.6, 0.3, 1.2) if moved > 0.05 else 0.25)
+		return
 	var clip := "ga_stand"
 	var rate := 1.0
 	if moved > 0.4:
@@ -629,7 +748,7 @@ func _animate() -> void:
 			clip = "ga_crouch_walk"
 		elif moved < 2.4:
 			clip = "ga_walk"
-		elif moved > 4.6:
+		elif moved > 3.5:
 			clip = "ga_sprint"
 		else:
 			clip = "ga_jog"
@@ -671,6 +790,8 @@ func miss_radius() -> float:
 	return lerpf(MISS_FAR, MISS_NEAR, t)
 
 func _fire_tick(delta: float) -> void:
+	if downed:
+		return
 	_fire_cd = maxf(_fire_cd - delta, 0.0)
 	if _reload_t > 0.0:
 		_reload_t -= delta
@@ -761,7 +882,7 @@ func _shoot() -> void:
 		if not r.is_empty():
 			stop = r.position
 			blocked = true
-			if hit and muzzle.distance_to(r.position) < muzzle.distance_to(end) - 0.35:
+			if hit and muzzle.distance_to(r.position) < muzzle.distance_to(end) - 2.0:
 				hit = false
 		if hit:
 			total += dmg_each
@@ -818,6 +939,8 @@ func _ensure_flinch() -> SkeletonModifier3D:
 	if _flinch == null:
 		_flinch = preload("res://npc/ZombieFlinch.gd").new()
 		_skeleton.add_child(_flinch)
+		if _grip != null:
+			_skeleton.move_child(_grip, -1)
 	return _flinch
 
 # -- Grenades and bottles --
@@ -866,6 +989,11 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 	if part.contains("arm"):
 		_wounded_flinch = 1.2
 	super.take_hit(part, dmg, dir, weapon, melee, at)
+	if _grip != null and _flinch != null and _skeleton != null and _skeleton.get_child(-1) != _grip:
+		_skeleton.move_child(_grip, -1)
+	if state < State.DYING and not downed and not boss and part != "head" and part != "neck" and health < max_health * 0.2 and randf() < 0.55:
+		_go_down(dir)
+		return
 	if state < State.DYING:
 		_burst_left = 0 if randf() < 0.6 else _burst_left
 		if mode == Mode.PEEK and randf() < 0.55:
@@ -874,6 +1002,8 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 			bark("hit")
 
 func _react(part: String, dmg: float) -> void:
+	if downed:
+		return
 	if dmg < max_health * 0.1 or state == State.KNEEL or state == State.STANDUP:
 		return
 	if part.contains("leg") and not legless and not boss:
@@ -889,9 +1019,18 @@ func _react(part: String, dmg: float) -> void:
 	_fire_cd = maxf(_fire_cd, 0.35)
 
 func _die(part: String, melee: bool, dir: Vector3) -> void:
+	if downed:
+		finished_by_player = not bled_out
+		var gm := get_node_or_null("/root/GhettoMode")
+		if gm != null:
+			gm.enemy_downed_resolved.emit(self, finished_by_player)
+		if finished_by_player and melee:
+			ZombieMode.add_points(FINISH_BONUS, "finisher")
 	if cover_map != null:
 		cover_map.release(get_instance_id())
 	remove_from_group("gangsters")
+	if _grip != null:
+		_grip.weight = 0.0
 	if buddy != null and is_instance_valid(buddy) and buddy.has_method("bark"):
 		buddy.bark("ally_down")
 	super._die(part, melee, dir)
@@ -912,6 +1051,25 @@ func _exit_tree() -> void:
 	if cover_map != null:
 		cover_map.release(get_instance_id())
 	super._exit_tree()
+
+## Called after it is in the tree: nothing to do yet (a hook for barks on arrival).
+func bark_ready() -> void:
+	pass
+
+## The last few of a wave break cover and charge, as in COD.
+func rush() -> void:
+	if mode == Mode.RETREAT or mode == Mode.THROW:
+		return
+	aggression = 1.0
+	if mode == Mode.COVER and _choose_cover(false, 6.0):
+		mode = Mode.PUSH
+
+## A man on a car's running board: shoots from the open for a few seconds while it passes, no cover.
+func drive_by() -> void:
+	mode = Mode.PEEK
+	_mode_t = 6.0
+	_peeks_left = 4
+	_lean_pos = Vector3.INF
 
 ## For the tests: sends it to cover i now.
 func go_to_cover(i: int) -> void:

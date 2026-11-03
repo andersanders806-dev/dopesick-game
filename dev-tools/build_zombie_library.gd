@@ -1,7 +1,9 @@
 extends SceneTree
 ## Packs the retargeted clips (dev-tools/retarget_to_bip01.py) into the
 ## AnimationLibrary the zombies share. Not run by hand:
-##   godot --headless --path . -s res://dev-tools/build_zombie_library.gd -- <clips.glb> <meta.json> <out.res>
+##   godot --headless --path . -s res://dev-tools/build_zombie_library.gd -- <clips.glb> <meta.json> <out.res> [merge]
+## `merge`: the clips in the glb replace or join the ones already in <out.res>, and every other clip
+## stays exactly as it was (retarget_to_bip01.py passes it when it is told which clips to bake).
 ## The GLB sits outside the project (~/.cache/dopesick), so it is read at run
 ## time instead of imported; the importer's work is done here instead:
 ## the avatars' .import files set root_scale 0.6667, which scales position
@@ -27,6 +29,8 @@ func _initialize() -> void:
 	var scene := doc.generate_scene(state)
 	var ap := scene.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	var lib := AnimationLibrary.new()
+	if args.size() > 3 and args[3] == "merge" and ResourceLoader.exists(args[2]):
+		lib = load(args[2]) as AnimationLibrary
 	for clip in ap.get_animation_list():
 		var a: Animation = ap.get_animation(clip).duplicate()
 		a.loop_mode = Animation.LOOP_LINEAR if meta.get(clip, {}).get("loop", false) else Animation.LOOP_NONE
@@ -51,6 +55,8 @@ func _initialize() -> void:
 		a.set_meta("source", m.get("source", ""))
 		a.set_meta("derived", m.get("hunch", false))
 		a.set_meta("root_motion", m.get("root_motion", false))
+		if lib.has_animation(clip):
+			lib.remove_animation(clip)
 		lib.add_animation(clip, a)
 		print("clip %s  %.2fs  tracks %d  loop %s  %s" % [clip, a.length, a.get_track_count(), a.loop_mode != 0, m.get("source", "")])
 	DirAccess.make_dir_recursive_absolute(args[2].get_base_dir())

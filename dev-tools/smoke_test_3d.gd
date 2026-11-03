@@ -9514,7 +9514,11 @@ func _zombie_horde_checks(gs: Node) -> void:
 	await _frames(60)
 	var mid_y: float = zr._model_root.position.y
 	_check(zr.state == zr.State.ENTER and mid_y > -1.9 and mid_y < -0.1, "  ...climbs out (%.2f m after a second)" % mid_y)
-	await _frames(70)
+	# The climb is the z_rise clip (about 3 s), not a fixed 1.7 s slide.
+	for i in 400:
+		if zr.state != zr.State.ENTER:
+			break
+		await physics_frame
 	_check(zr.state != zr.State.ENTER and absf(zr._model_root.position.y) < 0.01 and zr.collision_layer == zr.BODY_LAYER and absf(zr.global_position.y) < 0.2,
 		"  ...and is a zombie on the street (state %d, y %.2f)" % [zr.state, zr.global_position.y])
 	zr.free()

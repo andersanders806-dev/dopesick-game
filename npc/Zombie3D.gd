@@ -26,6 +26,7 @@ const ZombieFlinch := preload("res://npc/ZombieFlinch.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
 const EntranceFX := preload("res://fx/EntranceFX.gd")
 const Gore := preload("res://fx/gore/Gore.gd")
+const ZombieVoice := preload("res://npc/ZombieVoice.gd")
 const ROT_SHADER := preload("res://npc/zombie_rot.gdshader")
 
 enum State { CHASE, TEAR, ATTACK, KNEEL, STANDUP, ENTER, DYING, DEAD }
@@ -39,12 +40,27 @@ const BODIES := [
 ]
 const MODEL_DIR := "res://assets/rocketbox/"
 
-const WALK_CLIPS := ["z_walk", "z_walk2", "z_walk3"]
-const ATTACK_CLIPS := ["z_attack", "z_attack2", "z_attack3"]
+## The gaits a healthy walker gets (weights by repeats): a plain shamble, a human walk leaned over,
+## a foot-dragging one and a lurching, swaying one.
+const WALK_CLIPS := ["z_walk", "z_walk", "z_walk2", "z_walk3", "z_walk4", "z_walk4"]
+const ATTACK_CLIPS := ["z_attack", "z_attack2", "z_attack3", "z_bite", "z_smash"]
+## Where in each attack the blow lands (share of the clip); the others use ATTACK_HIT_AT.
+const ATTACK_HIT := {"z_bite": 0.5, "z_smash": 0.55, "z_attack3": 0.5}
+## Share of its pace a hurt walker keeps: a bad leg, a bad arm.
+const LIMP_PACE := 0.75
+const HURT_ARM_PACE := 0.9
+## The lunge: a walker within LUNGE_FROM metres of its prey (and further than LUNGE_MIN) may throw
+## itself forward for LUNGE_TIME seconds at LUNGE_BOOST times its pace, then it is in reach.
+const LUNGE_FROM := 4.2
+const LUNGE_MIN := 2.1
+const LUNGE_TIME := 0.7
+const LUNGE_BOOST := 2.7
+## Facing off by more than this (radians) while standing: it shuffles its feet round.
+const TURN_STEP := 0.5
 const WALK_SPEED := Vector2(0.9, 1.45)
 const RUN_SPEED := Vector2(3.0, 3.7)
 ## Legless, it drags itself along.
-const CRAWL_SPEED := 0.75
+const CRAWL_SPEED := 0.55
 const TURN_SPEED := 7.0
 ## Reach of a claw, and when in the swing it lands (fraction of the clip).
 const ATTACK_RANGE := 1.35
@@ -139,6 +155,28 @@ var _tear_hit_done := false
 var _stagger := 0.0
 var _kneel_t := 0.0
 var _slow := 0.0
+## Z5 body language. The gait it was dealt, the pace its wounds leave it, the lunge, the
+## shuffle-turn, the throat.
+var _base_clip := "z_walk"
+var _gait_mult := 1.0
+var gait := ""
+var _lunger := false
+var _lunge_t := 0.0
+var _lunge_ready := true
+var _lunge_cd := 0.0
+var lunges := 0
+var _turn_err := 0.0
+var _hit_dir := Vector3.ZERO
+var _kneel_left := false
+var _attack_clip := ""
+var _voice_pitch := 1.0
+var _voice_t := 4.0
+var _breath_t := 0.0
+var _breath_out := false
+var _pain_cd := 0.0
+var _react_cd := 0.0
+var _dist_player := 99.0
+var voice_kinds := {}
 ## A shove from a shotgun at close range (m/s on the ground, dying away).
 var _knock := Vector3.ZERO
 ## Gore (fx/gore/Gore.gd): damage taken per hit zone, the limbs gone (limb -> true), the
@@ -197,6 +235,11 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 		# A little faster each round, like the rest of the horde.
 		speed = rng.randf_range(WALK_SPEED.x, WALK_SPEED.y) * (1.0 + minf(round_no, 15) * 0.02)
 		_move_clip = WALK_CLIPS[rng.randi() % WALK_CLIPS.size()]
+	_base_clip = _move_clip
+	gait = _move_clip
+	_lunger = kind == "walker" and rng.randf() < 0.6
+	_voice_pitch = rng.randf_range(0.82, 1.18) * (1.12 if kind == "runner" else 1.0)
+	_voice_t = rng.randf_range(1.0, 7.0)
 	_rot_amount = rng.randf_range(0.45, 1.0)
 	set_meta("body", BODIES[rng.randi() % BODIES.size()])
 	set_meta("seed", rng.randf())
@@ -352,7 +395,12 @@ func _physics_process(delta: float) -> void:
 	_stagger = maxf(_stagger - delta, 0.0)
 	_slow = maxf(_slow - delta, 0.0)
 	_attack_cooldown = maxf(_attack_cooldown - delta, 0.0)
+	_lunge_t = maxf(_lunge_t - delta, 0.0)
+	_lunge_cd = maxf(_lunge_cd - delta, 0.0)
+	_pain_cd = maxf(_pain_cd - delta, 0.0)
+	_react_cd = maxf(_react_cd - delta, 0.0)
 	_update_lod(delta)
+	_voice_tick(delta)
 	if target == null or not is_instance_valid(target):
 		target = get_tree().get_first_node_in_group("player") as Node3D
 	var want := Vector3.ZERO
@@ -396,13 +444,18 @@ func _chase(delta: float) -> Vector3:
 	# Not on its level (the player up on the high ground): no clawing through the floor, it has to find the way.
 	if height_gap > 2.4:
 		dist = maxf(dist, 99.0)
+	_dist_player = dist
 	if dist < ATTACK_RANGE and _attack_cooldown <= 0.0 and _stagger <= 0.0:
+		_lunge_t = 0.0
 		_begin_attack(to)
 		return Vector3.ZERO
 	if _stagger > 0.0:
 		return Vector3.ZERO
 	var dir := to.normalized() if to.length() > 0.001 else Vector3.FORWARD
 	_holding = false
+	dist = _lunge_check(dist, dir, height_gap)
+	if _lunge_t > 0.0:
+		return dir
 	# Near the target it takes a slot on the ring round it and goes to that.
 	var slot_goal := _slot_goal(dist, delta)
 	if slot_goal != Vector3.INF:
@@ -490,13 +543,36 @@ func _tear(delta: float) -> Vector3:
 	anim.update(0.0)
 	return Vector3.ZERO
 
+## A walker that closes to within a few metres of its prey may throw itself at it: a short
+## burst of speed with the lunge clip, then the swing. Once per approach (it is armed again
+## when the prey gets 9 m away); returns the distance for the caller to carry on with.
+func _lunge_check(dist: float, dir: Vector3, height_gap: float) -> float:
+	if dist > 9.0:
+		_lunge_ready = true
+	if not (_lunger and _lunge_ready and _lunge_cd <= 0.0 and _lunge_t <= 0.0 and not legless):
+		return dist
+	if dist > LUNGE_FROM or dist < LUNGE_MIN or height_gap > 0.8 or _blocked(dir) or _move_clip != _base_clip:
+		return dist
+	_lunge_ready = false
+	_lunge_cd = 6.0
+	_lunge_t = LUNGE_TIME
+	lunges += 1
+	anim.play_once_timed("z_lunge", LUNGE_TIME)
+	_say("lunge")
+	return dist
+
 func _begin_attack(to: Vector3) -> void:
 	state = State.ATTACK
 	_attack_hit_done = false
 	_attack_time = 0.0
 	_face(to, 1.0)
+	# A runner goes for the bite and the claws, a walker may smash or hug as well.
 	var clip: String = ATTACK_CLIPS[randi() % ATTACK_CLIPS.size()]
+	if kind == "runner" and (clip == "z_smash" or clip == "z_attack3"):
+		clip = "z_bite" if randf() < 0.6 else "z_attack"
+	_attack_clip = clip
 	_attack_len = _swing(clip)
+	_say("snarl")
 
 func _swing(clip: String, rate := 1.0) -> float:
 	var dur := anim.play_once(clip, rate)
@@ -508,7 +584,7 @@ func _attack(delta: float) -> void:
 		var to := target.global_position - global_position
 		to.y = 0.0
 		_face(to, delta * 0.5)
-		if not _attack_hit_done and _attack_time >= _attack_len * ATTACK_HIT_AT:
+		if not _attack_hit_done and _attack_time >= _attack_len * float(ATTACK_HIT.get(_attack_clip, ATTACK_HIT_AT)):
 			_attack_hit_done = true
 			if to.length() <= ATTACK_RANGE + 0.35:
 				attacked.emit(self, damage)
@@ -526,15 +602,19 @@ func _attack(delta: float) -> void:
 func _face(dir: Vector3, delta: float) -> void:
 	if dir.length() < 0.01:
 		return
-	_facing = lerp_angle(_facing, atan2(dir.x, dir.z), clampf(TURN_SPEED * delta, 0.0, 1.0))
+	var want := atan2(dir.x, dir.z)
+	_turn_err = absf(angle_difference(_facing, want))
+	_facing = lerp_angle(_facing, want, clampf(TURN_SPEED * delta, 0.0, 1.0))
 	_model_root.rotation.y = _facing
 
 func _move(want: Vector3, delta: float) -> void:
 	var v := Vector3.ZERO
 	if want.length() > 0.01:
-		var pace := CRAWL_SPEED if legless else speed
+		var pace := CRAWL_SPEED if legless else speed * _gait_mult
 		if _slow > 0.0:
 			pace *= 0.5
+		if _lunge_t > 0.0:
+			pace *= LUNGE_BOOST
 		v = want * pace
 		_face(want, delta)
 	if state == State.CHASE or state == State.ATTACK:
@@ -554,13 +634,24 @@ func _move(want: Vector3, delta: float) -> void:
 		velocity = keep
 	else:
 		move_and_slide()
-	if state == State.CHASE and _stagger <= 0.0:
+	if state == State.CHASE and _stagger <= 0.0 and _lunge_t <= 0.0:
+		# A reaction clip that handed over to the walk while still running never reports back.
+		anim.end_once()
 		var moved := Vector2(velocity.x, velocity.z).length()
 		var clip := "z_crawl" if legless else _move_clip
 		if moved > 0.15:
-			anim.play(clip, anim.stride_rate(clip, moved))
+			# Steps as long as the ground it covers: the clip's pace follows the velocity.
+			var rate := anim.stride_rate(clip, moved)
+			if legless:
+				# A crawl's strokes are slow for the ground they cover: let it pull faster than a walk may.
+				rate = clampf(moved / maxf(anim.natural_speed(clip), 0.05), 0.5, 2.9)
+			anim.play(clip, rate)
+		elif _turn_err > TURN_STEP and not legless:
+			# Standing but swinging round to face its prey: shuffles its feet instead of spinning on the spot.
+			anim.play(_move_clip, clampf(_turn_err * 0.5, 0.45, 0.9))
 		else:
 			anim.play("z_idle", 1.0)
+		_turn_err = 0.0
 
 ## A shove off its neighbours so a horde spreads instead of stacking (also
 ## when standing still: a pile unpicks itself). Reads one snapshot of the living
@@ -746,14 +837,18 @@ func relocated() -> void:
 # --- Entrances (npc/Entrances.gd) ---------------------------------------------------------------
 
 ## Seconds for a zombie to climb out of the ground, and how deep it starts.
-const RISE_TIME := 1.7
+const RISE_TIME := 3.0
 const RISE_DEPTH := 2.1
+## How far under the street the body is when the hands first reach the surface.
+const RISE_HANDS := 0.5
 ## Out through a shop front: the shove it comes out with (m/s along the ground).
 const SMASH_SHOVE := 6.5
 ## How it came in ("", "rise", "drop", "smash", "plain"); the tests read it.
 var entrance := ""
 var _enter := {}
 var _enter_t := 0.0
+var _rise_len := RISE_TIME
+var _groaned := false
 
 ## Lets it come in the way `e` says (an Entrances.pick() result); call it right after adding the
 ## zombie to the tree. A rise starts under the street and climbs out, a drop falls from a fire
@@ -769,7 +864,12 @@ func begin_entrance(e: Dictionary) -> void:
 			global_position = e["pos"]
 			_ghost(true)
 			_model_root.position.y = -RISE_DEPTH
-			anim.play(_move_clip, 0.7)
+			# The climb out is a clip of its own (hand first, the body dragged after it, a push up
+			# onto the knees, then to its feet), a little quicker or slower for each of them. It ends
+			# 0.15 s early: the blend into the walk needs a clip that is still running.
+			var dur := anim.play_once("z_rise", randf_range(1.1, 1.35))
+			_rise_len = maxf(dur - 0.15, 1.0)
+			_groaned = false
 			if fx != null:
 				fx.ground_burst(e["pos"], e.get("node"))
 		"drop":
@@ -796,12 +896,18 @@ func _enter_tick(delta: float) -> void:
 	_enter_t += delta
 	match entrance:
 		"rise":
-			var k := clampf(_enter_t / RISE_TIME, 0.0, 1.0)
-			# A pause while the dirt flies, then up with a heave.
-			var u := smoothstep(0.12, 1.0, k)
-			_model_root.position.y = -RISE_DEPTH * (1.0 - u)
+			var k := clampf(_enter_t / _rise_len, 0.0, 1.0)
+			# A pause while the dirt flies, then the hands come up through it; the rest of the climb
+			# is the clip's own (the body is lying on the street as it drags itself out).
+			var y := -RISE_DEPTH + (RISE_DEPTH - RISE_HANDS) * smoothstep(0.05, 0.2, k)
+			y += RISE_HANDS * smoothstep(0.2, 0.5, k)
+			_model_root.position.y = minf(y, 0.0)
+			if k > 0.45 and not _groaned:
+				_groaned = true
+				_say("groan", -2.0)
 			if k >= 1.0:
-				_finish_entrance(0.2)
+				anim.end_once()
+				_finish_entrance(0.0)
 		"drop":
 			var fall := maxf(float(_enter.get("fall", 0.5)), 0.2)
 			var k := clampf(_enter_t / fall, 0.0, 1.0)
@@ -815,17 +921,41 @@ func _enter_tick(delta: float) -> void:
 				var fx := EntranceFX.of(self)
 				if fx != null:
 					fx.landing(land, bool(_enter.get("roof", false)))
-				# A runner is off at once; a walker takes a moment to find its feet.
-				_finish_entrance(0.2 if kind == "runner" else 0.8)
+				# Down in a crouch (the clip), the trunk driven forward by the impact; a runner is up and
+				# off almost at once, a walker takes its time to find its feet.
+				_land_kick()
+				_say("pain", -3.0)
+				_finish_entrance(0.0, "z_land", 1.7 if kind == "runner" else 1.0)
 		_:
 			_finish_entrance(0.0)
 
-func _finish_entrance(stagger: float) -> void:
+## Hands over to the chase. With a `clip` the body lands in it first (held as a stagger, less the
+## blend into the walk); without, it walks off at once.
+func _finish_entrance(stagger: float, clip := "", rate := 1.0) -> void:
 	_end_entrance()
 	state = State.CHASE
 	_stagger = stagger
 	_repath_in = 0.0
-	anim.play(_move_clip, 1.0)
+	if clip != "":
+		var dur := anim.play_once(clip, rate)
+		_stagger = maxf(dur - 0.18, 0.2)
+	else:
+		anim.play(_move_clip, 1.0)
+
+## The impact of a landing drives the trunk forward and the head down, and it settles back.
+func _land_kick() -> void:
+	if _skeleton == null:
+		return
+	if _flinch == null:
+		_flinch = ZombieFlinch.new()
+		_skeleton.add_child(_flinch)
+	var inv := _skeleton.global_transform.basis.orthonormalized().inverse()
+	var fwd := Vector3(sin(_facing), 0.0, cos(_facing))
+	var bend := inv * Vector3.UP.cross(fwd).normalized()
+	var f: Variant = _flinch
+	f.kick(_skeleton.find_bone("Bip01 Spine"), bend, deg_to_rad(16.0), 0.6)
+	f.kick(_skeleton.find_bone("Bip01 Spine1"), bend, deg_to_rad(22.0), 0.55)
+	f.kick(_skeleton.find_bone("Bip01 Neck"), bend, deg_to_rad(12.0), 0.5)
 
 ## Back to a body in the world: the capsule on, the model at its feet.
 func _end_entrance() -> void:
@@ -952,7 +1082,9 @@ func take_hit(part: String, dmg: float, dir: Vector3, weapon: Resource = null, m
 			if gore != null:
 				gore.ragdoll(self, dir, power, at)
 		return
+	_hit_dir = Vector3(dir.x, 0.0, dir.z).normalized() if Vector2(dir.x, dir.z).length() > 0.01 else Vector3.ZERO
 	_react(part, dmg)
+	_refresh_gait()
 	_flinch_part(part, dir, dmg)
 
 ## Blood, the sound of it, a floating number: where the bullet went in (or where the part is).
@@ -1022,6 +1154,67 @@ func _flinch_part(part: String, dir: Vector3, dmg: float) -> void:
 				f.kick(_skeleton.find_bone("Bip01 Pelvis"), -bend, deg_to_rad(13.0) * k)
 				f.kick(_skeleton.find_bone("Bip01 Spine"), -bend, deg_to_rad(10.0) * k)
 
+## Which gait its wounds leave it. A leg that is gone or has taken a beating (a fifth of its
+## health) puts it on the foot-dragging limp for that side at a bit over half pace; an arm that
+## is gone or ruined leans the whole body to that side with the arm hanging. Only the plain
+## walkers and runners: the special ones set their own clip.
+func _refresh_gait() -> void:
+	if legless or _skeleton == null or not (kind == "walker" or kind == "runner"):
+		return
+	var leg_l := severed.has("leg_l") or severed.has("shin_l") or float(limb_damage.get("upper_leg_l", 0.0)) + float(limb_damage.get("lower_leg_l", 0.0)) >= max_health * 0.2
+	var leg_r := severed.has("leg_r") or severed.has("shin_r") or float(limb_damage.get("upper_leg_r", 0.0)) + float(limb_damage.get("lower_leg_r", 0.0)) >= max_health * 0.2
+	var arm_l := severed.has("arm_l") or severed.has("forearm_l") or float(limb_damage.get("upper_arm_l", 0.0)) + float(limb_damage.get("lower_arm_l", 0.0)) >= max_health * 0.25
+	var arm_r := severed.has("arm_r") or severed.has("forearm_r") or float(limb_damage.get("upper_arm_r", 0.0)) + float(limb_damage.get("lower_arm_r", 0.0)) >= max_health * 0.25
+	var clip := _base_clip
+	var mult := 1.0
+	if leg_l or leg_r:
+		clip = "z_limp_l" if (leg_l and not leg_r) else "z_walk3"
+		mult = LIMP_PACE
+	elif (arm_l or arm_r) and kind == "walker":
+		clip = "z_walk_hurt_l" if arm_l and not arm_r else "z_walk_hurt_r"
+		mult = HURT_ARM_PACE
+	if clip != _move_clip or not is_equal_approx(mult, _gait_mult):
+		_move_clip = clip
+		gait = clip
+		_gait_mult = mult
+
+# --- The throat (npc/ZombieVoice.gd) ------------------------------------------------
+
+## Says something (a kind of ZombieVoice.SOUNDS) from where its head is; the pool decides
+## whether anyone hears it. A head blown off has no more to say.
+func _say(kind_: String, gain_db := 0.0, variant := -1) -> void:
+	if head_gone or not is_inside_tree() or bool(get_meta("prewarm", false)) or not (kind == "walker" or kind == "runner"):
+		return
+	var v := ZombieVoice.of(self)
+	if v == null:
+		return
+	var up := 0.5 if (legless or state == State.KNEEL) else 1.55
+	if entrance == "rise" and state == State.ENTER:
+		gain_db -= 10.0
+		up = 0.2
+	var pitch := _voice_pitch * (0.86 if legless else 1.0)
+	if v.say(global_position + Vector3.UP * up * body_scale / 1.5, kind_, pitch, gain_db, variant):
+		voice_kinds[kind_] = int(voice_kinds.get(kind_, 0)) + 1
+
+## The voice follows what the body does: a groan every few seconds while it comes on (a crawler
+## and a runner more often), and, within earshot, the breath: in on one step, out on the next, so
+## the rasp keeps the gait's time. Nothing while it is far, dying or attacking (the snarl covers that).
+func _voice_tick(delta: float) -> void:
+	if head_gone or state == State.DEAD or state >= State.DYING or _lod > 0 or not (kind == "walker" or kind == "runner"):
+		return
+	_voice_t -= delta
+	if _voice_t <= 0.0:
+		_voice_t = randf_range(3.5, 9.0) * (0.6 if (kind == "runner" or legless) else 1.0)
+		if state == State.CHASE or state == State.TEAR or state == State.KNEEL:
+			_say("groan")
+	if state == State.CHASE and _dist_player < 9.0 and Vector2(velocity.x, velocity.z).length() > 0.3:
+		var clip := "z_crawl" if legless else _move_clip
+		_breath_t -= delta * maxf(anim.stride_rate(clip, Vector2(velocity.x, velocity.z).length()), 0.4)
+		if _breath_t <= 0.0:
+			_breath_t = anim.step_time(clip) * (0.9 if kind == "runner" else 1.0)
+			_breath_out = not _breath_out
+			_say("rasp", 0.0, 1 if _breath_out else 0)
+
 ## A shove along the ground (a shotgun at close range).
 func knock(v: Vector3) -> void:
 	if state >= State.DYING:
@@ -1031,31 +1224,87 @@ func knock(v: Vector3) -> void:
 	if _knock.length() > 7.0:
 		_knock = _knock.normalized() * 7.0
 
+## What it does with a hit: nothing for a graze (the bone kicks in _flinch_part still play), a
+## grunt and a clip for one that matters. The clip says where it landed: the head snaps, a
+## shoulder takes the upper body round (the side that was hit), the chest rocks it, a leg
+## buckles into a stumble or, when the leg has taken enough, down onto a knee. A big hit also
+## shoves it along the shot. The clip hands over to the walk 0.18 s before it ends so the
+## stagger blends into the gait (a stopped player cannot crossfade).
 func _react(part: String, dmg: float) -> void:
-	# A hit that matters makes it flinch; a graze doesn't.
-	if dmg < max_health * 0.12 or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP or state == State.ENTER:
+	if state == State.ENTER or state >= State.DYING:
 		return
+	var big := dmg >= max_health * 0.12
+	if big and not head_gone and _pain_cd <= 0.0:
+		_pain_cd = 0.7
+		_say("pain")
+	# A graze doesn't make it flinch.
+	if not big or state == State.ATTACK or state == State.KNEEL or state == State.STANDUP:
+		return
+	var heavy := dmg >= max_health * 0.25
+	# Quick hits in a row only keep the bones kicking (_flinch_part): a zombie under an SMG is
+	# rocked, not held still. A heavy one always lands.
+	if _react_cd > 0.0 and not heavy:
+		return
+	_lunge_t = 0.0
 	if part.contains("leg") and not legless:
-		_begin_kneel()
+		var hurt := 0.0
+		for p in ["upper_leg_l", "lower_leg_l", "upper_leg_r", "lower_leg_r"]:
+			hurt += float(limb_damage.get(p, 0.0))
+		if heavy or hurt >= max_health * 0.4 or _gait_mult < 1.0:
+			_kneel_left = part.ends_with("_l")
+			_begin_kneel()
+			return
+		_knock_along(1.6)
+		_hit_clip("z_stumble", 0.9)
 		return
 	var clip := "z_hit_chest"
+	var secs := 0.0
 	if part == "head" or part == "neck":
-		clip = "z_hit_head"
-	_stagger = 0.35
-	if state == State.CHASE:
-		anim.play_once(clip, 1.0)
+		clip = "z_stumble" if heavy else "z_hit_head"
+		secs = 0.9 if heavy else 0.0
+	elif part.contains("arm"):
+		clip = "z_hit_arm_l" if part.ends_with("_l") else "z_hit_arm_r"
+		secs = 0.75
+	elif heavy:
+		# (z_hit_knockback is a knock-down onto the back: for the brute, not for a bullet.)
+		clip = "z_stumble"
+		secs = 0.9
+	if heavy:
+		_knock_along(2.2)
+	_hit_clip(clip, secs)
+
+## Plays a reaction clip and holds the chase for it, less the blend into the walk. `seconds` > 0
+## squeezes the clip into that time (the longer takes are slow for a bullet's worth of hurt).
+func _hit_clip(clip: String, seconds := 0.0) -> void:
+	if state != State.CHASE:
+		_stagger = 0.35
+		return
+	var dur := anim.play_once_timed(clip, seconds) if seconds > 0.0 else anim.play_once(clip, 1.0)
+	_stagger = clampf(dur - 0.18, 0.25, 1.2)
+	_react_cd = _stagger + 0.4
+
+## A shove along the shot (the way the bullet travelled).
+func _knock_along(power: float) -> void:
+	if _hit_dir != Vector3.ZERO:
+		_knock += _hit_dir * power
+		if _knock.length() > 7.0:
+			_knock = _knock.normalized() * 7.0
 
 ## Down on a knee: the leg clip plays once and its last frame is held.
 func _begin_kneel() -> void:
 	state = State.KNEEL
 	_barricade = null
+	_lunge_t = 0.0
 	_kneel_t = KNEEL_TIME
-	var dur := anim.play_once("z_hit_leg", 1.0)
+	var left := _kneel_left or ((severed.has("leg_l") or severed.has("shin_l")) and not (severed.has("leg_r") or severed.has("shin_r")))
+	_kneel_left = false
+	var dur := anim.play_once("z_hit_leg_l" if left else "z_hit_leg", 1.0)
 	# The clip ends on the knee and a stopped player can't crossfade: hand
 	# over to the stand-up / crawl while it is still running, so there is a
 	# real blend out of the kneel and no pop.
 	if dur > 0.0:
 		_kneel_t = minf(KNEEL_TIME, maxf(dur - 0.12, 0.2))
+	_say("pain")
 
 func _kneel(delta: float) -> void:
 	_kneel_t -= delta
@@ -1085,7 +1334,18 @@ func _die(part: String, melee: bool, _dir: Vector3) -> void:
 		var area := hitboxes[p] as Area3D
 		area.set_deferred("monitorable", false)
 		area.collision_layer = 0
-	var dur := anim.play_once("z_death2" if (randf() < 0.4 and not legless) else "z_death", 1.0)
+	# Shot from the front it goes over backwards, from behind onto its face (a fifth of them the other way).
+	var fwd := Vector3(sin(_facing), 0.0, cos(_facing))
+	var d_flat := Vector3(_dir.x, 0.0, _dir.z)
+	var forward := randf() < 0.4
+	if d_flat.length() > 0.01:
+		forward = d_flat.normalized().dot(fwd) > 0.0
+		if randf() < 0.2:
+			forward = not forward
+	_lunge_t = 0.0
+	var dur := anim.play_once("z_death2" if (forward and not legless) else "z_death", 1.0)
+	if not head_gone and not melee:
+		_say("pain", 0.0)
 	_lod_release()
 	died.emit(self, part, melee)
 	get_tree().create_timer(maxf(dur, 0.5) + 0.1).timeout.connect(_settle)

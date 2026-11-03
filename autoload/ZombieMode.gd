@@ -22,6 +22,11 @@ signal health_changed(hp: float)
 signal surge_warning
 signal surge_started
 signal surge_ended
+## Ghetto Wars: a round (wave) of the crews; a shot or blast at the player (`from` is where it came from, Vector3.INF if unknown);
+## a plate on or off; the war's mood line for the banner.
+signal player_damaged(from: Vector3, amount: float, armor_hit: bool)
+signal armor_changed(armor: float)
+signal bullet_snap(origin: Vector3, closest: Vector3)
 
 const ZombieControls := preload("res://player/ZombieControls.gd")
 const CITY_SCENE := "res://world/City3D.tscn"
@@ -53,6 +58,12 @@ const POINTS_KILL_HEAD := 100
 const POINTS_KILL_MELEE := 130
 const POINTS_BOARD := 10
 
+## Ghetto Wars (npc/Gangster3D.gd): the same run, the same block, the same shell, but the enemy is a rival crew
+## with guns. begin_gangs() sets it; leave() and begin() clear it. Everything the zombie mode shares keys off
+## `active`; only the block, the spawner and the HUD look at this.
+var gangs := false
+## Options: "Mature language" swaps the crews' barks for clean ones.
+var mature_language := true: set = set_mature_language
 ## Whether a zombie run is on (begin() .. leave()).
 var active := false
 var over := false
@@ -105,13 +116,36 @@ const REGEN_RATE := 60.0
 var health := MAX_HEALTH
 var _since_hit := 0.0
 
-## A zombie's claw landed on the player.
-func player_hit(dmg: float) -> void:
+## Armour plates (Ghetto Wars): each is PLATE_HP; they soak damage before health does, and do not regenerate.
+const PLATE_HP := 50.0
+const MAX_PLATES := 3
+var armor := 0.0
+
+func plates() -> int:
+	return int(ceil(armor / PLATE_HP - 0.001))
+
+## Puts a plate on. False when you wear all three.
+func add_plate() -> bool:
+	if plates() >= MAX_PLATES:
+		return false
+	armor = minf(armor + PLATE_HP, PLATE_HP * MAX_PLATES)
+	armor_changed.emit(armor)
+	return true
+
+## A zombie's claw or a bullet landed on the player. `from` is where it came from (the red arc on the HUD).
+func player_hit(dmg: float, from := Vector3.INF) -> void:
 	if not active or over:
 		return
+	var soaked := 0.0
+	if armor > 0.0:
+		soaked = minf(armor, dmg)
+		armor -= soaked
+		dmg -= soaked
+		armor_changed.emit(armor)
 	health = maxf(0.0, health - dmg)
 	_since_hit = 0.0
 	health_changed.emit(health)
+	player_damaged.emit(from, dmg + soaked, soaked > 0.0)
 	if health <= 0.0:
 		game_over()
 
@@ -119,7 +153,17 @@ func player_hit(dmg: float) -> void:
 
 ## Sets a run up without changing scene (tests load the block themselves).
 func begin(first_person: bool) -> void:
+	gangs = false
+	_begin(first_person)
+
+## Ghetto Wars: the same, against the rival crew, in first person.
+func begin_gangs() -> void:
+	gangs = true
+	_begin(true)
+
+func _begin(first_person: bool) -> void:
 	_reset()
+	load_best()
 	active = true
 	GameState.mode = "zombies"
 	ZombieControls.apply()
@@ -130,9 +174,17 @@ func start(first_person: bool) -> void:
 	begin(first_person)
 	SceneLoader.go(CITY_SCENE)
 
-## Another go, in the view you had.
+## Ghetto Wars, straight in.
+func start_gangs() -> void:
+	begin_gangs()
+	SceneLoader.go(CITY_SCENE)
+
+## Another go, in the view and the mode you had.
 func restart() -> void:
-	start(Graphics.first_person)
+	if gangs:
+		start_gangs()
+	else:
+		start(Graphics.first_person)
 
 ## Out of the mode, back to the story's footing. Quitting mid-run counts.
 func leave() -> void:
@@ -148,6 +200,8 @@ func leave() -> void:
 	tsunami_active = false
 	death_cause = ""
 	health = MAX_HEALTH
+	armor = 0.0
+	gangs = false
 	_since_hit = 0.0
 	GameState.mode = "story"
 	ZombieControls.restore()
@@ -167,7 +221,10 @@ func _reset() -> void:
 	surge_count = 0
 	tsunami_active = false
 	death_cause = ""
-	max_alive = 32
+	max_alive = 12 if gangs else 32
+	health = MAX_HEALTH
+	armor = 0.0
+	_since_hit = 0.0
 
 # --- Rounds --------------------------------------------------------------------
 
@@ -201,6 +258,48 @@ func zombies_in_round(r: int) -> int:
 	if r >= 10:
 		mult *= r * 0.15
 	return roundi((24 + int(0.5 * 6.0 * mult)) * HORDE_SCALE)
+
+# --- Ghetto Wars: the waves ---------------------------------------------------------
+
+## Alive at once (they shoot, think and cost a lot more than the dead).
+const GANG_MAX_ALIVE := 12
+## A heavy with plates comes every this many waves.
+const BOSS_EVERY := 5
+const CREWS := ["Eastside Kings", "Dock Boys"]
+## What the player's side is called, and who you hold the corner against.
+const OWN_CREW := "Eastside Kings"
+
+func is_boss_wave(r: int) -> bool:
+	return r >= BOSS_EVERY and r % BOSS_EVERY == 0
+
+## Who is against you in wave `r`: the Dock Boys, and from wave 6 the Dock Boys and a crew they brought in.
+func enemy_crew(_r: int) -> String:
+	return "Dock Boys"
+
+## How many come in wave `r` (the boss counts as one).
+func gangsters_in_wave(r: int) -> int:
+	r = maxi(r, 1)
+	return mini(5 + r * 2, 34) + (1 if is_boss_wave(r) else 0)
+
+## A grunt's health in wave `r`: one headshot with anything kills it, a body takes a few.
+func gang_health(r: int) -> int:
+	return mini(100 + (maxi(r, 1) - 1) * 8, 190)
+
+## What a plate carrier's vest soaks (from wave 4 some wear one).
+func gang_vest(r: int) -> int:
+	return 0 if r < 4 else mini(50 + (r - 4) * 10, 120)
+
+## The gun a gangster wears in wave `r`: pistols first, then SMGs, rifles, shotguns.
+func gang_gun(r: int, roll: float) -> String:
+	if r <= 1:
+		return "pistol"
+	if r == 2:
+		return "pistol" if roll < 0.6 else "smg"
+	if r <= 4:
+		return "smg" if roll < 0.55 else ("pistol" if roll < 0.8 else "ar")
+	if r <= 6:
+		return "ar" if roll < 0.45 else ("smg" if roll < 0.8 else "shotgun")
+	return "ar" if roll < 0.45 else ("shotgun" if roll < 0.7 else "smg")
 
 # --- Points --------------------------------------------------------------------
 
@@ -258,6 +357,10 @@ func set_damage_numbers(on: bool) -> void:
 	damage_numbers = on
 	_save_options()
 
+func set_mature_language(on: bool) -> void:
+	mature_language = on
+	_save_options()
+
 var _options_loaded := false
 
 func _save_options() -> void:
@@ -267,20 +370,31 @@ func _save_options() -> void:
 	cfg.load(PATH)
 	cfg.set_value("options", "gore", gore_enabled)
 	cfg.set_value("options", "damage_numbers", damage_numbers)
+	cfg.set_value("options", "mature_language", mature_language)
 	cfg.save(PATH)
 
+## Dead Block and Ghetto Wars keep their bests apart.
+func _best_section() -> String:
+	return "best_gangs" if gangs else "best"
+
 func load_best() -> void:
+	best_round = 0
+	best_kills = 0
+	best_headshots = 0
+	best_time = 0.0
 	var cfg := ConfigFile.new()
 	if cfg.load(PATH) != OK:
 		_options_loaded = true
 		return
 	gore_enabled = bool(cfg.get_value("options", "gore", true))
 	damage_numbers = bool(cfg.get_value("options", "damage_numbers", false))
+	mature_language = bool(cfg.get_value("options", "mature_language", true))
 	_options_loaded = true
-	best_round = int(cfg.get_value("best", "round", 0))
-	best_kills = int(cfg.get_value("best", "kills", 0))
-	best_headshots = int(cfg.get_value("best", "headshots", 0))
-	best_time = float(cfg.get_value("best", "time", 0.0))
+	var sec := _best_section()
+	best_round = int(cfg.get_value(sec, "round", 0))
+	best_kills = int(cfg.get_value(sec, "kills", 0))
+	best_headshots = int(cfg.get_value(sec, "headshots", 0))
+	best_time = float(cfg.get_value(sec, "time", 0.0))
 
 ## Writes the best of each stat, this run's against what's on file.
 func save_best() -> void:
@@ -290,8 +404,9 @@ func save_best() -> void:
 	best_time = maxf(best_time, run_time)
 	var cfg := ConfigFile.new()
 	cfg.load(PATH)
-	cfg.set_value("best", "round", best_round)
-	cfg.set_value("best", "kills", best_kills)
-	cfg.set_value("best", "headshots", best_headshots)
-	cfg.set_value("best", "time", best_time)
+	var sec := _best_section()
+	cfg.set_value(sec, "round", best_round)
+	cfg.set_value(sec, "kills", best_kills)
+	cfg.set_value(sec, "headshots", best_headshots)
+	cfg.set_value(sec, "time", best_time)
 	cfg.save(PATH)

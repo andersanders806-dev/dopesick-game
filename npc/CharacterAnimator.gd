@@ -36,8 +36,16 @@ const ZOMBIE_CLIPS := ["z_idle", "z_scratch", "z_walk", "z_walk2", "z_walk3", "z
 	"z_attack", "z_attack2", "z_attack3", "z_hit_head", "z_hit_chest", "z_hit_leg", "z_hit_knockback",
 	"z_death", "z_death2", "z_standup", "z_scream", "z_climb", "p_kick", "p_stab"]
 const ZOMBIE_LOOPING := ["z_idle", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl"]
-const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_CLIPS
-const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_LOOPING
+## Ghetto Wars' armed humans (assets/gang_anims/gang_clips.res, dev-tools/retarget_to_bip01.py with GANG=1):
+## g_* are plain human clips, ga_* the same gaits with the pistol-aim upper body (a gun at the shoulder).
+const GANG_LIBRARY := "res://assets/gang_anims/gang_clips.res"
+const GANG_LIBRARY_NAME := "gang"
+const GANG_LOOPING := ["g_aim", "g_idle", "g_crouch_idle", "g_crouch_walk", "g_walk", "g_jog", "g_sprint", "g_stand",
+	"ga_stand", "ga_walk", "ga_jog", "ga_crouch", "ga_crouch_walk", "ga_sprint"]
+const GANG_CLIPS := GANG_LOOPING + ["g_shoot", "g_reload", "g_roll", "g_throw", "g_hit_chest", "g_hit_head", "g_hit_knock", "g_death",
+	"g_aim_up", "g_aim_down"]
+const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_CLIPS + GANG_CLIPS
+const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_LOOPING + GANG_LOOPING
 
 ## Zombie clip -> candidates, best first: its own clip, a sibling that does
 ## the same job, then what every Rocketbox avatar ships (walk_sick, idle_sick,
@@ -268,6 +276,18 @@ static func install_zombie_library(model: Node) -> bool:
 	if lib == null:
 		return false
 	return player.add_animation_library(ZOMBIE_LIBRARY_NAME, lib) == OK
+
+## The same for the armed humans' clips (Gangster3D calls it before CharacterAnimator.new()).
+static func install_gang_library(model: Node) -> bool:
+	var player := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if player == null:
+		return false
+	if player.has_animation_library(GANG_LIBRARY_NAME):
+		return true
+	var lib := load(GANG_LIBRARY) as AnimationLibrary
+	if lib == null:
+		return false
+	return player.add_animation_library(GANG_LIBRARY_NAME, lib) == OK
 
 func play(clip: String, anim_speed := 1.0) -> void:
 	var real: String = _resolved.get(clip, "")

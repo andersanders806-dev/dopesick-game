@@ -230,16 +230,14 @@ func _ready() -> void:
 	var body: String = get_meta("body", BODIES[0])
 	model = CharacterCast.scene_for(MODEL_DIR + body + ".glb").instantiate()
 	_model_root.add_child(model)
-	CharacterAnimator.install_zombie_library(model)
-	anim = CharacterAnimator.new(model, _move_clip)
-	anim.set_clips(_move_clip, "z_idle")
+	_make_anim()
 	_skeleton = model.find_child("Skeleton3D", true, false) as Skeleton3D
 	_anim_player = model.find_child("AnimationPlayer", true, false) as AnimationPlayer
 	if _skeleton and ZombieMode.gore_enabled:
 		# Limb ids on the body's vertices, so a lost limb can be clipped away (once per body;
 		# before the rot materials, since a new mesh drops the surface overrides).
 		Gore.GoreRig.prepare(self)
-	_apply_rot(float(get_meta("seed", 0.0)))
+	_apply_look()
 	if _skeleton:
 		hitboxes = ZombieHitboxes.build(_skeleton, self, body_scale / 1.5)
 
@@ -256,6 +254,15 @@ func _ready() -> void:
 		_anim_player.seek(randf() * 0.8, true)
 
 # --- The look ------------------------------------------------------------------
+
+## Hooks for npc/Gangster3D.gd (the armed humans of Ghetto Wars wear the same body pipeline).
+func _make_anim() -> void:
+	CharacterAnimator.install_zombie_library(model)
+	anim = CharacterAnimator.new(model, _move_clip)
+	anim.set_clips(_move_clip, "z_idle")
+
+func _apply_look() -> void:
+	_apply_rot(float(get_meta("seed", 0.0)))
 
 ## Loads and keeps what every zombie shares (the rot noise, the clip library);
 ## ZombieBlock calls it before the first round.

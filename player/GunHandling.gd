@@ -375,7 +375,7 @@ const RAISE_TIME := {"pistol": 1.7, "magnum": 1.8, "smg": 1.8, "ar": 2.0, "lmg":
 ## The first raise: the gun comes up, is turned to show its side, and the support hand works the action.
 static func raise(f: String) -> Dictionary:
 	var d := {}
-	var turn := [[0.0, 0.0, -0.06, 0.03, -20, 8, 18], [0.18, 0.0, 0.0, 0.0, 0, 0, 0], [0.34, 0.03, 0.02, -0.01, 6, -34, 14], [0.58, 0.03, 0.02, -0.01, 6, -34, 14], [0.78, 0, 0, 0, 0, 0, 0], [1.0, 0, 0, 0, 0, 0, 0]]
+	var turn := [[0.0, 0.0, -0.06, 0.03, -20, 8, 18], [0.18, 0.0, 0.0, 0.0, 0, 0, 0], [0.34, -0.1, 0.035, -0.03, 6, 26, 10], [0.58, -0.1, 0.035, -0.03, 6, 26, 10], [0.78, 0, 0, 0, 0, 0, 0], [1.0, 0, 0, 0, 0, 0, 0]]
 	d["gun"] = turn
 	var act := "charge"
 	var snd := "rack"

@@ -658,7 +658,7 @@ func _update_inertia(delta: float) -> void:
 		if fall > 2.0:
 			# The gun drops with the body and comes back up: more for a heavy gun and a long fall.
 			var w: float = GH.WEIGHT.get(_fire_family(_data()) if _data() != null else "ar", 1.0)
-			kick_pos_v += Vector3(0.0, -fall * 0.022 * w, fall * 0.01 * w) * 8.0
+			kick_pos_v += Vector3(0.0, -fall * 0.012 * w, fall * 0.006 * w) * 8.0
 			kick_rot_v += Vector3(-fall * 0.012 * w, 0.0, rng.randf_range(-0.01, 0.01) * fall) * 8.0
 			add_trauma(clampf(fall * 0.02, 0.0, 0.2))
 
@@ -700,7 +700,7 @@ func _pose(_delta: float) -> void:
 	# Strafing leans the gun into the move and lags it; jumping lifts it, a fall pulls it down.
 	var lean_k := (1.0 - 0.7 * ease) * weight
 	var lag := _strafe - _strafe_lag
-	pos.x += (-lag.x * 0.0055 - _strafe.x * 0.0012) * lean_k
+	pos.x += (-lag.x * 0.0035 - _strafe.x * 0.0012) * lean_k
 	pos.z += (lag.z * 0.0035) * lean_k
 	pos.y += (clampf(_strafe.y, -8.0, 8.0) * 0.0016 - lag.y * 0.0012) * lean_k
 	rot.z += (-_strafe.x * deg_to_rad(0.35) - lag.x * deg_to_rad(0.5)) * lean_k

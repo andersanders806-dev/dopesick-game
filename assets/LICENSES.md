@@ -17,6 +17,7 @@ list sits. Credits shown in the game: ui/TitleScreen.gd (CREDITS).
 | First-person gun sounds (assets/sfx/guns/*.wav): shots, reloads, brass, cloth, slide, hit ticks | Synthesized for this game by dev-tools/gen_gun_sfx.py and gen_gun_sfx_v2.py (shots, flesh, gore, impacts) from noise and sine sweeps; no recording or sample of any game or library | Ours | dev-tools/gen_gun_sfx.py |
 | Zombie and finisher animation clips | Quaternius Universal Animation Library 1 and 2 (opengameart.org) | CC0 | assets/zombie_anims/LICENSE.md |
 | Kimodo-generated zombie/player clips (z_attack, z_attack2, z_attack3, z_crawl, z_scream, p_kick, z_walk3, z_hit_leg, z_death2), generated 2026-10-26 | NVIDIA Kimodo SOMA-RP v1.1 (github.com/nv-tlabs/kimodo) run through kimodo.cpp (github.com/localai-org/kimodo.cpp, Apache-2.0) | Weights: NVIDIA Open Model License (commercial use, outputs ours); code Apache-2.0; text encoder LocalAI-io/Llama-3-Kimodo-GGML (Meta Llama 3 Community License, built with Meta Llama 3, dev machine only, not shipped) | assets/zombie_anims/LICENSE.md |
+| Ghetto Wars set textures (assets/ghetto/: crew tags, window cracks, glass, police tape) and sounds (assets/sfx/ghetto/) | Generated for this game by dev-tools/gen_ghetto_decals.py and gen_ghetto_sfx.py from shapes, noise and sine sweeps; the Kings' crown and the Dock Boys' anchor are our own marks. The police helicopter is built in code. No third-party material | Ours | dev-tools/gen_ghetto_decals.py |
 
 ## Car models (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/)
 

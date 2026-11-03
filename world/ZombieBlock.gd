@@ -88,7 +88,7 @@ const MACHINE_GAP := 0.45
 ## A cold, wet night. The sky is what the fog fades into (a blue-black), the moon is a thin cool fill and
 ## the ambient a dim blue; the warmth is the sodium streetlamps' (world/NightAtmos.gd tunes their pools)
 ## and the neon. Depth fog plus a low layer of ground mist; volumetric fog on High.
-const SKY := Color(0.028, 0.04, 0.062)
+const SKY := Color(0.03, 0.03, 0.058)
 const AMBIENT := Color(0.40, 0.50, 0.72)
 const AMBIENT_ENERGY := 0.38
 const FOG_LIGHT := Color(0.055, 0.075, 0.105)

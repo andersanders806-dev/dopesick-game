@@ -5650,11 +5650,11 @@ func _zombie_shell_checks(gs: Node) -> void:
 			"  Dead Block: %s is built when you come near, floor and walls" % w["node"])
 		_check(staff.is_empty() and lifted.is_empty() and zs.get_node_or_null("Pawnbroker") == null and zs.get_node("Gate").collision_layer == 0,
 			"  ...empty (no clerk, no triggers) and the doorway open")
-	# Night, dense red fog, a red sky -- whatever the hour was.
+	# Night, a cold wet fog and a blue-black sky -- whatever the hour was.
 	var env: Environment = city.get_node("WorldEnvironment").environment
 	_check(gs.daylight() == 0.0, "  permanent night (daylight %.2f)" % gs.daylight())
-	_check(env.fog_enabled and env.fog_density >= 0.04, "  dense fog (%.3f)" % env.fog_density)
-	_check(env.background_color.r > env.background_color.b * 2.0 and env.fog_light_color.r > env.fog_light_color.b, "  a red-tinged sky and fog")
+	_check(env.fog_enabled and env.fog_density >= 0.015, "  dense fog (%.3f)" % env.fog_density)
+	_check(env.background_color.b > env.background_color.r * 1.5 and env.fog_light_color.b > env.fog_light_color.r, "  a cold blue sky and fog (no red wash)")
 	# Streetlights flicker: some lamp changes its energy over a second or two.
 	var block := city.get_node("ZombieBlock")
 	var lamps: Array = block._flickering.map(func(f): return f[0])
@@ -5676,7 +5676,7 @@ func _zombie_shell_checks(gs: Node) -> void:
 	gfx_node.set_preset(gfx_node.Preset.LOW)
 	await _frames(5)
 	var env_low: Environment = city.get_node("WorldEnvironment").environment
-	_check(env_low.fog_sky_affect == 1.0 and env_low.fog_density >= 0.04 and env_low.background_color.r > env_low.background_color.b * 2.0,
+	_check(env_low.fog_sky_affect == 1.0 and env_low.fog_density >= 0.015 and env_low.background_color.b > env_low.background_color.r * 1.5,
 		"  the fog survives a change to Low (sky affect %.1f, density %.3f)" % [env_low.fog_sky_affect, env_low.fog_density])
 	gfx_node.set_preset(gfx_node.Preset.MEDIUM)
 	await _frames(3)

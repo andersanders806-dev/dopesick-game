@@ -24,3 +24,4 @@ assets/cars/*.jpg
 assets/cars/*.png
 assets/cars/*.jpg.import
 assets/cars/*.png.import
+dev-tools/_ghetto_lines.json

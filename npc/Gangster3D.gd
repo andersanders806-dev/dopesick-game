@@ -30,7 +30,7 @@ const CREW_LOOK := {
 	"Dock Boys": {"cloth": Color(0.42, 0.5, 0.16), "band": Color(0.95, 0.78, 0.1)},
 	"Eastside Kings": {"cloth": Color(0.38, 0.16, 0.55), "band": Color(0.95, 0.95, 0.9)},
 	# The warrant team (the story's raid): dark uniform, a helmet, POLICE across the vest. A role, not a crew.
-	"Police": {"cloth": Color(0.07, 0.1, 0.19), "band": Color(0.08, 0.09, 0.12), "police": true},
+	"Police": {"cloth": Color(0.14, 0.22, 0.42), "band": Color(0.08, 0.09, 0.12), "police": true},
 }
 ## Per gun: damage per round (per pellet), rounds a second, burst (min, max), magazine, pellets, reach where the
 ## damage is gone (m), reload seconds, the weapon file whose model and shot it borrows.
@@ -313,7 +313,7 @@ func _attach_police_gear(unit: float) -> void:
 		lb.text = "POLICE"
 		lb.font = load("res://assets/fonts/Bungee-Regular.ttf")
 		lb.font_size = 48
-		lb.pixel_size = 0.0011 / unit
+		lb.pixel_size = 0.0019 / unit
 		lb.modulate = Color(0.93, 0.93, 0.96)
 		lb.outline_size = 0
 		lb.shaded = false

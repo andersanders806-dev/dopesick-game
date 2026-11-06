@@ -18,6 +18,7 @@ var shots := 0
 var pending: Array = []
 var fps_samples: Array[float] = []
 var walk_goal := Vector3.INF
+var t_block := 0.0
 var _last_pos := Vector3.ZERO
 var _last_kill := 0.0
 var kills := 0
@@ -40,6 +41,8 @@ func say(m: String) -> void:
 	log_lines.append(line)
 
 func snap(label: String) -> void:
+	if args.has("noshots"):
+		return
 	await process_frame
 	await RenderingServer.frame_post_draw
 	shots += 1
@@ -53,6 +56,10 @@ func _main() -> void:
 	t0 = Time.get_ticks_msec() / 1000.0
 	await process_frame
 	zm = root.get_node("ZombieMode")
+	if args.has("preset"):
+		var gfx := root.get_node("Graphics")
+		gfx.set_preset(gfx.Preset[String(args["preset"]).to_upper()])
+		say("graphics preset " + String(args["preset"]))
 	# --- The title
 	change_scene_to_file("res://ui/TitleScreen.tscn")
 	for i in 90:
@@ -95,6 +102,7 @@ func _main() -> void:
 		block.spawner.enabled = true
 		zm.start_round()
 		say("jumped to wave %d" % w)
+	t_block = Time.get_ticks_msec() / 1000.0
 	say("in the block, wave %d, chapter %s" % [zm.round, story.chapter])
 	await snap("block_start")
 	var limit := float(args.get("limit", "1500"))
@@ -105,7 +113,7 @@ func _main() -> void:
 		var tn := Time.get_ticks_usec()
 		_dt = clampf((tn - _t_prev) / 1000000.0, 0.001, 0.2)
 		_t_prev = tn
-		if frames % 30 == 0:
+		if frames % 20 == 0 and (Time.get_ticks_msec() / 1000.0 - t_block) > 15.0:
 			fps_samples.append(Engine.get_frames_per_second())
 		if frames % 300 == 0:
 			if player.global_position.distance_to(_last_pos) < 0.3 and walk_goal != Vector3.INF:

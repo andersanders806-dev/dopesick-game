@@ -72,7 +72,7 @@ func _on_round_started(r: int) -> void:
 		return
 	if r >= next_round:
 		plan_in = rng.randf_range(PLAN_DELAY.x, PLAN_DELAY.y) * time_scale
-	elif r >= 2 and r - last_round >= RANDOM_MIN_GAP and rng.randf() < RANDOM_CHANCE:
+	elif r >= 2 and r - last_round >= RANDOM_MIN_GAP and not Engine.has_meta("no_random_surge") and rng.randf() < RANDOM_CHANCE:
 		plan_in = rng.randf_range(RANDOM_DELAY.x, RANDOM_DELAY.y) * time_scale
 
 ## How many a surge in round `r` lets out: 25 at the start, more later, never over 40.

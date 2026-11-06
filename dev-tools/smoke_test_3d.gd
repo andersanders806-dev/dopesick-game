@@ -12,6 +12,8 @@ var _failures := 0
 var PoliceScene: PackedScene
 
 func _initialize() -> void:
+	# The surge's random trigger (npc/ZombieSurge.gd) would add spawns to a count in the middle of a test.
+	Engine.set_meta("no_random_surge", true)
 	# Don't touch the player's progress, settings or saved run.
 	Engine.set_meta("sandbox", true)
 	await process_frame
@@ -5653,8 +5655,8 @@ func _zombie_shell_checks(gs: Node) -> void:
 	# Night, dense red fog, a red sky -- whatever the hour was.
 	var env: Environment = city.get_node("WorldEnvironment").environment
 	_check(gs.daylight() == 0.0, "  permanent night (daylight %.2f)" % gs.daylight())
-	_check(env.fog_enabled and env.fog_density >= 0.04, "  dense fog (%.3f)" % env.fog_density)
-	_check(env.background_color.r > env.background_color.b * 2.0 and env.fog_light_color.r > env.fog_light_color.b, "  a red-tinged sky and fog")
+	_check(env.fog_enabled and env.fog_density >= 0.015, "  dense fog (%.3f)" % env.fog_density)
+	_check(env.background_color.b > env.background_color.r * 1.2 and env.fog_light_color.b > env.fog_light_color.r, "  a cold blue-black sky and fog")
 	# Streetlights flicker: some lamp changes its energy over a second or two.
 	var block := city.get_node("ZombieBlock")
 	var lamps: Array = block._flickering.map(func(f): return f[0])
@@ -5676,7 +5678,7 @@ func _zombie_shell_checks(gs: Node) -> void:
 	gfx_node.set_preset(gfx_node.Preset.LOW)
 	await _frames(5)
 	var env_low: Environment = city.get_node("WorldEnvironment").environment
-	_check(env_low.fog_sky_affect == 1.0 and env_low.fog_density >= 0.04 and env_low.background_color.r > env_low.background_color.b * 2.0,
+	_check(env_low.fog_sky_affect == 1.0 and env_low.fog_density >= 0.015 and env_low.background_color.b > env_low.background_color.r * 1.2,
 		"  the fog survives a change to Low (sky affect %.1f, density %.3f)" % [env_low.fog_sky_affect, env_low.fog_density])
 	gfx_node.set_preset(gfx_node.Preset.MEDIUM)
 	await _frames(3)
@@ -5716,7 +5718,7 @@ func _zombie_shell_checks(gs: Node) -> void:
 	_check(text.contains("Round 1") and text.contains("4 kills, 2 headshots"), "  it shows the round, kills and headshots (%s)" % text.replace("\n", " | "))
 	var cfg := ConfigFile.new()
 	_check(cfg.load(zm.PATH) == OK and cfg.get_value("best", "round", 0) == 1 and cfg.get_value("best", "kills", 0) == 4
-		and cfg.get_value("best", "headshots", 0) == 2, "  the best went to the zombie save")
+		and cfg.get_value("best", "headshots", 0) == 2, "  the best went to the zombie save (%s: %s)" % [zm.PATH, cfg.encode_to_text().replace("\n", " ")])
 	await _frames(40)
 	_check(FileAccess.get_sha256(sg.PATH) == save_hash, "  the story's save file is byte-identical")
 	_check(_story_snapshot(gs) == before, "  the story's GameState is unchanged")

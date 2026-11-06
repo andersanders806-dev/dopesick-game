@@ -968,7 +968,7 @@ func _update_water() -> void:
 # --- Sky and fog -------------------------------------------------------------------------------------
 
 const ENV_TARGET := {
-	"sky": Color(0.006, 0.04, 0.034), "ambient": Color(0.2, 0.56, 0.5), "fog_light": Color(0.04, 0.2, 0.17),
+	"sky": Color(0.006, 0.07, 0.056), "ambient": Color(0.2, 0.56, 0.5), "fog_light": Color(0.04, 0.2, 0.17),
 	"moon_color": Color(0.4, 0.88, 0.78),
 }
 

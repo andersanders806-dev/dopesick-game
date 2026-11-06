@@ -17,7 +17,6 @@ extends Node3D
 ## stash_pulse(on) lights the sign up while the story sends you in for the bags.
 
 const Mat := preload("res://world/ghetto/GhettoMat.gd")
-const Facades := preload("res://world/Facades.gd")
 const TEX := "res://assets/ghetto/"
 const POLY := "res://assets/polyhaven/%s/%s.gltf"
 const SFX := "res://assets/sfx/"
@@ -628,7 +627,9 @@ func raid(on: bool) -> void:
 	if on:
 		_flash_t = 0.45
 		if set_node and set_node.has_method("_sound"):
-			set_node.call("_sound", "res://assets/sfx/door.wav", Vector3(DOOR_X, 1.0, Z_FRONT), 6.0, 0.7, 70.0)
+			set_node.call("_sound", "res://assets/sfx/ghetto/door_ram_a.wav", Vector3(BACK_DOOR_X, 1.2, Z_BACK), 6.0, 1.0, 90.0)
+			set_node.call("_sound", "res://assets/sfx/ghetto/flashbang_a.wav", Vector3(DOOR_X, 1.4, Z_FRONT - 1.0), 2.0, 1.0, 100.0)
+			get_tree().create_timer(0.6).timeout.connect(func(): set_node.call("_sound", "res://assets/sfx/ghetto/glass_shatter_big.wav", Vector3(31.4, 1.4, Z_FRONT), 0.0, 1.0, 60.0))
 
 func _build_dressing() -> void:
 	if dressing:

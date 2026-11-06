@@ -177,7 +177,7 @@ func _ghetto_set_checks(gs: Node) -> void:
 	var arrived := true
 	for pc in vehicles.police_cars:
 		arrived = arrived and (pc as Node3D).find_child("Solid", true, false) != null
-	_check(arrived and vehicles.getaway_point().distance_to(Vector3(46, 0, -87.2)) < 0.1 and city.find_child("GetawayPoint", true, false) != null, "the cars have rolled in and stopped; the getaway's at the lot's exit")
+	_check(arrived and vehicles.getaway_point().distance_to(set.laundromat.call("point", "car")) < 0.1 and city.find_child("GetawayPoint", true, false) != null, "the cars have rolled in and stopped; the getaway waits in the lot behind the laundromat")
 	_check(heli.searching and heli.active, "the searchlight hunts in THE BUST")
 	var found: Array = []
 	set.searchlight_found_player.connect(func(): found.append(true))
@@ -203,6 +203,30 @@ func _ghetto_set_checks(gs: Node) -> void:
 	_check(kinds.values().all(func(v): return v) and got == ["pills", "stash", "cash"] and set._bursts.size() == set.BURST_POOL, "pill bottles, stash bags and cash rolls, each with a burst when taken")
 	await _frames(4)
 	_check(set._bursts.size() <= 6 and set._fire_nodes.size() <= 8 and set.decal_count <= 80, "the particle, fire and decal pools stay capped")
+
+	# The laundromat, the story's points, the markers and the beats.
+	var lm: Node3D = set.laundromat
+	_check(lm != null and lm.get_child_count() > 5, "the laundromat is built")
+	var pts := get_nodes_in_group("ghetto_pt").filter(func(n): return n.has_meta("pt"))
+	var names := pts.map(func(n): return String(n.get_meta("pt")))
+	_check(names.size() == 6 and "sink" in names and "car" in names and "stash_a" in names, "the story's six points are set (%s)" % ",".join(names))
+	var inside := true
+	for k in ["stash_a", "stash_b", "stash_c", "stash_d", "sink"]:
+		var pt: Vector3 = lm.call("point", k)
+		inside = inside and pt.x > 29.8 and pt.x < 36.8 and pt.z < -10.4 and pt.z > -15.8
+	_check(inside, "the bags and the sink are in the back room")
+	_check(lm.get("raid_on") and lm.get("dressing") != null, "the raid dressed the laundromat (tape, cones, floods)")
+	set.raid_active = false
+	set.laundromat.call("raid", false)
+	set.set_chapter("STASH RUN")
+	await _frames(30)
+	_check(set.markers.has("door"), "STASH RUN marks the laundromat door")
+	set.on_story_beat("flushed")
+	set.on_story_beat("escaped")
+	await _frames(5)
+	_check(not set.markers.has("sink") and not set.markers.has("car"), "escaped clears the markers")
+	set.on_story_ending("clean_dumped")
+	_check(set.ending == "clean_dumped" and set.markers.ids().is_empty(), "an ending is taken by the set")
 
 	# --- Leaving ---
 	zm.leave()

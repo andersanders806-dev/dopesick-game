@@ -62,19 +62,37 @@ func _main() -> void:
 			btn = b
 	btn.pressed.emit()
 	say("pressed Ghetto Wars on the title")
+	var lw := 0
 	while root.get_node("SceneLoader").busy() or current_scene == null or current_scene.name != "City3D":
 		await process_frame
+		lw += 1
+		if lw % 120 == 0:
+			say("loading: scene %s busy %s" % [current_scene.name if current_scene else "-", root.get_node("SceneLoader").busy()])
+	say("City3D is up")
 	for i in 30:
 		await process_frame
 	block = current_scene.get_node("ZombieBlock")
+	var waited := 0
 	while not block.purchases_ready or block.cover == null or block.cover.points.is_empty():
 		await process_frame
+		waited += 1
+		if waited % 120 == 0:
+			say("waiting for the block: purchases %s cover %s" % [block.purchases_ready, block.cover != null and not block.cover.points.is_empty()])
 	story = block.story
 	player = get_first_node_in_group("player") as Node3D
 	holder = get_first_node_in_group("weapon_holder")
 	holder.give(load("res://weapons/ar.tres"))
 	holder.refill_all()
 	_hook_story()
+	if args.has("startwave"):
+		# Jump ahead (for iterating on a later chapter): the story's trigger for that wave runs as it would.
+		var w := int(args["startwave"])
+		for g in _alive_crew():
+			g.queue_free()
+		zm.round = w - 1
+		block.spawner.enabled = true
+		zm.start_round()
+		say("jumped to wave %d" % w)
 	say("in the block, wave %d, chapter %s" % [zm.round, story.chapter])
 	await snap("block_start")
 	var limit := float(args.get("limit", "1500"))
@@ -194,7 +212,7 @@ func _tick() -> void:
 	if zm.over or story.finished:
 		_release_moves()
 		return
-	var busting := String(args.get("ending", "clean")) == "bust" and story.raid_active
+	var busting: bool = String(args.get("ending", "clean")) == "bust" and story.raid_active
 	if not busting:
 		zm.health = zm.MAX_HEALTH
 		zm._since_hit = 0.0
@@ -262,7 +280,7 @@ func _shoot_best(allow_turn: bool) -> bool:
 	for g in _alive_crew():
 		var head: Vector3 = g.global_position + Vector3(0, 1.45 if not g.crouched else 0.95, 0)
 		if _visible(cam.global_position, head):
-			var d := g.global_position.distance_to(player.global_position)
+			var d: float = g.global_position.distance_to(player.global_position)
 			if d < bd:
 				bd = d
 				best = g
@@ -276,17 +294,50 @@ func _shoot_best(allow_turn: bool) -> bool:
 		holder.fire()
 	return true
 
+## The laundromat the way a player walks it: in by the front door, through the divider's door to the back room,
+## out by the back door into the lane. (The navmesh is the street's: the building is not on it.)
+func _in_laundromat(p: Vector3) -> bool:
+	return p.x > 29.6 and p.x < 37.0 and p.z < -3.1 and p.z > -16.2
+
+func _next_step(goal: Vector3) -> Vector3:
+	var pp := player.global_position
+	var in_now := _in_laundromat(pp)
+	var in_goal := _in_laundromat(goal)
+	if in_goal and not in_now:
+		if Vector2(pp.x - 33.3, pp.z + 1.8).length() > 1.0:
+			return Vector3.INF # the street: by the navmesh to the door first
+		return Vector3(33.3, 0, -4.4)
+	if in_now and in_goal:
+		if goal.z < -10.2 and pp.z > -10.2:
+			return Vector3(32.0, 0, -9.0) if pp.z > -9.0 or absf(pp.x - 32.0) > 0.5 else Vector3(32.0, 0, -11.2)
+		return goal
+	if in_now and not in_goal:
+		if pp.z > -10.2:
+			return Vector3(33.3, 0, -1.8)
+		return Vector3(35.2, 0, -17.6)
+	return Vector3.INF
+
 func _walk(goal: Vector3) -> void:
+	var cam := root.get_viewport().get_camera_3d()
+	var step := _next_step(goal)
+	var sprint := false
+	if step != Vector3.INF:
+		_face(Vector3(step.x, cam.global_position.y, step.z))
+		_release_moves()
+		Input.action_press("move_up", 1.0)
+		return
+	var target := goal
+	if _in_laundromat(goal):
+		target = Vector3(33.3, 0, -1.8)
 	var map: RID = player.get_world_3d().navigation_map
-	var path := NavigationServer3D.map_get_path(map, player.global_position, goal, true)
-	var next := goal
+	var path := NavigationServer3D.map_get_path(map, player.global_position, target, true)
+	var next := target
 	for pt in path:
 		if Vector2(pt.x - player.global_position.x, pt.z - player.global_position.z).length() > 0.6:
 			next = pt
 			break
-	var cam := root.get_viewport().get_camera_3d()
 	_face(Vector3(next.x, cam.global_position.y, next.z))
 	_release_moves()
 	Input.action_press("move_up", 1.0)
-	if Vector2(goal.x - player.global_position.x, goal.z - player.global_position.z).length() > 6.0:
+	if Vector2(target.x - player.global_position.x, target.z - player.global_position.z).length() > 6.0:
 		Input.action_press("sprint")

@@ -21,6 +21,7 @@ const SurgeScript := preload("res://npc/ZombieSurge.gd")
 const TsunamiScript := preload("res://fx/Tsunami.gd")
 const HighGroundScript := preload("res://world/HighGround.gd")
 const QuakeScript := preload("res://fx/Quake.gd")
+const GhettoSetScript := preload("res://world/GhettoSet.gd")
 ## The block's navmesh as zombies need it: with the buildings' masses and the
 ## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
 const NAVMESH := "res://world/block/zombie_navmesh.res"
@@ -139,6 +140,7 @@ func setup(block: Node3D) -> void:
 	_pick_flickering()
 	_build_camp_fires()
 	_build_wrecks()
+	_build_ghetto_set()
 	_use_zombie_navmesh()
 	_build_barricades()
 	_hide_story_hud()
@@ -313,6 +315,15 @@ func _build_barricades() -> void:
 		bar.global_position = b[1]
 		bar.rotation_degrees.y = b[2]
 		barricades.append(bar)
+
+## Ghetto Wars only: the set (world/GhettoSet.gd) laid over the arena. Nothing of it in the other modes.
+var ghetto_set: Node3D
+func _build_ghetto_set() -> void:
+	if not GhettoSetScript.wanted():
+		return
+	ghetto_set = GhettoSetScript.new()
+	ghetto_set.set("city", city)
+	city.add_child(ghetto_set)
 
 ## How many wrecks stand on the block (the smoke test reads it).
 var wreck_count: int:

@@ -127,6 +127,9 @@ func _walk_route_physically(player: CharacterBody3D, route: PackedVector3Array, 
 	while ticks < max_ticks and not hg.zone_contains(player.global_position):
 		await physics_frame
 		ticks += 1
+		# (a pad lying on the desk can send a zero axis event that lets go of the held action: hold it)
+		Input.action_press("move_up")
+		Input.action_press("sprint")
 		var pos := player.global_position
 		for b in bars:
 			near = minf(near, _barricade_gap(b, pos))

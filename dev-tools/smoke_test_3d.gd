@@ -6121,6 +6121,9 @@ func _zombie_dead_checks(gs: Node) -> void:
 	spawner.time_scale = 0.01
 	spawner.adaptive = false
 	zm.max_alive = 32
+	# (the scheduled surge would add its own 25-40 to the count of a round)
+	for sg_node in get_nodes_in_group("zombie_surge"):
+		sg_node.enabled = false
 	for r in [5, 6, 15]:
 		for old in get_nodes_in_group("zombies"):
 			old.free()

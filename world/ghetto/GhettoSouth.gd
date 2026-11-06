@@ -5,9 +5,12 @@ extends Node3D
 ## bodies behind them and gravel roofs, so the street is a street from either way you look. Lit, shuttered and
 ## dark shops and windows by the same rules as the north side.
 
-const Facades := preload("res://world/Facades.gd")
 const Mat := preload("res://world/ghetto/GhettoMat.gd")
 
+## Facades' own numbers (not preloaded here: its script needs the Graphics autoload to compile).
+const MODULE := 3.0
+const ROOF_OVER := 0.15
+const FACE_Z := -4.53
 const X_FROM := -77.0
 const X_TO := 77.0
 const WALK_Z := 4.6
@@ -80,14 +83,14 @@ func _row() -> void:
 		i += 1
 
 func _building(nm: String, x0: float, x1: float, kit: String, floors: int, flags: String) -> void:
-	var h := floors * Facades.MODULE + Facades.ROOF_OVER
+	var h := floors * MODULE + ROOF_OVER
 	# Its front: the kit's, built as if facing Main Street from the north, then turned round and set on the line.
 	if facades:
 		var f := [nm, -x1, -x0, kit, floors, "", "main", nm, flags]
 		facades.call("_build_front", f)
 		var front := facades.get_node_or_null("Front" + nm) as Node3D
 		if front:
-			front.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, LINE_Z + Facades.FACE_Z))
+			front.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, LINE_Z + FACE_Z))
 			front.set_meta("cell", "Cell_Main")
 			fronts.append(front)
 	# Its body: a brick box behind the front, a gravel roof on it.
@@ -106,7 +109,7 @@ func _building(nm: String, x0: float, x1: float, kit: String, floors: int, flags
 	var rm := BoxMesh.new()
 	rm.size = Vector3(x1 - x0 - 0.2, 0.08, DEPTH - 0.2)
 	roof.mesh = rm
-	var gravel = Facades._roof_mat
+	var gravel = facades._roof_mat if facades else null
 	roof.material_override = gravel if gravel is Material else Mat.mat(Color(0.3, 0.29, 0.28), 0.95)
 	roof.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	body.add_child(roof)

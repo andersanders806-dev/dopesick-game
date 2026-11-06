@@ -17,7 +17,6 @@ extends Node3D
 ## stash_pulse(on) lights the sign up while the story sends you in for the bags.
 
 const Mat := preload("res://world/ghetto/GhettoMat.gd")
-const Facades := preload("res://world/Facades.gd")
 const TEX := "res://assets/ghetto/"
 const POLY := "res://assets/polyhaven/%s/%s.gltf"
 const SFX := "res://assets/sfx/"

@@ -1143,14 +1143,13 @@ func set_chapter(id: Variant) -> void:
 		"TAINTED":
 			_show_tainted_ods()
 		"THE BUST":
-			vehicles.call("build_bust")
-			heli.call("set_between_waves", true)
-			heli.call("search_player", true)
-			_sirens(1)
+			on_story_beat("raid_start")
 	if key != "STASH RUN":
 		laundromat.call("stash_pulse", false)
 	if key != "THE BUST":
 		heli.call("search_player", false)
+		if raid_active:
+			_raid_off()
 	chapter_dressed.emit(key)
 
 ## The story's beats (fx/GhettoStory.gd): cops_circling, stash_pressure, drive_by, snitch_revealed, ods_street,
@@ -1198,6 +1197,13 @@ func on_story_beat(id: Variant) -> void:
 				spawn_pickup(k, CORNER + Vector3(_rng.randf_range(-0.5, 0.5), 1.1, _rng.randf_range(-0.2, 0.2)))
 		"batch_dumped":
 			_mood_flash(Color(0.5, 0.8, 1.0))
+
+## Back to an ordinary night (a new run, a chapter before THE BUST).
+func _raid_off() -> void:
+	raid_active = false
+	laundromat.call("raid", false)
+	_power_cut(false)
+	_sirens(0)
 
 ## The story is over (`story_finished(ending)`: "clean_dumped", "bag_sold", "busted_sold"...): the set takes
 ## the ending's tone. Clean: dawn comes up and the police leave. Bag: dusk, the sirens still on you. Busted: floodlit,

@@ -41,6 +41,8 @@ const Mat := preload("res://world/ghetto/GhettoMat.gd")
 const HeliScript := preload("res://world/ghetto/GhettoHeli.gd")
 const LaundromatScript := preload("res://world/ghetto/GhettoLaundromat.gd")
 const VehiclesScript := preload("res://world/ghetto/GhettoVehicles.gd")
+const MarkersScript := preload("res://world/ghetto/GhettoMarkers.gd")
+const SouthScript := preload("res://world/ghetto/GhettoSouth.gd")
 const HEAT_SHADER := preload("res://assets/shaders/ghetto_heat.gdshader")
 const TEX := "res://assets/ghetto/"
 const SFX_DIR := "res://assets/sfx/ghetto/"
@@ -64,6 +66,10 @@ var city: Node3D
 var heli: Node3D
 var vehicles: Node
 var laundromat: Node3D
+var markers: Node3D
+var south: Node3D
+var raid_active := false
+var ending := ""
 var mode: Object
 var story: Object
 var chapter := ""
@@ -138,6 +144,7 @@ func _ready() -> void:
 	_build_litter()
 	_build_lamps()
 	_build_graffiti()
+	_build_crew_tags()
 	_build_ods()
 	_build_pickup_pools()
 	laundromat = LaundromatScript.new()
@@ -152,6 +159,15 @@ func _ready() -> void:
 	vehicles.name = "Vehicles"
 	vehicles.set("set_node", self)
 	add_child(vehicles)
+	markers = MarkersScript.new()
+	markers.name = "Markers"
+	add_child(markers)
+	south = SouthScript.new()
+	south.set("set_node", self)
+	add_child(south)
+	_build_far_sirens()
+	_build_ambience()
+	_dress_night()
 	_capture_base()
 	_find_hooks()
 	set_chapter("THE CORNER")
@@ -341,6 +357,12 @@ func make_fire(parent: Node, pos: Vector3, size := 1.0, smoke := true, light_ran
 	fire.add_child(light)
 	_fires.append([light, randf_range(0.05, 0.2), 1.0, light.light_energy])
 	_fire_nodes.append(fire)
+	# The fire crackles: a car's loud and carries, a barrel's low (the same bed, pitched and quietened).
+	var crackle := Mat.loop_player(fire, SFX_DIR + "car_fire_loop.wav", Vector3(0, 0.6, 0), -3.0 if size > 1.5 else -9.0, 42.0 if size > 1.5 else 16.0, 6.0 if size > 1.5 else 3.0)
+	if crackle:
+		crackle.name = "Crackle"
+		crackle.pitch_scale = 1.0 if size > 1.5 else 1.18
+		crackle.seek(_rng.randf_range(0.0, 10.0))
 	return fire
 
 # --- The pill corner ----------------------------------------------------------------
@@ -682,6 +704,55 @@ func _build_lamps() -> void:
 
 # --- Graffiti ---------------------------------------------------------------------------
 
+## The other crews' names (all invented: KRAIT, VOLT, OXBLOOD, NOVA, HOLLOW, ZAR) where the Kings and the Dock Boys do not
+## reach: the end walls, the lane behind the shops, the shutters. [tag, position, yaw (0 faces +Z, 180 faces -Z), width].
+const CREW_TAGS := [
+	["krait", Vector3(-27.6, 1.2, -4.5), 0.0, 1.6], ["volt", Vector3(-6.7, 0.9, -4.5), 0.0, 1.3], ["oxblood", Vector3(40.8, 1.5, -4.5), 0.0, 1.7],
+	["nova", Vector3(47.9, 1.0, -4.5), 0.0, 1.3], ["hollow", Vector3(38.2, 1.1, -4.5), 0.0, 1.2], ["zar", Vector3(-45.5, 1.4, -4.5), 0.0, 1.6],
+	["volt", Vector3(24.7, 1.1, -19.0), 180.0, 1.5], ["krait", Vector3(5.0, 1.3, -19.0), 180.0, 1.8], ["hollow", Vector3(-3.0, 1.0, -19.0), 180.0, 1.4],
+	["nova", Vector3(40.0, 1.3, -19.0), 180.0, 1.5], ["zar", Vector3(32.8, 1.5, -19.0), 180.0, 1.7],
+]
+## Soot up the wall behind each burning car: [x, z of the wall, yaw].
+const SOOT := [[-1.2, 4.5, 0.0], [30.5, 4.5, 0.0]]
+
+func _build_crew_tags() -> void:
+	for t in CREW_TAGS:
+		var path: String = TEX + "tag_%s.png" % t[0]
+		var yaw: float = t[2]
+		var normal := Vector3.BACK if yaw == 0.0 else Vector3.FORWARD
+		var w: float = t[3]
+		var d := Decal.new()
+		d.texture_albedo = load(path)
+		if ResourceLoader.exists(path.replace(".png", "_n.png")):
+			d.texture_normal = load(path.replace(".png", "_n.png"))
+		d.albedo_mix = 0.92
+		d.upper_fade = 0.05
+		d.lower_fade = 0.05
+		d.distance_fade_enabled = true
+		d.distance_fade_begin = 50.0
+		d.distance_fade_length = 20.0
+		d.size = Vector3(w, 0.4, w * 0.62)
+		var down := Vector3.DOWN.rotated(normal, deg_to_rad(_rng.randf_range(-5, 5)))
+		d.basis = Basis(normal.cross(down), normal, down)
+		var at: Vector3 = t[1]
+		d.position = at - normal * 0.17
+		add_child(d)
+		decal_count += 1
+	for sp in SOOT:
+		var d := Decal.new()
+		d.texture_albedo = load(TEX + "burn_soot.png")
+		d.albedo_mix = 0.9
+		d.size = Vector3(5.5, 0.4, 5.0)
+		d.distance_fade_enabled = true
+		d.distance_fade_begin = 55.0
+		d.distance_fade_length = 20.0
+		var normal := Vector3.BACK
+		d.basis = Basis(normal.cross(Vector3.DOWN), normal, Vector3.DOWN)
+		d.position = Vector3(sp[0], 2.6, sp[1] - 4.5 - 0.17)
+		add_child(d)
+		decal_count += 1
+
+
 ## The shop fronts' contested spots, from the ends towards the corner (the Dock Boys come from outside).
 const TAG_X := [-30.6, -24.5, -17.5, -10.5, -3.5, 3.5, 24.5, 28.0, 10.5, 17.5, 19.2, 7.6]
 
@@ -1022,6 +1093,10 @@ func attach(m: Object, s: Object = null) -> void:
 			s.connect("chapter_started", set_chapter)
 		if s.has_signal("beat"):
 			s.connect("beat", on_story_beat)
+		if s.has_signal("story_finished"):
+			s.connect("story_finished", on_story_ending)
+		if s.has_signal("raid_started"):
+			s.connect("raid_started", func(): on_story_beat("raid_start"))
 
 func _on_player_downed() -> void:
 	if heli:
@@ -1060,25 +1135,33 @@ func set_chapter(id: Variant) -> void:
 	if key == "":
 		return
 	chapter = key
+	ending = ""
 	_mood_to(key)
 	match key:
+		"STASH RUN":
+			laundromat.call("stash_pulse", true)
 		"TAINTED":
 			_show_tainted_ods()
 		"THE BUST":
 			vehicles.call("build_bust")
 			heli.call("set_between_waves", true)
 			heli.call("search_player", true)
+			_sirens(1)
+	if key != "STASH RUN":
+		laundromat.call("stash_pulse", false)
 	if key != "THE BUST":
 		heli.call("search_player", false)
 	chapter_dressed.emit(key)
 
 ## The story's beats (fx/GhettoStory.gd): cops_circling, stash_pressure, drive_by, snitch_revealed, ods_street,
-## ods_more, raid_start, heli, flushed, escaped, busted, batch_dumped, batch_sold.
+## ods_more, raid_start, heli, flushed, escaped, busted, batch_dumped, batch_sold. The story calls this through the
+## `beat` signal (attach() connects it); anything else may call it directly.
 func on_story_beat(id: Variant) -> void:
 	var s := str(id).to_lower()
 	match s:
 		"cops_circling", "heli":
 			heli.call("set_between_waves", true)
+			_sirens(1)
 		"drive_by":
 			drive_by(["main_east", "main_west", "swerve"][_rng.randi() % 3])
 		"ods_street":
@@ -1086,14 +1169,26 @@ func on_story_beat(id: Variant) -> void:
 		"ods_more":
 			_show_tainted_ods(99)
 		"raid_start":
+			if raid_active:
+				return
+			raid_active = true
 			laundromat.call("raid", true)
 			vehicles.call("build_bust")
 			heli.call("set_between_waves", true)
 			heli.call("search_player", true)
+			_sirens(2)
+			_power_cut(true)
+			_mood_set(Color(0.45, 0.5, 1.0), 0.3, 0.9, 2.5)
+		"flushed":
+			if markers.has("sink"):
+				markers.call("clear", "sink")
+			_sound("res://assets/sfx/ghetto/chapter_hit.ogg", laundromat.call("point", "sink"), 0.0, 0.8, 30.0)
 		"escaped":
 			vehicles.call("getaway_leave")
+			markers.call("clear_all")
 		"busted":
 			heli.call("search_player", true)
+			markers.call("clear_all")
 		"snitch_revealed":
 			_mood_flash(Color(0.4, 1.0, 0.5))
 		"stash_pressure":
@@ -1101,15 +1196,169 @@ func on_story_beat(id: Variant) -> void:
 		"batch_sold":
 			for k in ["cash", "cash", "stash"]:
 				spawn_pickup(k, CORNER + Vector3(_rng.randf_range(-0.5, 0.5), 1.1, _rng.randf_range(-0.2, 0.2)))
+		"batch_dumped":
+			_mood_flash(Color(0.5, 0.8, 1.0))
+
+## The story is over (`story_finished(ending)`: "clean_dumped", "bag_sold", "busted_sold"...): the set takes
+## the ending's tone. Clean: dawn comes up and the police leave. Bag: dusk, the sirens still on you. Busted: floodlit,
+## cuffs, the searchlight stays.
+func on_story_ending(key: Variant) -> void:
+	ending = str(key)
+	markers.call("clear_all")
+	laundromat.call("stash_pulse", false)
+	if ending.begins_with("clean"):
+		_mood_set(Color(1.0, 0.8, 0.55), 0.38, 0.55, 6.0)
+		heli.call("search_player", false)
+		heli.call("set_between_waves", false)
+		_sirens(0)
+		_power_cut(false)
+	elif ending.begins_with("bag"):
+		_mood_set(Color(1.0, 0.5, 0.2), 0.32, 0.8, 4.0)
+		_sirens(1)
+	else:
+		_mood_set(Color(0.6, 0.7, 1.0), 0.42, 0.7, 2.0)
+		heli.call("search_player", true)
+		_sirens(2)
+
+# --- Sirens, the blackout, objective markers -----------------------------------------------------
+
+var _far_sirens: Array = []     # [AudioStreamPlayer3D, OmniLight3D, phase]
+var _siren_level := 0
+var _lamp_saved: Array = []     # [entry, energy]
+var _obj_t := 0.0
+
+## The night the set stands in: a cool fill from the other side of the moon (so the facades have a lit edge and a dark
+## one, as in the references), window glass that is moonlit rather than black, the parked bakery truck that sat on the
+## burning SUV taken off the street.
+func _dress_night() -> void:
+	var fill := DirectionalLight3D.new()
+	fill.name = "NightFill"
+	fill.light_color = Color(0.42, 0.52, 0.95)
+	fill.light_energy = 0.2
+	fill.shadow_enabled = false
+	add_child(fill)
+	fill.rotation_degrees = Vector3(-38.0, 205.0, 0.0)
+	fill.light_cull_mask = 1
+	var fac := city.get_node_or_null("Facades")
+	if fac:
+		var glass = fac.get("_window_glass")
+		if glass is StandardMaterial3D:
+			var g := glass as StandardMaterial3D
+			g.albedo_color = Color(0.07, 0.09, 0.13)
+			g.emission_enabled = true
+			g.emission = Color(0.1, 0.16, 0.3)
+			g.emission_energy_multiplier = 0.55
+	var truck := city.find_child("TruckMainE", true, false)
+	if truck:
+		truck.queue_free()
+
+func _build_far_sirens() -> void:
+	for spec in [[Vector3(71.0, 0, -52.0), "siren_wail_loop", 0.0], [Vector3(-71.0, 0, -35.0), "siren_yelp_loop", 1.7]]:
+		var root := Node3D.new()
+		root.name = "FarSiren"
+		add_child(root)
+		root.position = spec[0]
+		var p := Mat.loop_player(root, SFX_DIR + String(spec[1]) + ".wav", Vector3(0, 3, 0), -80.0, 230.0, 30.0)
+		if p == null:
+			root.queue_free()
+			continue
+		p.stop()
+		var l := OmniLight3D.new()
+		l.light_energy = 0.0
+		l.omni_range = 38.0
+		l.shadow_enabled = false
+		l.position = Vector3(0, 6.0, 0)
+		root.add_child(l)
+		_far_sirens.append([p, l, spec[2]])
+
+## 0 off, 1 far away (the block hears them coming), 2 close (the raid): the level of the sirens and their lights.
+func _sirens(level: int) -> void:
+	_siren_level = level
+	for e in _far_sirens:
+		var p := e[0] as AudioStreamPlayer3D
+		if level > 0 and not p.playing:
+			p.play()
+		elif level == 0 and p.playing:
+			p.stop()
+		p.volume_db = -14.0 if level == 1 else -4.0
+		p.max_distance = 230.0 if level == 1 else 300.0
+
+## The streetlights near the laundromat go out for the raid and come back after.
+func _power_cut(on: bool) -> void:
+	if on and _lamp_saved.is_empty():
+		for entry in city.get("_night_lights"):
+			var l := entry[0] as Light3D
+			if l.get_parent().name.begins_with("Streetlight") and l.global_position.distance_to(Vector3(33.3, 0, -3.0)) < 34.0 and float(entry[1]) > 0.0:
+				_lamp_saved.append([entry, float(entry[1])])
+				entry[1] = 0.0
+				city._set_light(entry)
+	elif not on:
+		for e in _lamp_saved:
+			(e[0] as Array)[1] = e[1]
+			city._set_light(e[0])
+		_lamp_saved.clear()
+
+func _build_ambience() -> void:
+	# The block's own bed: a fire somewhere always burning, dogs and a crowd a long way off.
+	for spec in [["burning_block_loop", -16.0], ["crowd_dogs_loop", -20.0]]:
+		var p := Mat.loop_player(self, SFX_DIR + String(spec[0]) + ".wav", Vector3.ZERO, spec[1], 1.0e6, 1.0e6)
+		if p:
+			p.name = "Bed_" + String(spec[0])
+			# Not a point in the world: a bed the player hears everywhere (the 3D player is moved to the camera).
+			p.set_meta("bed", true)
+
+func _track_beds() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	for c in get_children():
+		if c is AudioStreamPlayer3D and c.has_meta("bed"):
+			c.global_position = cam.global_position
+
+func _poll_objectives() -> void:
+	var pp := Vector3(INF, 0, INF)
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player:
+		pp = player.global_position
+	var lm_in := pp.x > 29.8 and pp.x < 36.8 and pp.z < -3.4 and pp.z > -15.8
+	if ending != "":
+		markers.call("clear_all")
+		return
+	if laundromat.get("raid_on"):
+		for k in ["door", "bag_a", "bag_b", "bag_c", "bag_d"]:
+			markers.call("clear", k)
+		var flushed: bool = story != null and bool(story.get("is_flushed"))
+		if not flushed and not markers.has("sink"):
+			markers.call("mark", "sink", laundromat.call("point", "sink"), Color(0.4, 0.85, 1.0), 1.1, true)
+		if not markers.has("car"):
+			markers.call("mark", "car", laundromat.call("point", "car"), Color(0.4, 1.0, 0.5), 1.8, true)
+		return
+	if chapter == "STASH RUN":
+		if lm_in:
+			markers.call("clear", "door")
+			var got: Dictionary = story.get("_collected") if story != null and story.get("_collected") != null else {}
+			for k in ["a", "b", "c", "d"]:
+				if got.has("stash_" + k):
+					markers.call("clear", "bag_" + k)
+				elif not markers.has("bag_" + k):
+					markers.call("mark", "bag_" + k, laundromat.call("point", "stash_" + k), Color(1.0, 0.75, 0.25), 0.7, false)
+		else:
+			if not markers.has("door"):
+				markers.call("mark", "door", laundromat.call("front_door"), Color(1.0, 0.75, 0.25), 1.1, true)
+	else:
+		for k in ["door", "bag_a", "bag_b", "bag_c", "bag_d"]:
+			markers.call("clear", k)
 
 ## A short wash of colour on the night (a beat's sting), settling back to the chapter's.
 func _mood_flash(c: Color) -> void:
-	var keep := [_tint, _tint_w]
 	_tint = c
 	_tint_w = 0.55
 	var tw := create_tween()
 	tw.tween_interval(0.5)
-	tw.tween_callback(func(): _mood_to(chapter if chapter != "" else "THE CORNER"))
+	tw.tween_callback(func():
+		if raid_active or ending != "":
+			return
+		_mood_to(chapter if chapter != "" else "THE CORNER"))
 
 func drive_by(path_id: String, speed := 19.0) -> Node3D:
 	return vehicles.call("drive_by", path_id, speed)
@@ -1128,14 +1377,18 @@ func _capture_base() -> void:
 
 func _mood_to(key: String) -> void:
 	var m: Array = MOODS[key]
+	_mood_set(m[0], m[1], m[2], 3.0)
+
+## Any tint, its weight and the fog's density factor, reached over `secs`.
+func _mood_set(col: Color, w: float, dens: float, secs: float) -> void:
 	if _mood_tween:
 		_mood_tween.kill()
 	_mood_from = [_tint, _tint_w, _dens]
 	_mood_tween = create_tween()
 	_mood_tween.tween_method(func(t: float):
-		_tint = (_mood_from[0] as Color).lerp(m[0], t)
-		_tint_w = lerpf(_mood_from[1], m[1], t)
-		_dens = lerpf(_mood_from[2], m[2], t), 0.0, 1.0, 3.0)
+		_tint = (_mood_from[0] as Color).lerp(col, t)
+		_tint_w = lerpf(_mood_from[1], w, t)
+		_dens = lerpf(_mood_from[2], dens, t), 0.0, 1.0, secs)
 
 func _apply_mood() -> void:
 	if _env == null:
@@ -1163,6 +1416,17 @@ func mood_tint() -> Color:
 func _process(delta: float) -> void:
 	_t += delta
 	_apply_mood()
+	_track_beds()
+	_obj_t += delta
+	if _obj_t > 0.4:
+		_obj_t = 0.0
+		_poll_objectives()
+	for e in _far_sirens:
+		var l := e[1] as OmniLight3D
+		var ph := fposmod(_t * 1.8 + float(e[2]), 1.0)
+		var red := ph < 0.5
+		l.light_color = Color(1.0, 0.1, 0.08) if red else Color(0.1, 0.25, 1.0)
+		l.light_energy = (0.0 if _siren_level == 0 else (2.0 if _siren_level == 1 else 4.0)) * (0.35 + 0.65 * absf(sin(ph * PI * 2.0)))
 	for f in _fires:
 		f[1] -= delta
 		if f[1] <= 0.0:

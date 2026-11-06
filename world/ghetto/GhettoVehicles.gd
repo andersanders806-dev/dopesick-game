@@ -301,6 +301,12 @@ func build_bust() -> void:
 	for x: float in TAPES:
 		_tape(x)
 	_getaway()
+	# Once they are in place, the bullhorn: the warrant team telling the block what is about to happen.
+	var horn := get_tree().create_timer(4.5)
+	horn.timeout.connect(func():
+		set_node.call("_sound", "res://assets/sfx/ghetto/bullhorn_whoop.wav", Vector3(36.6, 1.6, 0.3), 4.0, 1.0, 140.0)
+		get_tree().create_timer(3.2).timeout.connect(func():
+			set_node.call("_sound", "res://assets/sfx/ghetto/bullhorn_double.wav", Vector3(29.0, 1.6, -0.2), 4.0, 1.0, 140.0)))
 
 func _wet_decals(car: Node3D, at: Vector3) -> void:
 	# The street gone glossy under the car and a pulsing glow where the lights fall on it.
@@ -325,7 +331,7 @@ func _wet_decals(car: Node3D, at: Vector3) -> void:
 	glow.texture_albedo = rad
 	glow.texture_emission = rad
 	glow.albedo_mix = 0.0
-	glow.emission_energy = 1.6
+	glow.emission_energy = 0.16
 	glow.size = Vector3(12.0, 0.5, 9.0)
 	glow.position = Vector3(at.x, 0.0, at.z)
 	glow.upper_fade = 0.2
@@ -368,6 +374,13 @@ func _lightbar(car: Node3D, van: bool) -> void:
 	l.position = Vector3(0, 0.6, 0)
 	bar.add_child(l)
 	_lightbars.append([mr, mb, l, randf() * 0.5, car])
+	# Every other car has its siren on (a wail and a yelp trade off; the rest are only lights).
+	if _lightbars.size() % 2 == 1:
+		var yelp := _lightbars.size() % 4 == 3
+		var sp := Mat.loop_player(car, "res://assets/sfx/ghetto/%s.wav" % ("siren_yelp_loop" if yelp else "siren_wail_loop"), Vector3(0, 1.4, 0), -6.0, 150.0, 14.0)
+		if sp:
+			sp.name = "Siren"
+			sp.seek(randf() * 5.0)
 
 func _tape(x: float) -> void:
 	var tex := load(TEX + "tape_police.png") as Texture2D

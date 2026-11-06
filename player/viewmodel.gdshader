@@ -31,6 +31,10 @@ uniform vec3 emission_color : source_color = vec3(0.0);
 uniform float emission_amount = 0.0;
 uniform sampler2D emission_tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool use_emission_tex = false;
+// A box of the mesh (its own space) that is not drawn: the magazine the left hand has just pulled out of the gun.
+uniform bool cut_on = false;
+uniform vec3 cut_lo = vec3(0.0);
+uniform vec3 cut_hi = vec3(0.0);
 
 varying vec3 v_obj;
 varying vec3 v_cloth;
@@ -49,6 +53,9 @@ void vertex() {
 
 void fragment() {
 	if (-VERTEX.z < near_cut) {
+		discard;
+	}
+	if (cut_on && all(greaterThan(v_obj, cut_lo)) && all(lessThan(v_obj, cut_hi))) {
 		discard;
 	}
 	vec4 tex = use_tex ? texture(albedo_tex, UV) : vec4(1.0);

@@ -23,23 +23,69 @@ const ARMS_SCENE := "res://assets/viewmodel/arms.glb"
 const VM_FOV := 60.0
 const ARM_NEAR_CUT := 0.12
 
-## Where the hands go on each gun, as fractions of the gun's box
-## (x across, y up, z from the muzzle (0) to the back (1)), right hand then left:
-## the grip, and the foregrip / support.
 ## Where the hands go on each gun, as fractions of the gun's box (x across from the left
 ## side, y up from the bottom, z from the BACK (0) to the muzzle (1)): the right hand on the
 ## grip, the left on the foregrip or, for a pistol, cupping the right. Then each hand's roll
-## about its own length (degrees) and how far its fingers close (1 = the standard grip).
-## [right, left, right_roll, left_roll, right_curl, left_curl]
+## about its own length (degrees) and how far its fingers close (1 = the standard grip), then the
+## finger shape each hand takes (SHAPES) and the size of the hands (a pistol's are slimmer so the
+## slide and the sights read between them).
+## [right, left, right_roll, left_roll, right_curl, left_curl, right_shape, left_shape, hand_scale]
 const HANDS := {
-	"pistol": [Vector3(0.5, 0.2, 0.14), Vector3(-0.9, 0.05, 0.18), 0.0, 0.0, 1.0, 1.0],
-	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0],
-	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(-0.3, 0.55, 0.58), 0.0, 0.0, 1.0, 1.0],
-	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(-0.35, 0.7, 0.74), 0.0, 0.0, 1.0, 1.0],
-	"lmg": [Vector3(0.5, 0.60, 0.24), Vector3(0.40, 0.74, 0.50), 0.0, 0.0, 1.0, 1.0],
-	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.66, 0.56), 0.0, 0.0, 1.0, 1.0],
-	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.55, 0.54), 0.0, 0.0, 1.0, 1.0],
-	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0],
+	"pistol": [Vector3(0.5, 0.2, 0.14), Vector3(-0.9, 0.05, 0.18), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pistol_l", 0.84],
+	"magnum": [Vector3(0.5, 0.2, 0.15), Vector3(-1.1, 0.2, 0.2), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pistol_l", 0.86],
+	"smg": [Vector3(0.5, 0.2, 0.30), Vector3(-0.3, 0.55, 0.58), 0.0, 0.0, 1.0, 1.0, "rifle_r", "vert_l", 1.0],
+	"ar": [Vector3(0.5, 0.18, 0.22), Vector3(-0.35, 0.7, 0.74), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
+	"lmg": [Vector3(0.5, 0.60, 0.24), Vector3(0.40, 0.74, 0.50), 0.0, 0.0, 1.0, 1.0, "rifle_r", "wrap_l", 1.0],
+	"shotgun": [Vector3(0.5, 0.35, 0.28), Vector3(0.5, 0.66, 0.56), 0.0, 0.0, 1.0, 1.0, "rifle_r", "pump_l", 1.0],
+	"sniper": [Vector3(0.5, 0.30, 0.30), Vector3(0.5, 0.55, 0.54), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cradle_l", 1.0],
+	"wonder": [Vector3(0.5, 0.20, 0.28), Vector3(0.5, 0.30, 0.54), 0.0, 0.0, 1.0, 1.0, "rifle_r", "wrap_l", 1.0],
+}
+
+## How the fingers sit on each kind of grip, degrees of bend [base, middle, tip] per finger
+## (t thumb, i index, m middle, r ring, p pinky). `i_on` is the index finger on the trigger
+## (the firing hand's index lies straight along the frame until the shot).
+const SHAPES := {
+	# Two hands on a pistol, thumbs forward along the frame: the firing hand's thumb rides the slide
+	# side, the support hand lies over the firing hand's fingers.
+	"pistol_r": {"t": [4.0, 6.0, 2.0], "i": [4.0, 6.0, 2.0], "i_on": [34.0, 46.0, 24.0], "m": [58.0, 70.0, 42.0], "r": [60.0, 70.0, 44.0], "p": [58.0, 66.0, 42.0]},
+	"pistol_l": {"t": [-4.0, 0.0, 0.0], "i": [52.0, 66.0, 40.0], "m": [58.0, 70.0, 44.0], "r": [60.0, 70.0, 44.0], "p": [58.0, 66.0, 42.0]},
+	# A rifle's pistol grip: the thumb wraps over the back strap, the index lies along the receiver.
+	"rifle_r": {"t": [30.0, 32.0, 20.0], "i": [8.0, 10.0, 4.0], "i_on": [36.0, 48.0, 28.0], "m": [58.0, 70.0, 42.0], "r": [60.0, 72.0, 44.0], "p": [60.0, 70.0, 44.0]},
+	# The AR/SMG support hand: a C-grip under the handguard, thumb along its side, fingers curled up.
+	"cgrip_l": {"t": [10.0, 14.0, 8.0], "i": [40.0, 50.0, 32.0], "m": [46.0, 58.0, 38.0], "r": [48.0, 60.0, 40.0], "p": [50.0, 62.0, 42.0]},
+	"vert_l": {"t": [22.0, 26.0, 16.0], "i": [50.0, 62.0, 40.0], "m": [54.0, 66.0, 42.0], "r": [56.0, 68.0, 44.0], "p": [56.0, 68.0, 44.0]},
+	"wrap_l": {"t": [14.0, 18.0, 10.0], "i": [50.0, 62.0, 40.0], "m": [52.0, 64.0, 42.0], "r": [54.0, 66.0, 44.0], "p": [54.0, 66.0, 44.0]},
+	# Pump hand: all four fingers round the forend, thumb over the top.
+	"pump_l": {"t": [34.0, 30.0, 20.0], "i": [60.0, 72.0, 48.0], "m": [62.0, 74.0, 50.0], "r": [62.0, 74.0, 50.0], "p": [60.0, 72.0, 48.0]},
+	# A bolt rifle: the hand cups under the fore-end, fingers half closed.
+	"cradle_l": {"t": [12.0, 14.0, 8.0], "i": [34.0, 44.0, 28.0], "m": [38.0, 48.0, 30.0], "r": [40.0, 50.0, 32.0], "p": [42.0, 52.0, 34.0]},
+}
+## A hand held open (reaching for a magazine, letting go of one).
+const OPEN_SHAPE := {"t": [4.0, 4.0, 2.0], "i": [14.0, 12.0, 6.0], "m": [16.0, 14.0, 6.0], "r": [18.0, 16.0, 8.0], "p": [20.0, 16.0, 8.0]}
+
+## Landmarks the reloads and the first raise work on, as fractions of the gun's box
+## (x across, y up from the bottom, z from the MUZZLE (0) to the back (1)):
+## magwell: the centre of a seated magazine (the shell port for a shotgun, the receiver's top for a bolt rifle);
+## charge: where the support hand takes the charging handle / slide; bolt: the bolt handle;
+## [magwell, charge, bolt, mag_kind, mag_height, mag_tilt_deg]
+const ANCHORS := {
+	"pistol": [Vector3(0.5, 0.2, 0.8), Vector3(0.5, 0.95, 0.88), Vector3(0.5, 0.9, 0.9), "pistol", 0.085, 0.0],
+	"magnum": [Vector3(0.5, 0.2, 0.8), Vector3(0.5, 0.95, 0.88), Vector3(0.5, 0.9, 0.9), "magnum", 0.07, 0.0],
+	"smg": [Vector3(0.5, 0.33, 0.52), Vector3(0.5, 0.95, 0.72), Vector3(0.5, 0.9, 0.9), "smg", 0.1, 4.0],
+	"ar": [Vector3(0.5, 0.23, 0.545), Vector3(0.5, 0.95, 0.76), Vector3(0.5, 0.9, 0.9), "stanag", 0.105, 6.0],
+	"lmg": [Vector3(0.5, 0.855, 0.5), Vector3(0.9, 0.7, 0.72), Vector3(0.9, 0.7, 0.72), "pan", 0.0, 0.0],
+	"shotgun": [Vector3(0.5, 0.5, 0.55), Vector3(0.5, 0.5, 0.56), Vector3(0.5, 0.5, 0.56), "shell", 0.07, 0.0],
+	"sniper": [Vector3(0.5, 0.7, 0.62), Vector3(0.5, 0.7, 0.6), Vector3(1.0, 0.65, 0.66), "round", 0.07, 0.0],
+	"wonder": [Vector3(0.5, 0.23, 0.545), Vector3(0.5, 0.95, 0.72), Vector3(0.5, 0.9, 0.9), "stanag", 0.105, 0.0],
+}
+
+## The parts of a gun's model that move on their own: [mesh name fragment, kind of part].
+## The pistol's slide, the bolt rifle's bolt, the LMG's pan magazine.
+const PARTS := {
+	"pistol": {"slide": ["slide_a"]},
+	"magnum": {},
+	"sniper": {"bolt": ["bolt_a", "bolt_b"]},
+	"lmg": {"pan": ["mag_dp28", "mag_cap_dp28", "mag_cap_pipka"]},
 }
 
 ## Guns whose model is plain colours (the importer drops its specular-glossiness
@@ -62,6 +108,16 @@ var ads_position := Vector3(0.0, -0.1, -0.3)
 var flash: Node3D
 var arms: Node3D
 var mag_prop: Node3D
+## Landmarks (this node's space), see ANCHORS: magwell, charge, bolt; the kind and size of the magazine.
+var anchors := {}
+var mag_kind := ""
+var mag_height := 0.1
+var mag_tilt := 0.0
+## Moving parts of the model: name -> {nodes, rest (positions), to_local (vm offset -> parent offset), vis}.
+var parts := {}
+## Materials of the gun's own meshes with the mesh's transform into this node's space (the magazine cut).
+var _cut_mats: Array = []
+var _extra_rest := {}
 var _skeleton: Skeleton3D
 var _flash_mats: Array[ShaderMaterial] = []
 var _fingers := {}
@@ -88,6 +144,8 @@ func setup(d: WD) -> Node3D:
 	add_child(gun)
 	box = GunModel.bounds(gun.get_child(0) as Node3D, gun)
 	_convert(gun)
+	_collect_cut_mats()
+	_find_parts()
 	_measure()
 	_build_flash()
 	_build_props()
@@ -188,8 +246,15 @@ func _measure() -> void:
 	grip_l = _in_box(hands[1])
 	_hand_roll = {"R": hands[2], "L": hands[3]}
 	_hand_curl = {"R": hands[4], "L": hands[5]}
-	magwell = Vector3(b.position.x + b.size.x * 0.5, b.position.y + b.size.y * 0.1, b.position.z + b.size.z * 0.55)
-	belt = magwell + Vector3(-0.12, -0.15, 0.06)
+	_hand_shape = {"R": hands[6], "L": hands[7]}
+	_hand_scale = float(hands[8])
+	var an: Array = ANCHORS.get(f, ANCHORS["ar"])
+	magwell = _at(an[0])
+	anchors = {"magwell": magwell, "charge": _at(an[1]), "bolt": _at(an[2]), "grip_l": grip_l, "grip_r": grip_r}
+	mag_kind = an[3]
+	mag_height = an[4]
+	mag_tilt = an[5]
+	belt = magwell + Vector3(-0.2, -0.28, 0.12)
 	_measure_sights(f)
 
 ## Where the sight picture sits on each gun: the zones (fractions of the gun's length from
@@ -203,7 +268,7 @@ const SIGHTS := {
 	"magnum": [0.0, 0.14, 0.62, 0.78, 0.30, false, 0.0],
 	"smg": [0.3, 0.7, 0.55, 0.0, 0.14, true, 0.0],
 	"ar": [0.3, 0.7, 0.58, 0.0, 0.14, true, 0.0],
-	"lmg": [0.3, 0.7, 0.5, 0.0, 0.19, true, 0.055],
+	"lmg": [0.3, 0.7, 0.5, 0.0, 0.19, true, 0.018],
 	"shotgun": [0.0, 0.1, 0.55, 0.72, 0.42, false, 0.05],
 	"sniper": [0.0, 0.1, 0.5, 0.65, 0.2, false, 0.01],
 	"wonder": [0.0, 0.1, 0.5, 0.65, 0.3, false, 0.05],
@@ -424,7 +489,9 @@ func _build_optic_kit() -> void:
 	glass.position = Vector3(0.0, OPTIC_CENTRE_Y - 0.002, OPTIC_L * 0.2)
 	optic.add_child(glass)
 
-## The post under a raised red dot: from the gun's top up to the sight's base.
+## The mount under a raised red dot: a low picatinny rail, not a post. A flat plate with cross slots
+## lies on the pan magazine's top under the sight, clamped at the sides, and (where the sight needs
+## to stand higher) rides on two short narrow legs.
 func _build_riser(from_y: float, height: float, z: float) -> void:
 	var steel := ShaderMaterial.new()
 	steel.shader = SHADER
@@ -433,15 +500,30 @@ func _build_riser(from_y: float, height: float, z: float) -> void:
 	steel.set_shader_parameter("metallic", 0.3)
 	steel.set_shader_parameter("roughness", 0.55)
 	steel.set_shader_parameter("near_cut", 0.05)
+	var root := Node3D.new()
+	root.name = "Riser"
+	root.position = Vector3(0.0, from_y, z)
+	add_child(root)
+	var plate_h := minf(0.008, height * 0.6)
+	var len := 0.11
+	_riser_box(root, steel, Vector3(0.034, plate_h, len), Vector3(0.0, height - plate_h * 0.5, 0.0))
+	for i in 8:
+		var zz := -len * 0.5 + len * (float(i) + 0.5) / 8.0
+		_riser_box(root, steel, Vector3(0.037, plate_h * 0.45, 0.004), Vector3(0.0, height - plate_h * 0.7, zz))
+	# Clamp blocks at the foot, sloped so the rail sits down on the pan.
+	for zz in [-len * 0.38, len * 0.38]:
+		_riser_box(root, steel, Vector3(0.03, maxf(height - plate_h, 0.003), 0.016), Vector3(0.0, (height - plate_h) * 0.5, zz))
+		_riser_box(root, steel, Vector3(0.044, 0.004, 0.022), Vector3(0.0, 0.002, zz))
+
+func _riser_box(root: Node3D, mat: Material, size: Vector3, at: Vector3) -> void:
 	var mi := MeshInstance3D.new()
-	mi.name = "Riser"
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.03, height + 0.01, 0.06)
+	bm.size = size
 	mi.mesh = bm
-	mi.material_override = steel
-	mi.position = Vector3(0.0, from_y + height * 0.5 - 0.004, z)
+	mi.material_override = mat
+	mi.position = at
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
+	root.add_child(mi)
 
 func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
 	var mi := MeshInstance3D.new()
@@ -452,6 +534,10 @@ func _optic_box(size: Vector3, at: Vector3, mat: Material) -> void:
 	mi.position = at
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	optic.add_child(mi)
+
+## A point of the gun's box: x across, y up from the bottom, z from the muzzle (0) to the back (1).
+func _at(frac: Vector3) -> Vector3:
+	return Vector3(box.position.x + box.size.x * frac.x, box.position.y + box.size.y * frac.y, box.position.z + box.size.z * frac.z)
 
 func _in_box(frac: Vector3) -> Vector3:
 	return Vector3(box.position.x + box.size.x * frac.x, box.position.y + box.size.y * frac.y, box.position.z + box.size.z * (1.0 - frac.z))
@@ -494,54 +580,173 @@ func hide_flash() -> void:
 
 # --- Reload props: the magazine (or shell) the left hand brings ---------------------
 
-func _build_props() -> void:
-	mag_prop = Node3D.new()
-	mag_prop.name = "MagProp"
-	mag_prop.visible = false
-	add_child(mag_prop)
-	var shell := data != null and data.family() == "shotgun"
-	var metal := ShaderMaterial.new()
-	metal.shader = SHADER
-	metal.set_shader_parameter("viewmodel_fov", VM_FOV)
-	if shell:
-		metal.set_shader_parameter("albedo", Color(0.62, 0.1, 0.08))
-		metal.set_shader_parameter("roughness", 0.5)
-		var body := CylinderMesh.new()
-		body.top_radius = 0.0105
-		body.bottom_radius = 0.0105
-		body.height = 0.07
-		_prop_part(body, metal, Vector3.ZERO, Vector3(90, 0, 0))
-		var brass := ShaderMaterial.new()
-		brass.shader = SHADER
-		brass.set_shader_parameter("viewmodel_fov", VM_FOV)
-		brass.set_shader_parameter("albedo", Color(0.8, 0.62, 0.25))
-		brass.set_shader_parameter("metallic", 0.9)
-		brass.set_shader_parameter("roughness", 0.35)
-		var cap := CylinderMesh.new()
-		cap.top_radius = 0.0112
-		cap.bottom_radius = 0.0112
-		cap.height = 0.018
-		_prop_part(cap, brass, Vector3(0, 0, 0.026), Vector3(90, 0, 0))
-	else:
-		metal.set_shader_parameter("albedo", Color(0.09, 0.09, 0.1))
-		metal.set_shader_parameter("metallic", 0.7)
-		metal.set_shader_parameter("roughness", 0.45)
-		var long := 0.07 if data != null and data.family() in ["pistol", "magnum"] else 0.13
-		var body := BoxMesh.new()
-		body.size = Vector3(0.026, long, 0.05)
-		_prop_part(body, metal, Vector3.ZERO, Vector3(8, 0, 0))
-		var rim := BoxMesh.new()
-		rim.size = Vector3(0.03, 0.012, 0.054)
-		_prop_part(rim, metal, Vector3(0, long * 0.5, 0.0), Vector3(8, 0, 0))
+## The prop and the thing that falls on the floor are the same model: made here with whatever
+## material maker is handed (the viewmodel's shader, or a standard material for the world).
+## `kind` as in ANCHORS. Origin: the middle of the magazine.
+static func mag_model(kind: String, mat_for: Callable) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Mag_" + kind
+	var steel: Material = mat_for.call(Color(0.07, 0.07, 0.08), 0.75, 0.4)
+	var poly: Material = mat_for.call(Color(0.035, 0.036, 0.04), 0.0, 0.6)
+	var brass: Material = mat_for.call(Color(0.8, 0.62, 0.25), 0.9, 0.35)
+	var red: Material = mat_for.call(Color(0.62, 0.1, 0.08), 0.0, 0.5)
+	match kind:
+		"shell":
+			_part(root, _cyl(0.0105, 0.05), red, Vector3.ZERO, Vector3(90, 0, 0))
+			_part(root, _cyl(0.0112, 0.02), brass, Vector3(0, 0, 0.034), Vector3(90, 0, 0))
+		"round":
+			_part(root, _cyl(0.0058, 0.05), brass, Vector3(0, 0, 0.012), Vector3(90, 0, 0))
+			_part(root, _cyl(0.0042, 0.026), steel, Vector3(0, 0, -0.026), Vector3(90, 0, 0))
+		"pan":
+			_part(root, _cyl(0.07, 0.03), steel, Vector3.ZERO, Vector3.ZERO)
+			_part(root, _cyl(0.03, 0.036), poly, Vector3.ZERO, Vector3.ZERO)
+		"pistol", "magnum":
+			var h := 0.085 if kind == "pistol" else 0.07
+			_part(root, _box(0.025, h, 0.04), poly, Vector3.ZERO, Vector3.ZERO)
+			_part(root, _box(0.027, 0.008, 0.044), steel, Vector3(0, -h * 0.5, 0), Vector3.ZERO)
+			_part(root, _box(0.021, 0.006, 0.034), brass, Vector3(0, h * 0.5 + 0.002, 0), Vector3.ZERO)
+		_:
+			# A curved rifle/SMG magazine: three slabs bent forward, a floor plate, the rounds' brass on top.
+			var segs := 3
+			var h := 0.13 if kind != "smg" else 0.12
+			var bend := 6.0 if kind == "stanag" else 2.5
+			var w := 0.024
+			var dpt := 0.05 if kind == "stanag" else 0.04
+			for i in segs:
+				var y := (float(i) - 1.0) * h / float(segs)
+				var seg := _box(w, h / float(segs) + 0.004, dpt)
+				_part(root, seg, poly, Vector3(0, y, -sin(deg_to_rad(bend)) * (float(i) - 1.0) * 0.012), Vector3((float(i) - 1.0) * bend, 0, 0))
+			_part(root, _box(w + 0.003, 0.009, dpt + 0.004), steel, Vector3(0, -h * 0.5 - 0.002, 0.004), Vector3(-bend, 0, 0))
+			_part(root, _box(w - 0.003, 0.006, dpt - 0.01), brass, Vector3(0, h * 0.5 + 0.003, -0.004), Vector3(bend, 0, 0))
+	return root
 
-func _prop_part(mesh: Mesh, mat: Material, at: Vector3, rot_deg: Vector3) -> void:
+static func _box(x: float, y: float, z: float) -> BoxMesh:
+	var m := BoxMesh.new()
+	m.size = Vector3(x, y, z)
+	return m
+
+static func _cyl(r: float, h: float) -> CylinderMesh:
+	var m := CylinderMesh.new()
+	m.top_radius = r
+	m.bottom_radius = r
+	m.height = h
+	m.radial_segments = 14
+	m.rings = 1
+	return m
+
+static func _part(root: Node3D, mesh: Mesh, mat: Material, at: Vector3, rot_deg: Vector3) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
 	mi.position = at
 	mi.rotation_degrees = rot_deg
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mag_prop.add_child(mi)
+	root.add_child(mi)
+
+func _build_props() -> void:
+	mag_prop = Node3D.new()
+	mag_prop.name = "MagProp"
+	mag_prop.visible = false
+	add_child(mag_prop)
+	if mag_kind == "pan" or mag_kind == "":
+		return
+	var mk := func(c: Color, metal: float, rough: float) -> Material:
+		var m := ShaderMaterial.new()
+		m.shader = SHADER
+		m.set_shader_parameter("viewmodel_fov", VM_FOV)
+		m.set_shader_parameter("albedo", c)
+		m.set_shader_parameter("metallic", metal)
+		m.set_shader_parameter("roughness", rough)
+		return m
+	mag_prop.add_child(mag_model(mag_kind, mk))
+
+## Places the carried magazine (or shell, or round): `at` in this node's space, rotation in degrees.
+## For a gun whose magazine is part of its model (the LMG's pan) it moves that instead.
+func set_mag(show: bool, at: Vector3, rot_deg: Vector3) -> void:
+	if parts.has("pan") or mag_prop == null:
+		return
+	mag_prop.visible = show
+	mag_prop.position = at
+	mag_prop.rotation_degrees = rot_deg + Vector3(mag_tilt, 0, 0)
+
+# --- Moving parts and the magazine cut ------------------------------------------------
+
+func _collect_cut_mats() -> void:
+	_cut_mats.clear()
+	for mi in gun.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null or not m.visible:
+			continue
+		var xf := Transform3D()
+		var c: Node = m
+		while c != null and c != gun:
+			xf = (c as Node3D).transform * xf
+			c = c.get_parent()
+		for sidx in m.mesh.get_surface_count():
+			var sm := m.get_surface_override_material(sidx) as ShaderMaterial
+			if sm != null:
+				_cut_mats.append([sm, xf])
+
+## Hides (or shows) the part of the gun's own mesh where its magazine sits: the left hand has it.
+func set_cut(on: bool) -> void:
+	var half := Vector3(0.022, mag_height * 0.5 + 0.012, 0.034)
+	var vm_box := AABB(magwell - half, half * 2.0)
+	for e in _cut_mats:
+		var sm: ShaderMaterial = e[0]
+		if not on:
+			sm.set_shader_parameter("cut_on", false)
+			continue
+		var local: AABB = (e[1] as Transform3D).affine_inverse() * vm_box
+		sm.set_shader_parameter("cut_lo", local.position)
+		sm.set_shader_parameter("cut_hi", local.end)
+		sm.set_shader_parameter("cut_on", true)
+
+func _find_parts() -> void:
+	parts.clear()
+	var f: String = data.family() if data != null else "pistol"
+	var spec: Dictionary = PARTS.get(f, {})
+	for pname in spec:
+		var nodes: Array = []
+		var rest: Array = []
+		var basis_in := Basis.IDENTITY
+		for mi in gun.find_children("*", "MeshInstance3D", true, false):
+			var low := String(mi.name).to_lower()
+			for frag in spec[pname]:
+				if low.contains(frag) and (mi as MeshInstance3D).visible:
+					nodes.append(mi)
+					rest.append((mi as Node3D).position)
+					# The part's parent turns and scales the model: a step in this space is a different step there.
+					var xf := Basis.IDENTITY
+					var c: Node = mi.get_parent()
+					while c != null and c != gun:
+						xf = (c as Node3D).transform.basis * xf
+						c = c.get_parent()
+					basis_in = xf
+					break
+		if not nodes.is_empty():
+			parts[pname] = {"nodes": nodes, "rest": rest, "to_local": basis_in.inverse(), "amount": Vector3.ZERO}
+
+## Moves a part of the model by `offset` (this node's space) from where it rests.
+func set_part(pname: String, offset: Vector3, show := true) -> void:
+	if not parts.has(pname):
+		return
+	var pt: Dictionary = parts[pname]
+	var nodes: Array = pt["nodes"]
+	var rest: Array = pt["rest"]
+	var d: Vector3 = (pt["to_local"] as Basis) * offset
+	for i in nodes.size():
+		var n := nodes[i] as Node3D
+		n.position = (rest[i] as Vector3) + d
+		n.visible = show
+	pt["amount"] = offset
+	# The LMG's red dot is clamped to the pan: it goes where the pan goes.
+	if pname == "pan":
+		for extra in [optic, get_node_or_null("Riser")]:
+			if extra != null:
+				var rest_at: Vector3 = _extra_rest.get(extra, extra.position)
+				_extra_rest[extra] = rest_at
+				(extra as Node3D).position = rest_at + offset
+				(extra as Node3D).visible = show
 
 # --- The arms ------------------------------------------------------------------------
 
@@ -578,11 +783,8 @@ const ARM_SCALE := 1.12
 ## Thickness of the forearm and upper arm against the avatar's (the hands keep their size).
 const ARM_SLIM := 0.78
 ## Shoulders, camera space.
-const SHOULDER_R := Vector3(0.22, -0.46, 0.22)
-const SHOULDER_L := Vector3(-0.22, -0.46, 0.22)
-## Finger curl about the Z axis, degrees [base, middle, tip] and the thumb's.
-const GRIP_CURL := {"R": [58.0, 70.0, 42.0], "L": [50.0, 62.0, 40.0]}
-const THUMB_CURL := {"R": [12.0, 18.0], "L": [6.0, 10.0]}
+const SHOULDER_R := Vector3(0.22, -0.54, 0.22)
+const SHOULDER_L := Vector3(-0.22, -0.54, 0.22)
 const CURL_SIGN := 1.0
 
 func _fit_arms() -> void:
@@ -608,15 +810,28 @@ func _fit_arms() -> void:
 var _arm := {}
 var _hand_roll := {"R": 0.0, "L": 0.0}
 var _hand_curl := {"R": 1.0, "L": 1.0}
+var _hand_shape := {"R": "rifle_r", "L": "cgrip_l"}
+var _hand_scale := 1.0
+var _trig := 0.0
+var _open := {"R": 0.0, "L": 0.0}
+var _roll_extra := 0.0
 
 ## The skeleton's pose with the hands where they go. `left` is the left hand's
-## target on the gun (this node's space); the right is on the grip. Reads the
-## node's own transform for where the camera-fixed shoulders are.
-func aim_hands(left: Vector3) -> void:
+## target on the gun (this node's space); the right is on the grip (plus opt.right, a
+## shift in this node's space, for the hand that leaves it to work a bolt). Reads the
+## node's own transform for where the camera-fixed shoulders are. `opt`: trig (0..1,
+## the firing hand's index on the trigger), open_l / open_r (0..1, a hand opened to take
+## or let go of something), left_roll (degrees, turns the support hand about its length).
+func aim_hands(left: Vector3, opt := {}) -> void:
 	if _skeleton == null or _arm.is_empty():
 		return
+	_trig = float(opt.get("trig", 0.0))
+	_open["L"] = float(opt.get("open_l", 0.0))
+	_open["R"] = float(opt.get("open_r", 0.0))
+	_roll_extra = float(opt.get("left_roll", 0.0))
 	var cam_to_vm := transform.affine_inverse()
-	_solve("R", cam_to_vm * SHOULDER_R, grip_r, Vector3(0.25, -1.0, 0.0))
+	var right: Vector3 = grip_r + (opt.get("right", Vector3.ZERO) as Vector3)
+	_solve("R", cam_to_vm * SHOULDER_R, right, Vector3(0.25, -1.0, 0.0))
 	_solve("L", cam_to_vm * SHOULDER_L, left, Vector3(-0.25, -1.0, 0.0))
 
 func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_vm: Vector3) -> void:
@@ -626,7 +841,7 @@ func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_v
 	var sh: Vector3 = to_sk * shoulder_vm
 	var hand_dir_vm := (wrist_vm_target - shoulder_vm).normalized()
 	# The hand's long axis: along the forearm, tipped down onto the grip.
-	var palm := 0.05
+	var palm := 0.05 * _hand_scale
 	var target_vm := wrist_vm_target - (hand_dir_vm + Vector3(0, -0.3, 0)).normalized() * palm
 	var t: Vector3 = to_sk * target_vm
 	var l1: float = a["l1"]
@@ -652,12 +867,13 @@ func _solve(side: String, shoulder_vm: Vector3, wrist_vm_target: Vector3, pole_v
 	var fo_basis := _aim_bone(fo_rest.basis, (t - elbow).normalized())
 	var ha_dir := (to_sk.basis * (hand_dir_vm + Vector3(0, -0.3, 0))).normalized()
 	var ha_basis := _aim_bone(ha_rest.basis, ha_dir)
-	ha_basis = Basis(ha_dir, deg_to_rad(float(_hand_roll[side]))) * ha_basis
+	var roll := float(_hand_roll[side]) + (_roll_extra if side == "L" else 0.0)
+	ha_basis = Basis(ha_dir, deg_to_rad(roll)) * ha_basis
 	# A slimmer forearm and upper arm (COD sleeves are fitted, not tubes): thinned about the bone's own axis.
 	var slim := Basis.from_scale(Vector3(1.0, ARM_SLIM, ARM_SLIM))
 	_skeleton.set_bone_global_pose(a["upper"], Transform3D(up_basis * slim, sh))
 	_skeleton.set_bone_global_pose(a["fore"], Transform3D(fo_basis * slim, elbow))
-	_skeleton.set_bone_global_pose(a["hand"], Transform3D(ha_basis, t))
+	_skeleton.set_bone_global_pose(a["hand"], Transform3D(ha_basis * Basis.from_scale(Vector3.ONE * _hand_scale), t))
 	_curl(a, side)
 
 ## `rest` turned the shortest way so its X axis (down the bone) points along `dir`.
@@ -676,18 +892,25 @@ func _skeleton_in_arms() -> Transform3D:
 		_sk_known = true
 	return _sk_in_arms
 
-## Fingers closed round the gun: each segment bent about its own Z axis.
+## Fingers closed round the gun: each segment bent about its own Z axis, as the grip's shape says
+## (the firing hand's index on or off the trigger, a hand opened to take a magazine).
 func _curl(a: Dictionary, side: String) -> void:
-	var curl: Array = GRIP_CURL[side]
-	var thumb: Array = THUMB_CURL[side]
+	var shape: Dictionary = SHAPES.get(_hand_shape[side], SHAPES["rifle_r"])
+	var open := float(_open[side])
 	var fingers: Array = a["fingers"]
+	var keys := ["t", "i", "m", "r", "p"]
 	for f in range(fingers.size()):
 		var chain: Array = fingers[f]
+		var src: Array = shape[keys[f]]
+		if f == 1 and side == "R" and shape.has("i_on"):
+			var on: Array = shape["i_on"]
+			src = [lerpf(src[0], on[0], _trig), lerpf(src[1], on[1], _trig), lerpf(src[2], on[2], _trig)]
+		var op: Array = OPEN_SHAPE[keys[f]]
 		for k in range(chain.size()):
 			var idx: int = chain[k]
 			if idx < 0:
 				continue
-			var ang: float = (thumb[mini(k, 1)] if f == 0 else curl[k]) * CURL_SIGN * float(_hand_curl[side])
+			var ang: float = lerpf(float(src[k]), float(op[k]), open) * CURL_SIGN * float(_hand_curl[side])
 			var rest_local: Transform3D = _skeleton.get_bone_rest(idx)
 			var rot := Basis(Vector3.BACK, deg_to_rad(ang))
 			_skeleton.set_bone_pose_rotation(idx, (rest_local.basis * rot).get_rotation_quaternion())

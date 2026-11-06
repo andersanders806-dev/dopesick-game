@@ -8666,7 +8666,18 @@ func _zombie_fp_checks(gs: Node) -> void:
 			if heard.is_empty() or heard.back() != feel.last_sound:
 				heard.append(feel.last_sound)
 	heard = heard.filter(func(n): return n in ["mag_out", "mag_in", "rack"])
-	_check(heard == ["mag_out", "mag_in", "rack"], "  a reload has its steps in order: mag out, mag in, rack (%s)" % [heard])
+	_check(heard == ["mag_out", "mag_in"], "  a tactical reload (rounds left) has its steps in order: mag out, mag in, no rack (%s)" % [heard])
+	# An empty gun adds the rack at the end.
+	holder.mag = 0
+	holder.reserve = 90
+	holder.reload()
+	var heard_empty := []
+	for i in int(holder.reload_left() * 120.0) + 10:
+		var before_e: String = feel.last_sound
+		_fp_step(feel, holder, 1)
+		if feel.last_sound != before_e and feel.last_sound in ["mag_out", "mag_in", "rack"]:
+			heard_empty.append(feel.last_sound)
+	_check(heard_empty == ["mag_out", "mag_in", "rack"], "  an empty reload adds the rack: mag out, mag in, rack (%s)" % [heard_empty])
 	holder.give(load("res://weapons/pistol.tres"))
 	_check(feel.last_sound == "draw", "  drawing a gun has its sound (%s)" % feel.last_sound)
 

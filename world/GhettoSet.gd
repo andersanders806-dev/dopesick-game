@@ -1021,7 +1021,7 @@ func attach(m: Object, s: Object = null) -> void:
 		if s.has_signal("chapter_started"):
 			s.connect("chapter_started", set_chapter)
 		if s.has_signal("beat"):
-			s.connect("beat", _on_beat)
+			s.connect("beat", on_story_beat)
 
 func _on_player_downed() -> void:
 	if heli:
@@ -1074,7 +1074,7 @@ func set_chapter(id: Variant) -> void:
 
 ## The story's beats (fx/GhettoStory.gd): cops_circling, stash_pressure, drive_by, snitch_revealed, ods_street,
 ## ods_more, raid_start, heli, flushed, escaped, busted, batch_dumped, batch_sold.
-func _on_beat(id: Variant) -> void:
+func on_story_beat(id: Variant) -> void:
 	var s := str(id).to_lower()
 	match s:
 		"cops_circling", "heli":
@@ -1086,6 +1086,7 @@ func _on_beat(id: Variant) -> void:
 		"ods_more":
 			_show_tainted_ods(99)
 		"raid_start":
+			laundromat.call("raid", true)
 			vehicles.call("build_bust")
 			heli.call("set_between_waves", true)
 			heli.call("search_player", true)

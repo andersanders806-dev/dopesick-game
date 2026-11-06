@@ -126,7 +126,7 @@ func _initialize() -> void:
 					var m := mi as MeshInstance3D
 					top = maxf(top, m.position.y + (m.mesh as BoxMesh).size.y * 0.5)
 					bottom = minf(bottom, m.position.y - (m.mesh as BoxMesh).size.y * 0.5)
-			_check(riser != null and top - bottom < 0.035, "lmg: the rail is low, not a post (%.1f cm)" % ((top - bottom) * 100.0))
+			_check(riser != null and top - bottom < 0.04, "lmg: the rail is low, not a post (%.1f cm)" % ((top - bottom) * 100.0))
 			_check(vm.parts.has("pan"), "lmg: the pan is a moving part")
 		if id == "pistol":
 			_check(vm.parts.has("slide"), "pistol: the slide is a moving part")

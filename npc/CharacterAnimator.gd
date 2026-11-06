@@ -34,8 +34,10 @@ const ZOMBIE_LIBRARY := "res://assets/zombie_anims/zombie_clips.res"
 const ZOMBIE_LIBRARY_NAME := "zombie"
 const ZOMBIE_CLIPS := ["z_idle", "z_scratch", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl",
 	"z_attack", "z_attack2", "z_attack3", "z_hit_head", "z_hit_chest", "z_hit_leg", "z_hit_knockback",
-	"z_death", "z_death2", "z_standup", "z_scream", "z_climb", "p_kick", "p_stab"]
-const ZOMBIE_LOOPING := ["z_idle", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl"]
+	"z_death", "z_death2", "z_standup", "z_scream", "z_climb", "p_kick", "p_stab",
+	"z_rise", "z_land", "z_hit_leg_l", "z_hit_arm_l", "z_hit_arm_r", "z_stumble", "z_walk4", "z_limp_l",
+	"z_walk_hurt_l", "z_walk_hurt_r", "z_lunge", "z_bite", "z_smash"]
+const ZOMBIE_LOOPING := ["z_idle", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl", "z_walk4", "z_limp_l", "z_walk_hurt_l", "z_walk_hurt_r"]
 const LOGICAL_CLIPS := ["idle", "walk", "sprint", "sit", "pick-up", "interact", "collapse", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_CLIPS
 const LOOPING_CLIPS := ["idle", "walk", "sprint", "sit", "walk_sick", "idle_sick", "crouch"] + ZOMBIE_LOOPING
 
@@ -62,6 +64,19 @@ const ZOMBIE_ALIASES := {
 	"z_standup": ["z_standup", "crouch", "idle_sick", "idle"],
 	"z_scream": ["z_scream", "z_idle", "idle_sick", "idle"],
 	"z_climb": ["z_climb", "walk_sick", "walk"],
+	"z_rise": ["z_rise", "z_standup", "z_climb", "crouch"],
+	"z_land": ["z_land", "z_hit_leg", "crouch", "idle_sick"],
+	"z_hit_leg_l": ["z_hit_leg_l", "z_hit_leg", "z_hit_chest", "crouch"],
+	"z_hit_arm_l": ["z_hit_arm_l", "z_hit_chest", "z_hit_head", "idle_sick"],
+	"z_hit_arm_r": ["z_hit_arm_r", "z_hit_chest", "z_hit_head", "idle_sick"],
+	"z_stumble": ["z_stumble", "z_hit_knockback", "z_hit_chest", "idle_sick"],
+	"z_walk4": ["z_walk4", "z_walk3", "z_walk", "walk_sick", "walk"],
+	"z_limp_l": ["z_limp_l", "z_walk3", "z_walk", "walk_sick", "walk"],
+	"z_walk_hurt_l": ["z_walk_hurt_l", "z_walk3", "z_walk", "walk_sick", "walk"],
+	"z_walk_hurt_r": ["z_walk_hurt_r", "z_walk3", "z_walk", "walk_sick", "walk"],
+	"z_lunge": ["z_lunge", "z_attack", "take"],
+	"z_bite": ["z_bite", "z_attack3", "z_attack", "take"],
+	"z_smash": ["z_smash", "z_attack2", "z_attack", "take"],
 	"p_kick": ["p_kick", "take"],
 	"p_stab": ["p_stab", "take"],
 }
@@ -310,6 +325,11 @@ func play_once_timed(clip: String, seconds: float) -> float:
 		return max(seconds, 0.0)
 	play_once(clip, _player.get_animation(real).length / seconds)
 	return seconds
+
+## A one-shot that handed over to the next clip while still running (the crossfade out of it
+## needs a live player): its finish signal will not come, so let go of it.
+func end_once() -> void:
+	_one_shot = ""
 
 func is_playing_once() -> bool:
 	return _one_shot != ""

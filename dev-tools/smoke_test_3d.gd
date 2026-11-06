@@ -5778,7 +5778,9 @@ func _zombie_shell_checks(gs: Node) -> void:
 ## Kimodo (SOMA-RP) takes. All 21 of CharacterAnimator.ZOMBIE_CLIPS.
 const ZOMBIE_REAL_CLIPS := ["z_idle", "z_scratch", "z_walk", "z_walk2", "z_walk3", "z_run", "z_crawl", "z_scream",
 	"z_attack", "z_attack2", "z_attack3", "z_hit_head", "z_hit_chest", "z_hit_leg", "z_hit_knockback",
-	"z_death", "z_death2", "z_standup", "z_climb", "p_stab", "p_kick"]
+	"z_death", "z_death2", "z_standup", "z_climb", "p_stab", "p_kick",
+	"z_rise", "z_land", "z_hit_leg_l", "z_hit_arm_l", "z_hit_arm_r", "z_stumble", "z_walk4", "z_limp_l",
+	"z_walk_hurt_l", "z_walk_hurt_r", "z_lunge", "z_bite", "z_smash"]
 
 func _zombie_anim_checks(gs: Node) -> void:
 	await _section("Zombie animations: the library, every alias, the fallbacks")
@@ -6295,13 +6297,13 @@ func _zombie_dead_checks(gs: Node) -> void:
 	var knee_from: Vector3 = knee.global_position
 	knee.take_hit("lower_leg_l", knee.max_health * 0.2, Vector3.FORWARD, null)
 	await _frames(3)
-	var knelt: bool = knee.is_kneeling() and knee.anim.current_clip() == "z_hit_leg"
+	var knelt: bool = knee.is_kneeling() and knee.anim.current_clip() in ["z_hit_leg", "z_hit_leg_l"]
 	await _frames(30)
 	var held: bool = knee.is_kneeling() and knee.global_position.distance_to(knee_from) < 0.5 and Vector2(knee.velocity.x, knee.velocity.z).length() < 0.2
 	await _frames(int(knee.KNEEL_TIME * 60.0))
 	var rose: bool = knee.state == knee.State.STANDUP and knee.anim.current_clip() == "z_standup"
 	await _frames(int(knee.anim.play_once("z_standup", 1.0) * 60.0) + 20)
-	_check(knelt and held and rose and knee.state == knee.State.CHASE and knee.anim.current_clip() in ["z_walk", "z_walk2", "z_walk3"],
+	_check(knelt and held and rose and knee.state == knee.State.CHASE and knee.anim.current_clip() in ["z_walk", "z_walk2", "z_walk3", "z_walk4", "z_limp_l"],
 		"  a leg hit drops it to a knee, held, then z_standup, then walking again (knelt %s, held %s, rose %s, now %s %s)" % [knelt, held, rose, knee.state, knee.anim.current_clip()])
 	var knee2 = spawner.spawn_one("walker", Vector3(-17.5, 0.0, 14.0))
 	await _frames(5)
@@ -6577,6 +6579,7 @@ func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node
 	zed._anim_player.pause()
 	# A zombie starts its walk at a random point; the targets stand at the same one, so a
 	# sweep for gaps always meets the same pose (a head leaning off the torso's line is a gap).
+	# (the plain shamble: the gaits a zombie may be dealt lean differently at frame 0)
 	zed._anim_player.seek(0.0, true)
 	zed._model_root.rotation.y = -PI / 2.0
 	zed.set_meta("hits", [])
@@ -9532,8 +9535,12 @@ func _zombie_horde_checks(gs: Node) -> void:
 		"  a rise starts under the street (%.1f m), no collision, with a ground burst and a crack" % zr._model_root.position.y)
 	await _frames(60)
 	var mid_y: float = zr._model_root.position.y
-	_check(zr.state == zr.State.ENTER and mid_y > -1.9 and mid_y < -0.1, "  ...climbs out (%.2f m after a second)" % mid_y)
-	await _frames(70)
+	_check(zr.state == zr.State.ENTER and mid_y > -1.9 and mid_y < -0.02, "  ...climbs out (%.2f m after a second)" % mid_y)
+	# The climb is the z_rise clip (about 3 s), not a fixed 1.7 s slide.
+	for i in 400:
+		if zr.state != zr.State.ENTER:
+			break
+		await physics_frame
 	_check(zr.state != zr.State.ENTER and absf(zr._model_root.position.y) < 0.01 and zr.collision_layer == zr.BODY_LAYER and absf(zr.global_position.y) < 0.2,
 		"  ...and is a zombie on the street (state %d, y %.2f)" % [zr.state, zr.global_position.y])
 	zr.free()

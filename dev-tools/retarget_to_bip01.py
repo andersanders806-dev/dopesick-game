@@ -329,6 +329,20 @@ KIMODO_OPTS = {
     "z_walk3":   {"loop": True, "loopify": 24, "dur": 4.2},
     "z_hit_leg": {"root_xy": 0.5, "floor_bones": 0.05},
     "z_death2":  {"root_xy": 0.6, "floor_bones": 0.05},
+    # Z5: entrances, hurt gaits, more attacks and hit reactions.
+    "z_rise":    {"root_xy": 0.5, "claw": 1.0, "floor_bones": 0.0},
+    "z_land":    {"root_xy": 0.3, "claw": 0.6, "floor_bones": 0.05},
+    "z_hit_leg_l": {"root_xy": 0.5, "floor_bones": 0.05},
+    "z_hit_arm_l": {"root_xy": 0.5, "claw": 0.6},
+    "z_hit_arm_r": {"root_xy": 0.5, "claw": 0.6},
+    "z_stumble": {"root_xy": 0.6, "claw": 0.6},
+    "z_walk4":   {"loop": True, "loopify": 24, "dur": 5.0, "claw": 0.8},
+    "z_limp_l":  {"loop": True, "loopify": 24, "dur": 4.2, "claw": 0.8},
+    "z_walk_hurt_l": {"loop": True, "loopify": 24, "claw": 0.8},
+    "z_walk_hurt_r": {"loop": True, "loopify": 24, "claw": 0.8},
+    "z_lunge":   {"root_xy": 0.0, "claw": 1.2},
+    "z_bite":    {"root_xy": 0.3, "claw": 1.2},
+    "z_smash":   {"root_xy": 0.3, "claw": 1.2},
 }
 for _name, _opt in KIMODO_OPTS.items():
     if _name.startswith("z_attack") and os.environ.get("HAND_ATTACKS"):
@@ -352,7 +366,7 @@ def drive():
     here = os.path.abspath(__file__)
     subprocess.run(["/snap/bin/blender", "-b", "--factory-startup", "-P", here, "--", glb, meta] + sys.argv[1:], check=True)
     subprocess.run(["flatpak", "run", "org.godotengine.Godot", "--headless", "--path", ".", "-s",
-                    "res://dev-tools/build_zombie_library.gd", "--", glb, meta, OUT_RES], check=True)
+                    "res://dev-tools/build_zombie_library.gd", "--", glb, meta, OUT_RES] + (["merge"] if sys.argv[1:] else []), check=True)
 
 
 def rot_of(m):

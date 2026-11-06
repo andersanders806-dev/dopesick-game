@@ -52,7 +52,7 @@ KIMODO_STEPS = 10   # DDIM steps; the model is distilled enough that 10 reads fi
 # Kimodo has no real grip on "zombie", so these describe the body mechanics.
 # Every variant is tried with every seed in KIMODO_SEEDS; the best take per clip is
 # picked by eye (dev-tools/zombie_anim_probe.gd) with --kimodo-pick.
-KIMODO_SEEDS = [1, 2, 3]
+KIMODO_SEEDS = [int(x) for x in os.environ.get("KIMODO_SEEDS", "1,2,3").split(",")]   # KIMODO_SEEDS=1,2 for a quicker pass
 KIMODO_EXTRA_SEEDS = {("z_attack", "e"): [4, 5, 6], ("z_attack2", "m"): [4, 5, 6, 7, 8], ("z_crawl", "c"): [4, 5, 6, 7, 8, 9], ("z_crawl", "f"): [4, 5, 6]}   # promising variants get more seeds
 # Rounds 1-3 (the log of what was tried): "reaching ... shoulder height" put the hands over
 # the head; "lunge" in a two-segment sequence made the body dive and fly; "stands upright ...
@@ -92,6 +92,43 @@ KIMODO_CLIPS = {
     },
     "z_death2": {
         "a": [(75, "A person falls forward onto their face and lies still on the ground.")],
+    },
+    # --- Z5: bodies that move like bodies (entrances, hurt walks, more attacks, hit reactions) ---
+    "z_rise": {   # out of the ground: the hand comes first, the body is dragged after it, then up
+        "a": [(120, "A person lies face down on the ground, one hand reaches forward and claws at the dirt, the other hand follows, they drag the chest forward, push up onto the knees and slowly rise to a hunched stand.")],
+        "b": [(120, "A person lying on their stomach pushes both hands against the ground, heaves the chest up, pulls one knee under the body, then the other, and stands up slowly, hunched, arms hanging.")],
+    },
+    "z_land": {   # a drop from a fire escape or roof: heavy crouch, then up
+        "a": [(60, "A person drops down from a height and lands heavily in a deep crouch, one hand pressed on the ground, then straightens up slowly, hunched.")],
+        "b": [(60, "A person lands from a jump in a low crouch, knees bent deep, torso bent forward, then rises and staggers a step forward.")],
+    },
+    "z_hit_leg_l": {"a": [(45, "A person is struck in the left thigh, the leg buckles and they stumble and drop down onto one knee.")]},
+    "z_hit_arm_r": {"a": [(45, "A person is struck in the right shoulder, the upper body spins to the right with the right arm thrown back, then they steady themselves.")]},
+    "z_hit_arm_l": {"a": [(45, "A person is struck in the left shoulder, the upper body spins to the left with the left arm thrown back, then they steady themselves.")]},
+    "z_stumble": {"a": [(60, "A person is shoved hard in the chest, staggers backwards several steps with the arms flailing, nearly falls and catches their balance.")]},
+    "z_walk4": {   # lurching, uneven
+        "a": [(90, "A person lurches forward unevenly, slow then sudden quicker steps, swaying from side to side, the head lolling, the arms swinging loosely.")],
+    },
+    "z_limp_l": {
+        "a": [(90, "A person shambles forward, dragging the left foot, torso hunched forward, arms hanging and swaying, head tilted.")],
+    },
+    "z_walk_hurt_r": {
+        "a": [(90, "A person walks slowly leaning heavily to the right, the right arm hanging limp and motionless, the left arm swinging, head tilted to the right.")],
+    },
+    "z_walk_hurt_l": {
+        "a": [(90, "A person walks slowly leaning heavily to the left, the left arm hanging limp and motionless, the right arm swinging, head tilted to the left.")],
+    },
+    "z_lunge": {
+        "a": [(45, "A hunched person suddenly breaks into a fast lunging stride forward, both arms thrown out in front, hands clawing.")],
+        "b": [(45, "A person leaps forward off the back foot with both arms outstretched in front, grabbing, and lands on the front foot.")],
+    },
+    "z_bite": {
+        "a": [(60, "A person grabs someone in front by the shoulders with both hands, pulls them in close and jerks the head forward to bite, then shakes the head from side to side.")],
+        "b": [(60, "A person reaches both hands forward, seizes someone, drags them toward the chest and bites down at their neck, then pulls back.")],
+    },
+    "z_smash": {
+        "a": [(60, "A person raises both fists together high above the head and slams them down hard in front of the body, bending forward.")],
+        "b": [(60, "A person clasps both hands together, swings them up over the right shoulder and brings them down across the body in a heavy two-handed blow.")],
     },
     # --- the attacks ---
     "z_attack": {

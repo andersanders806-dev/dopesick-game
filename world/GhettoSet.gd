@@ -69,6 +69,7 @@ var laundromat: Node3D
 var markers: Node3D
 var south: Node3D
 var raid_active := false
+var run_over := false
 var ending := ""
 var mode: Object
 var story: Object
@@ -333,7 +334,7 @@ func make_fire(parent: Node, pos: Vector3, size := 1.0, smoke := true, light_ran
 	fire.name = "Fire"
 	parent.add_child(fire)
 	fire.position = pos
-	var fl := _particles(int(10 + 8 * size), 0.85, Vector2(0.7, 1.4), 16.0, Vector3(0, 0.7, 0), Vector2(0.55, 1.0), 0.2 * size, Vector2(0.6, 0.78) * size, flame_material())
+	var fl := _particles(int(8 + 5 * size), 0.85, Vector2(0.7, 1.4), 16.0, Vector3(0, 0.7, 0), Vector2(0.55, 1.0), 0.2 * size, Vector2(0.6, 0.78) * size, flame_material())
 	fl.name = "Flames"
 	fire.add_child(fl)
 	if smoke:
@@ -342,7 +343,7 @@ func make_fire(parent: Node, pos: Vector3, size := 1.0, smoke := true, light_ran
 		ramp.set_color(0, Color(1, 1, 1, 0.0))
 		ramp.add_point(0.15, Color(1, 1, 1, 1.0))
 		ramp.set_color(ramp.get_point_count() - 1, Color(1, 1, 1, 0.0))
-		var sm := _particles(int(7 + 4 * size), 3.6, Vector2(1.0, 1.7), 10.0, Vector3(0.25, 0.9, 0), Vector2(1.2, 2.0) * size, 0.3 * size, Vector2(1.4, 1.4) * size, _smoke_mat, ramp)
+		var sm := _particles(int(5 + 2 * size), 3.6, Vector2(1.0, 1.7), 10.0, Vector3(0.25, 0.9, 0), Vector2(1.0, 1.6) * size, 0.3 * size, Vector2(1.1, 1.1) * size, _smoke_mat, ramp)
 		sm.name = "Smoke"
 		sm.position.y = 0.5 * size
 		sm.visibility_aabb = AABB(Vector3(-5, -1, -5), Vector3(10, 14, 10))
@@ -351,7 +352,7 @@ func make_fire(parent: Node, pos: Vector3, size := 1.0, smoke := true, light_ran
 	light.name = "Light"
 	light.light_color = Color(1.0, 0.48, 0.16)
 	light.light_energy = 2.4 * size
-	light.omni_range = light_range * (0.8 + 0.3 * size)
+	light.omni_range = light_range * (0.75 + 0.2 * size)
 	light.shadow_enabled = false
 	light.position.y = 1.0 * size
 	fire.add_child(light)
@@ -712,8 +713,8 @@ const CREW_TAGS := [
 	["volt", Vector3(24.7, 1.1, -19.0), 180.0, 1.5], ["krait", Vector3(5.0, 1.3, -19.0), 180.0, 1.8], ["hollow", Vector3(-3.0, 1.0, -19.0), 180.0, 1.4],
 	["nova", Vector3(40.0, 1.3, -19.0), 180.0, 1.5], ["zar", Vector3(32.8, 1.5, -19.0), 180.0, 1.7],
 ]
-## Soot up the wall behind each burning car: [x, z of the wall, yaw].
-const SOOT := [[-1.2, 4.5, 0.0], [30.5, 4.5, 0.0]]
+## Soot up the south wall across from each burning car: [x, z of the wall, yaw].
+const SOOT := [[-1.2, 7.7, 0.0], [30.5, 7.7, 0.0]]
 
 func _build_crew_tags() -> void:
 	for t in CREW_TAGS:
@@ -746,9 +747,9 @@ func _build_crew_tags() -> void:
 		d.distance_fade_enabled = true
 		d.distance_fade_begin = 55.0
 		d.distance_fade_length = 20.0
-		var normal := Vector3.BACK
+		var normal := Vector3.FORWARD
 		d.basis = Basis(normal.cross(Vector3.DOWN), normal, Vector3.DOWN)
-		d.position = Vector3(sp[0], 2.6, sp[1] - 4.5 - 0.17)
+		d.position = Vector3(sp[0], 3.4, sp[1] + 0.2)
 		add_child(d)
 		decal_count += 1
 
@@ -1136,6 +1137,7 @@ func set_chapter(id: Variant) -> void:
 		return
 	chapter = key
 	ending = ""
+	run_over = false
 	_mood_to(key)
 	match key:
 		"STASH RUN":
@@ -1183,9 +1185,11 @@ func on_story_beat(id: Variant) -> void:
 				markers.call("clear", "sink")
 			_sound("res://assets/sfx/ghetto/chapter_hit.ogg", laundromat.call("point", "sink"), 0.0, 0.8, 30.0)
 		"escaped":
+			run_over = true
 			vehicles.call("getaway_leave")
 			markers.call("clear_all")
 		"busted":
+			run_over = true
 			heli.call("search_player", true)
 			markers.call("clear_all")
 		"snitch_revealed":
@@ -1327,7 +1331,7 @@ func _poll_objectives() -> void:
 	if player:
 		pp = player.global_position
 	var lm_in := pp.x > 29.8 and pp.x < 36.8 and pp.z < -3.4 and pp.z > -15.8
-	if ending != "":
+	if ending != "" or run_over:
 		markers.call("clear_all")
 		return
 	if laundromat.get("raid_on"):

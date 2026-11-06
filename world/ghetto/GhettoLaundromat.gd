@@ -74,6 +74,10 @@ func _ready() -> void:
 	_lane_side()
 	_points()
 	_ambience()
+	# What is inside is only seen from the street's near side: drawn within 34 m, then not at all.
+	for mi in interior.find_children("*", "MeshInstance3D", true, false):
+		(mi as GeometryInstance3D).visibility_range_end = 34.0
+		(mi as GeometryInstance3D).visibility_range_end_margin = 4.0
 
 # --- materials ----------------------------------------------------------------------------
 
@@ -167,7 +171,7 @@ func _label(parent: Node, text: String, pos: Vector3, px: float, col: Color, yaw
 	l.rotation_degrees.y = yaw_deg
 	return l
 
-func _light(parent: Node, pos: Vector3, col: Color, energy: float, rng: float, mode := 0, fade := 45.0) -> OmniLight3D:
+func _light(parent: Node, pos: Vector3, col: Color, energy: float, rng: float, mode := 0, fade := 30.0) -> OmniLight3D:
 	var l := OmniLight3D.new()
 	l.light_color = col
 	l.light_energy = energy
@@ -456,7 +460,7 @@ func _front_room() -> void:
 	for i in 5:
 		var note := _box(m, Vector3(0.14, 0.18, 0.005), Vector3(X0 + T + 0.045, 1.7 + randf_range(-0.2, 0.2), -6.2 + randf_range(-0.38, 0.38)), Mat.mat(Color(0.85, 0.82, 0.7), 0.95), 90.0)
 		note.rotation_degrees.x = randf_range(-8, 8)
-	_model("wall_clock", m, Vector3(35.0, 2.35, iz_front_inner() - 0.0), 0.0, 1.0)
+	_model("wall_clock", m, Vector3(35.0, 2.35, iz_front_inner() - 0.0), 180.0, 1.0)
 	_model("WetFloorSign_01", m, Vector3(33.4, 0, -4.4), 18.0, 1.0)
 	# Light: fluorescents in the ceiling (the model, and the glow it sheds), two of them going bad.
 	var tubes := [[31.2, -5.0, 0], [34.0, -5.0, 1], [32.6, -8.4, 2], [35.0, -8.6, 0]]

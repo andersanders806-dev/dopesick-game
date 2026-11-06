@@ -93,6 +93,10 @@ func _building(nm: String, x0: float, x1: float, kit: String, floors: int, flags
 			front.transform = Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, LINE_Z + FACE_Z))
 			front.set_meta("cell", "Cell_Main")
 			fronts.append(front)
+			# Seen from the street, not from the far end of the next one.
+			for mi in front.find_children("*", "GeometryInstance3D", true, false):
+				(mi as GeometryInstance3D).visibility_range_end = 85.0
+				(mi as GeometryInstance3D).visibility_range_end_margin = 8.0
 	# Its body: a brick box behind the front, a gravel roof on it.
 	var body := Node3D.new()
 	body.name = "Body" + nm

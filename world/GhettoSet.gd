@@ -39,6 +39,7 @@ const CharacterCast := preload("res://npc/CharacterCast.gd")
 const CharacterLook := preload("res://npc/CharacterLook.gd")
 const Mat := preload("res://world/ghetto/GhettoMat.gd")
 const HeliScript := preload("res://world/ghetto/GhettoHeli.gd")
+const LaundromatScript := preload("res://world/ghetto/GhettoLaundromat.gd")
 const VehiclesScript := preload("res://world/ghetto/GhettoVehicles.gd")
 const HEAT_SHADER := preload("res://assets/shaders/ghetto_heat.gdshader")
 const TEX := "res://assets/ghetto/"
@@ -62,6 +63,7 @@ const GRAFFITI_POOL := 32
 var city: Node3D
 var heli: Node3D
 var vehicles: Node
+var laundromat: Node3D
 var mode: Object
 var story: Object
 var chapter := ""
@@ -138,6 +140,10 @@ func _ready() -> void:
 	_build_graffiti()
 	_build_ods()
 	_build_pickup_pools()
+	laundromat = LaundromatScript.new()
+	laundromat.name = "Laundromat"
+	laundromat.set("set_node", self)
+	add_child(laundromat)
 	heli = HeliScript.new()
 	heli.name = "Helicopter"
 	heli.set("set_node", self)
@@ -840,9 +846,12 @@ func _bend(sk: Skeleton3D, bone: String, axis: Vector3, angle: float) -> void:
 	var ng := Basis(axis, angle) * gb
 	sk.set_bone_pose_rotation(b, (pg.inverse() * ng).get_rotation_quaternion())
 
-func _show_tainted_ods() -> void:
+func _show_tainted_ods(count := 99) -> void:
 	for o in ods:
+		if count <= 0:
+			break
 		if not o.visible:
+			count -= 1
 			o.visible = true
 			o.scale = Vector3(1, 0.001, 1)
 			var tw := create_tween()
@@ -1041,7 +1050,8 @@ static func chapter_key(id: Variant) -> String:
 		return CHAPTERS[clampi(int(id), 0, CHAPTERS.size() - 1)]
 	var s := str(id).to_upper().replace("_", " ")
 	for c in CHAPTERS:
-		if s == c or s.find(String(c).replace("THE ", "")) >= 0:
+		var short := String(c).replace("THE ", "").split(" ")[0]
+		if s == c or (s.length() >= 4 and (c.find(s) >= 0 or s.find(short) >= 0)):
 			return c
 	return ""
 
@@ -1062,16 +1072,43 @@ func set_chapter(id: Variant) -> void:
 		heli.call("search_player", false)
 	chapter_dressed.emit(key)
 
+## The story's beats (fx/GhettoStory.gd): cops_circling, stash_pressure, drive_by, snitch_revealed, ods_street,
+## ods_more, raid_start, heli, flushed, escaped, busted, batch_dumped, batch_sold.
 func _on_beat(id: Variant) -> void:
 	var s := str(id).to_lower()
-	if s.find("drive") >= 0:
-		drive_by(["main_east", "main_west", "swerve"][_rng.randi() % 3])
-	elif s.find("heli") >= 0 or s.find("chopper") >= 0:
-		heli.call("set_between_waves", true)
-	elif s.find("od") == 0 or s.find("overdose") >= 0:
-		_show_tainted_ods()
-	elif s.find("lamp") >= 0 or s.find("dark") >= 0:
-		pass
+	match s:
+		"cops_circling", "heli":
+			heli.call("set_between_waves", true)
+		"drive_by":
+			drive_by(["main_east", "main_west", "swerve"][_rng.randi() % 3])
+		"ods_street":
+			_show_tainted_ods(2)
+		"ods_more":
+			_show_tainted_ods(99)
+		"raid_start":
+			vehicles.call("build_bust")
+			heli.call("set_between_waves", true)
+			heli.call("search_player", true)
+		"escaped":
+			vehicles.call("getaway_leave")
+		"busted":
+			heli.call("search_player", true)
+		"snitch_revealed":
+			_mood_flash(Color(0.4, 1.0, 0.5))
+		"stash_pressure":
+			_mood_flash(Color(1.0, 0.5, 0.2))
+		"batch_sold":
+			for k in ["cash", "cash", "stash"]:
+				spawn_pickup(k, CORNER + Vector3(_rng.randf_range(-0.5, 0.5), 1.1, _rng.randf_range(-0.2, 0.2)))
+
+## A short wash of colour on the night (a beat's sting), settling back to the chapter's.
+func _mood_flash(c: Color) -> void:
+	var keep := [_tint, _tint_w]
+	_tint = c
+	_tint_w = 0.55
+	var tw := create_tween()
+	tw.tween_interval(0.5)
+	tw.tween_callback(func(): _mood_to(chapter if chapter != "" else "THE CORNER"))
 
 func drive_by(path_id: String, speed := 19.0) -> Node3D:
 	return vehicles.call("drive_by", path_id, speed)

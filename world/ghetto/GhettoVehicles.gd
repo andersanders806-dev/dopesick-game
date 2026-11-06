@@ -42,6 +42,7 @@ var bust_built := false
 var police_cars: Array[Node3D] = []
 var swat_van: Node3D
 var getaway_car: Node3D
+var getaway_leaving := false
 var tape_strips: Array[MeshInstance3D] = []
 var drive_car: Node3D
 var drive_id := ""
@@ -441,6 +442,23 @@ func _getaway() -> void:
 	marker.name = "GetawayPoint"
 	add_child(marker)
 	marker.global_position = GETAWAY_POINT
+
+## ESCAPED: the getaway car pulls away along Back Street, the tyres squealing, and is gone.
+func getaway_leave() -> void:
+	if getaway_car == null or not is_instance_valid(getaway_car) or getaway_leaving:
+		return
+	getaway_leaving = true
+	set_node.call("_sound", "tyre_squeal", getaway_car.global_position, 2.0, 1.0, 110.0)
+	var from := getaway_car.global_position
+	var tw := create_tween()
+	tw.tween_method(func(t: float):
+		if is_instance_valid(getaway_car):
+			var p := from + Vector3(-110.0 * t * t, 0, 0)
+			_spin(getaway_car, getaway_car.global_position.distance_to(p))
+			getaway_car.global_position = p, 0.0, 1.0, 5.0)
+	tw.tween_callback(func():
+		if is_instance_valid(getaway_car):
+			getaway_car.visible = false)
 
 func getaway_point() -> Vector3:
 	return GETAWAY_POINT

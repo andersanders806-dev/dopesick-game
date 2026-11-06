@@ -21,6 +21,7 @@ const SurgeScript := preload("res://npc/ZombieSurge.gd")
 const TsunamiScript := preload("res://fx/Tsunami.gd")
 const HighGroundScript := preload("res://world/HighGround.gd")
 const QuakeScript := preload("res://fx/Quake.gd")
+const NightAtmosScript := preload("res://world/NightAtmos.gd")
 ## The block's navmesh as zombies need it: with the buildings' masses and the
 ## wrecks carved out (dev-tools/bake_zombie_navmesh.gd makes it).
 const NAVMESH := "res://world/block/zombie_navmesh.res"
@@ -84,16 +85,24 @@ const WALL_GAP := 0.02
 const BOX_GAP := 0.55
 const MACHINE_GAP := 0.45
 
-## A red-tinged night. The sky is what the fog fades into; the moon is a
-## dull red wash.
-const SKY := Color(0.17, 0.025, 0.03)
-const AMBIENT := Color(0.55, 0.28, 0.32)
-const AMBIENT_ENERGY := 0.22
-const FOG_LIGHT := Color(0.2, 0.05, 0.055)
-const FOG_DENSITY := 0.05
-const VOL_FOG_DENSITY := 0.03
-const MOON_COLOR := Color(0.85, 0.38, 0.38)
-const MOON_ENERGY := 0.22
+## A cold, wet night. The sky is what the fog fades into (a blue-black), the moon is a thin cool fill and
+## the ambient a dim blue; the warmth is the sodium streetlamps' (world/NightAtmos.gd tunes their pools)
+## and the neon. Depth fog plus a low layer of ground mist; volumetric fog on High.
+const SKY := Color(0.028, 0.04, 0.062)
+const AMBIENT := Color(0.40, 0.50, 0.72)
+const AMBIENT_ENERGY := 0.38
+const FOG_LIGHT := Color(0.055, 0.075, 0.105)
+const FOG_DENSITY := 0.021
+const VOL_FOG_DENSITY := 0.022
+const MOON_COLOR := Color(0.5, 0.64, 0.95)
+const MOON_ENERGY := 0.5
+## Ground mist: fog_height is its top (m), the density it adds below that.
+const MIST_HEIGHT := 1.8
+const MIST_DENSITY := 0.5
+const EXPOSURE := 1.15
+## A faint sodium-and-cloud glow low in the sky, which the wet paving and the glass catch (reflections only).
+const GLOW_HORIZON := Color(0.34, 0.2, 0.11)
+const GLOW_ZENITH := Color(0.035, 0.05, 0.085)
 
 ## Every third streetlight stutters: a steady spell, then a burst of
 ## on-and-off, now and then dead for a moment.
@@ -122,6 +131,8 @@ var upgrade_machine: Area3D
 var purchases_ready := false
 ## [light, full energy, seconds to the next change, in a burst, dead]
 var _flickering: Array = []
+## world/NightAtmos.gd: wet paving, lamp haze and the rain.
+var atmos
 ## fx/Quake.gd: the presentation of the horde surge.
 var quake
 ## fx/Tsunami.gd: the countdown that can follow a surge (two Drowned to kill, or the wave).
@@ -136,6 +147,9 @@ func setup(block: Node3D) -> void:
 	city = block
 	_strip_story()
 	_set_night()
+	atmos = NightAtmosScript.new()
+	city.add_child(atmos)
+	atmos.setup(city)
 	_pick_flickering()
 	_build_camp_fires()
 	_build_wrecks()
@@ -283,10 +297,32 @@ func _set_night() -> void:
 	night["vol_density"] = VOL_FOG_DENSITY
 	night["moon_color"] = MOON_COLOR
 	night["moon_energy"] = MOON_ENERGY
+	_hold_atmosphere(env)
+	env.volumetric_fog_albedo = Color(0.62, 0.7, 0.82)
+	env.volumetric_fog_emission = Color(0.0, 0.0, 0.0)
+	env.tonemap_exposure = EXPOSURE
+	# Reflections come from a dim sky (cheap: one small radiance cube), the background stays the fog colour.
+	var sky := Sky.new()
+	var mat := ProceduralSkyMaterial.new()
+	mat.sky_top_color = GLOW_ZENITH
+	mat.sky_horizon_color = GLOW_HORIZON
+	mat.ground_horizon_color = GLOW_HORIZON * 0.6
+	mat.ground_bottom_color = SKY
+	mat.sky_curve = 0.18
+	sky.sky_material = mat
+	sky.radiance_size = Sky.RADIANCE_SIZE_32
+	env.sky = sky
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	city._apply_daylight()
+
+## What the fog and the haze are, put back whenever F3 (Graphics) has changed them for a preset.
+func _hold_atmosphere(env: Environment) -> void:
 	env.fog_enabled = true
 	env.fog_sky_affect = 1.0
-	env.volumetric_fog_albedo = Color(0.75, 0.45, 0.45)
-	city._apply_daylight()
+	env.fog_height = MIST_HEIGHT
+	env.fog_height_density = MIST_DENSITY
+	env.fog_aerial_perspective = 0.0
+	env.fog_sun_scatter = 0.0
 
 func _pick_flickering() -> void:
 	var i := 0
@@ -457,8 +493,10 @@ func _hide_story_hud() -> void:
 func _process(delta: float) -> void:
 	# Graphics (F3) puts the sky out of the fog again on the lower presets.
 	var env: Environment = city._env
-	if env.fog_sky_affect != 1.0:
-		env.fog_sky_affect = 1.0
+	if env.fog_sky_affect != 1.0 or not is_equal_approx(env.fog_height_density, MIST_DENSITY):
+		_hold_atmosphere(env)
+	if not is_equal_approx(env.fog_density, city._night["fog_density"]):
+		env.fog_density = city._night["fog_density"]
 	for fire in _fires:
 		fire[1] -= delta
 		if fire[1] <= 0.0:

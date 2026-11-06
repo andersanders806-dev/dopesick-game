@@ -14,6 +14,7 @@ const PointsPopupScript := preload("res://ui/PointsPopup.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const SeismographScript := preload("res://ui/Seismograph.gd")
 const DOUBLE_GOLD := Color(0.96, 0.74, 0.16)
+const U := preload("res://ui/UiStyle.gd")
 
 var round_label: Label
 var points_label: Label
@@ -47,14 +48,15 @@ func _on_health(hp: float) -> void:
 func _ready() -> void:
 	add_to_group("zombie_hud")
 	layer = 12
-	var font := FontVariation.new()
-	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
+	var font := U.font(U.BUNGEE)
+	var cond := U.font(U.COND_BOLD, 1)
+	var body := U.font(U.BODY_SEMI)
 	# Pinned to the bottom-left corner and growing up and right, so a long
 	# round or points number never runs off the window.
 	round_label = _label(font, 64, BLOOD, Vector2.ZERO)
-	_pin_bottom_left(round_label, 28.0, 24.0)
-	points_label = _label(font, 30, PAPER, Vector2.ZERO)
-	_pin_bottom_left(points_label, 32.0, 100.0)
+	_pin_bottom_left(round_label, U.SAFE_X, U.SAFE_Y)
+	points_label = _label(cond, 40, PAPER, Vector2.ZERO)
+	_pin_bottom_left(points_label, U.SAFE_X + 4.0, U.SAFE_Y + 80.0)
 	# What each hit paid, floating up beside the points; the crosshair and the hitmarker.
 	popups = PointsPopupScript.new()
 	add_child(popups)
@@ -67,20 +69,20 @@ func _ready() -> void:
 	banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	banner.modulate.a = 0.0
 	# The gun: pinned to the bottom-right corner, growing up and left.
-	ammo_label = _label(font, 56, PAPER, Vector2.ZERO)
-	_pin_bottom_right(ammo_label, 32.0, 24.0)
-	gun_label = _label(font, 22, BLOOD, Vector2.ZERO)
-	_pin_bottom_right(gun_label, 34.0, 96.0)
+	ammo_label = _label(cond, 64, PAPER, Vector2.ZERO)
+	_pin_bottom_right(ammo_label, U.SAFE_X, U.SAFE_Y - 6.0)
+	gun_label = _label(cond, 24, U.AMBER, Vector2.ZERO)
+	_pin_bottom_right(gun_label, U.SAFE_X + 2.0, U.SAFE_Y + 66.0)
 	# What E does, low in the middle; a word of refusal above it.
-	prompt = _label(font, 19, PAPER, Vector2.ZERO, GlyphLabelScript.new())
+	prompt = _label(body, 20, PAPER, Vector2.ZERO, GlyphLabelScript.new())
 	_pin_bottom_centre(prompt, 150.0)
-	message = _label(font, 28, BLOOD, Vector2.ZERO)
+	message = _label(cond, 32, BLOOD, Vector2.ZERO)
 	_pin_bottom_centre(message, 240.0)
 	message.modulate.a = 0.0
 	seismo = SeismographScript.new()
 	add_child(seismo)
-	double_label = _label(font, 34, DOUBLE_GOLD, Vector2.ZERO)
-	_pin_bottom_left(double_label, 32.0, 146.0)
+	double_label = _label(cond, 38, DOUBLE_GOLD, Vector2.ZERO)
+	_pin_bottom_left(double_label, U.SAFE_X + 4.0, U.SAFE_Y + 130.0)
 	double_label.text = "DOUBLE POINTS"
 	double_label.visible = false
 	ZombieMode.round_started.connect(_on_round_started)
@@ -104,12 +106,8 @@ func _label(font: Font, size: int, color: Color, at: Vector2, made: Label = null
 	var l := made if made != null else Label.new()
 	l.position = at
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	U.style_label(l, U.BODY, size, color)
 	l.add_theme_font_override("font", font)
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
-	l.add_theme_constant_override("shadow_offset_y", 3)
-	l.add_theme_constant_override("shadow_outline_size", 8)
 	add_child(l)
 	return l
 

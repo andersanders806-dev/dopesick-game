@@ -29,8 +29,12 @@ const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 const REAL_PATH := "user://zombies.cfg"
 ## Tests and bots (Engine meta "sandbox") keep a file of their own.
 const SANDBOX_PATH := "user://zombies_sandbox.cfg"
+## (headless suites run side by side, so each one gets its own file)
 var PATH: String:
-	get: return SANDBOX_PATH if Engine.get_meta("sandbox", false) else REAL_PATH
+	get:
+		if not Engine.get_meta("sandbox", false):
+			return REAL_PATH
+		return SANDBOX_PATH.replace(".cfg", "_%d.cfg" % OS.get_process_id()) if DisplayServer.get_name() == "headless" else SANDBOX_PATH
 
 const START_POINTS := 500
 ## Alive at once; the rest of a round waits in reserve. The cap moves between these two with

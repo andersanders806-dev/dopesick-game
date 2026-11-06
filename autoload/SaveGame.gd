@@ -14,8 +14,12 @@ const REAL_PATH := "user://save.json"
 ## Tests and bots (Engine meta "sandbox") save and delete a file of their
 ## own, so they never touch the player's run.
 const SANDBOX_PATH := "user://save_sandbox.json"
+## (headless suites run side by side, so each one gets its own file)
 var PATH: String:
-	get: return SANDBOX_PATH if Engine.get_meta("sandbox", false) else REAL_PATH
+	get:
+		if not Engine.get_meta("sandbox", false):
+			return REAL_PATH
+		return SANDBOX_PATH.replace(".json", "_%d.json" % OS.get_process_id()) if DisplayServer.get_name() == "headless" else SANDBOX_PATH
 const VERSION := 1
 ## GameState fields that make up a run. Everything else is derived, or
 ## per-visit, or reset on load.

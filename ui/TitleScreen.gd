@@ -5,6 +5,7 @@ extends Control
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const PadFocus := preload("res://ui/PadFocus.gd")
+const U := preload("res://ui/UiStyle.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
 ## Backdrops, one picked at random each time.
@@ -55,16 +56,20 @@ void fragment() {
 }"""
 	shade.material = mat
 	add_child(shade)
+	# Film grain and a vignette over the whole picture (it stays under the menu's text).
+	add_child(U.grain_overlay(0.05, 0.5))
 
 	var col := VBoxContainer.new()
 	col.position = Vector2(90, 150)
 	col.custom_minimum_size = Vector2(420, 0)
 	col.add_theme_constant_override("separation", 6)
 	add_child(col)
-	col.add_child(_label("DOPE SICK", 84, Color(0.93, 0.35, 0.55)))
-	col.add_child(_label("A run lasts as long as you do.", 17, Color(0.78, 0.75, 0.68)))
+	var logo := _label("DOPE SICK", U.FS_TITLE, U.PINK)
+	U.style_label(logo, U.BUNGEE, U.FS_TITLE, U.PINK, 2)
+	col.add_child(logo)
+	col.add_child(_label("A run lasts as long as you do.", U.FS_BODY, Color(0.78, 0.75, 0.68)))
 	if not MetaProgress.last_run.is_empty():
-		col.add_child(_label(_last_time(MetaProgress.last_run), 13, Color(0.62, 0.55, 0.6)))
+		col.add_child(_label(_last_time(MetaProgress.last_run), U.FS_SMALL, Color(0.62, 0.55, 0.6)))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 40)
 	col.add_child(gap)
@@ -116,10 +121,8 @@ func _backdrop() -> Texture2D:
 func _button(text: String, action: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(260, 40)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.add_theme_font_size_override("font_size", 18)
+	U.menu_item(b)
 	b.pressed.connect(func():
 		SFX.play("blip", -6.0, 0.9)
 		action.call())
@@ -129,10 +132,7 @@ func _button(text: String, action: Callable) -> Button:
 func _label(text: String, size: int, color: Color) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	l.add_theme_constant_override("shadow_offset_y", 2)
+	U.style_label(l, U.BODY, size, color)
 	return l
 
 ## New run asks how you want to see it first: through your own eyes, or
@@ -235,7 +235,7 @@ Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model Lice
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.
 Music: OpenGameArt -- omfgdude, Nostromo, Of Far Different Nature (CC-BY), Tsorthan Grove,
 Centurion_of_war, Eldritch Grim (CC0). Room tone: CC0 field recordings.
-Fonts: Bungee by David Jonathan Ross, DSEG by keshikan (SIL OFL).
+Fonts: Bungee by David Jonathan Ross, Barlow by Jeremy Tribby, DSEG by keshikan (SIL OFL).
 Full lists sit beside the files: assets/*/CREDITS*, LICENSE*.
 
 If you or someone you love is using: carry naloxone, don't use alone, and

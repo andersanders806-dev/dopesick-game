@@ -5,6 +5,7 @@ extends RefCounted
 ## where it is.
 
 const AMBER := Color(1.0, 0.8, 0.3)
+const UiStyle := preload("res://ui/UiStyle.gd")
 
 ## The focus frame: a clear fill with a 3 px amber border.
 static func frame() -> StyleBoxFlat:
@@ -19,8 +20,12 @@ static func frame() -> StyleBoxFlat:
 ## Every focusable control under `root`, now.
 static func dress(root: Node) -> void:
 	if root is BaseButton or root is Slider or root is OptionButton:
-		(root as Control).add_theme_stylebox_override("focus", frame())
-		(root as Control).focus_mode = Control.FOCUS_ALL
+		var c := root as Control
+		# (a title-style menu item brings its own focus: the amber bar and the underline)
+		if not c.has_theme_stylebox_override("focus"):
+			c.add_theme_stylebox_override("focus", frame())
+		c.focus_mode = Control.FOCUS_ALL
+		UiStyle.wire(c)
 	for c in root.get_children():
 		dress(c)
 

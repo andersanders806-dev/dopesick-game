@@ -13,6 +13,7 @@ const PRESET_NOTES := [
 	"PS5: High at console quality -- sharper upscaling, ultra shadows, full-res bounce light and AO. Wants a strong GPU.",
 ]
 const PadFocus := preload("res://ui/PadFocus.gd")
+const U := preload("res://ui/UiStyle.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const BUS_LABELS := {"Master": "Master", "Music": "Music", "SFX": "Effects", "Voice": "Voices", "Walkman": "Walkman"}
 
@@ -21,11 +22,7 @@ var _note: Label
 func open() -> void:
 	layer = 110
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.02, 0.03, 0.88)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(shade)
+	add_child(U.blur_backdrop(0.72, 3.0))
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -51,8 +48,8 @@ func open() -> void:
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(col)
 
-	col.add_child(_label("Settings", 22, Color(0.9, 0.8, 0.55)))
-	col.add_child(_label("Graphics", 15, Color(0.75, 0.72, 0.65)))
+	col.add_child(U.title("Settings"))
+	col.add_child(U.section("Graphics"))
 	var presets := HBoxContainer.new()
 	presets.add_theme_constant_override("separation", 6)
 	var group := ButtonGroup.new()
@@ -77,7 +74,7 @@ func open() -> void:
 	col.add_child(laptop)
 	col.add_child(_check("First person view", Graphics.first_person, Graphics.set_first_person))
 
-	col.add_child(_label("Sound", 15, Color(0.75, 0.72, 0.65)))
+	col.add_child(U.section("Sound"))
 	for bus in Graphics.VOLUME_BUSES:
 		var row := HBoxContainer.new()
 		var name_label := _label(BUS_LABELS[bus], 14, Color(0.84, 0.82, 0.78))
@@ -103,7 +100,7 @@ func open() -> void:
 		row.add_child(pct)
 		col.add_child(row)
 
-	col.add_child(_label("Controls", 15, Color(0.75, 0.72, 0.65)))
+	col.add_child(U.section("Controls"))
 	var srow := HBoxContainer.new()
 	var sname := _label("Mouse speed", 14, Color(0.84, 0.82, 0.78))
 	sname.custom_minimum_size = Vector2(110, 0)
@@ -157,11 +154,12 @@ func open() -> void:
 	outer.add_child(back)
 	PadFocus.dress(panel)
 	back.grab_focus.call_deferred()
+	U.ease_in(center, self, 12.0, 0.18)
 
 ## Settings > Controller: the right stick, the aim assist and the rumble. Every row is a slider or a
 ## button the pad can reach (left / right on a slider changes it), and all of it is remembered.
 func _controller_section(col: VBoxContainer) -> void:
-	col.add_child(_label("Controller", 15, Color(0.75, 0.72, 0.65)))
+	col.add_child(U.section("Controller"))
 	_slider_row(col, "PadSensH", "Look speed, horizontal", 0.3, 2.5, 0.05, Graphics.pad_sens_h, Graphics.set_pad_sens_h, "%.2fx")
 	_slider_row(col, "PadSensV", "Look speed, vertical", 0.3, 2.5, 0.05, Graphics.pad_sens_v, Graphics.set_pad_sens_v, "%.2fx")
 	_slider_row(col, "PadAdsMult", "Aimed down sights", 0.3, 1.5, 0.05, Graphics.pad_ads_mult, Graphics.set_pad_ads_mult, "%.2fx")
@@ -242,8 +240,7 @@ func _check(text: String, on: bool, setter: Callable) -> CheckButton:
 func _label(text: String, size: int, color: Color) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
+	U.style_label(l, U.BODY, size, color, 0, false)
 	return l
 
 func _close() -> void:

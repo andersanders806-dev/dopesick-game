@@ -7,6 +7,7 @@ extends CanvasLayer
 const BLOOD := Color(0.72, 0.08, 0.08)
 const PAPER := Color(0.93, 0.9, 0.82)
 const PadFocus := preload("res://ui/PadFocus.gd")
+const U := preload("res://ui/UiStyle.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 
 var again_button: Button
@@ -18,10 +19,11 @@ func _init() -> void:
 	layer = 110
 
 func show_summary(s: Dictionary) -> void:
-	var dim := ColorRect.new()
-	dim.color = Color(0.1, 0.0, 0.0, 0.82)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# The last frame, blurred and gone dark red, then the grain over it.
+	var dim := U.blur_backdrop(0.78, 3.5)
+	(dim.material as ShaderMaterial).set_shader_parameter("tint", Color(0.09, 0.0, 0.0, 1.0))
 	add_child(dim)
+	add_child(U.grain_overlay(0.06, 0.6))
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_CENTER)
 	col.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -57,8 +59,9 @@ func show_summary(s: Dictionary) -> void:
 	var hint := GlyphLabelScript.new()
 	hint.name = "PadHint"
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 16)
-	hint.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
+	hint.add_theme_font_override("font", U.font(U.BODY))
+	hint.add_theme_font_size_override("font_size", U.FS_SMALL)
+	hint.add_theme_color_override("font_color", U.MUTED)
 	col.add_child(hint)
 	hint.markup = "{accept} Choose"
 	PadFocus.dress(col)
@@ -78,16 +81,14 @@ func _label(text: String, size: int, color: Color) -> Label:
 	var l := Label.new()
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_color", color)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
-	l.add_theme_constant_override("shadow_offset_y", 2)
+	U.style_label(l, U.COND, size, color)
 	return l
 
 func _button(text: String, action: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
-	b.custom_minimum_size = Vector2(260, 44)
-	b.add_theme_font_size_override("font_size", 20)
+	U.menu_item(b)
+	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.pressed.connect(action)
 	return b

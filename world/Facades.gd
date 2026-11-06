@@ -877,6 +877,10 @@ func _storefront(front: Node3D, x0: float, width: float, walk_in := false) -> vo
 	glow_mat.emission_enabled = true
 	glow_mat.emission = Color(1.0, 0.8, 0.52)
 	glow_mat.emission_energy_multiplier = 0.55
+	if GameState.mode == "zombies":
+		# The dead block: a few dim bulbs left on behind the glass, not a lit supermarket.
+		glow_mat.albedo_color = Color(0.2, 0.17, 0.12)
+		glow_mat.emission_energy_multiplier = 0.1
 	# Shelves seen through the glass, and the window's own frame.
 	var shelf_mat := StandardMaterial3D.new()
 	shelf_mat.albedo_color = Color(0.06, 0.05, 0.05)

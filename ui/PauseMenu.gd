@@ -6,6 +6,7 @@ extends CanvasLayer
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const PadFocus := preload("res://ui/PadFocus.gd")
+const U := preload("res://ui/UiStyle.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 
@@ -17,11 +18,8 @@ func open() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_was_paused = get_tree().paused
 	get_tree().paused = true
-	var shade := ColorRect.new()
-	shade.color = Color(0.02, 0.02, 0.03, 0.7)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(shade)
+	# The frozen frame behind, blurred and darkened, not a flat sheet.
+	add_child(U.blur_backdrop(0.5, 3.0))
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
@@ -35,17 +33,12 @@ func open() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	margin.add_child(col)
-	var title := Label.new()
-	title.text = "Paused"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 22)
-	title.add_theme_color_override("font_color", Color(0.9, 0.8, 0.55))
-	col.add_child(title)
+	col.add_child(U.title("Paused"))
 	var info := Label.new()
-	info.text = "Day %d  -  %s  -  $%d" % [GameState.day, GameState.clock_text(), GameState.cash]
+	info.text = ("Round %d  -  %d points" % [ZombieMode.round, ZombieMode.points]) if GameState.mode == "zombies" \
+		else "Day %d  -  %s  -  $%d" % [GameState.day, GameState.clock_text(), GameState.cash]
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info.add_theme_font_size_override("font_size", 13)
-	info.add_theme_color_override("font_color", Color(0.6, 0.58, 0.54))
+	U.style_label(info, U.BODY, U.FS_SMALL, U.MUTED, 1, false)
 	col.add_child(info)
 	var resume := _button(col, "Resume", _close)
 	if GameState.mode == "story":
@@ -72,13 +65,15 @@ func open() -> void:
 		var hint := GlyphLabelScript.new()
 		hint.name = "PadHint"
 		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hint.add_theme_font_size_override("font_size", 14)
-		hint.add_theme_color_override("font_color", Color(0.7, 0.68, 0.62))
+		hint.add_theme_font_override("font", U.font(U.BODY))
+		hint.add_theme_font_size_override("font_size", U.FS_SMALL)
+		hint.add_theme_color_override("font_color", U.MUTED)
 		hint.custom_minimum_size = Vector2(0, 26)
 		col.add_child(hint)
 		hint.markup = "{accept} Select      {back} Resume"
 	PadFocus.dress(_panel)
 	resume.grab_focus.call_deferred()
+	U.ease_in(center, self, 12.0, 0.18)
 
 func _button(col: VBoxContainer, text: String, action: Callable) -> Button:
 	var b := Button.new()

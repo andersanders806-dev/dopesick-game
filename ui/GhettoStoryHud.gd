@@ -291,7 +291,11 @@ func _step_radio(dt: float) -> void:
 	var h := 40.0 + _radio_line.get_combined_minimum_size().y
 	_radio.size = Vector2(w, h)
 	_radio.position = Vector2((vp.x - w) * 0.5, vp.y - 190.0 - h)
-	if _radio_hold > 0.0:
+	if choice_active:
+		# The choice has the screen: the line has been heard, its text steps aside.
+		_radio.modulate.a = 0.0
+		_radio_hold = 0.0
+	elif _radio_hold > 0.0:
 		_radio_hold -= dt
 		_radio_dot.visible = int(_now * 4.0) % 2 == 0
 	else:

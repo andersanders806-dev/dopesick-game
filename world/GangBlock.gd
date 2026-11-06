@@ -46,6 +46,7 @@ func setup(block: Node3D) -> void:
 	_build_wrecks()
 	_use_zombie_navmesh()
 	_hide_story_hud()
+	_build_ghetto_set()
 	hud = GangHudScript.new()
 	hud.name = "ZombieHud"
 	city.add_child(hud)
@@ -70,6 +71,8 @@ func _install_story() -> void:
 	story.chapter_started.connect(_on_chapter)
 	story.story_finished.connect(_on_story_finished)
 	story.hud.ending_dismissed.connect(_end_run)
+	if ghetto_set != null and ghetto_set.has_method("attach"):
+		ghetto_set.attach(GhettoMode, story)
 	ambience = GangAmbienceScript.new()
 	add_child(ambience)
 	ambience.attach(story)
@@ -109,6 +112,8 @@ func _end_run() -> void:
 	ZombieMode.game_over_override = Callable()
 	Engine.time_scale = 1.0
 	var d: Dictionary = story.ending_data()
+	# The card has done its job; the run's summary takes the screen on its own.
+	story.hud.visible = false
 	ZombieMode.death_cause = String(d.get("title", ""))
 	ZombieMode.game_over()
 

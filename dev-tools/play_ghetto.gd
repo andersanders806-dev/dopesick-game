@@ -18,6 +18,8 @@ var shots := 0
 var pending: Array = []
 var fps_samples: Array[float] = []
 var walk_goal := Vector3.INF
+var _last_pos := Vector3.ZERO
+var _last_kill := 0.0
 var kills := 0
 var _last_target_seen := 0.0
 var _choice_open_t := -1.0
@@ -100,8 +102,21 @@ func _main() -> void:
 	while not zm.over and (Time.get_ticks_msec() / 1000.0 - t0) < limit:
 		await process_frame
 		frames += 1
+		var tn := Time.get_ticks_usec()
+		_dt = clampf((tn - _t_prev) / 1000000.0, 0.001, 0.2)
+		_t_prev = tn
 		if frames % 30 == 0:
 			fps_samples.append(Engine.get_frames_per_second())
+		if frames % 300 == 0:
+			if player.global_position.distance_to(_last_pos) < 0.3 and walk_goal != Vector3.INF:
+				var cols: Array = []
+				for ci in (player as CharacterBody3D).get_slide_collision_count():
+					var c := (player as CharacterBody3D).get_slide_collision(ci)
+					cols.append("%s/%s n=%s" % [(c.get_collider() as Node).name, (c.get_collider() as Node).get_parent().name, c.get_normal().snapped(Vector3.ONE * 0.01)])
+				say("STUCK: velocity %s collisions %s" % [player.velocity, cols])
+				snap_later("stuck", 0.1)
+			_last_pos = player.global_position
+			say("pos %s goal %s crew %d wave %d bags %d hp %.0f fps %d" % [player.global_position.snapped(Vector3.ONE * 0.1), walk_goal, _alive_crew().size(), zm.round, story.bags, zm.health, Engine.get_frames_per_second()])
 		_tick()
 		var now := Time.get_ticks_msec() / 1000.0
 		for p in pending.duplicate():
@@ -171,6 +186,7 @@ func _hook_story() -> void:
 		say("RAID started")
 		snap_later("raid_a", 4.0)
 		snap_later("raid_b", 9.0))
+	root.get_node("GhettoMode").enemy_killed.connect(func(_e: Node, _h: String): _last_kill = Time.get_ticks_msec() / 1000.0)
 	zm.round_started.connect(func(r: int): say("wave %d starts" % r))
 	zm.round_ended.connect(func(r: int): say("wave %d cleared (kills %d)" % [r, zm.kills]))
 
@@ -258,7 +274,17 @@ func _tick() -> void:
 	if goal != Vector3.INF:
 		_walk(goal)
 		return
-	# Combat.
+	# Combat. A crew that has held its cover for a while is pushed: walk up on the nearest, firing when he shows.
+	walk_goal = Vector3.INF
+	var crew_all := _alive_crew()
+	var since := Time.get_ticks_msec() / 1000.0 - maxf(_last_kill, t0)
+	if since > 14.0 and not crew_all.is_empty():
+		crew_all.sort_custom(func(a, b): return a.global_position.distance_to(player.global_position) < b.global_position.distance_to(player.global_position))
+		var near: Node3D = crew_all[0]
+		if near.global_position.distance_to(player.global_position) > 7.0:
+			if not _shoot_best(true, true):
+				_walk(near.global_position)
+			return
 	if not _shoot_best(true):
 		var crew := _alive_crew()
 		if crew.is_empty():
@@ -273,7 +299,7 @@ func _tick() -> void:
 		else:
 			_release_moves()
 
-func _shoot_best(allow_turn: bool) -> bool:
+func _shoot_best(allow_turn: bool, advance := false) -> bool:
 	var cam := root.get_viewport().get_camera_3d()
 	var best: Node3D
 	var bd := INF
@@ -288,6 +314,8 @@ func _shoot_best(allow_turn: bool) -> bool:
 		return false
 	_last_target_seen = Time.get_ticks_msec() / 1000.0
 	_release_moves()
+	if advance and bd > 7.0:
+		Input.action_press("move_up", 1.0)
 	var head: Vector3 = best.global_position + Vector3(0, 1.45 if not best.crouched else 0.95, 0)
 	_face(head)
 	if holder.can_fire():
@@ -304,12 +332,12 @@ func _next_step(goal: Vector3) -> Vector3:
 	var in_now := _in_laundromat(pp)
 	var in_goal := _in_laundromat(goal)
 	if in_goal and not in_now:
-		if Vector2(pp.x - 33.3, pp.z + 1.8).length() > 1.0:
+		if Vector2(pp.x - 33.3, pp.z + 1.8).length() > 1.7:
 			return Vector3.INF # the street: by the navmesh to the door first
 		return Vector3(33.3, 0, -4.4)
 	if in_now and in_goal:
-		if goal.z < -10.2 and pp.z > -10.2:
-			return Vector3(32.0, 0, -9.0) if pp.z > -9.0 or absf(pp.x - 32.0) > 0.5 else Vector3(32.0, 0, -11.2)
+		if goal.z < -10.2 and pp.z > -10.9:
+			return Vector3(32.0, 0, -8.5) if (pp.z > -9.0 and absf(pp.x - 32.0) > 0.4) else Vector3(32.0, 0, -11.6)
 		return goal
 	if in_now and not in_goal:
 		if pp.z > -10.2:
@@ -317,7 +345,29 @@ func _next_step(goal: Vector3) -> Vector3:
 		return Vector3(35.2, 0, -17.6)
 	return Vector3.INF
 
+var _stuck_t := 0.0
+var _dt := 0.016
+var _t_prev := 0
+var _unstick_left := 0.0
+var _unstick_dir := 1.0
+
 func _walk(goal: Vector3) -> void:
+	walk_goal = goal
+	# Snagged on a car or a corner for a few seconds: sidestep a moment like a player would.
+	if Vector2(player.velocity.x, player.velocity.z).length() < 0.4:
+		_stuck_t += _dt
+	else:
+		_stuck_t = 0.0
+	if _stuck_t > 2.0 and _unstick_left <= 0.0:
+		_unstick_left = 1.6
+		_unstick_dir = -_unstick_dir
+		_stuck_t = 0.0
+	if _unstick_left > 0.0:
+		_unstick_left -= _dt
+		_release_moves()
+		Input.action_press("move_right" if _unstick_dir > 0 else "move_left", 1.0)
+		Input.action_press("move_down", 0.5)
+		return
 	var cam := root.get_viewport().get_camera_3d()
 	var step := _next_step(goal)
 	var sprint := false

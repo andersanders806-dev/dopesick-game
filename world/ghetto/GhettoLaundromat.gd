@@ -40,7 +40,7 @@ const POINTS := {
 	"stash_a": Vector3(30.9, 0.0, -11.5), "stash_b": Vector3(30.7, 0.0, -14.1),
 	"stash_c": Vector3(33.6, 0.0, -15.0), "stash_d": Vector3(33.3, 0.0, -12.0),
 	"sink": Vector3(35.9, 0.0, -12.9),
-	"car": Vector3(41.5, 0.0, -24.0),
+	"car": Vector3(47.0, 0.0, -22.0),
 }
 
 var set_node: Node

@@ -25,6 +25,9 @@ const PATHS := {
 }
 const ROADBLOCKS := [
 	# [model, position, yaw degrees, arrives from the side (+1 east, -1 west)]
+	# The two that stop at the laundromat's door.
+	["police_crownvic", Vector3(36.6, 0, 0.3), 168.0, 1],
+	["police_crownvic", Vector3(29.0, 0, -0.2), 12.0, -1],
 	["police_crownvic", Vector3(52.5, 0, -0.6), 84.0, 1],
 	["police_crownvic", Vector3(52.7, 0, 3.7), 96.0, 1],
 	["van_shvan92", Vector3(59.5, 0, 0.9), 175.0, 1],
@@ -32,8 +35,10 @@ const ROADBLOCKS := [
 	["police_crownvic", Vector3(-46.2, 0, 4.0), 84.0, -1],
 ]
 const TAPES := [47.0, -40.0]
-const GETAWAY := Vector3(44.0, 0.0, -91.3)
-const GETAWAY_POINT := Vector3(46.0, 0.0, -87.2)
+## The getaway car waits in the lot behind the laundromat (the lot's way out is the gap at x 45..47 onto Back Street).
+const GETAWAY := Vector3(47.0, 0.0, -22.0)
+const GETAWAY_POINT := Vector3(47.0, 0.0, -22.0)
+const GETAWAY_ROUTE := [Vector3(47.0, 0, -22.0), Vector3(46.8, 0, -34.0), Vector3(46.0, 0, -62.0), Vector3(46.0, 0, -84.0), Vector3(45.5, 0, -90.0), Vector3(30.0, 0, -91.0), Vector3(-30.0, 0, -91.0), Vector3(-90.0, 0, -91.0)]
 const MAX_FLASH_LIGHTS := 6
 
 var set_node: Node
@@ -43,6 +48,7 @@ var police_cars: Array[Node3D] = []
 var swat_van: Node3D
 var getaway_car: Node3D
 var getaway_leaving := false
+var _leave_last := 0.0
 var tape_strips: Array[MeshInstance3D] = []
 var drive_car: Node3D
 var drive_id := ""
@@ -400,7 +406,7 @@ func _getaway() -> void:
 	getaway_car.name = "GetawayCar"
 	add_child(getaway_car)
 	getaway_car.global_position = GETAWAY
-	getaway_car.rotation_degrees.y = 180.0
+	getaway_car.rotation_degrees.y = 90.0
 	var a: AABB = getaway_car.get_meta("aabb")
 	var body := StaticBody3D.new()
 	var s := CollisionShape3D.new()
@@ -443,19 +449,36 @@ func _getaway() -> void:
 	add_child(marker)
 	marker.global_position = GETAWAY_POINT
 
-## ESCAPED: the getaway car pulls away along Back Street, the tyres squealing, and is gone.
+## ESCAPED: the getaway car pulls out of the lot, up through the gap onto Back Street and away west, the tyres
+## squealing, its tail lights going.
 func getaway_leave() -> void:
 	if getaway_car == null or not is_instance_valid(getaway_car) or getaway_leaving:
 		return
 	getaway_leaving = true
-	set_node.call("_sound", "tyre_squeal", getaway_car.global_position, 2.0, 1.0, 110.0)
-	var from := getaway_car.global_position
+	set_node.call("_sound", "tyre_squeal", getaway_car.global_position, 3.0, 1.0, 110.0)
+	set_node.call("_sound", "res://assets/sfx/car_pass.wav", getaway_car.global_position, 2.0, 0.8, 120.0)
+	var route := Curve3D.new()
+	for i in GETAWAY_ROUTE.size():
+		var p: Vector3 = GETAWAY_ROUTE[i]
+		var prev: Vector3 = GETAWAY_ROUTE[maxi(i - 1, 0)]
+		var next: Vector3 = GETAWAY_ROUTE[mini(i + 1, GETAWAY_ROUTE.size() - 1)]
+		var h := (next - prev) * 0.2
+		route.add_point(p, -h, h)
+	var total := route.get_baked_length()
+	_leave_last = 0.0
 	var tw := create_tween()
 	tw.tween_method(func(t: float):
-		if is_instance_valid(getaway_car):
-			var p := from + Vector3(-110.0 * t * t, 0, 0)
-			_spin(getaway_car, getaway_car.global_position.distance_to(p))
-			getaway_car.global_position = p, 0.0, 1.0, 5.0)
+		if not is_instance_valid(getaway_car):
+			return
+		var d := total * t * t
+		var p := route.sample_baked(d, true)
+		var q := route.sample_baked(minf(d + 1.5, total), true)
+		_spin(getaway_car, d - _leave_last)
+		_leave_last = d
+		getaway_car.global_position = Vector3(p.x, 0, p.z)
+		var dir := q - p
+		if dir.length() > 0.01:
+			getaway_car.rotation.y = atan2(-dir.z, dir.x), 0.0, 1.0, 9.0)
 	tw.tween_callback(func():
 		if is_instance_valid(getaway_car):
 			getaway_car.visible = false)

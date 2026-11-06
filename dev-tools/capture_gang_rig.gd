@@ -10,6 +10,10 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out := args[0] if args.size() > 0 else "/tmp/gang_rig.png"
 	var guns: Array = Array(args.slice(1)) if args.size() > 1 else ["pistol", "smg", "ar", "shotgun", "lmg"]
+	var crew := "Dock Boys"
+	if guns.has("police"):
+		crew = "Police"
+		guns.erase("police")
 	var crouch := false
 	if guns.has("crouch"):
 		crouch = true
@@ -54,6 +58,7 @@ func _initialize() -> void:
 	rng.seed = 5
 	for gi in guns.size():
 		var g = GangsterScript.new()
+		g.crew = crew
 		g.configure("grunt", 1, rng)
 		g.gun_id = guns[gi]
 		g.gun = GangsterScript.GUNS[guns[gi]]

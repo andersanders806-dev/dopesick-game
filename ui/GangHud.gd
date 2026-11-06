@@ -93,6 +93,7 @@ var callouts: Array = []
 ## How many callouts have been shown in all (the feed itself is capped and fades).
 var callouts_shown := 0
 var banner_line: Label
+var flash_rect: ColorRect
 
 func _ready() -> void:
 	super._ready()
@@ -115,6 +116,12 @@ func _ready() -> void:
 	add_child(suppress)
 	move_child(suppress, 0)
 	suppress.visible = false
+	flash_rect = ColorRect.new()
+	flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash_rect.color = Color(1, 1, 0.95, 1)
+	flash_rect.modulate.a = 0.0
+	add_child(flash_rect)
 	feed = VBoxContainer.new()
 	feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(feed)
@@ -135,6 +142,13 @@ func _ready() -> void:
 	banner_line.modulate.a = 0.0
 	ZombieMode.player_damaged.connect(_on_damaged)
 	ZombieMode.armor_changed.connect(func(_a: float): plates.queue_redraw())
+
+## A flashbang: the screen whites out and clears over `secs` (the sound is the caller's).
+func flash(secs := 1.8) -> void:
+	flash_rect.modulate.a = 0.92
+	var tw := create_tween()
+	tw.tween_interval(0.25)
+	tw.tween_property(flash_rect, "modulate:a", 0.0, secs)
 
 ## A man you have put down is within reach: the knife finishes him (and pays more).
 func _update_prompt() -> void:
@@ -175,7 +189,7 @@ func _process(delta: float) -> void:
 
 func _on_round_started(r: int) -> void:
 	_refresh()
-	banner.text = "WAVE %d" % r if not ZombieMode.is_boss_wave(r) else "WAVE %d  THE ENFORCER" % r
+	banner.text = "WAVE %d" % r if not ZombieMode.is_boss_wave(r) else ("WAVE %d  THE ENFORCER" % r if r < 8 else "WAVE %d  TAC LEAD" % r)
 	banner_line.text = wave_line(r)
 	var tw := create_tween()
 	tw.tween_property(banner, "modulate:a", 1.0, 0.4)
@@ -186,6 +200,8 @@ func _on_round_started(r: int) -> void:
 
 ## What the street says as a wave starts.
 static func wave_line(r: int) -> String:
+	if r >= 8:
+		return "Warrant team on the block. Don't get cuffed." if not ZombieMode.is_boss_wave(r) else "Their lead is in plates. Aim for the head."
 	if ZombieMode.is_boss_wave(r):
 		return "He brought his own armour. Aim for the head."
 	var lines := ["THEY WANT YOUR CORNER.", "They're not done. Hold it.", "More of them. Keep your head down.",
@@ -198,7 +214,7 @@ func callout(who: String, text: String, _pos := Vector3.INF, crew := "Dock Boys"
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.text = "%s: %s" % [who, text]
 	l.add_theme_font_size_override("font_size", 19)
-	var col := Color(0.86, 0.85, 0.35) if crew == "Dock Boys" else Color(0.7, 0.5, 0.95)
+	var col := Color(0.86, 0.85, 0.35) if crew == "Dock Boys" else (Color(0.55, 0.72, 1.0) if crew == "Police" else Color(0.7, 0.5, 0.95))
 	l.add_theme_color_override("font_color", col)
 	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	l.add_theme_constant_override("shadow_offset_y", 2)

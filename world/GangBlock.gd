@@ -11,6 +11,9 @@ const GangsterScript := preload("res://npc/Gangster3D.gd")
 const GangFXScript := preload("res://fx/GangFX.gd")
 const CoverMapScript := preload("res://npc/CoverMap.gd")
 const ArmorBuyScript := preload("res://world/ArmorBuy.gd")
+const GhettoStoryScript := preload("res://fx/GhettoStory.gd")
+const GangAmbienceScript := preload("res://fx/GangAmbience.gd")
+const GhettoVoice := preload("res://fx/GhettoVoice.gd")
 
 ## Where the plates are sold (probe point, direction), as the guns are.
 const PLATE_SPOT := [Vector3(-4, 1.3, -3), Vector3(0, 0, -1)]
@@ -30,6 +33,9 @@ const DUSK_MOON := Color(0.65, 0.6, 0.75)
 var gang_fx: Node3D
 var cover: CoverMapScript
 var armor_buy: Area3D
+## The story layer (fx/GhettoStory.gd): chapters over the waves, the raid, the endings.
+var story: Node
+var ambience: Node
 
 func setup(block: Node3D) -> void:
 	city = block
@@ -53,7 +59,58 @@ func setup(block: Node3D) -> void:
 	add_child(spawner)
 	_build_cover()
 	_build_purchases()
+	_install_story()
 	ZombieMode.start_round()
+
+# --- The story drives the war -------------------------------------------------------------
+
+func _install_story() -> void:
+	story = GhettoStoryScript.install(GhettoMode, self)
+	story.props_parent = city
+	story.chapter_started.connect(_on_chapter)
+	story.story_finished.connect(_on_story_finished)
+	story.hud.ending_dismissed.connect(_end_run)
+	ambience = GangAmbienceScript.new()
+	add_child(ambience)
+	ambience.attach(story)
+	ZombieMode.game_over_override = _story_takes_the_end
+
+## The bust brings the police: from then on the waves are the warrant team, not the Dock Boys.
+func _on_chapter(id: String) -> void:
+	if spawner != null:
+		spawner.crew_name = "Police" if id == "bust" else "Dock Boys"
+
+## Down in the raid is the BUSTED ending; after an ending nothing else ends the run but the card.
+func _story_takes_the_end() -> bool:
+	if story == null or not is_instance_valid(story):
+		return false
+	if story.finished:
+		return true
+	if story.raid_active:
+		story.bust("downed")
+		return true
+	return false
+
+func _exit_tree() -> void:
+	GhettoVoice.reset_duck()
+	if ZombieMode.game_over_override == _story_takes_the_end:
+		ZombieMode.game_over_override = Callable()
+
+func _on_story_finished(_ending: String) -> void:
+	if spawner != null:
+		spawner.enabled = false
+	await get_tree().create_timer(1.2, true, false, true).timeout
+	for g in get_tree().get_nodes_in_group("gangsters"):
+		if is_instance_valid(g):
+			g.queue_free()
+
+## The ending card is dismissed: the run's own summary, headed by how it ended.
+func _end_run() -> void:
+	ZombieMode.game_over_override = Callable()
+	Engine.time_scale = 1.0
+	var d: Dictionary = story.ending_data()
+	ZombieMode.death_cause = String(d.get("title", ""))
+	ZombieMode.game_over()
 
 func prewarm_gang_bodies() -> void:
 	prewarmed = 0

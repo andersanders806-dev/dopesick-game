@@ -95,7 +95,78 @@ static func say(parent: Node, kind: String, text: String, volume_db := 0.0) -> A
 	parent.add_child(p)
 	p.finished.connect(p.queue_free)
 	p.play()
+	duck_music(p, 9.0)
 	return p
+
+# --- The music gives way to the voices ----------------------------------------------------------
+
+## How far the Music bus is down while a line plays (dB), how fast it goes down and comes back (s), and how long it
+## holds after the last line (s).
+const DUCK_IN := 0.18
+const DUCK_OUT := 0.7
+const DUCK_HOLD := 0.35
+static var _duck_fx: AudioEffectAmplify
+static var _duck_n := 0
+static var _duck_depth := 0.0
+static var _duck_tween: Tween
+## For tests: the deepest the music has been taken, and how many lines have asked.
+static var duck_peak_db := 0.0
+static var duck_calls := 0
+
+## The Music bus's own amplifier for this (added once at the end of its chain; found again if the buses are rebuilt).
+static func _duck_effect() -> AudioEffectAmplify:
+	var bus := AudioServer.get_bus_index("Music")
+	if bus < 0:
+		return null
+	if _duck_fx != null:
+		for i in AudioServer.get_bus_effect_count(bus):
+			if AudioServer.get_bus_effect(bus, i) == _duck_fx:
+				return _duck_fx
+	_duck_fx = AudioEffectAmplify.new()
+	_duck_fx.volume_db = 0.0
+	AudioServer.add_bus_effect(bus, _duck_fx)
+	return _duck_fx
+
+## Takes the music down by `depth_db` for as long as `voice` (an audio player) plays, then back up.
+static func duck_music(voice: Node, depth_db := 9.0) -> void:
+	var fx := _duck_effect()
+	var tree := Engine.get_main_loop() as SceneTree
+	if fx == null or tree == null or voice == null:
+		return
+	duck_calls += 1
+	_duck_n += 1
+	_duck_depth = maxf(_duck_depth, depth_db)
+	_duck_go(tree, -_duck_depth, DUCK_IN, 0.0)
+	var done := [false]
+	var release := func() -> void:
+		if done[0]:
+			return
+		done[0] = true
+		_duck_n = maxi(_duck_n - 1, 0)
+		if _duck_n == 0:
+			_duck_depth = 0.0
+			_duck_go(tree, 0.0, DUCK_OUT, DUCK_HOLD)
+	if voice.has_signal("finished"):
+		voice.connect("finished", release)
+	voice.tree_exiting.connect(release)
+
+static func _duck_go(tree: SceneTree, db: float, secs: float, delay: float) -> void:
+	var fx := _duck_fx
+	if _duck_tween != null and _duck_tween.is_valid():
+		_duck_tween.kill()
+	duck_peak_db = minf(duck_peak_db, db)
+	_duck_tween = tree.create_tween()
+	_duck_tween.set_pause_mode(Tween.TWEEN_PAUSE_PROCESS)
+	if delay > 0.0:
+		_duck_tween.tween_interval(delay)
+	_duck_tween.tween_property(fx, "volume_db", db, secs)
+
+## The music is back at full (a run over, a test).
+static func reset_duck() -> void:
+	_duck_n = 0
+	_duck_depth = 0.0
+	if _duck_fx != null:
+		_duck_fx.volume_db = 0.0
 
 ## The extra barks of the story and the police's, by event, as a text (mature or clean). Like npc/Barks.pick.
 static func pick(event: String, rng: RandomNumberGenerator = null) -> String:

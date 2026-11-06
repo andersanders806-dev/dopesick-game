@@ -17,6 +17,7 @@ const Barks := preload("res://npc/Barks.gd")
 const GangFX := preload("res://fx/GangFX.gd")
 const GANG_SHADER := preload("res://npc/gangster.gdshader")
 const GangGrip := preload("res://npc/GangGrip.gd")
+const GhettoVoice := preload("res://fx/GhettoVoice.gd")
 
 enum Mode { ADVANCE, COVER, PEEK, FLANK, PUSH, RETREAT, THROW, HOLD }
 
@@ -28,6 +29,8 @@ const GANG_BODIES := [
 const CREW_LOOK := {
 	"Dock Boys": {"cloth": Color(0.42, 0.5, 0.16), "band": Color(0.95, 0.78, 0.1)},
 	"Eastside Kings": {"cloth": Color(0.38, 0.16, 0.55), "band": Color(0.95, 0.95, 0.9)},
+	# The warrant team (the story's raid): dark uniform, a helmet, POLICE across the vest. A role, not a crew.
+	"Police": {"cloth": Color(0.07, 0.1, 0.19), "band": Color(0.08, 0.09, 0.12), "police": true},
 }
 ## Per gun: damage per round (per pellet), rounds a second, burst (min, max), magazine, pellets, reach where the
 ## damage is gone (m), reload seconds, the weapon file whose model and shot it borrows.
@@ -90,6 +93,8 @@ var _sense_t := 0.0
 var _last_seen := Vector3.INF
 var _last_seen_t := 99.0
 var _bark_cd := 0.0
+var _taunt_t := randf_range(6.0, 14.0)
+var _drive_by := false
 var _busy_t := 0.0
 var _want := Vector3.ZERO
 var _pace := PACE_JOG
@@ -138,7 +143,7 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 		skill = 0.5
 		_pace = PACE_WALK * 1.35
 		body_scale = 1.62
-		title = "THE ENFORCER"
+		title = "TAC LEAD" if crew == "Police" else "THE ENFORCER"
 	health = max_health
 	vest_max = vest_hp
 	gun = GUNS[gun_id]
@@ -168,7 +173,7 @@ func _apply_look() -> void:
 			var src := inst.mesh.surface_get_material(i) as BaseMaterial3D
 			if src == null:
 				continue
-			inst.set_surface_override_material(i, _skin_material(src, look["cloth"]))
+			inst.set_surface_override_material(i, _skin_material(src, look["cloth"], 0.93 if look.get("police", false) else 0.6))
 		inst.set_instance_shader_parameter("rot", 0.0)
 		inst.set_instance_shader_parameter("seed", float(get_meta("seed", 0.0)))
 		_lod_meshes.append(inst)
@@ -176,7 +181,7 @@ func _apply_look() -> void:
 
 static var _mats := {}
 
-static func _skin_material(src: BaseMaterial3D, cloth: Color) -> Material:
+static func _skin_material(src: BaseMaterial3D, cloth: Color, tint := 0.6) -> Material:
 	var key := [src, cloth]
 	for k in _mats:
 		if k[0] == src and k[1] == cloth:
@@ -197,6 +202,7 @@ static func _skin_material(src: BaseMaterial3D, cloth: Color) -> Material:
 		sm.set_shader_parameter("kind", 1 if rname.ends_with("head") else 0)
 		sm.set_shader_parameter("roughness_base", src.roughness)
 		sm.set_shader_parameter("crew", cloth)
+		sm.set_shader_parameter("crew_tint", tint)
 		m = sm
 	_mats[key] = m
 	return m
@@ -229,6 +235,9 @@ func _attach_gear(look: Dictionary) -> void:
 	_grip.gun_quat = GUN_QUAT
 	_grip.fore_m = Vector3(0, -0.045, -0.04) if gun_id == "pistol" else Vector3(0, -0.04, -length * (0.30 if gun_id != "lmg" else 0.34))
 	_skeleton.add_child(_grip)
+	if look.get("police", false):
+		_attach_police_gear(unit)
+		return
 	# A bandana: a band round the head at the brow, in the crew's colour.
 	var hd := BoneAttachment3D.new()
 	hd.name = "Bandana"
@@ -252,6 +261,68 @@ func _attach_gear(look: Dictionary) -> void:
 	band.position = BAND_POS / unit
 	band.rotation_degrees = BAND_ROT
 	hd.add_child(band)
+
+## The warrant team's look: a helmet with a white stripe and POLICE on the back and the chest of the vest.
+func _attach_police_gear(unit: float) -> void:
+	var hd := BoneAttachment3D.new()
+	hd.name = "Helmet"
+	hd.bone_name = "Bip01 Head"
+	_skeleton.add_child(hd)
+	var shell := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = 0.114
+	sph.height = 0.114
+	sph.is_hemisphere = true
+	sph.radial_segments = 20
+	sph.rings = 6
+	shell.mesh = sph
+	var hm := StandardMaterial3D.new()
+	hm.albedo_color = Color(0.05, 0.06, 0.09)
+	hm.roughness = 0.4
+	hm.metallic = 0.25
+	shell.material_override = hm
+	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shell.scale = Vector3.ONE / unit
+	shell.position = (BAND_POS + Vector3(0.03, -0.004, 0.0)) / unit
+	shell.rotation_degrees = BAND_ROT
+	hd.add_child(shell)
+	var rim := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.116
+	cyl.bottom_radius = 0.116
+	cyl.height = 0.014
+	cyl.cap_top = false
+	cyl.cap_bottom = false
+	rim.mesh = cyl
+	var sm := StandardMaterial3D.new()
+	sm.albedo_color = Color(0.9, 0.9, 0.95)
+	sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	rim.material_override = sm
+	rim.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	rim.scale = Vector3.ONE / unit
+	rim.position = (BAND_POS + Vector3(0.03, -0.004, 0.0)) / unit
+	rim.rotation_degrees = BAND_ROT
+	hd.add_child(rim)
+	# POLICE on the vest, front and back (the chest bone's own axes: +X is up the spine, Y forward).
+	var ch := BoneAttachment3D.new()
+	ch.name = "VestMark"
+	ch.bone_name = "Bip01 Spine2" if _skeleton.find_bone("Bip01 Spine2") >= 0 else "Bip01 Spine1"
+	_skeleton.add_child(ch)
+	for side in [1.0, -1.0]:
+		var lb := Label3D.new()
+		lb.text = "POLICE"
+		lb.font = load("res://assets/fonts/Bungee-Regular.ttf")
+		lb.font_size = 48
+		lb.pixel_size = 0.0011 / unit
+		lb.modulate = Color(0.93, 0.93, 0.96)
+		lb.outline_size = 0
+		lb.shaded = false
+		lb.double_sided = false
+		lb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lb.position = Vector3(0.0, 0.15 * side, 0.0) / unit
+		# The text's up is the spine's X, its face looks out along the bone's Y (front) or minus Y (back).
+		lb.basis = Basis(Vector3(0, 0, side), Vector3(1, 0, 0), Vector3(0, side, 0)) * Basis.from_scale(Vector3.ONE)
+		ch.add_child(lb)
 
 ## Where the gun sits in the hand (bone-local, metres) and how it is turned; tuned against the aim pose.
 ## (GUN_QUAT: the hand's rotation to a gun whose barrel runs along the aim pose's arm, upright, measured by
@@ -354,17 +425,40 @@ func _sense(delta: float) -> void:
 		if was and _last_seen_t < 0.5 and randf() < 0.5:
 			bark("lost")
 
+## What the warrant team says for each of the crews' events (fx/GhettoStoryScript.gd POLICE_BARKS); "" = silent.
+const POLICE_EVENT := {"spot": "spot", "flank": "advance", "mock_reload": "advance", "taunt": "advance", "boss": "spot",
+	"reload": "reload", "hit": "down", "ally_down": "down", "retreat": "down", "throw": "radio", "lost": "advance"}
+## Where a Dock Boys event also has the story's extra lines (habit taunts, the drive-by cry).
+const EXTRA_EVENT := {"taunt": "taunt_habit", "mock_reload": "mock_reload2", "begging": "cry", "spot": "drive_by"}
+
 func bark(event: String, force := false) -> void:
 	if not force and _bark_cd > 0.0:
 		return
 	var d := global_position.distance_to(target.global_position) if target != null else 0.0
 	if d > 55.0:
 		return
+	if boss and event == "spot" and randf() < 0.6:
+		event = "boss"
 	_bark_cd = randf_range(4.0, 7.0)
-	var text := Barks.pick(event)
+	var text := ""
+	var kind := ""
+	if crew == "Police":
+		text = GhettoVoice.pick(String(POLICE_EVENT.get(event, "")))
+		kind = "police"
+	else:
+		var extra := String(EXTRA_EVENT.get(event, ""))
+		# The drive-by men shout their own thing when they see you; the rest sometimes use the story's lines.
+		if extra != "" and ((event == "spot" and _drive_by) or (event != "spot" and randf() < 0.4)):
+			text = GhettoVoice.pick(extra)
+		if text == "":
+			text = Barks.pick(event)
 	if text == "":
 		return
 	barked.emit(self, text)
+	# Spoken from where he stands (the line's baked take follows the Mature language option), and on the feed.
+	var voice := GhettoVoice.bark(self, text, global_position + Vector3(0, 1.6, 0), kind)
+	if voice != null and d < 28.0:
+		GhettoVoice.duck_music(voice, 4.0)
 	var hud := get_tree().get_first_node_in_group("zombie_hud")
 	if hud != null and hud.has_method("callout"):
 		hud.callout(title if title != "" else crew, text, global_position, crew)
@@ -375,6 +469,12 @@ func _think(delta: float) -> void:
 	if downed:
 		_crawl(delta)
 		return
+	# Talk: from cover and from the peek, now and then, the corner is theirs.
+	_taunt_t -= delta
+	if _taunt_t <= 0.0:
+		_taunt_t = randf_range(9.0, 18.0)
+		if mode == Mode.COVER or mode == Mode.PEEK:
+			bark("taunt")
 	var to := target.global_position - global_position
 	to.y = 0.0
 	var dist := to.length()
@@ -1071,6 +1171,8 @@ func rush() -> void:
 
 ## A man on a car's running board: shoots from the open for a few seconds while it passes, no cover.
 func drive_by() -> void:
+	_drive_by = true
+	bark("spot", true)
 	mode = Mode.PEEK
 	_mode_t = 6.0
 	_peeks_left = 4

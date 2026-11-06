@@ -43,3 +43,4 @@ Fetched by dev-tools/fetch_guns.py on 2026-10-27; textures scaled to 1024 px max
 - "HK 416 Assault Rifle - Low Poly" by Derek Flanagan (https://sketchfab.com/3d-models/hk-416-assault-rifle-low-poly-fbdf159836224d67b193ca527d4f4333): the assault rifle
 - "Low Poly Magnum Revolver" by austincford (https://sketchfab.com/3d-models/low-poly-magnum-revolver-9191c62d1cec4087809102dcc81493bb): the magnum
 - "DP28 Light Machine Gun Low-poly PBR" by MaX3Dd (https://sketchfab.com/3d-models/dp28-light-machine-gun-low-poly-pbr-03978b66f0c646f19e9502634f0ad20a): the LMG
+- assets/sfx/ghetto/gw/*.wav and assets/sfx/ghetto/amb/*.ogg: Ghetto Wars raid sounds (door ram, bullhorn, flashbang, helicopter pass, siren) and the night-street and burning-block beds, synthesised for this project (CC0), see the generator scripts in gw-assets/gen

@@ -62,6 +62,8 @@ const POINTS_BOARD := 10
 ## with guns. begin_gangs() sets it; leave() and begin() clear it. Everything the zombie mode shares keys off
 ## `active`; only the block, the spawner and the HUD look at this.
 var gangs := false
+## Ghetto Wars' story asks here before the run ends: true = it handles the end itself (world/GangBlock.gd).
+var game_over_override := Callable()
 ## Options: "Mature language" swaps the crews' barks for clean ones.
 var mature_language := true: set = set_mature_language
 ## Whether a zombie run is on (begin() .. leave()).
@@ -202,12 +204,14 @@ func leave() -> void:
 	health = MAX_HEALTH
 	armor = 0.0
 	gangs = false
+	game_over_override = Callable()
 	_since_hit = 0.0
 	GameState.mode = "story"
 	ZombieControls.restore()
 
 func _reset() -> void:
 	over = false
+	game_over_override = Callable()
 	new_best = false
 	round = 0
 	points = START_POINTS
@@ -338,6 +342,9 @@ func summary() -> Dictionary:
 ## The run is over: save the best and show the screen. Once per run.
 func game_over() -> void:
 	if not active or over:
+		return
+	# Ghetto Wars' story may take the end of the run (the bust, the ending cards) and call game_over() itself later.
+	if game_over_override.is_valid() and bool(game_over_override.call()):
 		return
 	over = true
 	new_best = round > best_round

@@ -1138,6 +1138,7 @@ func set_chapter(id: Variant) -> void:
 	chapter = key
 	ending = ""
 	run_over = false
+	vehicles.call("set_lights", true)
 	_mood_to(key)
 	match key:
 		"STASH RUN":
@@ -1222,6 +1223,7 @@ func on_story_ending(key: Variant) -> void:
 		heli.call("set_between_waves", false)
 		_sirens(0)
 		_power_cut(false)
+		vehicles.call("set_lights", false)
 	elif ending.begins_with("bag"):
 		_mood_set(Color(1.0, 0.5, 0.2), 0.32, 0.8, 4.0)
 		_sirens(1)

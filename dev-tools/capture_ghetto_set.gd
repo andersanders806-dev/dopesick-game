@@ -76,7 +76,7 @@ func _initialize() -> void:
 		for i in 14:
 			set_.heli._process(1.0)
 		var hp: Vector3 = set_.heli.global_position
-		await _shot("heli", Vector3(12.0, 1.6, 7.0), hp.lerp(Vector3(set_.heli.beam_target.x, 0, set_.heli.beam_target.z), 0.35))
+		await _shot("heli", Vector3(12.0, 1.6, 4.2), hp.lerp(Vector3(set_.heli.beam_target.x, 0, set_.heli.beam_target.z), 0.35))
 	if want.call("drive"):
 		set_.set_wave(4)
 		var car: Node3D = set_.drive_by("main_east")
@@ -87,15 +87,6 @@ func _initialize() -> void:
 			await process_frame
 			guard += 1
 		await _snap("drive")
-	if want.call("bust"):
-		set_.set_chapter("THE BUST")
-		await _wait(300)
-		await _shot("bust", Vector3(30.0, 1.7, 0.4), Vector3(52.0, 1.2, 1.5))
-		await _wait(7)
-		await _snap("bust2")
-		await _shot("getaway", Vector3(36.0, 1.8, -86.5), Vector3(44.0, 0.9, -91.2))
-		set_.heli.beam_target = Vector3(10, 0, -2)
-		await _shot("search", Vector3(-4.0, 1.7, -1.0), Vector3(10.0, 1.0, -2.0))
 	# The laundromat, the markers, the raid and the endings (a fresh night each: `only=lm,markers,raid,endings`).
 	if want.call("lm"):
 		await _shot("lm_front", Vector3(30.0, 1.65, 1.6), Vector3(33.3, 1.5, -4.0))
@@ -110,6 +101,16 @@ func _initialize() -> void:
 		await _wait(60)
 		await _shot("marker_bags", Vector3(33.0, 1.65, -10.6), Vector3(32.4, 0.6, -13.4))
 		p.global_position = Vector3(-60, 0, 0)
+	if want.call("bust"):
+		set_.set_chapter("THE BUST")
+		await _wait(300)
+		await _shot("bust", Vector3(30.0, 1.7, 0.4), Vector3(52.0, 1.2, 1.5))
+		await _wait(7)
+		await _snap("bust2")
+		await _shot("getaway", Vector3(36.0, 1.8, -86.5), Vector3(44.0, 0.9, -91.2))
+		set_.heli.beam_target = Vector3(10, 0, -2)
+		await _shot("search", Vector3(-4.0, 1.7, -1.0), Vector3(10.0, 1.0, -2.0))
+	# The raid and the endings (a fresh night each: `only=lm,markers,raid,endings`; the laundromat and markers come first, before the bust).
 	if want.call("raid"):
 		set_.set_chapter("THE BUST")
 		await _wait(240)

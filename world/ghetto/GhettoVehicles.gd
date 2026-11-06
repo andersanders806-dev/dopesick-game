@@ -49,6 +49,7 @@ var swat_van: Node3D
 var getaway_car: Node3D
 var getaway_leaving := false
 var _leave_last := 0.0
+var lights_on := true
 var tape_strips: Array[MeshInstance3D] = []
 var drive_car: Node3D
 var drive_id := ""
@@ -496,6 +497,21 @@ func getaway_leave() -> void:
 		if is_instance_valid(getaway_car):
 			getaway_car.visible = false)
 
+## The police lightbars and their sirens on or off (the clean ending: the night goes quiet).
+func set_lights(on: bool) -> void:
+	lights_on = on
+	var cars: Array = []
+	cars.append_array(police_cars)
+	cars.append(swat_van)
+	for c in cars:
+		if c and is_instance_valid(c):
+			var sp := c.get_node_or_null("Siren") as AudioStreamPlayer3D
+			if sp:
+				if on and not sp.playing:
+					sp.play()
+				elif not on:
+					sp.stop()
+
 func getaway_point() -> Vector3:
 	return GETAWAY_POINT
 
@@ -526,8 +542,8 @@ func _process(delta: float) -> void:
 	# Lightbars: red, red, blue, blue; the street answers in the same colours.
 	for lb in _lightbars:
 		var ph := fposmod(_t * 2.4 + float(lb[3]), 1.0)
-		var r := ph < 0.1 or (ph > 0.18 and ph < 0.28)
-		var b := (ph > 0.5 and ph < 0.6) or (ph > 0.68 and ph < 0.78)
+		var r := lights_on and (ph < 0.1 or (ph > 0.18 and ph < 0.28))
+		var b := lights_on and ((ph > 0.5 and ph < 0.6) or (ph > 0.68 and ph < 0.78))
 		(lb[0] as StandardMaterial3D).emission_energy_multiplier = 6.0 if r else 0.2
 		(lb[1] as StandardMaterial3D).emission_energy_multiplier = 6.0 if b else 0.2
 		var l := lb[2] as OmniLight3D

@@ -61,6 +61,8 @@ var _flash_t := 0.0
 var _back_leaf: Node3D
 var _t := 0.0
 var _mats := {}
+var _near := true
+var _near_t := 0.0
 
 func _ready() -> void:
 	name = "Laundromat"
@@ -359,54 +361,74 @@ func _shell() -> void:
 
 # --- the machines ------------------------------------------------------------------------------
 
-## A front-loading washer: faces +Z in its own frame. `n` varies the grime and which one is dead.
-func _washer(parent: Node3D, pos: Vector3, yaw_deg: float, n: int) -> Node3D:
-	var w := Node3D.new()
-	w.name = "Washer%d" % n
-	parent.add_child(w)
-	w.position = pos
-	w.rotation_degrees.y = yaw_deg
-	var tone := 0.62 + 0.1 * float((n * 7) % 4) / 3.0
-	var body := Mat.mat(Color(tone, tone + 0.01, tone - 0.02), 0.45, 0.2)
-	var dark := Mat.mat(Color(0.12, 0.12, 0.13), 0.55, 0.2)
-	var steel := Mat.mat(Color(0.74, 0.76, 0.78), 0.35, 0.45)
-	_box(w, Vector3(0.68, 0.92, 0.66), Vector3(0, 0.46, 0), body)
-	_box(w, Vector3(0.68, 0.14, 0.04), Vector3(0, 0.85, 0.32), dark)         # control strip
-	_box(w, Vector3(0.7, 0.05, 0.68), Vector3(0, 0.945, 0), steel)            # top
-	_box(w, Vector3(0.66, 0.06, 0.04), Vector3(0, 0.03, 0.31), dark)          # kick plate
-	_cyl(w, 0.27, 0.07, Vector3(0, 0.46, 0.34), steel, Vector3(90, 0, 0))     # door ring
+const LAUNDRY := "res://assets/ghetto/laundry/%s.obj"
+const MACHINE_SCALE := 0.2
+var _grime: Texture2D
+
+## One of Kenney's laundry machines (washer, dryer, washerDryerStacked: CC0, Furniture Kit), centred on its pivot, its front
+## to +Z, dirtied: the off-white of the metal is multiplied by a mottled concrete-grey so it reads as old paint with
+## ground-in dirt, the glass is dark (and green-lit on the ones left running), a few have an OUT OF ORDER note.
+func _machine(kind: String, parent: Node3D, pos: Vector3, yaw_deg: float, n: int) -> Node3D:
+	var holder := Node3D.new()
+	holder.name = "%s%d" % [kind, n]
+	parent.add_child(holder)
+	holder.position = pos
+	holder.rotation_degrees.y = yaw_deg
+	var path := LAUNDRY % kind
+	if not ResourceLoader.exists(path):
+		_box(holder, Vector3(0.7, 0.9 if kind != "washerDryerStacked" else 1.85, 0.7), Vector3(0, 0.45, 0), Mat.mat(Color(0.6, 0.6, 0.56), 0.6))
+		return holder
+	if _grime == null:
+		_grime = load("res://assets/pbr/concrete_floor_diff.jpg") as Texture2D
+	var mesh := load(path) as Mesh
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.scale = Vector3.ONE * MACHINE_SCALE
+	mi.rotation_degrees.y = 180.0
+	mi.position = Vector3(-1.95 * MACHINE_SCALE, 0.0, 1.55 * MACHINE_SCALE)
+	holder.add_child(mi)
 	var running := n % 3 == 0
-	var glass := Mat.mat(Color(0.25, 0.4, 0.5, 0.55), 0.05, 0.1, 0.6 if running else 0.0)
-	_cyl(w, 0.215, 0.05, Vector3(0, 0.46, 0.365), glass, Vector3(90, 0, 0))
-	_cyl(w, 0.2, 0.03, Vector3(0, 0.46, 0.33), dark, Vector3(90, 0, 0))       # the drum's dark
-	# coin slot, a status lamp: green when someone left it running, red on the dead ones
-	_box(w, Vector3(0.05, 0.015, 0.01), Vector3(0.22, 0.86, 0.345), steel)
-	var led := Mat.mat(Color(0.2, 1.0, 0.3) if running else Color(1.0, 0.15, 0.1), 0.4, 0.0, 2.2 if (running or n % 4 == 1) else 0.0)
-	_box(w, Vector3(0.03, 0.03, 0.01), Vector3(-0.2, 0.86, 0.345), led)
-	if n % 5 == 2:
-		w.rotation_degrees.x = 0.0
-		_box(w, Vector3(0.3, 0.02, 0.3), Vector3(0.0, 0.96, 0.0), Mat.mat(Color(0.6, 0.15, 0.1), 0.9))   # a towel left on top
-	return w
+	var wear := 0.88 + 0.06 * float((n * 5) % 4)
+	for k in mesh.get_surface_count():
+		var src := mesh.surface_get_material(k) as BaseMaterial3D
+		var col := src.albedo_color if src else Color.WHITE
+		var m := StandardMaterial3D.new()
+		var nm := src.resource_name if src else ""
+		if nm == "glass" or (absf(col.r - 0.698) < 0.02 and absf(col.g - 0.827) < 0.02):
+			m.albedo_color = Color(0.1, 0.16, 0.2, 0.8)
+			m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			m.roughness = 0.08
+			m.metallic = 0.2
+			if running:
+				m.emission_enabled = true
+				m.emission = Color(0.35, 0.7, 0.6)
+				m.emission_energy_multiplier = 0.1
+		else:
+			# Old enamel: the kit's colour pulled to a warm, dirty off-white, a grime texture over it.
+			var lum := col.get_luminance()
+			var tone := Color(0.8, 0.77, 0.68) * wear if lum > 0.55 else Color(0.5, 0.5, 0.48) * (0.7 + 0.4 * lum)
+			m.albedo_color = Color(minf(tone.r * 1.7, 1.0), minf(tone.g * 1.7, 1.0), minf(tone.b * 1.7, 1.0)) if lum > 0.55 else tone
+			m.albedo_texture = _grime
+			m.uv1_triplanar = true
+			m.uv1_scale = Vector3.ONE * 0.35
+			m.roughness = 0.62
+			m.metallic = 0.1
+		mi.set_surface_override_material(k, m)
+	# A status lamp on the control strip and, on the dead ones, a note on the door.
+	var h := 0.9 if kind != "washerDryerStacked" else 1.85
+	var led := Mat.mat(Color(0.2, 1.0, 0.3) if running else Color(1.0, 0.15, 0.1), 0.4, 0.0, 1.6 if (running or n % 4 == 1) else 0.0)
+	_box(holder, Vector3(0.03, 0.03, 0.01), Vector3(-0.24, 0.86 if kind != "washerDryerStacked" else 1.78, 0.4), led, 0.0, false)
+	if n % 4 == 1 and kind == "washer":
+		var note := _box(holder, Vector3(0.2, 0.26, 0.004), Vector3(0.02, 0.46, 0.402), Mat.mat(Color(0.8, 0.78, 0.68), 0.95), 0.0, false)
+		note.rotation_degrees.z = randf_range(-6, 6)
+		_label(holder, "OUT OF\nORDER", Vector3(0.02, 0.46, 0.405), 0.0016, Color(0.55, 0.05, 0.05), 0.0, true, 48)
+	return holder
+
+func _washer(parent: Node3D, pos: Vector3, yaw_deg: float, n: int) -> Node3D:
+	return _machine("washer", parent, pos, yaw_deg, n)
 
 func _dryer(parent: Node3D, pos: Vector3, yaw_deg: float, n: int, stacked: bool) -> Node3D:
-	var d := Node3D.new()
-	d.name = "Dryer%d" % n
-	parent.add_child(d)
-	d.position = pos
-	d.rotation_degrees.y = yaw_deg
-	var body := Mat.mat(Color(0.7, 0.71, 0.7), 0.4, 0.3)
-	var dark := Mat.mat(Color(0.06, 0.06, 0.07), 0.5, 0.4)
-	var steel := Mat.mat(Color(0.76, 0.78, 0.8), 0.35, 0.45)
-	for k in (2 if stacked else 1):
-		var y := 0.0 + k * 0.98
-		_box(d, Vector3(0.74, 0.96, 0.72), Vector3(0, y + 0.48, 0), body)
-		_box(d, Vector3(0.74, 0.12, 0.04), Vector3(0, y + 0.88, 0.35), dark)
-		_cyl(d, 0.26, 0.07, Vector3(0, y + 0.46, 0.37), steel, Vector3(90, 0, 0))
-		var lit := Mat.mat(Color(0.9, 0.55, 0.2, 0.55), 0.05, 0.1, 0.5 if (n + k) % 3 == 0 else 0.0)
-		_cyl(d, 0.2, 0.05, Vector3(0, y + 0.46, 0.4), lit, Vector3(90, 0, 0))
-		_box(d, Vector3(0.05, 0.02, 0.01), Vector3(0.25, y + 0.88, 0.375), steel)
-		_box(d, Vector3(0.04, 0.03, 0.01), Vector3(-0.25, y + 0.88, 0.375), Mat.mat(Color(1.0, 0.4, 0.1), 0.4, 0.0, 2.0 if (n + k) % 2 == 0 else 0.0))
-	return d
+	return _machine("washerDryerStacked" if stacked else "dryer", parent, pos, yaw_deg, n)
 
 func _front_room() -> void:
 	var m := Node3D.new()
@@ -415,14 +437,14 @@ func _front_room() -> void:
 	# Washers on the west wall, facing east; back to back with nothing: the wall is theirs.
 	var zs := [-4.6, -5.4, -6.2, -7.0, -7.8, -8.6, -9.4]
 	for i in zs.size():
-		_washer(m, Vector3(X0 + T + 0.34, 0.0, zs[i]), 90.0, i)
+		_washer(m, Vector3(X0 + T + 0.4, 0.0, zs[i]), 90.0, i)
 	_solid(Vector3(0.7, 1.0, 5.6), Vector3(X0 + T + 0.35, 0.5, -7.0), m)
 	# A second row of washers back to back down the middle: the island.
 	for i in 4:
-		_washer(m, Vector3(32.0, 0.0, -4.5 - i * 0.7 - 0.0), 0.0, 10 + i)
+		_washer(m, Vector3(32.0, 0.0, -4.5 - i * 0.8), 90.0, 10 + i)
 	# Dryers (stacked pairs) on the east wall, facing west.
 	for i in 4:
-		_dryer(m, Vector3(X1 - T - 0.38, 0.0, -4.9 - i * 0.82), -90.0, i, true)
+		_dryer(m, Vector3(X1 - T - 0.4, 0.0, -4.9 - i * 0.82), -90.0, i, true)
 	_solid(Vector3(0.8, 1.95, 3.4), Vector3(X1 - T - 0.4, 0.97, -6.5), m)
 	_solid(Vector3(0.8, 0.9, 3.0), Vector3(32.0, 0.45, -5.9), m)
 	# The folding table and two benches.
@@ -467,8 +489,8 @@ func _front_room() -> void:
 	for t in tubes:
 		var fx := _model("mounted_fluorescent_lights", interior, Vector3(t[0], CEIL - 0.02, t[1]), 0.0, 1.0)
 		if fx == null:
-			_box(interior, Vector3(1.2, 0.05, 0.2), Vector3(t[0], CEIL - 0.05, t[1]), Mat.mat(Color(0.9, 0.95, 1.0), 0.3, 0.0, 1.8), 0.0, false)
-		_light(interior, Vector3(t[0], CEIL - 0.3, t[1]), Color(0.82, 0.93, 1.0), 1.35, 6.2, int(t[2]))
+			_box(interior, Vector3(1.2, 0.05, 0.2), Vector3(t[0], CEIL - 0.05, t[1]), Mat.mat(Color(0.9, 0.95, 1.0), 0.3, 0.0, 1.0), 0.0, false)
+		_light(interior, Vector3(t[0], CEIL - 0.3, t[1]), Color(0.88, 0.95, 1.0), 1.0, 5.8, int(t[2]))
 	# A hanging dead one, its tube swinging on a wire.
 	_box(interior, Vector3(1.2, 0.04, 0.16), Vector3(33.2, CEIL - 0.22, -6.7), Mat.mat(Color(0.2, 0.2, 0.18), 0.6), 14.0).rotation_degrees.z = 9.0
 	# Laundry: a basket spilled by the dryers, a bag on a machine, a cloth on the floor.
@@ -772,6 +794,23 @@ func stash_pulse(on: bool) -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	# The room's lights are only on for the renderer when you are in or near it (the windows keep their own glow).
+	_near_t -= delta
+	if _near_t <= 0.0:
+		_near_t = 0.35
+		var pl := get_tree().get_first_node_in_group("player") as Node3D
+		var cam := get_viewport().get_camera_3d()
+		var here := Vector3(33.3, 1.5, -7.0)
+		var d_p := pl.global_position.distance_to(here) if pl else 999.0
+		var d_c := cam.global_position.distance_to(here) if cam else 999.0
+		var lim := 34.0 if raid_on else 20.0
+		var near := minf(d_p, d_c) < lim
+		if near != _near:
+			_near = near
+			for e in _lights:
+				(e["l"] as Light3D).visible = near
+			for t in _torches:
+				t.visible = near and raid_on
 	for d in _lights:
 		var l := d["l"] as Light3D
 		if not is_instance_valid(l):

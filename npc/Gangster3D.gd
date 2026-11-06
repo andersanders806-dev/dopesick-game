@@ -321,6 +321,11 @@ func _player_chest() -> Vector3:
 func _wall_between(from: Vector3, to: Vector3) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.collision_mask = 1
+	# The player's own capsule holds the camera: it is not a wall.
+	var ex: Array[RID] = [get_rid()]
+	if target is CollisionObject3D:
+		ex.append((target as CollisionObject3D).get_rid())
+	q.exclude = ex
 	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
 
 func _sense(delta: float) -> void:

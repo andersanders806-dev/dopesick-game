@@ -90,6 +90,8 @@ var arcs: Control
 var suppress: ColorRect
 var feed: VBoxContainer
 var callouts: Array = []
+## How many callouts have been shown in all (the feed itself is capped and fades).
+var callouts_shown := 0
 var banner_line: Label
 
 func _ready() -> void:
@@ -202,6 +204,7 @@ func callout(who: String, text: String, _pos := Vector3.INF, crew := "Dock Boys"
 	l.add_theme_constant_override("shadow_offset_y", 2)
 	feed.add_child(l)
 	callouts.append({"label": l, "t": 0.0, "text": text})
+	callouts_shown += 1
 	while callouts.size() > CALLOUT_MAX:
 		var old: Dictionary = callouts.pop_front()
 		(old["label"] as Label).queue_free()

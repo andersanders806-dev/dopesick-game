@@ -5562,6 +5562,12 @@ func _zombie_shell_checks(gs: Node) -> void:
 	await _section("Dead Block: rounds, points, the block, the end -- and the story untouched")
 	_close_menus()
 	var zm := root.get_node("ZombieMode")
+	# The sandbox save is shared by every suite run on this machine; this one asserts what lands in it.
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(zm.PATH))
+	zm.best_round = 0
+	zm.best_kills = 0
+	zm.best_headshots = 0
+	zm.best_time = 0.0
 	var sg := root.get_node("SaveGame")
 
 	# Rounds.
@@ -9648,6 +9654,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var planned_r3: bool = surge.plan_in >= 0.0
 	surge.plan_in = -1.0
 	var randoms := 0
+	Engine.remove_meta("no_random_surge")  # this is the one place the random trigger is the thing under test
 	for i in 400:
 		surge.plan_in = -1.0
 		surge.next_round = 99
@@ -9662,6 +9669,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 		surge._on_round_started(6)
 		near += 1 if surge.plan_in >= 0.0 else 0
 	surge.plan_in = -1.0
+	Engine.set_meta("no_random_surge", true)
 	_check(none_r1 and planned_r3, "  scheduled: none in round 1, one planned from round 3")
 	_check(randoms >= 10 and randoms <= 80 and near == 0, "  and now and then at random (%d of 400 rounds), never within 2 rounds of the last (%d)" % [randoms, near])
 	_check(surge.surge_size(1) >= 25 and surge.surge_size(30) <= 40, "  25 to 40 of them (%d at round 1, %d at round 30)" % [surge.surge_size(1), surge.surge_size(30)])

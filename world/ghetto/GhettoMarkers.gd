@@ -51,7 +51,7 @@ func mark(id: String, pos: Vector3, col := Color(1.0, 0.8, 0.3), radius := 1.2, 
 		sm.shader = SHADER
 		sm.set_shader_parameter("tint", col)
 		sm.set_shader_parameter("ring", 0.0)
-		sm.set_shader_parameter("intensity", 0.9)
+		sm.set_shader_parameter("intensity", 0.55)
 		s.material_override = sm
 		n.add_child(s)
 	var l := OmniLight3D.new()

@@ -76,7 +76,7 @@ func _initialize() -> void:
 		for i in 14:
 			set_.heli._process(1.0)
 		var hp: Vector3 = set_.heli.global_position
-		await _shot("heli", Vector3(12.0, 1.6, 7.0), hp.lerp(Vector3(set_.heli.beam_target.x, 0, set_.heli.beam_target.z), 0.35))
+		await _shot("heli", Vector3(12.0, 1.6, 4.2), hp.lerp(Vector3(set_.heli.beam_target.x, 0, set_.heli.beam_target.z), 0.35))
 	if want.call("drive"):
 		set_.set_wave(4)
 		var car: Node3D = set_.drive_by("main_east")
@@ -87,6 +87,20 @@ func _initialize() -> void:
 			await process_frame
 			guard += 1
 		await _snap("drive")
+	# The laundromat, the markers, the raid and the endings (a fresh night each: `only=lm,markers,raid,endings`).
+	if want.call("lm"):
+		await _shot("lm_front", Vector3(30.0, 1.65, 1.6), Vector3(33.3, 1.5, -4.0))
+		await _shot("lm_in", Vector3(33.3, 1.65, -3.9), Vector3(31.0, 1.0, -8.5))
+		await _shot("lm_back", Vector3(32.0, 1.65, -10.8), Vector3(34.6, 1.1, -14.8))
+		await _shot("lm_lane", Vector3(38.5, 1.65, -18.2), Vector3(35.2, 1.3, -15.8))
+	if want.call("markers"):
+		set_.set_chapter("STASH RUN")
+		await _wait(60)
+		await _shot("marker_door", Vector3(27.0, 1.65, 2.2), Vector3(33.3, 1.5, -3.5))
+		p.global_position = Vector3(33.0, 0.0, -9.0)
+		await _wait(60)
+		await _shot("marker_bags", Vector3(33.0, 1.65, -10.6), Vector3(32.4, 0.6, -13.4))
+		p.global_position = Vector3(-60, 0, 0)
 	if want.call("bust"):
 		set_.set_chapter("THE BUST")
 		await _wait(300)
@@ -96,6 +110,25 @@ func _initialize() -> void:
 		await _shot("getaway", Vector3(36.0, 1.8, -86.5), Vector3(44.0, 0.9, -91.2))
 		set_.heli.beam_target = Vector3(10, 0, -2)
 		await _shot("search", Vector3(-4.0, 1.7, -1.0), Vector3(10.0, 1.0, -2.0))
+	# The raid and the endings (a fresh night each: `only=lm,markers,raid,endings`; the laundromat and markers come first, before the bust).
+	if want.call("raid"):
+		set_.set_chapter("THE BUST")
+		await _wait(240)
+		await _shot("raid_front", Vector3(33.0, 1.7, 7.0), Vector3(33.3, 1.5, -3.5))
+		await _shot("raid_street", Vector3(26.0, 1.7, 1.5), Vector3(40.0, 1.5, -1.0))
+		await _shot("raid_in", Vector3(33.3, 1.65, -3.9), Vector3(31.5, 1.0, -8.5))
+		await _shot("raid_lane", Vector3(38.5, 1.65, -18.2), Vector3(35.2, 1.2, -15.8))
+		await _shot("raid_car", Vector3(52.0, 1.7, -17.6), Vector3(47.0, 0.9, -22.0))
+		set_.on_story_beat("escaped")
+		await _wait(70)
+		await _shot("raid_car_going", Vector3(52.0, 1.7, -17.6), Vector3(47.0, 0.9, -30.0))
+		await create_timer(9.0).timeout
+		await _shot("raid_car_gone", Vector3(52.0, 1.7, -17.6), Vector3(47.0, 0.9, -22.0))
+	if want.call("endings"):
+		for k in ["clean_dumped", "bag_sold", "busted_sold"]:
+			set_.on_story_ending(k)
+			await create_timer(6.5).timeout
+			await _shot("end_" + k.split("_")[0], Vector3(26.0, 1.7, 1.5), Vector3(38.0, 1.5, -1.5))
 	quit()
 
 func _wait(frames: int) -> void:

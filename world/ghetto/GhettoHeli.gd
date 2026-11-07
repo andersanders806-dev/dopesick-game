@@ -60,7 +60,11 @@ func path_point(t: float, blend: float) -> Vector3:
 	return p
 
 func set_between_waves(on: bool) -> void:
+	var was := active
 	active = on or searching
+	# It comes in over the block: a fly-by first, then the circling rotor takes over.
+	if active and not was and set_node and set_node.has_method("_sound"):
+		set_node.call("_sound", "res://assets/sfx/ghetto/heli_pass.wav", Vector3(CENTER.x, HEIGHT, CENTER.z), -2.0, 1.0, 300.0)
 
 func search_player(on: bool) -> void:
 	searching = on

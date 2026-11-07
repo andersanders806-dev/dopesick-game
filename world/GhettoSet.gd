@@ -69,6 +69,7 @@ var laundromat: Node3D
 var markers: Node3D
 var south: Node3D
 var raid_active := false
+var run_over := false
 var ending := ""
 var mode: Object
 var story: Object
@@ -327,41 +328,160 @@ func make_exhaust(parent: Node, pos: Vector3) -> Node3D:
 	sm.position = pos
 	return sm
 
-## Flames, smoke and a flickering light at `pos`: `size` 1 is a barrel, 2 a car.
+static var _fire_mat: StandardMaterial3D
+static var _dsmoke_mat: StandardMaterial3D
+static var _ember_mat: StandardMaterial3D
+
+## The fire's three materials: a 5x5 flame flipbook (additive), dark smoke puffs picked at random from a 3x3 sheet
+## (alpha), and a spark. The flipbook is Luca Pixel's (CC0), the puffs and the spark Kenney's (CC0).
+static func _fire_materials() -> void:
+	if _fire_mat != null:
+		return
+	_fire_mat = StandardMaterial3D.new()
+	_fire_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_fire_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_fire_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_fire_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	_fire_mat.billboard_keep_scale = true
+	_fire_mat.vertex_color_use_as_albedo = true
+	_fire_mat.particles_anim_h_frames = 5
+	_fire_mat.particles_anim_v_frames = 5
+	_fire_mat.particles_anim_loop = true
+	_fire_mat.albedo_texture = load(TEX + "fire_flipbook_5x5.png")
+	_dsmoke_mat = StandardMaterial3D.new()
+	_dsmoke_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_dsmoke_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_dsmoke_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	_dsmoke_mat.billboard_keep_scale = true
+	_dsmoke_mat.vertex_color_use_as_albedo = true
+	_dsmoke_mat.particles_anim_h_frames = 3
+	_dsmoke_mat.particles_anim_v_frames = 3
+	_dsmoke_mat.particles_anim_loop = false
+	_dsmoke_mat.albedo_texture = load(TEX + "smoke_atlas_3x3.png")
+	_ember_mat = StandardMaterial3D.new()
+	_ember_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_ember_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_ember_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_ember_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	_ember_mat.vertex_color_use_as_albedo = true
+	_ember_mat.albedo_texture = load(TEX + "ember.png")
+
+static func _ramp(stops: Array) -> GradientTexture1D:
+	var g := Gradient.new()
+	g.set_color(0, stops[0][1])
+	g.set_offset(0, stops[0][0])
+	for k in range(1, stops.size()):
+		g.add_point(stops[k][0], stops[k][1])
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	return gt
+
+static func _curve_tex(pts: Array) -> CurveTexture:
+	var c := Curve.new()
+	for p in pts:
+		c.add_point(Vector2(p[0], p[1]))
+	var ct := CurveTexture.new()
+	ct.curve = c
+	return ct
+
+func _fire_particles(parent: Node, nm: String, amount: int, life: float, mat: Material, quad: float, pm: ParticleProcessMaterial, aabb: AABB) -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.name = nm
+	p.amount = amount
+	p.lifetime = life
+	p.local_coords = false
+	p.visibility_aabb = aabb
+	p.visibility_range_end = 75.0
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(quad, quad)
+	q.material = mat
+	p.draw_pass_1 = q
+	p.preprocess = life
+	parent.add_child(p)
+	return p
+
+## A fire at `pos` under `parent` (`size` 1 is a barrel, 2 a car): a flame flipbook on a few big billboards (additive),
+## a column of dark smoke over it, embers thrown up, and ONE flickering light (no shadow, 8 m at most; the flicker is the
+## script's, in _process, not more lights).
 func make_fire(parent: Node, pos: Vector3, size := 1.0, smoke := true, light_range := 8.0) -> Node3D:
+	_fire_materials()
 	var fire := Node3D.new()
 	fire.name = "Fire"
 	parent.add_child(fire)
 	fire.position = pos
-	var fl := _particles(int(10 + 8 * size), 0.85, Vector2(0.7, 1.4), 16.0, Vector3(0, 0.7, 0), Vector2(0.55, 1.0), 0.2 * size, Vector2(0.6, 0.78) * size, flame_material())
-	fl.name = "Flames"
-	fire.add_child(fl)
+	var big := size > 1.5
+	# Flames: the flipbook, each sprite at its own point in the loop.
+	var fm := ParticleProcessMaterial.new()
+	fm.direction = Vector3.UP
+	fm.spread = 9.0
+	fm.initial_velocity_min = 0.25 * size
+	fm.initial_velocity_max = 0.6 * size
+	fm.gravity = Vector3(0.25, 0.35, 0.0)
+	fm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	fm.emission_sphere_radius = 0.28 * size
+	fm.scale_min = 0.85
+	fm.scale_max = 1.15
+	fm.scale_curve = _curve_tex([[0.0, 0.55], [0.25, 1.0], [0.8, 0.85], [1.0, 0.45]])
+	fm.color_ramp = _ramp([[0.0, Color(1, 1, 1, 0.0)], [0.12, Color(1, 1, 1, 1.0)], [0.7, Color(1.0, 0.82, 0.62, 0.85)], [1.0, Color(1.0, 0.55, 0.35, 0.0)]])
+	fm.anim_speed_min = 1.0
+	fm.anim_speed_max = 1.0
+	fm.anim_offset_min = 0.0
+	fm.anim_offset_max = 1.0
+	_fire_particles(fire, "Flames", 5 if big else 3, 1.15, _fire_mat, 1.9 * size, fm, AABB(Vector3(-3, -1, -3), Vector3(6, 6, 6))).position.y = 0.55 * size
+	# Embers: a few sparks that rise and drift.
+	var em := ParticleProcessMaterial.new()
+	em.direction = Vector3.UP
+	em.spread = 28.0
+	em.initial_velocity_min = 1.2
+	em.initial_velocity_max = 2.8
+	em.gravity = Vector3(0.5, 0.45, 0.0)
+	em.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	em.emission_sphere_radius = 0.3 * size
+	em.scale_min = 0.5
+	em.scale_max = 1.0
+	em.scale_curve = _curve_tex([[0.0, 1.0], [1.0, 0.1]])
+	em.color_ramp = _ramp([[0.0, Color(1.0, 0.8, 0.4, 1.0)], [0.6, Color(1.0, 0.45, 0.12, 0.9)], [1.0, Color(0.6, 0.15, 0.05, 0.0)]])
+	_fire_particles(fire, "Embers", 6 if big else 3, 2.4, _ember_mat, 0.1, em, AABB(Vector3(-4, -1, -4), Vector3(8, 9, 8))).position.y = 0.6 * size
 	if smoke:
-		smoke_material()
-		var ramp := Gradient.new()
-		ramp.set_color(0, Color(1, 1, 1, 0.0))
-		ramp.add_point(0.15, Color(1, 1, 1, 1.0))
-		ramp.set_color(ramp.get_point_count() - 1, Color(1, 1, 1, 0.0))
-		var sm := _particles(int(7 + 4 * size), 3.6, Vector2(1.0, 1.7), 10.0, Vector3(0.25, 0.9, 0), Vector2(1.2, 2.0) * size, 0.3 * size, Vector2(1.4, 1.4) * size, _smoke_mat, ramp)
-		sm.name = "Smoke"
-		sm.position.y = 0.5 * size
-		sm.visibility_aabb = AABB(Vector3(-5, -1, -5), Vector3(10, 14, 10))
-		fire.add_child(sm)
+		# A dark column: each puff one of nine, growing as it rises and bending with the wind.
+		var sm := ParticleProcessMaterial.new()
+		sm.direction = Vector3.UP
+		sm.spread = 7.0
+		sm.initial_velocity_min = 1.1
+		sm.initial_velocity_max = 1.8
+		sm.gravity = Vector3(0.35, 0.25, 0.0)
+		sm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		sm.emission_sphere_radius = 0.3 * size
+		sm.scale_min = 0.9
+		sm.scale_max = 1.3
+		sm.scale_curve = _curve_tex([[0.0, 0.35], [0.5, 0.8], [1.0, 1.3]])
+		sm.color_ramp = _ramp([[0.0, Color(0.12, 0.1, 0.09, 0.0)], [0.12, Color(0.13, 0.11, 0.1, 0.6)], [0.6, Color(0.06, 0.06, 0.065, 0.42)], [1.0, Color(0.04, 0.04, 0.045, 0.0)]])
+		sm.anim_speed_min = 0.0
+		sm.anim_speed_max = 0.0
+		sm.anim_offset_min = 0.0
+		sm.anim_offset_max = 1.0
+		sm.angle_min = -180.0
+		sm.angle_max = 180.0
+		sm.angular_velocity_min = -12.0
+		sm.angular_velocity_max = 12.0
+		_fire_particles(fire, "Smoke", 5 if big else 3, 4.6, _dsmoke_mat, 2.6 * size, sm, AABB(Vector3(-6, -1, -6), Vector3(12, 16, 12))).position.y = 1.1 * size
 	var light := OmniLight3D.new()
 	light.name = "Light"
-	light.light_color = Color(1.0, 0.48, 0.16)
-	light.light_energy = 2.4 * size
-	light.omni_range = light_range * (0.8 + 0.3 * size)
+	light.light_color = Color(1.0, 0.5, 0.18)
+	light.light_energy = 2.2 * size
+	light.omni_range = minf(light_range * (0.75 + 0.2 * size), 8.0)
 	light.shadow_enabled = false
 	light.position.y = 1.0 * size
 	fire.add_child(light)
 	_fires.append([light, randf_range(0.05, 0.2), 1.0, light.light_energy])
 	_fire_nodes.append(fire)
 	# The fire crackles: a car's loud and carries, a barrel's low (the same bed, pitched and quietened).
-	var crackle := Mat.loop_player(fire, SFX_DIR + "car_fire_loop.wav", Vector3(0, 0.6, 0), -3.0 if size > 1.5 else -9.0, 42.0 if size > 1.5 else 16.0, 6.0 if size > 1.5 else 3.0)
+	var crackle := Mat.loop_player(fire, SFX_DIR + "car_fire_loop.wav", Vector3(0, 0.6, 0), -3.0 if big else -9.0, 42.0 if big else 16.0, 6.0 if big else 3.0)
 	if crackle:
 		crackle.name = "Crackle"
-		crackle.pitch_scale = 1.0 if size > 1.5 else 1.18
+		crackle.pitch_scale = 1.0 if big else 1.18
 		crackle.seek(_rng.randf_range(0.0, 10.0))
 	return fire
 
@@ -712,8 +832,8 @@ const CREW_TAGS := [
 	["volt", Vector3(24.7, 1.1, -19.0), 180.0, 1.5], ["krait", Vector3(5.0, 1.3, -19.0), 180.0, 1.8], ["hollow", Vector3(-3.0, 1.0, -19.0), 180.0, 1.4],
 	["nova", Vector3(40.0, 1.3, -19.0), 180.0, 1.5], ["zar", Vector3(32.8, 1.5, -19.0), 180.0, 1.7],
 ]
-## Soot up the wall behind each burning car: [x, z of the wall, yaw].
-const SOOT := [[-1.2, 4.5, 0.0], [30.5, 4.5, 0.0]]
+## Soot up the south wall across from each burning car: [x, z of the wall, yaw].
+const SOOT := [[-1.2, 7.7, 0.0], [30.5, 7.7, 0.0]]
 
 func _build_crew_tags() -> void:
 	for t in CREW_TAGS:
@@ -723,8 +843,6 @@ func _build_crew_tags() -> void:
 		var w: float = t[3]
 		var d := Decal.new()
 		d.texture_albedo = load(path)
-		if ResourceLoader.exists(path.replace(".png", "_n.png")):
-			d.texture_normal = load(path.replace(".png", "_n.png"))
 		d.albedo_mix = 0.92
 		d.upper_fade = 0.05
 		d.lower_fade = 0.05
@@ -746,9 +864,9 @@ func _build_crew_tags() -> void:
 		d.distance_fade_enabled = true
 		d.distance_fade_begin = 55.0
 		d.distance_fade_length = 20.0
-		var normal := Vector3.BACK
+		var normal := Vector3.FORWARD
 		d.basis = Basis(normal.cross(Vector3.DOWN), normal, Vector3.DOWN)
-		d.position = Vector3(sp[0], 2.6, sp[1] - 4.5 - 0.17)
+		d.position = Vector3(sp[0], 3.4, sp[1] + 0.2)
 		add_child(d)
 		decal_count += 1
 
@@ -1136,6 +1254,8 @@ func set_chapter(id: Variant) -> void:
 		return
 	chapter = key
 	ending = ""
+	run_over = false
+	vehicles.call("set_lights", true)
 	_mood_to(key)
 	match key:
 		"STASH RUN":
@@ -1183,9 +1303,11 @@ func on_story_beat(id: Variant) -> void:
 				markers.call("clear", "sink")
 			_sound("res://assets/sfx/ghetto/chapter_hit.ogg", laundromat.call("point", "sink"), 0.0, 0.8, 30.0)
 		"escaped":
+			run_over = true
 			vehicles.call("getaway_leave")
 			markers.call("clear_all")
 		"busted":
+			run_over = true
 			heli.call("search_player", true)
 			markers.call("clear_all")
 		"snitch_revealed":
@@ -1218,6 +1340,7 @@ func on_story_ending(key: Variant) -> void:
 		heli.call("set_between_waves", false)
 		_sirens(0)
 		_power_cut(false)
+		vehicles.call("set_lights", false)
 	elif ending.begins_with("bag"):
 		_mood_set(Color(1.0, 0.5, 0.2), 0.32, 0.8, 4.0)
 		_sirens(1)
@@ -1327,7 +1450,7 @@ func _poll_objectives() -> void:
 	if player:
 		pp = player.global_position
 	var lm_in := pp.x > 29.8 and pp.x < 36.8 and pp.z < -3.4 and pp.z > -15.8
-	if ending != "":
+	if ending != "" or run_over:
 		markers.call("clear_all")
 		return
 	if laundromat.get("raid_on"):
@@ -1337,7 +1460,7 @@ func _poll_objectives() -> void:
 		if not flushed and not markers.has("sink"):
 			markers.call("mark", "sink", laundromat.call("point", "sink"), Color(0.4, 0.85, 1.0), 1.1, true)
 		if not markers.has("car"):
-			markers.call("mark", "car", laundromat.call("point", "car"), Color(0.4, 1.0, 0.5), 1.8, true)
+			markers.call("mark", "car", laundromat.call("point", "car"), Color(0.5, 0.92, 0.62), 1.3, true)
 		return
 	if chapter == "STASH RUN":
 		if lm_in:

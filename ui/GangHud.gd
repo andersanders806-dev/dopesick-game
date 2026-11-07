@@ -265,12 +265,32 @@ func _on_round_started(r: int) -> void:
 	_refresh()
 	banner.text = "WAVE %d" % r if not ZombieMode.is_boss_wave(r) else ("WAVE %d  THE ENFORCER" % r if r < 8 else "WAVE %d  TAC LEAD" % r)
 	banner_line.text = wave_line(r)
-	var tw := create_tween()
-	tw.tween_property(banner, "modulate:a", 1.0, 0.4)
-	tw.parallel().tween_property(banner_line, "modulate:a", 1.0, 0.6)
-	tw.tween_interval(2.2)
-	tw.tween_property(banner, "modulate:a", 0.0, 1.0)
-	tw.parallel().tween_property(banner_line, "modulate:a", 0.0, 1.0)
+	# In the story the banner goes through its announcement queue, so it never sits on a chapter card.
+	var story := get_tree().get_first_node_in_group("ghetto_story_hud") if is_inside_tree() else null
+	if story != null and story.has_method("announce"):
+		story.announce("wave", WAVE_TIME, _play_wave, _stop_wave)
+	else:
+		_play_wave()
+
+const WAVE_TIME := 2.5
+var _wave_tween: Tween
+
+func _play_wave() -> void:
+	_stop_wave()
+	_wave_tween = create_tween()
+	_wave_tween.set_ignore_time_scale(true)
+	_wave_tween.tween_property(banner, "modulate:a", 1.0, 0.3)
+	_wave_tween.parallel().tween_property(banner_line, "modulate:a", 1.0, 0.4)
+	_wave_tween.tween_interval(1.5)
+	_wave_tween.tween_property(banner, "modulate:a", 0.0, 0.6)
+	_wave_tween.parallel().tween_property(banner_line, "modulate:a", 0.0, 0.6)
+
+func _stop_wave() -> void:
+	if _wave_tween != null:
+		_wave_tween.kill()
+		_wave_tween = null
+	banner.modulate.a = 0.0
+	banner_line.modulate.a = 0.0
 
 ## What the street says as a wave starts.
 static func wave_line(r: int) -> String:

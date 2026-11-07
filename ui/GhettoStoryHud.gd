@@ -1,7 +1,7 @@
 extends CanvasLayer
 ## Ghetto Wars' story on the screen (fx/GhettoStory.gd drives it): the chapter card in the HUD's Bungee, burner-phone
 ## texts that slide in from the right (sender, time, a typing indicator), the crew's radio along the bottom, a police
-## scanner top left that types itself out, the objective with the flush bar and the escape clock, the two-way choice
+## scanner chip top left that types itself out, the objective with the flush bar and the escape clock, the two-way choice
 ## (dump or sell), and the ending cards (BUSTED with the cuffs closing under a red and blue strobe).
 ## Everything animates in real time (it ignores Engine.time_scale, so the slow-mo of the cuffs does not slow the HUD).
 
@@ -12,9 +12,14 @@ const BLOOD := Color(0.78, 0.08, 0.08)
 const PAPER := Color(0.93, 0.9, 0.82)
 const DIM := Color(0.6, 0.58, 0.54)
 const AMBER := Color(1.0, 0.72, 0.2)
+const UiStyle := preload("res://ui/UiStyle.gd")
 const PHONE_W := 340.0
-const PHONE_TOP := 150.0
-const MAX_PHONES := 3
+const PHONE_TOP := 200.0
+const PHONE_HOLD := 3.5  ## a text waits this long (at most) while a centre card is up
+const SCAN_W := 300.0
+const CARD_TIME := 2.6
+const ANN_GAP := 0.15
+const MAX_PHONES := 2
 
 var font: FontVariation
 var mono: SystemFont
@@ -47,7 +52,17 @@ var _radio_line: Label
 var _radio_dot: ColorRect
 var _radio_bar: ColorRect
 var _radio_hold := 0.0
-var _scan_col: VBoxContainer
+var _scan: PanelContainer
+var _scan_head: Label
+var _scan_dot: ColorRect
+var _scan_body: Label
+var _scan_age := 99.0
+var _scan_len := 0
+var _scan_life := 0.0
+var _ann_q: Array[Dictionary] = []
+var _ann_cur := {}
+var _ann_t := 0.0
+var _ann_gap := 0.0
 var _obj: Label
 var _obj_bar: Control
 var _obj_fill: ColorRect
@@ -155,6 +170,9 @@ func _build_card() -> void:
 
 func show_chapter(num: int, title: String, sub: String, place: String) -> void:
 	cards_shown.append(title)
+	announce("chapter", CARD_TIME, _play_chapter.bind(num, title, sub, place), _stop_chapter)
+
+func _play_chapter(num: int, title: String, sub: String, place: String) -> void:
 	_card_kicker.text = "CHAPTER %d" % num
 	_card_title.text = title
 	_card_ghost.text = title
@@ -162,15 +180,64 @@ func show_chapter(num: int, title: String, sub: String, place: String) -> void:
 	_card_place.text = place.to_upper()
 	_card_title.visible_ratio = 0.0
 	_card_ghost.visible_ratio = 0.0
-	if _card_tween != null:
-		_card_tween.kill()
+	_stop_chapter()
 	_card.modulate.a = 0.0
 	_card_tween = _tween()
 	_card_tween.tween_property(_card, "modulate:a", 1.0, 0.25)
-	_card_tween.tween_property(_card_title, "visible_ratio", 1.0, 0.7)
-	_card_tween.parallel().tween_property(_card_ghost, "visible_ratio", 1.0, 0.7)
-	_card_tween.tween_interval(2.4)
-	_card_tween.tween_property(_card, "modulate:a", 0.0, 0.7)
+	_card_tween.tween_property(_card_title, "visible_ratio", 1.0, 0.5)
+	_card_tween.parallel().tween_property(_card_ghost, "visible_ratio", 1.0, 0.5)
+	_card_tween.tween_interval(1.4)
+	_card_tween.tween_property(_card, "modulate:a", 0.0, 0.4)
+
+func _stop_chapter() -> void:
+	if _card_tween != null:
+		_card_tween.kill()
+		_card_tween = null
+
+# --- announcements -----------------------------------------------------------------------------
+# One queue for everything that takes the middle of the screen (chapter card, the wave banner that GangHud hands over):
+# one at a time, the next waits for the last to fade. A chapter jumps ahead of waiting banners, and it replaces a
+# banner that has only just started (a chapter that opens with a wave).
+
+## `play` starts the item (it fades itself out inside `dur`); `stop` cuts it short if a chapter pre-empts it.
+func announce(kind: String, dur: float, play: Callable, stop := Callable()) -> void:
+	var it := {"kind": kind, "dur": dur, "play": play, "stop": stop}
+	if kind == "chapter":
+		if not _ann_cur.is_empty() and _ann_cur["kind"] != "chapter" and _ann_t < 0.8:
+			_end_announcement(true)
+		var at := 0
+		while at < _ann_q.size() and _ann_q[at]["kind"] == "chapter":
+			at += 1
+		_ann_q.insert(at, it)
+	else:
+		_ann_q.append(it)
+
+## A chapter card is up or waiting: texts hold off (the wave banner sits above the phone, they do not collide).
+func centre_busy() -> bool:
+	if not _ann_cur.is_empty() and _ann_cur["kind"] == "chapter":
+		return true
+	for it in _ann_q:
+		if it["kind"] == "chapter":
+			return true
+	return false
+
+func _end_announcement(cut: bool) -> void:
+	if cut and _ann_cur.has("stop") and (_ann_cur["stop"] as Callable).is_valid():
+		(_ann_cur["stop"] as Callable).call()
+	_ann_cur = {}
+	_ann_gap = ANN_GAP
+
+func _step_announcements(dt: float) -> void:
+	if not _ann_cur.is_empty():
+		_ann_t += dt
+		if _ann_t >= float(_ann_cur["dur"]):
+			_end_announcement(false)
+	elif _ann_gap > 0.0:
+		_ann_gap -= dt
+	elif not _ann_q.is_empty():
+		_ann_cur = _ann_q.pop_front()
+		_ann_t = 0.0
+		(_ann_cur["play"] as Callable).call()
 
 # --- phone -------------------------------------------------------------------------------------
 
@@ -208,7 +275,7 @@ func show_text(_from: String, sender: String, body: String, stamp: String, color
 	bodyl.text = body
 	bodyl.visible_characters = 0
 	root.add_child(p)
-	var item := {"node": p, "body": bodyl, "stamp": st, "stamp_text": stamp, "len": body.length(), "age": 0.0, "x": PHONE_W + 40.0, "y": PHONE_TOP, "leaving": false,
+	var item := {"node": p, "body": bodyl, "stamp": st, "stamp_text": stamp, "len": body.length(), "age": 0.0, "x": PHONE_W + 40.0, "y": PHONE_TOP, "leaving": false, "wait": 0.0,
 		"typing": 0.9 + minf(body.length() * 0.004, 0.6)}
 	_phones.append(item)
 	while _phones.size() > MAX_PHONES:
@@ -221,6 +288,12 @@ func _step_phones(dt: float) -> void:
 	var y := PHONE_TOP
 	for item in _phones.duplicate():
 		var n: Control = item["node"]
+		# A centre card is up: the text waits off to the side (but not for ever).
+		if centre_busy() and not item["leaving"] and float(item["wait"]) < PHONE_HOLD and float(item["age"]) < 1.0:
+			item["wait"] = float(item["wait"]) + dt
+			n.visible = false
+			continue
+		n.visible = true
 		item["age"] = float(item["age"]) + dt
 		var age: float = item["age"]
 		var len_: int = item["len"]
@@ -234,7 +307,7 @@ func _step_phones(dt: float) -> void:
 		var h := n.get_combined_minimum_size().y
 		n.size = Vector2(PHONE_W, h)
 		item["y"] = lerpf(float(item["y"]), y, 1.0 - exp(-14.0 * dt))
-		n.position = Vector2(vp.x - PHONE_W - 18.0 + float(item["x"]), float(item["y"]))
+		n.position = Vector2(vp.x - PHONE_W - UiStyle.SAFE_X + float(item["x"]), float(item["y"]))
 		y += h + 10.0
 		if item["leaving"] and float(item["x"]) > PHONE_W + 20.0:
 			_phones.erase(item)
@@ -304,38 +377,65 @@ func _step_radio(dt: float) -> void:
 # --- scanner -----------------------------------------------------------------------------------
 
 func _build_scanner() -> void:
-	_scan_col = VBoxContainer.new()
-	_scan_col.position = Vector2(24, 150)
-	_scan_col.custom_minimum_size = Vector2(380, 0)
-	_scan_col.add_theme_constant_override("separation", 6)
-	_scan_col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	root.add_child(_scan_col)
+	_scan = PanelContainer.new()
+	_scan.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scan.modulate.a = 0.0
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.035, 0.04, 0.045, 0.84)
+	sb.set_corner_radius_all(5)
+	sb.border_width_left = 3
+	sb.border_color = AMBER
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 7
+	sb.content_margin_bottom = 9
+	_scan.add_theme_stylebox_override("panel", sb)
+	root.add_child(_scan)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 3)
+	vb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scan.add_child(vb)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(head)
+	_scan_dot = ColorRect.new()
+	_scan_dot.color = AMBER
+	_scan_dot.custom_minimum_size = Vector2(7, 7)
+	_scan_dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_scan_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_scan_dot)
+	_scan_head = UiStyle.style_label(Label.new(), UiStyle.COND_BOLD, 13, AMBER, 2)
+	_scan_head.text = "POLICE SCANNER"
+	_scan_head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_scan_head)
+	_scan_body = UiStyle.style_label(Label.new(), UiStyle.BODY, 16, PAPER)
+	_scan_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_scan_body.custom_minimum_size = Vector2(SCAN_W - 24.0, 0)
+	_scan_body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vb.add_child(_scan_body)
 
+## A call on the police band: one chip at a time (a new call replaces the old one), typed out, then gone.
 func show_scanner(line: String) -> void:
 	scanner_texts.append(line)
-	var l := _label(14, Color(0.55, 0.95, 0.55), null, mono)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size = Vector2(380, 0)
-	l.text = "SCANNER > " + line
-	l.visible_characters = 0
-	l.set_meta("age", 0.0)
-	l.set_meta("len", l.text.length())
-	_scan_col.add_child(l)
-	while _scan_col.get_child_count() > 3:
-		var o := _scan_col.get_child(0)
-		_scan_col.remove_child(o)
-		o.queue_free()
+	_scan_body.text = line
+	_scan_body.visible_characters = 0
+	_scan_len = line.length()
+	_scan_age = 0.0
+	_scan_life = _scan_len / 70.0 + 4.5 + _scan_len / 30.0
 
 func _step_scanner(dt: float) -> void:
-	for l in _scan_col.get_children():
-		var age: float = float(l.get_meta("age")) + dt
-		l.set_meta("age", age)
-		var n: int = l.get_meta("len")
-		(l as Label).visible_characters = clampi(int(age * 70.0), 0, n)
-		var life := n / 70.0 + 5.0 + n / 28.0
-		(l as Label).modulate.a = 1.0 if age < life else maxf(0.0, 1.0 - (age - life) * 2.0)
-		if age > life + 0.6:
-			l.queue_free()
+	var vp := _vp()
+	var w := minf(SCAN_W, vp.x * 0.3)
+	_scan_body.custom_minimum_size = Vector2(w - 24.0, 0)
+	_scan.size = Vector2(w, 10)
+	_scan.size = Vector2(w, _scan.get_combined_minimum_size().y)
+	_scan.position = Vector2(UiStyle.SAFE_X, UiStyle.SAFE_Y)
+	_scan_age += dt
+	_scan_body.visible_characters = clampi(int(_scan_age * 70.0), 0, _scan_len)
+	_scan_dot.modulate.a = 1.0 if _scan_age < _scan_life and int(_now * 3.0) % 2 == 0 else 0.35
+	var fade_in := clampf(_scan_age * 6.0, 0.0, 1.0)
+	_scan.modulate.a = fade_in if _scan_age < _scan_life else maxf(0.0, 1.0 - (_scan_age - _scan_life) * 2.5)
 
 # --- objective, flush bar and clock ------------------------------------------------------------
 
@@ -662,6 +762,7 @@ func _process(delta: float) -> void:
 	_step_phones(dt)
 	_step_radio(dt)
 	_step_scanner(dt)
+	_step_announcements(dt)
 	_step_ending(dt)
 	if _card != null and _card.modulate.a > 0.0:
 		# A flicker of the red ghost behind the title.

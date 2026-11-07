@@ -239,6 +239,8 @@ func _zombie_body_checks() -> void:
 	bz._facing = -PI / 2.0
 	_prey.global_position = Vector3(0, 0, 0)
 	bz._voice_t = 0.5
+	for p in v._players:  # (headless audio never finishes a clip: free the pool the roar checks filled)
+		p.stop()
 	for i in 300:
 		await physics_frame
 	_check(int(bz.voice_kinds.get("groan", 0)) >= 1 and int(bz.voice_kinds.get("rasp", 0)) >= 2,

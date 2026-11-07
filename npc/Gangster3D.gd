@@ -390,14 +390,25 @@ func _player_chest() -> Vector3:
 	return Vector3(target.global_position.x, minf(target.global_position.y + 1.05, head.y - 0.3), target.global_position.z)
 
 func _wall_between(from: Vector3, to: Vector3) -> bool:
-	var q := PhysicsRayQueryParameters3D.create(from, to)
-	q.collision_mask = 1
 	# The player's own capsule holds the camera: it is not a wall.
 	var ex: Array[RID] = [get_rid()]
 	if target is CollisionObject3D:
 		ex.append((target as CollisionObject3D).get_rid())
-	q.exclude = ex
-	return not get_world_3d().direct_space_state.intersect_ray(q).is_empty()
+	return not first_wall(get_world_3d().direct_space_state, from, to, ex).is_empty()
+
+## The first wall on the way from `from` to `to` ({} for none): chain-link (group "see_through") is looked through,
+## as the player's bullets go through it.
+static func first_wall(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3, exclude: Array[RID]) -> Dictionary:
+	var skip := exclude.duplicate()
+	for n in 6:
+		var q := PhysicsRayQueryParameters3D.create(from, to)
+		q.collision_mask = 1
+		q.exclude = skip
+		var r := space.intersect_ray(q)
+		if r.is_empty() or not (r.collider as Node).is_in_group("see_through"):
+			return r
+		skip.append((r.collider as CollisionObject3D).get_rid())
+	return {}
 
 func _sense(delta: float) -> void:
 	_last_seen_t += delta
@@ -435,7 +446,7 @@ func bark(event: String, force := false) -> void:
 	if not force and _bark_cd > 0.0:
 		return
 	var d := global_position.distance_to(target.global_position) if target != null else 0.0
-	if d > 55.0:
+	if d > 55.0 and not force:
 		return
 	if boss and event == "spot" and randf() < 0.6:
 		event = "boss"
@@ -982,9 +993,7 @@ func _shoot() -> void:
 				end = aim + Vector3(randf_range(-1.5, 1.5), randf_range(-0.5, 1.2), randf_range(-1.5, 1.5))
 		var dir := (end - muzzle).normalized()
 		var far := muzzle + dir * float(gun["reach"]) * 1.5
-		var q := PhysicsRayQueryParameters3D.create(muzzle, far)
-		q.collision_mask = 1
-		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		var r := first_wall(get_world_3d().direct_space_state, muzzle, far, [])
 		var stop := far
 		var blocked := false
 		if not r.is_empty():
@@ -1171,6 +1180,36 @@ func rush() -> void:
 	aggression = 1.0
 	if mode == Mode.COVER and _choose_cover(false, 6.0):
 		mode = Mode.PUSH
+
+## The last men standing, out of sight too long (npc/LastStand.gd): leave cover and come at the player along a way
+## they can walk, to a spot 11 m off where they will be seen. False if the navmesh has no way to the player from
+## where he stands (the caller puts him back on a spawn point).
+func hunt() -> bool:
+	if downed or state != State.CHASE:
+		return false
+	var pl := target.global_position
+	var path := NavigationServer3D.map_get_path(get_world_3d().navigation_map, global_position, pl, true)
+	if path.size() < 2 or Vector2(path[path.size() - 1].x - pl.x, path[path.size() - 1].z - pl.z).length() > 2.5:
+		return false
+	var goal: Vector3 = path[0]
+	for i in range(path.size() - 1, -1, -1):
+		if Vector2(path[i].x - pl.x, path[i].z - pl.z).length() >= 11.0:
+			goal = path[i]
+			break
+	if cover_map != null:
+		cover_map.release(get_instance_id())
+	cover_i = -1
+	aggression = 1.0
+	crouched = false
+	_goal = goal
+	_path = PackedVector3Array()
+	_path_i = 0
+	_repath_in = 0.0
+	_burst_left = 0
+	mode = Mode.PUSH
+	_mode_t = 0.0
+	bark("flank", true)
+	return true
 
 ## A man on a car's running board: shoots from the open for a few seconds while it passes, no cover.
 func drive_by() -> void:

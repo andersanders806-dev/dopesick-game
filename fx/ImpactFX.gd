@@ -259,6 +259,16 @@ func bullet_hit(pos: Vector3, normal: Vector3, _collider: Object = null) -> void
 		if rng.randf() < 0.25:
 			_play(pos, "ricochet_%d" % (1 + rng.randi() % 2), -7.0)
 
+## A round going through chain-link: a spark off the wire and a ping, no hole, no dust (the round goes on).
+func fence_ping(pos: Vector3, normal: Vector3) -> void:
+	impacts += 1
+	var n := normal if normal.length() > 0.001 else Vector3.UP
+	if _allow("spark"):
+		_fire(_sparks[_next["spark"]], _up_basis(n, pos + n * 0.02))
+		_next["spark"] = (_next["spark"] + 1) % _sparks.size()
+	if _allow("sound"):
+		_play(pos, "ricochet_%d" % (1 + rng.randi() % 2), -9.0)
+
 ## A bullet into a zombie: blood out of the way it went, and the sound of it.
 func blood_hit(pos: Vector3, dir: Vector3, part: String, killed := false, power := 1.0) -> void:
 	impacts += 1

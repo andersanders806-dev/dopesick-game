@@ -264,7 +264,7 @@ func _clear(eye: Vector3, to: Vector3) -> bool:
 		var c := r.collider as CollisionObject3D
 		if c == null or eye.distance_to(r.position) >= dist - 0.35:
 			return true
-		if c.is_in_group("zombies") or c.is_in_group("corpses") or c.has_method("take_hit"):
+		if c.is_in_group("zombies") or c.is_in_group("corpses") or c.is_in_group("see_through") or c.has_method("take_hit"):
 			skip.append(c.get_rid())
 			continue
 		return false

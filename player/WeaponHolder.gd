@@ -415,6 +415,13 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 		if c.has_method("take_hit"):
 			skip.append(c.get_rid())
 			continue
+		# Chain-link (group "see_through", set by the arena): the round goes through, a spark off the wire.
+		if c.is_in_group("see_through"):
+			var fx := ImpactFX.of(self)
+			if fx != null:
+				fx.fence_ping(r.position, r.normal)
+			skip.append(c.get_rid())
+			continue
 		return {"position": r.position, "normal": r.normal, "collider": c, "zombie": null, "part": ""}
 	return {}
 

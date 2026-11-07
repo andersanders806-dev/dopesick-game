@@ -36,10 +36,13 @@ var armor_buy: Area3D
 ## The story layer (fx/GhettoStory.gd): chapters over the waves, the raid, the endings.
 var story: Node
 var ambience: Node
+## How many chain-link fences are shoot-through (the smoke test reads it).
+var fences_open := 0
 
 func setup(block: Node3D) -> void:
 	city = block
 	_strip_story()
+	_open_chain_link()
 	_set_dusk()
 	_pick_flickering()
 	_build_camp_fires()
@@ -62,6 +65,16 @@ func setup(block: Node3D) -> void:
 	_build_purchases()
 	_install_story()
 	ZombieMode.start_round()
+
+## Chain-link stops you but not a round: the fences' colliders go in the group "see_through", which the player's
+## weapon (player/WeaponHolder.gd), the crews' eyes and guns (npc/Gangster3D.gd), the aim assist and the cover map
+## all look through. The Solid body under a holder with Panels and Posts is a fence.
+func _open_chain_link() -> void:
+	for body in city.find_children("Solid", "StaticBody3D", true, false):
+		var fence := body.get_parent()
+		if fence != null and fence.has_node("Panels") and fence.has_node("Posts"):
+			body.add_to_group("see_through")
+			fences_open += 1
 
 # --- The story drives the war -------------------------------------------------------------
 
@@ -141,7 +154,7 @@ func _build_cover() -> void:
 		await get_tree().physics_frame
 	if not is_inside_tree():
 		return
-	cover.build(city.get_world_3d(), map)
+	cover.build(city.get_world_3d(), map, Rect2(), player.global_position if player != null else Vector3.INF)
 
 func _set_dusk() -> void:
 	var env: Environment = city._env

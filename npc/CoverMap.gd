@@ -26,11 +26,15 @@ var bounds := Rect2(-76.0, -96.0, 152.0, 104.0)
 ## For tests: how long the last build took (ms), how many rays it cast.
 var build_ms := 0
 var rays := 0
+## How many spots build() dropped for having no way to them from the player's side.
+var dropped := 0
 ## Spots that are claimed by a gangster right now (index -> instance id).
 var claimed := {}
 
 ## Walks the grid. `world` is the 3D world the rays go into; `map` the navigation map.
-func build(world: World3D, map: RID, rect := Rect2()) -> int:
+## `from`, if given, is where the player can stand: spots the navmesh has no way to from there (an island inside a
+## fence, a courtyard) are dropped, so no crewman is ever sent to cover the player cannot get at.
+func build(world: World3D, map: RID, rect := Rect2(), from := Vector3.INF) -> int:
 	var t0 := Time.get_ticks_msec()
 	points.clear()
 	claimed.clear()
@@ -63,6 +67,13 @@ func build(world: World3D, map: RID, rect := Rect2()) -> int:
 					points.append(pt)
 			z += GRID
 		x += GRID
+	if have_nav and from != Vector3.INF:
+		var keep: Array[Dictionary] = []
+		for i in points.size():
+			if reachable(map, from, i):
+				keep.append(points[i])
+		dropped = points.size() - keep.size()
+		points = keep
 	build_ms = Time.get_ticks_msec() - t0
 	return points.size()
 
@@ -100,7 +111,8 @@ func _cast(space: PhysicsDirectSpaceState3D, from: Vector3, dir: Vector3) -> Dic
 	var q := PhysicsRayQueryParameters3D.create(from, from + dir * REACH)
 	q.collision_mask = WORLD_MASK
 	var r := space.intersect_ray(q)
-	if r.is_empty():
+	# Chain-link stops no round, so it is no cover.
+	if r.is_empty() or (r.collider as Node).is_in_group("see_through"):
 		return {}
 	return {"distance": from.distance_to(r.position), "normal": r.normal, "collider": r.collider}
 

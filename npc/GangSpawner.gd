@@ -10,6 +10,7 @@ extends "res://npc/ZombieSpawner.gd"
 const GangsterScript := preload("res://npc/Gangster3D.gd")
 const PAIR_GAP := 2.6
 const PAIR_GAP_MIN := 1.2
+const LastStandScript := preload("res://npc/LastStand.gd")
 
 ## Spawned by spawn_wave() or by the pairs, for the tests.
 var squads := 0
@@ -23,6 +24,9 @@ func _ready() -> void:
 	add_to_group("gang_spawner")
 	ZombieMode.max_alive = ZombieMode.GANG_MAX_ALIVE
 	adaptive = false
+	var ls := LastStandScript.new()
+	ls.spawner = self
+	add_child(ls)
 
 func alive() -> int:
 	return get_tree().get_nodes_in_group("gangsters").size()
@@ -100,6 +104,48 @@ func _pick_point(strict := false, nearest := false) -> Vector3:
 	var k := mini(4, good.size())
 	return good[_rng.randi() % k][1]
 
+## Whether the navmesh has a way from where the player stands to `to` (not an island inside a fence).
+func reachable(map: RID, to: Vector3) -> bool:
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player == null:
+		return true
+	var path := NavigationServer3D.map_get_path(map, player.global_position, to, true)
+	return path.size() >= 2 and Vector2(path[path.size() - 1].x - to.x, path[path.size() - 1].z - to.z).length() < 1.2
+
+## `p` on the navmesh, on the player's side of it: a man is never put down where the player cannot get at him
+## (inside the roadworks' fence, say). Tries a ring of spots round `p`, then the nearest spawn point that has a way.
+func _walkable(p: Vector3, map: RID) -> Vector3:
+	if NavigationServer3D.map_get_iteration_id(map) == 0:
+		return p
+	var s := NavigationServer3D.map_get_closest_point(map, p)
+	if s.distance_to(p) < 6.0 and reachable(map, s):
+		return Vector3(s.x, p.y, s.z)
+	for r in [1.6, 3.2, 4.8]:
+		for k in 8:
+			var c := p + Vector3(cos(TAU * k / 8.0), 0.0, sin(TAU * k / 8.0)) * float(r)
+			var n := NavigationServer3D.map_get_closest_point(map, c)
+			if Vector2(n.x - c.x, n.z - c.z).length() < 0.8 and reachable(map, n):
+				return Vector3(n.x, p.y, n.z)
+	var near: Array = spawn_points.duplicate()
+	near.sort_custom(func(a: Vector3, b: Vector3): return a.distance_squared_to(p) < b.distance_squared_to(p))
+	for sp in near:
+		var n := NavigationServer3D.map_get_closest_point(map, sp)
+		if n.distance_to(sp) < 3.0 and reachable(map, n):
+			return Vector3(n.x, sp.y, n.z)
+	return p
+
+## Puts a stuck one back on a spawn point out of the player's sight, on a way the player can walk.
+func relocate(z: Node3D) -> bool:
+	var p := _pick_point(true, true)
+	if p == Vector3.INF:
+		return false
+	z.global_position = _walkable(p, z.get_world_3d().navigation_map)
+	z.reset_physics_interpolation()
+	if z.has_method("relocated"):
+		z.relocated()
+	relocated.emit(z)
+	return true
+
 func _release_squad(n: int) -> void:
 	var made: Array = []
 	var at := _pick_point()
@@ -131,11 +177,7 @@ func spawn_one(kind: String, at := Vector3.INF, body := "", gun := "") -> Charac
 	if body != "":
 		g.set_meta("body", body)
 	var p := at if at != Vector3.INF else _pick_point()
-	var map := holder.get_world_3d().navigation_map
-	if NavigationServer3D.map_get_iteration_id(map) > 0:
-		var s := NavigationServer3D.map_get_closest_point(map, p)
-		if s.distance_to(p) < 6.0:
-			p = Vector3(s.x, p.y, s.z)
+	p = _walkable(p, holder.get_world_3d().navigation_map)
 	g.position = p
 	g.died.connect(_on_died)
 	holder.add_child(g)

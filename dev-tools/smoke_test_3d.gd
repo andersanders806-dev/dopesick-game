@@ -680,13 +680,13 @@ func _run() -> void:
 	gs.start_run()
 	await _load("res://world/Apartment3D.tscn")
 	var day_label: Label = get_first_node_in_group("hud").get_node("TopBar/DayLabel")
-	var fresh_text: String = day_label.text
-	_check(fresh_text.contains("*"), "  the HUD shows the strikes left on a fresh run (\"%s\")" % fresh_text)
+	var pips = get_first_node_in_group("hud").pips
+	var fresh_left: int = pips.left
+	_check(fresh_left == gs.max_strikes() and day_label.text.begins_with("DAY"), "  the HUD shows the strikes left on a fresh run (%d, \"%s\")" % [fresh_left, day_label.text])
 	gs.in_custody = false
 	gs.get_busted()
 	await _frames(2)
-	_check(day_label.text != fresh_text and day_label.text.contains("o"),
-		"  and updates them after a bust (\"%s\")" % day_label.text)
+	_check(pips.left < fresh_left, "  and updates them after a bust (%d left)" % pips.left)
 
 	# Upgrades must actually change the numbers the game reads.
 	var base_pickup: float = meta.pickup_duration(0.6)
@@ -1763,7 +1763,7 @@ func _objective_checks(gs: Node) -> void:
 	gs.clock = 12 * 60
 	await _load("res://world/Apartment3D.tscn")
 	var hud := get_first_node_in_group("hud")
-	var label: Label = hud.get_node_or_null("TopBar/Objective")
+	var label: Label = hud.find_child("Objective", true, false)
 	_check(label != null and label.text.length() > 5, "  there's always a line saying what to do (\"%s\")" % (label.text if label else ""))
 	_check(Obj.current().contains("rent"), "  a fresh run: make rent")
 	sv.hunger = 10.0

@@ -27,6 +27,8 @@ extends "res://dev-tools/playtest_bot.gd"
 ##   pad <BUTTON>               tap a DualSense button: CROSS CIRCLE SQUARE
 ##                              TRIANGLE OPTIONS TOUCHPAD L1 R1 L3 R3 DPAD_RIGHT
 ##   hold <action> <seconds>    hold an input action (move_up, sprint, fire...)
+##   look <yaw_deg> [pitch]     turn the first-person view (0 faces -Z, 90 faces -X)
+##   tp <x> <z>                 stand there, no walking
 ##   closeup <NodeName>         a camera 2.4 m in front of it, at chest height
 ##   gamecam                    back to the game's own camera
 ##   wait <seconds> | shot <label> | state
@@ -59,6 +61,7 @@ func _initialize() -> void:
 	# Walks and looks at the level without withdrawal getting in the way;
 	# the "sick" step turns it back on to check withdrawal itself.
 	gs.no_sickness = true
+	root.get_node("Survival").enabled = false  # no freezing to death in the middle of a shot
 	gs.busted.connect(func(): log_line("BUSTED"))
 	var steps := OS.get_cmdline_user_args()
 	if steps.is_empty():
@@ -133,6 +136,16 @@ func _do(step: String) -> bool:
 			root.get_node("Graphics").set_preset(i)
 		"view":
 			root.get_node("Graphics").set_first_person(arg == "first")
+		"look":
+			# look <yaw_deg> [pitch_deg]: turn the first-person view (0 = -Z, 90 = -X).
+			if player():
+				player().set_look(deg_to_rad(float(parts[1])), deg_to_rad(float(parts[2])) if parts.size() > 2 else 0.0)
+			await _wait(0.3)
+		"tp":
+			# tp <x> <z>: stand there (no walking).
+			if player():
+				player().global_position = Vector3(float(parts[1]), player().global_position.y, float(parts[2]))
+			await _wait(0.3)
 		"list":
 			_list()
 		"walk":

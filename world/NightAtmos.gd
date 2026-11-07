@@ -182,7 +182,8 @@ func _process(_delta: float) -> void:
 	var at := cam.global_position
 	if _frame % 12 == 1 or _chosen.is_empty():
 		_choose(at)
-	var rain_on := 1.0 if Graphics.rain_fx else 0.0
+	# (Low: no ripples in the puddles, three reflections: the wet paving was the night's dearest pixel work)
+	var rain_on := 1.0 if Graphics.rain_fx and Graphics.preset != Graphics.Preset.LOW else 0.0
 	var pos := PackedVector4Array()
 	var col := PackedVector4Array()
 	for entry in _chosen:
@@ -212,7 +213,10 @@ func _process(_delta: float) -> void:
 			var k := clampf(light.light_energy / LAMP_ENERGY, 0.0, 1.5)
 			(h[2] as StandardMaterial3D).albedo_color.a = HALO_ALPHA * k
 
+func _reflection_cap() -> int:
+	return 3 if Graphics.preset == Graphics.Preset.LOW else REFLECTIONS
+
 func _choose(at: Vector3) -> void:
 	var live: Array = _lights.filter(func(e): return is_instance_valid(e[0]) and (e[0] as Light3D).is_visible_in_tree())
 	live.sort_custom(func(a, b): return (a[0] as Light3D).global_position.distance_squared_to(at) < (b[0] as Light3D).global_position.distance_squared_to(at))
-	_chosen = live.slice(0, REFLECTIONS)
+	_chosen = live.slice(0, _reflection_cap())

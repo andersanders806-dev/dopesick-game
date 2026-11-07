@@ -89,6 +89,5 @@ func _button(text: String, action: Callable) -> Button:
 	b.text = text
 	U.menu_item(b)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	b.alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.pressed.connect(action)
 	return b

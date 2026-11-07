@@ -122,7 +122,11 @@ static func blur_backdrop(dark := 0.55, lod := 3.0) -> ColorRect:
 const GRAIN_SHADER := """shader_type canvas_item;
 uniform float grain = 0.05;
 uniform float vignette = 0.55;
-float h(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float h(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
 void fragment() {
 	float n = h(floor(FRAGCOORD.xy * 0.5) + floor(TIME * 24.0) * 17.0) - 0.5;
 	float v = smoothstep(0.45, 1.1, distance(UV, vec2(0.5)) * 1.25);

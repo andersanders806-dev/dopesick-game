@@ -57,10 +57,10 @@ void fragment() {
 	shade.material = mat
 	add_child(shade)
 	# Film grain and a vignette over the whole picture (it stays under the menu's text).
-	add_child(U.grain_overlay(0.05, 0.5))
+	add_child(U.grain_overlay(0.025, 0.5))
 
 	var col := VBoxContainer.new()
-	col.position = Vector2(90, 150)
+	col.position = Vector2(90, 96)
 	col.custom_minimum_size = Vector2(420, 0)
 	col.add_theme_constant_override("separation", 6)
 	add_child(col)
@@ -71,7 +71,7 @@ void fragment() {
 	if not MetaProgress.last_run.is_empty():
 		col.add_child(_label(_last_time(MetaProgress.last_run), U.FS_SMALL, Color(0.62, 0.55, 0.6)))
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 40)
+	gap.custom_minimum_size = Vector2(0, 28)
 	col.add_child(gap)
 
 	_buttons = VBoxContainer.new()

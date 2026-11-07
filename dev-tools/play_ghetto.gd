@@ -3,7 +3,7 @@ extends SceneTree
 ## actions, the interact key, the 1/2 keys at the choice, the weapon's fire()), and takes screenshots at every story
 ## beat into .pilot/gwrun_*.png. It cheats where a player would have to learn: it starts with the rifle and has its
 ## health topped up, except in the raid when told to bust (ending=bust).
-##   flatpak run org.godotengine.Godot --path . --resolution 1280x720 -s res://dev-tools/play_ghetto.gd -- [ending=clean|bust|bag] [batch=dump|sell] [limit=SECONDS]
+##   flatpak run org.godotengine.Godot --path . --resolution 1280x720 -s res://dev-tools/play_ghetto.gd -- [ending=clean|bust|bag] [batch=dump|sell] [limit=SECONDS] [waves=N: stop cleanly after wave N is cleared]
 ## Without "no_sick" withdrawal is not simulated in this mode anyway (the mode keeps the story's clock still).
 
 var out := ""
@@ -26,6 +26,7 @@ var _last_target_seen := 0.0
 var _choice_open_t := -1.0
 var _flush_hold := false
 var log_lines: Array[String] = []
+var _waves_done_t := -1.0
 
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
@@ -109,6 +110,8 @@ func _main() -> void:
 	var frames := 0
 	while not zm.over and (Time.get_ticks_msec() / 1000.0 - t0) < limit:
 		await process_frame
+		if _waves_done_t > 0.0 and Time.get_ticks_msec() / 1000.0 - _waves_done_t > 4.0:
+			break
 		frames += 1
 		var tn := Time.get_ticks_usec()
 		_dt = clampf((tn - _t_prev) / 1000000.0, 0.001, 0.2)
@@ -196,7 +199,10 @@ func _hook_story() -> void:
 		snap_later("raid_b", 9.0))
 	root.get_node("GhettoMode").enemy_killed.connect(func(_e: Node, _h: String): _last_kill = Time.get_ticks_msec() / 1000.0)
 	zm.round_started.connect(func(r: int): say("wave %d starts" % r))
-	zm.round_ended.connect(func(r: int): say("wave %d cleared (kills %d)" % [r, zm.kills]))
+	zm.round_ended.connect(func(r: int):
+		say("wave %d cleared (kills %d)" % [r, zm.kills])
+		if args.has("waves") and r >= int(args["waves"]) and _waves_done_t < 0.0:
+			_waves_done_t = Time.get_ticks_msec() / 1000.0)
 
 func _release_moves() -> void:
 	for a in ["move_left", "move_right", "move_up", "move_down", "sprint"]:

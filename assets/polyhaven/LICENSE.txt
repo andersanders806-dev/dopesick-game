@@ -74,3 +74,5 @@ cement_bag: Cement Bag by PierreB3D
 can_rusted: Can Rusted by Rahul Chaudhary
 wooden_crate_02: Wooden Crate 02 by James Ray Cock, Jurita Burger
 classic_laptop: Classic Laptop by Arrangemonk
+electric_stove: Electric Stove by Kuutti Siitonen
+wooden_bookshelf_worn: Wooden Bookshelf Worn by Ulan Cabanilla

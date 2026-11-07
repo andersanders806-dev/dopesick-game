@@ -41,8 +41,12 @@ static func apply(scene: Node, on: bool) -> void:
 		var slab := BoxMesh.new()
 		slab.size = Vector3(size.x + 0.4, 0.1, size.z + 0.4)
 		var plaster := StandardMaterial3D.new()
-		plaster.albedo_color = Color(0.32, 0.30, 0.28)
+		plaster.albedo_color = Color(0.5, 0.46, 0.42)
+		plaster.albedo_texture = load("res://assets/pbr/plaster_painted_diff.jpg")
 		plaster.roughness = 0.95
+		plaster.uv1_triplanar = true
+		plaster.uv1_world_triplanar = true
+		plaster.uv1_scale = Vector3(0.35, 0.35, 0.35)
 		slab.material = plaster
 		lid.mesh = slab
 		# The rooms are lit from inside; a lid that cast shadows would black

@@ -67,6 +67,8 @@ MODELS = [
     "modular_chainlink_fence", "utility_box_02", "cement_bag", "can_rusted", "wooden_crate_02",
     # the laptop at home (Silk Lane)
     "classic_laptop",
+    # the flat at night, first person (world/ApartmentDress.gd): a stove and a bookshelf
+    "electric_stove", "wooden_bookshelf_worn",
 ]
 
 

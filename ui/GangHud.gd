@@ -85,8 +85,62 @@ class Arcs extends Control:
 			var mid := a - PI * 0.5
 			draw_arc(c, ARC_RADIUS, mid - 0.32, mid + 0.32, 16, col, 20.0, true)
 
+## Where the last men are, when they have been hiding too long (npc/LastStand.gd): a ring and a chevron over the
+## spot, or on the edge of the screen pointing the way if it is off to the side or behind you, and the distance.
+class Ping extends Control:
+	const LIFE := 4.5
+	var marks: Array = []
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+
+	func add(world_pos: Vector3) -> void:
+		marks.append({"pos": world_pos, "t": 0.0})
+		while marks.size() > 4:
+			marks.pop_front()
+
+	func _process(delta: float) -> void:
+		for m in marks:
+			m["t"] += delta
+		marks = marks.filter(func(m): return m["t"] < LIFE)
+		visible = not marks.is_empty()
+		queue_redraw()
+
+	func _draw() -> void:
+		var cam := get_viewport().get_camera_3d()
+		if cam == null:
+			return
+		var c := size * 0.5
+		var font := get_theme_default_font()
+		for m in marks:
+			var t: float = m["t"]
+			var k := minf(t / 0.25, 1.0) * clampf((LIFE - t) / 0.8, 0.0, 1.0)
+			var pulse := 0.5 + 0.5 * sin(t * 7.0)
+			var col := Color(0.95, 0.25, 0.15, k)
+			var p: Vector3 = m["pos"]
+			var meters := int(cam.global_position.distance_to(p))
+			var on_screen := not cam.is_position_behind(p)
+			var sp := cam.unproject_position(p) if on_screen else c
+			var inset := Rect2(Vector2(60, 60), size - Vector2(120, 120))
+			if on_screen and inset.has_point(sp):
+				draw_arc(sp, 20.0 + 6.0 * pulse, 0.0, TAU, 28, col, 3.0, true)
+				draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -34), sp + Vector2(-9, -50), sp + Vector2(9, -50)]), col)
+				draw_string(font, sp + Vector2(-20, 46), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 40.0, 20, Color(1, 0.88, 0.8, k))
+			else:
+				# Off to the side or behind: on the edge, pointing the way.
+				var dir := (sp - c) if on_screen else Vector2(sin(Arcs.angle_to(cam, p)), -cos(Arcs.angle_to(cam, p)))
+				if dir.length() < 1.0:
+					dir = Vector2.UP
+				dir = dir.normalized()
+				var edge := c + Vector2(clampf(dir.x * 9999.0, -(c.x - 60.0), c.x - 60.0), clampf(dir.y * 9999.0, -(c.y - 60.0), c.y - 60.0))
+				var side := Vector2(-dir.y, dir.x)
+				draw_colored_polygon(PackedVector2Array([edge + dir * 16.0, edge - dir * 12.0 + side * 13.0, edge - dir * 12.0 - side * 13.0]), col)
+				draw_string(font, edge - dir * 30.0 + Vector2(-20, 6), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 40.0, 20, Color(1, 0.88, 0.8, k))
+
 var plates: Control
 var arcs: Control
+var ping: Control
 var suppress: ColorRect
 var feed: VBoxContainer
 var callouts: Array = []
@@ -106,6 +160,9 @@ func _ready() -> void:
 	plates.offset_right = 222.0
 	arcs = Arcs.new()
 	add_child(arcs)
+	ping = Ping.new()
+	add_child(ping)
+	ping.visible = false
 	suppress = ColorRect.new()
 	suppress.set_anchors_preset(Control.PRESET_FULL_RECT)
 	suppress.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -166,6 +223,10 @@ func _update_prompt() -> void:
 func _on_damaged(from: Vector3, _amount: float, armor_hit: bool) -> void:
 	if from != Vector3.INF:
 		arcs.add(from, armor_hit)
+
+## The last men's position, shown for a few seconds.
+func reveal(world_pos: Vector3) -> void:
+	ping.add(world_pos)
 
 ## Number of arcs on screen (the tests read it).
 func indicator_count() -> int:

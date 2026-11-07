@@ -12,6 +12,7 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var preset_name := args[0] if args.size() > 0 else "Low"
 	var hour := int(args[1]) if args.size() > 1 else 14
+	var extra := args[2] if args.size() > 2 else ""
 	await process_frame
 	var gfx := root.get_node("Graphics")
 	gfx.set_first_person(false)
@@ -21,6 +22,10 @@ func _initialize() -> void:
 	gs.intro_pending = false
 	gs.clock_running = false
 	gs.clock = hour * 60
+	if "rain" in extra:
+		gs.raining = true
+	if "sick" in extra:
+		gs.craving = 0.0
 	change_scene_to_file("res://world/City3D.tscn")
 	for i in 300:
 		await process_frame
@@ -30,7 +35,12 @@ func _initialize() -> void:
 	RenderingServer.viewport_set_measure_render_time(_vp_rid, true)
 	var city := current_scene
 	var base := await _gpu()
-	print("BASE  %.2f ms  (scale 1.0, %s, %02d:00)" % [base, preset_name, hour])
+	print("BASE  %.2f ms  (scale 1.0, %s, %02d:00 %s)" % [base, preset_name, hour, extra])
+	if extra != "":
+		root.scaling_3d_scale = 0.6
+		print("AT 0.6  %.2f ms" % await _gpu())
+		quit()
+		return
 	var tests := {
 		"directional shadow": func(on): for l in city.find_children("*", "DirectionalLight3D", true, false): l.shadow_enabled = on,
 		"omni/spot lights": func(on): for l in city.find_children("*", "Light3D", true, false): if not l is DirectionalLight3D: l.visible = on,

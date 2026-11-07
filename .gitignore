@@ -24,3 +24,5 @@ assets/cars/*.jpg
 assets/cars/*.png
 assets/cars/*.jpg.import
 assets/cars/*.png.import
+gw-assets/
+audio-real/

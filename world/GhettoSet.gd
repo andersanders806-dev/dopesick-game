@@ -1460,7 +1460,7 @@ func _poll_objectives() -> void:
 		if not flushed and not markers.has("sink"):
 			markers.call("mark", "sink", laundromat.call("point", "sink"), Color(0.4, 0.85, 1.0), 1.1, true)
 		if not markers.has("car"):
-			markers.call("mark", "car", laundromat.call("point", "car"), Color(0.4, 1.0, 0.5), 1.3, true)
+			markers.call("mark", "car", laundromat.call("point", "car"), Color(0.5, 0.92, 0.62), 1.3, true)
 		return
 	if chapter == "STASH RUN":
 		if lm_in:

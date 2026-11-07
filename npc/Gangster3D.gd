@@ -459,6 +459,9 @@ func bark(event: String, force := false) -> void:
 	var voice := GhettoVoice.bark(self, text, global_position + Vector3(0, 1.6, 0), kind)
 	if voice != null and d < 28.0:
 		GhettoVoice.duck_music(voice, 4.0)
+	# The Dock Boys are heard, not read: only the police (their bullhorn calls) still go on the feed.
+	if crew == "Dock Boys" and voice != null:
+		return
 	var hud := get_tree().get_first_node_in_group("zombie_hud")
 	if hud != null and hud.has_method("callout"):
 		hud.callout(title if title != "" else crew, text, global_position, crew)

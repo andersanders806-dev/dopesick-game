@@ -331,7 +331,9 @@ func _ghetto_checks(gs: Node) -> void:
 	var d1 = sp.spawn_one("grunt", _near(player, 14.0, 5.0))
 	var d2 = sp.spawn_one("grunt", _near(player, 15.0, 6.0))
 	await _frames(5)
-	var feed_before: int = hud.callouts_shown
+	var begged: Array = []
+	d1.barked.connect(func(_w, t: String): begged.append(t))
+	d2.barked.connect(func(_w, t: String): begged.append(t))
 	d1.health = d1.max_health * 0.1
 	d2.health = d2.max_health * 0.1
 	d1._go_down(Vector3.FORWARD)
@@ -340,7 +342,7 @@ func _ghetto_checks(gs: Node) -> void:
 	await _frames(90)
 	_check(d1.downed and d1.is_alive() and d1.legless and not d1._gun_node.visible, "  a man hit hard goes down, drops his gun and can't walk")
 	_check(d1.global_position.distance_to(d1_at) > 0.2 and d1.global_position.distance_to(d1_at) < 2.0, "  he drags himself away (%.2f m in 1.5 s)" % d1.global_position.distance_to(d1_at))
-	_check(hud.callouts_shown > feed_before, "  and begs (%s)" % hud.last_callout())
+	_check(not begged.is_empty() and load("res://fx/GhettoVoice.gd").kind_of(String(begged[0])) != "", "  and begs out loud (%s)" % [begged])
 	d1._burst_left = 5
 	var shots_down: int = d1.shots_fired
 	await _frames(40)

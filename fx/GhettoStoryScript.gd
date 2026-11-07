@@ -194,17 +194,17 @@ const POLICE_BARKS := {
 ## More Dock Boys talk, over what npc/Barks.gd has (GhettoVoice kind "bark"; "cry" for the downed).
 const EXTRA_BARKS := {
 	"taunt_habit": [
-		["Shaking already? Your habit's going to kill you before I do, dealer.", "Shaking already? Your habit's going to get you before I do, dealer."],
-		["Look at you. You can't even hold that gun still.", "Look at you. You can't even hold that gun still."],
-		["Nice stash, dealer. Shame if it burned.", "Nice stash, dealer. Shame if it burned."],
+		["You're shaking, dealer! Your habit's gonna... it's gonna kill you first!", "You're shaking, dealer! Your habit's gonna... it's gonna get you first!"],
+		["Look at you, you can't even hold that gun still! So why can't I hit you?", "Look at you, you can't even hold that gun still! So why can't I hit you?"],
+		["Nice stash, dealer. We'll burn it. We will. Just... stay back!", "Nice stash, dealer. We'll burn it. We will. Just... stay back!"],
 	],
 	"mock_reload2": [
-		["Reload, you dumb shit, I'll wait!", "Reload, you silly goose, I'll wait!"],
-		["Click! Now who's the dead man?", "Click! Now who's the dead man?"],
+		["He's reloading! Go! Go! Before he's done, shit!", "He's reloading! Go! Go! Before he's done!"],
+		["Click! He's empty! Somebody get him, not me!", "Click! He's empty! Somebody get him, not me!"],
 	],
 	"drive_by": [
-		["BURN THE CORNER!", "BURN THE CORNER!"],
-		["Nobody's left standing tonight, dealer!", "Nobody's left standing tonight, dealer!"],
+		["Burn the corner! Burn it and drive! Drive!", "Burn the corner! Burn it and drive! Drive!"],
+		["Shoot and go, shoot and go! Don't stop the car!", "Shoot and go, shoot and go! Don't stop the car!"],
 	],
 	"cry": [
 		["Don't leave me here. Please. Don't leave me.", "Don't leave me here. Please. Don't leave me."],

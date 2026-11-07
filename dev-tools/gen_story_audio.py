@@ -146,11 +146,12 @@ def write_ogg(path, x, sr=SR, q=3):
 
 # --- the voices -------------------------------------------------------------------------------
 
-def say(text, vid, rate, pdir):
+def say(text, vid, rate, pdir, noise=0.667, noise_w=0.8):
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as t:
         tmp = t.name
     subprocess.run([os.path.join(pdir, "piper"), "-m", os.path.join(pdir, MODEL), "-s", str(vid), "--length_scale",
-                    "%.2f" % rate, "--sentence_silence", "0.12", "-f", tmp], input=text.encode(),
+                    "%.2f" % rate, "--noise_scale", "%.2f" % noise, "--noise_w", "%.2f" % noise_w,
+                    "--sentence_silence", "0.12", "-f", tmp], input=text.encode(),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     x, sr = read_wav(tmp)
     os.unlink(tmp)
@@ -212,11 +213,29 @@ def fx_police(x, rng):
     return norm(out, 0.95)
 
 
+def pitch_up(x, ratio):
+    """Higher and a touch quicker (a throat gone tight): a plain resample."""
+    n = int(len(x) / ratio)
+    return np.interp(np.arange(n) * ratio, np.arange(len(x)), x)
+
+
 def fx_bark(x, rng):
-    x = fft_band(x, 120, 9000)
-    x = softclip(x * 1.5, 1.8)
-    out = np.zeros(len(x) + int(SR * 0.35))
-    out[: len(x)] = x
+    """The Dock Boys: loud and scared. The voice pitched up, a nervous tremor that wanders, a gasp before the line
+    and ragged breath under it, shouted hard into the night."""
+    x = pitch_up(x, 1.0 + rng.uniform(0.06, 0.11))
+    n = len(x)
+    t = np.arange(n) / SR
+    rate = rng.uniform(6.5, 8.5)
+    wobble = 1.0 + 0.13 * np.sin(2 * np.pi * rate * t + 0.9 * np.sin(2 * np.pi * 0.7 * t))
+    x = fft_band(x, 140, 9000) * wobble
+    x = x + fft_band(rng.standard_normal(n), 1800, 7000) * 0.02 * (np.abs(x) > 0.015)  # breath through the words
+    x = softclip(x * 1.8, 2.1)
+    lead = int(SR * 0.18)
+    out = np.zeros(lead + n + int(SR * 0.35))
+    g = int(SR * 0.16)
+    gasp = fft_band(rng.standard_normal(g), 1200, 6500) * np.sin(np.linspace(0, np.pi, g)) ** 2 * 0.22
+    out[:g] += gasp
+    out[lead: lead + n] = x
     out = echo(out, [(0.045, 0.2), (0.11, 0.09), (0.21, 0.04)])
     return norm(out, 0.92)
 
@@ -245,7 +264,8 @@ def bake_voice(lines, force):
             skipped += 1
             continue
         rng = np.random.default_rng(int(item["key"], 16) % (2 ** 32))
-        x = say(item["text"], item["id"], item["rate"], pdir)
+        scared = item["fx"] in ("bark", "cry")
+        x = say(item["text"], item["id"], item["rate"], pdir, 0.9 if scared else 0.667, 1.1 if scared else 0.8)
         x = FX[item["fx"]](x, rng)
         write_ogg(path, x, SR, q=2)
         done += 1

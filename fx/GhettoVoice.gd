@@ -18,7 +18,7 @@ const CAST := {
 }
 ## A stable pick by the line's text for the rest.
 const POOLS := {
-	"bark": {"ids": [36, 84, 207, 210, 217, 220, 146, 115], "rate": 0.92},
+	"bark": {"ids": [36, 84, 207, 210, 217, 220, 146, 115], "rate": 0.8},
 	"police": {"ids": [564, 720, 156, 684], "rate": 0.9},
 	"cry": {"ids": [828, 636, 110], "rate": 1.25},
 }

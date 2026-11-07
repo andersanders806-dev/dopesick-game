@@ -266,6 +266,8 @@ func _ready() -> void:
 		var atmosphere: Node3D = preload("res://world/Atmosphere.gd").new()
 		atmosphere.name = "Atmosphere"
 		add_child(atmosphere)
+		# The city beyond the block, so the street does not end in a flat colour.
+		add_child(preload("res://world/Skyline.gd").new())
 	# The buildings' faces and the street's wear are the arena, in either mode.
 	var facades: Node3D = preload("res://world/Facades.gd").new()
 	facades.name = "Facades"

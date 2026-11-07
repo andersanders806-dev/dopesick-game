@@ -8,15 +8,17 @@ uniform float vignette_strength : hint_range(0.0, 2.0) = 0.85;
 uniform float vignette_radius : hint_range(0.2, 1.5) = 0.85;
 uniform float grain_strength : hint_range(0.0, 0.3) = 0.05;
 
+// Interleaved gradient noise (Jimenez): two fracts and a dot, no sin, which a UHD 620 runs far faster than
+// the usual sin hash (and it has a finer, less clumpy grain).
 float rand(vec2 co) {
-	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+	return fract(52.9829189 * fract(dot(co, vec2(0.06711056, 0.00583715))));
 }
 
 void fragment() {
 	vec2 centered = SCREEN_UV - vec2(0.5);
 	float dist = length(centered) / vignette_radius;
 	float vig = max(1.0 - smoothstep(0.35, 1.0, dist) * vignette_strength, 0.0);
-	float g = (rand(SCREEN_UV * vec2(960.0, 540.0) + TIME * 60.0) - 0.5) * grain_strength;
+	float g = (rand(floor(SCREEN_UV * vec2(960.0, 540.0)) + floor(TIME * 24.0) * 5.588238) - 0.5) * grain_strength;
 	// Blended over the frame: frame * vig darkens it like the full shader's
 	// multiply; a light speck of grain adds, a dark one dims a touch.
 	float a = 1.0 - vig * (1.0 - abs(g));

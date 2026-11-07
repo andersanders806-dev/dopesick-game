@@ -367,6 +367,8 @@ func _next_step(goal: Vector3) -> Vector3:
 	return Vector3.INF
 
 var _stuck_t := 0.0
+var _prog_t := 0.0
+var _prog_pos := Vector3.ZERO
 var _dt := 0.016
 var _t_prev := 0
 var _unstick_left := 0.0
@@ -375,9 +377,16 @@ var _unstick_dir := 1.0
 func _walk(goal: Vector3) -> void:
 	walk_goal = goal
 	# Snagged on a car or a corner for a few seconds: sidestep a moment like a player would.
+	# (No progress: not moving, or going back and forth on the spot, like a man who has lost the way in a lane.)
+	_prog_t += _dt
+	if _prog_t > 3.0:
+		_prog_t = 0.0
+		if player.global_position.distance_to(_prog_pos) < 0.8:
+			_stuck_t = 99.0
+		_prog_pos = player.global_position
 	if Vector2(player.velocity.x, player.velocity.z).length() < 0.4:
 		_stuck_t += _dt
-	else:
+	elif _stuck_t < 90.0:
 		_stuck_t = 0.0
 	if _stuck_t > 2.0 and _unstick_left <= 0.0:
 		_unstick_left = 1.6
@@ -403,8 +412,10 @@ func _walk(goal: Vector3) -> void:
 	var map: RID = player.get_world_3d().navigation_map
 	var path := NavigationServer3D.map_get_path(map, player.global_position, target, true)
 	var next := target
-	for pt in path:
-		if Vector2(pt.x - player.global_position.x, pt.z - player.global_position.z).length() > 0.6:
+	# The first point is where the navmesh took the player's own spot: steer for one ahead of it.
+	for pi in range(1, path.size()):
+		var pt := path[pi]
+		if Vector2(pt.x - player.global_position.x, pt.z - player.global_position.z).length() > 1.0:
 			next = pt
 			break
 	_face(Vector3(next.x, cam.global_position.y, next.z))

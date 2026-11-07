@@ -123,20 +123,33 @@ class Ping extends Control:
 			var on_screen := not cam.is_position_behind(p)
 			var sp := cam.unproject_position(p) if on_screen else c
 			var inset := Rect2(Vector2(60, 60), size - Vector2(120, 120))
+			var halo := Color(0, 0, 0, 0.55 * k)
+			var label := Color(1, 0.92, 0.85, k)
 			if on_screen and inset.has_point(sp):
-				draw_arc(sp, 20.0 + 6.0 * pulse, 0.0, TAU, 28, col, 3.0, true)
-				draw_colored_polygon(PackedVector2Array([sp + Vector2(0, -34), sp + Vector2(-9, -50), sp + Vector2(9, -50)]), col)
-				draw_string(font, sp + Vector2(-20, 46), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 40.0, 20, Color(1, 0.88, 0.8, k))
+				draw_arc(sp, 20.0 + 6.0 * pulse, 0.0, TAU, 28, halo, 8.0, true)
+				draw_arc(sp, 20.0 + 6.0 * pulse, 0.0, TAU, 28, col, 4.0, true)
+				var tri := PackedVector2Array([sp + Vector2(0, -34), sp + Vector2(-11, -54), sp + Vector2(11, -54)])
+				draw_colored_polygon(tri, col)
+				draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), halo, 2.0)
+				draw_string_outline(font, sp + Vector2(-30, 62), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 60.0, 24, 6, Color(0, 0, 0, 0.8 * k))
+				draw_string(font, sp + Vector2(-30, 62), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 60.0, 24, label)
 			else:
-				# Off to the side or behind: on the edge, pointing the way.
+				# Off to the side or behind: on an ellipse well inside the screen (clear of the corners' numbers), pointing the way.
 				var dir := (sp - c) if on_screen else Vector2(sin(Arcs.angle_to(cam, p)), -cos(Arcs.angle_to(cam, p)))
 				if dir.length() < 1.0:
 					dir = Vector2.UP
 				dir = dir.normalized()
-				var edge := c + Vector2(clampf(dir.x * 9999.0, -(c.x - 60.0), c.x - 60.0), clampf(dir.y * 9999.0, -(c.y - 60.0), c.y - 60.0))
+				var ra := c.x - 120.0
+				var rb := c.y - 140.0
+				var k_e := 1.0 / sqrt(pow(dir.x / ra, 2.0) + pow(dir.y / rb, 2.0))
+				var edge := c + dir * k_e
 				var side := Vector2(-dir.y, dir.x)
-				draw_colored_polygon(PackedVector2Array([edge + dir * 16.0, edge - dir * 12.0 + side * 13.0, edge - dir * 12.0 - side * 13.0]), col)
-				draw_string(font, edge - dir * 30.0 + Vector2(-20, 6), "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 40.0, 20, Color(1, 0.88, 0.8, k))
+				var tri := PackedVector2Array([edge + dir * 20.0, edge - dir * 14.0 + side * 16.0, edge - dir * 14.0 - side * 16.0])
+				draw_colored_polygon(tri, col)
+				draw_polyline(PackedVector2Array([tri[0], tri[1], tri[2], tri[0]]), halo, 3.0)
+				var at := edge - dir * 36.0 + Vector2(-30, 8)
+				draw_string_outline(font, at, "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 60.0, 24, 6, Color(0, 0, 0, 0.8 * k))
+				draw_string(font, at, "%d m" % meters, HORIZONTAL_ALIGNMENT_CENTER, 60.0, 24, label)
 
 var plates: Control
 var arcs: Control

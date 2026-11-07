@@ -23,7 +23,7 @@ func story_day() -> int:
 func _initialize() -> void:
 	# Don't touch the player's progress, settings or saved run.
 	Engine.set_meta("sandbox", true)
-	out_dir = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() else "user://"
+	out_dir = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() and OS.get_cmdline_user_args()[0] != "fp" else "user://"
 	t_start = Time.get_ticks_msec()
 	_build_title()
 	var gs := root.get_node("GameState")
@@ -35,7 +35,7 @@ func _initialize() -> void:
 	_title.text = "Dope Sick  -  Story mode"
 	await _wait(4.0)
 	await screenshot("title")
-	current_scene._start_run(false)  # third person, a new run
+	current_scene._start_run(OS.get_cmdline_user_args().has("fp"))  # a new run; "fp" after the shot dir = first person
 	await _wait(1.5)
 	await _days()
 	log_line("STOP: %s (story day %d, gs.day %d)" % [_stop_reason, story_day(), gs.day])

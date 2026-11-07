@@ -127,6 +127,8 @@ func _main() -> void:
 				say("STUCK: velocity %s collisions %s" % [player.velocity, cols])
 				snap_later("stuck", 0.1)
 			_last_pos = player.global_position
+			for cg in _alive_crew().slice(0, 2):
+				say("  crew left: %s dist %.1f mode %s downed %s los %s at %s" % [cg.crew, cg.global_position.distance_to(player.global_position), cg.mode, cg.downed, cg._los, cg.global_position.snapped(Vector3.ONE * 0.1)])
 			say("pos %s goal %s crew %d wave %d bags %d hp %.0f fps %d" % [player.global_position.snapped(Vector3.ONE * 0.1), walk_goal, _alive_crew().size(), zm.round, story.bags, zm.health, Engine.get_frames_per_second()])
 		_tick()
 		var now := Time.get_ticks_msec() / 1000.0
@@ -295,9 +297,14 @@ func _tick() -> void:
 	if since > 14.0 and not crew_all.is_empty():
 		crew_all.sort_custom(func(a, b): return a.global_position.distance_to(player.global_position) < b.global_position.distance_to(player.global_position))
 		var near: Node3D = crew_all[0]
-		if near.global_position.distance_to(player.global_position) > 7.0:
+		if near.global_position.distance_to(player.global_position) > 7.0 or not _visible(root.get_viewport().get_camera_3d().global_position, near.global_position + Vector3(0, 1.0, 0)):
 			if not _shoot_best(true, true):
 				_walk(near.global_position)
+			return
+		if near.downed and near.global_position.distance_to(player.global_position) < 2.2:
+			_release_moves()
+			_face(near.global_position + Vector3(0, 0.3, 0))
+			holder.melee()
 			return
 	if not _shoot_best(true):
 		var crew := _alive_crew()

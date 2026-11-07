@@ -71,26 +71,6 @@ func _main() -> void:
 	var visible_l := all_lights.filter(func(l): return l.visible and l.is_visible_in_tree())
 	var shadow_l := visible_l.filter(func(l): return l.shadow_enabled)
 	print("PERF lights: %d total, %d visible, %d with shadows" % [all_lights.size(), visible_l.size(), shadow_l.size()])
-	var by := {}
-	for l in visible_l:
-		var n: Node = l
-		var key := "?"
-		while n != null and n != current_scene:
-			key = String(n.name)
-			if n.get_parent() == current_scene or n.get_parent() == block.city:
-				break
-			n = n.get_parent()
-		var k2 := "%s/%s" % [key, l.get_class()]
-		by[k2] = int(by.get(k2, 0)) + 1
-	print("PERF visible lights by owner: ", by)
-	var ranges := {}
-	for l in visible_l:
-		if l is OmniLight3D:
-			var r := int(round((l as OmniLight3D).omni_range))
-			ranges[r] = int(ranges.get(r, 0)) + 1
-	print("PERF omni ranges: ", ranges)
-	quit(0)
-	return
 	if block.ghetto_set != null:
 		block.ghetto_set.visible = false
 		await measure("set hidden")

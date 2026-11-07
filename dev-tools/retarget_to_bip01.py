@@ -350,6 +350,32 @@ for _name, _opt in KIMODO_OPTS.items():
     if os.path.exists(os.path.join(KIMODO_BEST, _name + ".bvh")):
         CLIPS[_name] = ("soma30", _name, _opt)
 
+# GANG=1: the armed humans of Ghetto Wars (Quaternius UAL1/UAL2, CC0): plain human clips, no zombie layer.
+# They go to assets/gang_anims/gang_clips.res; dev-tools/build_gang_library.gd also builds the "aim" composites
+# (legs of a gait, the arms and torso of the pistol aim pose).
+GANG_CLIPS = {
+    "g_aim":         ("ual1", "Pistol_Aim_Neutral", {"loop": True}),
+    "g_aim_up":      ("ual1", "Pistol_Aim_Up", {"loop": True}),
+    "g_aim_down":    ("ual1", "Pistol_Aim_Down", {"loop": True}),
+    "g_idle":        ("ual1", "Pistol_Idle_Loop", {"loop": True}),
+    "g_shoot":       ("ual1", "Pistol_Shoot", {}),
+    "g_reload":      ("ual1", "Pistol_Reload", {}),
+    "g_crouch_idle": ("ual1", "Crouch_Idle_Loop", {"loop": True}),
+    "g_crouch_walk": ("ual1", "Crouch_Fwd_Loop", {"loop": True}),
+    "g_walk":        ("ual1", "Walk_Loop", {"loop": True}),
+    "g_jog":         ("ual1", "Jog_Fwd_Loop", {"loop": True}),
+    "g_sprint":      ("ual1", "Sprint_Loop", {"loop": True}),
+    "g_stand":       ("ual1", "Idle_Loop", {"loop": True}),
+    "g_roll":        ("ual1", "Roll", {}),
+    "g_throw":       ("ual2", "OverhandThrow", {}),
+    "g_hit_chest":   ("ual1", "Hit_Chest", {}),
+    "g_hit_head":    ("ual1", "Hit_Head", {}),
+    "g_hit_knock":   ("ual2", "Hit_Knockback", {}),
+    "g_death":       ("ual1", "Death01", {}),
+}
+if os.environ.get("GANG"):
+    CLIPS = GANG_CLIPS
+
 # ---------------------------------------------------------------------------
 try:
     import bpy
@@ -361,12 +387,14 @@ except ImportError:
 def drive():
     """Plain python: run Blender for the bake, then Godot for the .res."""
     os.makedirs(WORK, exist_ok=True)
-    glb = os.path.join(WORK, "zombie_clips.glb")
-    meta = os.path.join(WORK, "zombie_clips_meta.json")
+    gang = bool(os.environ.get("GANG"))
+    glb = os.path.join(WORK, "gang_clips.glb" if gang else "zombie_clips.glb")
+    meta = os.path.join(WORK, "gang_clips_meta.json" if gang else "zombie_clips_meta.json")
     here = os.path.abspath(__file__)
     subprocess.run(["/snap/bin/blender", "-b", "--factory-startup", "-P", here, "--", glb, meta] + sys.argv[1:], check=True)
     subprocess.run(["flatpak", "run", "org.godotengine.Godot", "--headless", "--path", ".", "-s",
-                    "res://dev-tools/build_zombie_library.gd", "--", glb, meta, OUT_RES] + (["merge"] if sys.argv[1:] else []), check=True)
+                    "res://dev-tools/build_gang_library.gd" if gang else "res://dev-tools/build_zombie_library.gd",
+                    "--", glb, meta, "res://assets/gang_anims/gang_clips.res" if gang else OUT_RES] + (["merge"] if sys.argv[1:] and not gang else []), check=True)
 
 
 def rot_of(m):

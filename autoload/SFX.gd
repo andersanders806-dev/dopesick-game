@@ -102,9 +102,12 @@ const MUSIC := {
 	"shelter": preload("res://assets/music/shelter_piano.ogg"),
 	"jail": preload("res://assets/music/jail_home.ogg"),
 	"sick": preload("res://assets/music/withdrawal_drone.ogg"),
+	# Ghetto Wars' own beat (dev-tools/gen_gang_sfx.py): a dark drone and a slow kick; the story's chapter
+	# tracks (fx/GhettoStory.gd) take over from it while one plays.
+	"gangwar": preload("res://assets/music/gangwar.wav"),
 }
 const MUSIC_VOLUME_DB := {"city_day": -14.0, "city_night": -12.0, "apartment": -22.0, "chase": -7.0,
-	"shelter": -15.0, "jail": -16.0, "sick": -11.0}
+	"shelter": -15.0, "jail": -16.0, "sick": -11.0, "gangwar": -14.0}
 ## Deep enough in withdrawal and the drone takes over from whatever's
 ## playing (a chase still wins).
 const SICK_MUSIC_AT := 0.6
@@ -331,12 +334,22 @@ func _enter_room(room: Node) -> void:
 	_update_music()
 	_update_indoor_rain()
 
+## Whether the story layer (fx/GhettoStory.gd) has a chapter track on: Ghetto Wars' own beat stands down for it.
+func _story_music_playing() -> bool:
+	var scene := get_tree().current_scene
+	var st: Node = scene.find_child("GhettoStory", true, false) if scene else null
+	if st == null:
+		return false
+	return bool(st.get("audio")) and String(st.get("_music_track")) != ""
+
 func _update_music() -> void:
 	var scene := get_tree().current_scene
 	var room := String(scene.name) if scene else ""
 	var track := ""
 	var walkman := get_node_or_null("/root/Walkman")
-	if walkman and walkman.is_playing():
+	if ZombieMode.active and ZombieMode.gangs and room == "City3D":
+		track = "" if _story_music_playing() else "gangwar"
+	elif walkman and walkman.is_playing():
 		track = ""
 	elif GameState.wanted:
 		track = "chase"
@@ -364,7 +377,13 @@ func play_music(track: String) -> void:
 	tween.tween_property(old, "volume_db", -80.0, MUSIC_FADE)
 	tween.chain().tween_callback(old.stop)
 	if track != "":
-		new.stream = MUSIC[track]
+		var stream: AudioStream = MUSIC[track]
+		if stream is AudioStreamWAV:
+			stream = stream.duplicate()
+			(stream as AudioStreamWAV).loop_mode = AudioStreamWAV.LOOP_FORWARD
+			(stream as AudioStreamWAV).loop_begin = 0
+			(stream as AudioStreamWAV).loop_end = (stream as AudioStreamWAV).data.size() / 2
+		new.stream = stream
 		new.volume_db = -80.0
 		new.play()
 		var t2 := create_tween()

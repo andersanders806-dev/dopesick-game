@@ -298,7 +298,9 @@ func go(path: String, spawn := "") -> void:
 		await _fade(0.0, FADE_IN)
 	tree.paused = paused
 	_busy = false
-	if _next.is_empty() and not hidden:
+	# (Ghetto Wars has its own chapter card and its own night clock: no "Day 1, 08:06" over it.)
+	var zm := get_node_or_null("/root/ZombieMode")
+	if _next.is_empty() and not hidden and not (zm != null and zm.gangs and zm.active):
 		_show_card()
 	_go_next()
 

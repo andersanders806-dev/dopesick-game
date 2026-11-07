@@ -46,7 +46,11 @@ func open() -> void:
 	_button(col, "Settings", _open_settings)
 	if GameState.mode == "zombies":
 		# The mode's options, same as on the Zombies menu.
-		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"]]:
+		var opts := [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"]]
+		if ZombieMode.gangs:
+			# Ghetto Wars: the crews' and the story's language (fx/GhettoStory.gd): profane, or clean.
+			opts.append(["Mature language", "mature_language"])
+		for opt in opts:
 			var c := CheckButton.new()
 			c.text = opt[0]
 			c.button_pressed = bool(ZombieMode.get(opt[1]))

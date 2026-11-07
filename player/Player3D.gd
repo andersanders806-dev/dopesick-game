@@ -310,6 +310,13 @@ func _update_cramps(delta: float) -> void:
 func take_zombie_hit(dmg: float, _from: Node) -> void:
 	ZombieMode.player_hit(dmg)
 
+## Ghetto Wars: a round from a gun (npc/Gangster3D.gd). `from` is the muzzle, for the red arc.
+func take_gun_hit(dmg: float, from: Vector3, _by: Node) -> void:
+	ZombieMode.player_hit(dmg, from)
+
+func is_sliding() -> bool:
+	return feel != null and bool(feel.get("sliding"))
+
 func _physics_process(delta: float) -> void:
 	if not _first_person:
 		# (First person: the right stick looks round in pad_look(), every drawn frame.)

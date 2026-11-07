@@ -104,7 +104,10 @@ func _put_at(i: int) -> void:
 
 func pool() -> Array:
 	var out: Array = []
+	# (Ghetto Wars is a street fight: no sci-fi wonder weapon in its box.)
 	for id in ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]:
+		if id == "wonder" and ZombieMode.gangs:
+			continue
 		var d := load("res://weapons/%s.tres" % id) as WD
 		if d != null and d.in_box:
 			out.append(d)

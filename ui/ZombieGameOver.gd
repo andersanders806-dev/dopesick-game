@@ -35,14 +35,15 @@ func show_summary(s: Dictionary) -> void:
 	font.base_font = load("res://assets/fonts/Bungee-Regular.ttf")
 	font.spacing_glyph = 6
 	var cause := String(s.get("cause", ""))
-	var title := _label(cause.to_upper() if cause != "" else "YOU WERE OVERRUN", 52 if cause == "" else 40, BLOOD)
+	var title := _label(cause.to_upper() if cause != "" else ("THEY TOOK YOUR CORNER" if ZombieMode.gangs else "YOU WERE OVERRUN"), 52 if cause == "" else 40, BLOOD)
 	title.add_theme_font_override("font", font)
 	col.add_child(title)
-	var best_line := "Best: round %d" % int(s["best_round"])
+	var unit := "wave" if ZombieMode.gangs else "round"
+	var best_line := "Best: %s %d" % [unit, int(s["best_round"])]
 	if s.get("new_best", false):
 		best_line = "A new best."
-	stats_label = _label("Round %d\n%d kills, %d headshots\nSurvived %s\n%s" % [
-		int(s["round"]), int(s["kills"]), int(s["headshots"]), format_time(float(s["time"])), best_line], 24, PAPER)
+	stats_label = _label("%s %d\n%d kills, %d headshots\nSurvived %s\n%s" % [
+		unit.capitalize(), int(s["round"]), int(s["kills"]), int(s["headshots"]), format_time(float(s["time"])), best_line], 24, PAPER)
 	col.add_child(stats_label)
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 18)

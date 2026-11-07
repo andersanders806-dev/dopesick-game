@@ -184,6 +184,7 @@ var people_ms := 0
 ## world/ZombieBlock.gd laid over it. Read once, on arrival.
 var zombie_mode := false
 const ZombieBlockScript := preload("res://world/ZombieBlock.gd")
+const GangBlockScript := preload("res://world/GangBlock.gd")
 
 ## You walked into / out of one of the walk-in shops on Main Street
 ## (world/WalkInShop.gd), by GameState place id.
@@ -274,7 +275,8 @@ func _ready() -> void:
 	add_child(dressing)
 	if zombie_mode:
 		_paint_parked_cars()
-		var block := ZombieBlockScript.new()
+		# Ghetto Wars is the same layer with the crews instead of the dead (still named ZombieBlock).
+		var block: Node = (GangBlockScript if ZombieMode.gangs else ZombieBlockScript).new()
 		block.name = "ZombieBlock"
 		add_child(block)
 		block.setup(self)

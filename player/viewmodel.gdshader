@@ -26,6 +26,11 @@ uniform float glow_amount = 0.0;
 uniform bool arms = false;
 uniform float sleeve_push = 0.3;
 // A procedural look for the plain-coloured kit models (the shotgun): 1 blued steel, 2 walnut.
+// Story first person: bare hands instead of gloves; skin goes grey-green and wet as the sickness climbs.
+uniform float bare = 0.0;
+uniform vec3 skin_tone : source_color = vec3(0.62, 0.43, 0.34);
+uniform float sick = 0.0;
+uniform float sweat = 0.0;
 uniform int procedural = 0;
 uniform vec3 emission_color : source_color = vec3(0.0);
 uniform float emission_amount = 0.0;
@@ -84,6 +89,19 @@ void fragment() {
 		ALBEDO = mix(worn, albedo.rgb * tex.rgb * 0.9, tip);
 		r = mix(mix(0.9, 0.5, smoothstep(0.35, 0.65, glove)), 0.65, tip);
 		m = 0.0;
+		if (bare > 0.0) {
+			float skin_m = max(smoothstep(0.3, 0.6, glove), tip) * bare;
+			float pores = 0.5 + 0.5 * sin(w.x * 0.9) * sin(w.y * 1.1);
+			float knuckle = 0.5 + 0.5 * sin(v_obj.x * 1.3 + sin(v_obj.z * 0.7) * 1.5);
+			vec3 skin = skin_tone * (0.88 + 0.16 * pores) * (0.92 + 0.12 * knuckle);
+			skin = mix(skin, vec3(0.17, 0.19, 0.14) * (0.9 + 0.2 * pores), sick * 0.7);
+			// Sweat: beads of shine that wander over the skin.
+			float bead = smoothstep(0.55, 0.95, 0.5 + 0.5 * sin(w.x * 0.33 + sin(w.y * 0.27) * 2.0) * sin(w.y * 0.31 + TIME * 0.5));
+			float wet = clamp(sweat * (0.45 + 0.55 * bead), 0.0, 1.0);
+			skin = mix(skin, skin * 1.08, wet * 0.3);
+			ALBEDO = mix(ALBEDO, skin, skin_m);
+			r = mix(r, mix(0.62, 0.3, wet), skin_m);
+		}
 	}
 	if (procedural == 1) {
 		// Blued steel: dark with a soft sheen along the barrel.
@@ -107,7 +125,7 @@ void fragment() {
 		r *= orm.g;
 		m *= orm.b;
 	}
-	ROUGHNESS = clamp(r, 0.4, 1.0);
+	ROUGHNESS = clamp(r, bare > 0.0 ? 0.25 : 0.4, 1.0);
 	METALLIC = min(m, 0.6);
 	if (use_normal) {
 		NORMAL_MAP = texture(normal_tex, UV).rgb;

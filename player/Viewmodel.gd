@@ -60,6 +60,15 @@ const SHAPES := {
 	# A bolt rifle: the hand cups under the fore-end, fingers half closed.
 	"cradle_l": {"t": [12.0, 14.0, 8.0], "i": [34.0, 44.0, 28.0], "m": [38.0, 48.0, 30.0], "r": [40.0, 50.0, 32.0], "p": [42.0, 52.0, 34.0]},
 }
+## The bare hands of the story's first person (player/StoryHands.gd): loose, holding a
+## thing, closed round something small, and a fist.
+const STORY_SHAPES := {
+	"relaxed": {"t": [10.0, 10.0, 6.0], "i": [26.0, 30.0, 16.0], "m": [32.0, 38.0, 20.0], "r": [38.0, 42.0, 22.0], "p": [42.0, 44.0, 24.0]},
+	"hold": {"t": [18.0, 22.0, 12.0], "i": [48.0, 58.0, 36.0], "m": [54.0, 64.0, 40.0], "r": [58.0, 66.0, 42.0], "p": [60.0, 68.0, 44.0]},
+	"pinch": {"t": [20.0, 22.0, 14.0], "i": [38.0, 48.0, 30.0], "m": [58.0, 68.0, 40.0], "r": [62.0, 72.0, 44.0], "p": [64.0, 74.0, 46.0]},
+	"fist": {"t": [26.0, 30.0, 18.0], "i": [70.0, 84.0, 50.0], "m": [74.0, 88.0, 52.0], "r": [76.0, 90.0, 54.0], "p": [76.0, 90.0, 54.0]},
+}
+
 ## A hand held open (reaching for a magazine, letting go of one).
 const OPEN_SHAPE := {"t": [4.0, 4.0, 2.0], "i": [14.0, 12.0, 6.0], "m": [16.0, 14.0, 6.0], "r": [18.0, 16.0, 8.0], "p": [20.0, 16.0, 8.0]}
 
@@ -151,6 +160,52 @@ func setup(d: WD) -> Node3D:
 	_build_props()
 	_build_arms()
 	return self
+
+## Arms and hands without a gun (story first person, player/StoryHands.gd). This node's space
+## is the camera's; the caller sets grip_r each frame (the right wrist) and calls aim_hands()
+## with the left wrist.
+func setup_hands_only() -> Node3D:
+	name = "StoryViewmodel"
+	data = null
+	_hand_shape = {"R": "relaxed", "L": "relaxed"}
+	_build_arms()
+	return self
+
+## A hand's finger shape: a name from SHAPES / STORY_SHAPES, or a dictionary of the same form
+## (what blending two shapes gives), and roll about its length in degrees.
+func set_hand(side: String, shape, roll := 0.0, hand_scale := 1.0) -> void:
+	_hand_shape[side] = shape
+	_hand_roll[side] = roll
+	_hand_scale = hand_scale
+
+## Halfway between two finger shapes.
+static func blend_shape(a: String, b: String, t: float) -> Dictionary:
+	var sa: Dictionary = STORY_SHAPES.get(a, SHAPES.get(a, OPEN_SHAPE))
+	var sb: Dictionary = STORY_SHAPES.get(b, SHAPES.get(b, OPEN_SHAPE))
+	var out := {}
+	for k in sa:
+		var x: Array = sa[k]
+		var y: Array = sb[k]
+		out[k] = [lerpf(x[0], y[0], t), lerpf(x[1], y[1], t), lerpf(x[2], y[2], t)]
+	return out
+
+var _arm_mats: Array = []
+
+## Sets a shader parameter on every arm surface (bare skin, pallor, sweat for the story).
+func set_arm_param(pname: String, value: Variant) -> void:
+	if arms == null:
+		return
+	if _arm_mats.is_empty():
+		for mi in arms.find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			if m.mesh == null:
+				continue
+			for i in m.mesh.get_surface_count():
+				var mat := m.get_surface_override_material(i) as ShaderMaterial
+				if mat != null:
+					_arm_mats.append(mat)
+	for mat in _arm_mats:
+		mat.set_shader_parameter(pname, value)
 
 # --- Materials: every surface on the depth shader ----------------------------------
 
@@ -895,7 +950,8 @@ func _skeleton_in_arms() -> Transform3D:
 ## Fingers closed round the gun: each segment bent about its own Z axis, as the grip's shape says
 ## (the firing hand's index on or off the trigger, a hand opened to take a magazine).
 func _curl(a: Dictionary, side: String) -> void:
-	var shape: Dictionary = SHAPES.get(_hand_shape[side], SHAPES["rifle_r"])
+	var named = _hand_shape[side]
+	var shape: Dictionary = named if named is Dictionary else SHAPES.get(named, STORY_SHAPES.get(named, SHAPES["rifle_r"]))
 	var open := float(_open[side])
 	var fingers: Array = a["fingers"]
 	var keys := ["t", "i", "m", "r", "p"]

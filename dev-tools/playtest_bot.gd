@@ -96,6 +96,10 @@ func walk_to(node: Node3D, stop_dist := 0.6, timeout := 25.0) -> bool:
 		# Like a player would: keep walking until the thing you want is the
 		# one E will actually use.
 		if node is Area3D and p._nearest_interactable() == node:
+			# First person: stand still and look at it before pressing E, as a player would.
+			release_moves()
+			p.velocity = Vector3.ZERO
+			await face(p, node.global_position)
 			break
 		var goal := node.global_position
 		var d := Vector2(goal.x - p.global_position.x, goal.z - p.global_position.z).length()
@@ -125,6 +129,11 @@ func walk_to(node: Node3D, stop_dist := 0.6, timeout := 25.0) -> bool:
 				next = pt
 				break
 		var dir := Vector2(next.x - p.global_position.x, next.z - p.global_position.z).normalized()
+		if p.get("_first_person"):
+			# First person walks where you look: turn the view toward the
+			# next path point like a hand on the mouse (eased, not snapped),
+			# then press the keys relative to where the view now points.
+			dir = _fp_steer(p, dir)
 		release_moves()
 		if dir.x > 0: Input.action_press("move_right", dir.x)
 		elif dir.x < 0: Input.action_press("move_left", -dir.x)
@@ -132,6 +141,28 @@ func walk_to(node: Node3D, stop_dist := 0.6, timeout := 25.0) -> bool:
 		elif dir.y < 0: Input.action_press("move_up", -dir.y)
 	release_moves()
 	return true
+
+## First person: eases the player's yaw toward world direction `dir`
+## (x, z) and returns that direction in the view's own frame (x = right,
+## y = back) so the move keys carry the player along it.
+func _fp_steer(p: Node3D, dir: Vector2) -> Vector2:
+	var want := atan2(-dir.x, -dir.y)
+	var yaw: float = p._look_yaw
+	var step := clampf(angle_difference(yaw, want), -0.12, 0.12)
+	p.set_look(yaw + step, p._look_pitch * 0.8)
+	return dir.rotated(p._look_yaw)
+
+## First person: turns the view (and tips it) to face a thing in the world.
+func face(p: Node3D, target: Vector3, frames := 40) -> void:
+	if not p.get("_first_person"):
+		return
+	for i in frames:
+		var to := target - p.global_position
+		var want := atan2(-to.x, -to.z)
+		var eye: Vector3 = p.global_position + Vector3(0, p.EYE_HEIGHT, 0)
+		var pitch := atan2(target.y - eye.y, Vector2(to.x, to.z).length())
+		p.set_look(p._look_yaw + clampf(angle_difference(p._look_yaw, want), -0.15, 0.15), lerpf(p._look_pitch, clampf(pitch, -0.6, 0.6), 0.2))
+		await process_frame
 
 ## Interact, log whatever dialogue comes up, then close it.
 func talk() -> String:

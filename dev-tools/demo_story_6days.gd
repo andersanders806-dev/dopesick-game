@@ -12,6 +12,9 @@ extends "res://dev-tools/full_playthrough.gd"
 const DAYS := 6
 const SAFETY_SECONDS := 3000.0
 
+## "days=N" after the shot dir plays N days instead of six.
+var days_to_play := DAYS
+
 var _card: Label
 var _day_offset := 0     # days lived in earlier runs, if a run ended
 var _run_ended := false
@@ -23,6 +26,9 @@ func story_day() -> int:
 func _initialize() -> void:
 	# Don't touch the player's progress, settings or saved run.
 	Engine.set_meta("sandbox", true)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("days="):
+			days_to_play = int(a.substr(5))
 	out_dir = OS.get_cmdline_user_args()[0] if not OS.get_cmdline_user_args().is_empty() and OS.get_cmdline_user_args()[0] != "fp" else "user://"
 	t_start = Time.get_ticks_msec()
 	_build_title()
@@ -87,11 +93,11 @@ func _days() -> void:
 	var gs := root.get_node("GameState")
 	var safety_start := Time.get_ticks_msec()
 	var played := 0
-	while story_day() <= DAYS:
+	while story_day() <= days_to_play:
 		if (Time.get_ticks_msec() - safety_start) / 1000.0 > SAFETY_SECONDS:
 			_stop_reason = "safety time limit"
 			return
-		if played > DAYS + 6:
+		if played > days_to_play + 6:
 			_stop_reason = "safety day-attempt limit"
 			return
 		var d := story_day()
@@ -101,7 +107,7 @@ func _days() -> void:
 		if _run_ended:
 			await _handle_run_end()
 		await settle()
-	_stop_reason = "day 6 ended, counter advanced to %d" % story_day()
+	_stop_reason = "day %d ended, counter advanced to %d" % [days_to_play, story_day()]
 
 ## The run ended (overdose, three strikes...): watch it, then start over
 ## and keep counting days.

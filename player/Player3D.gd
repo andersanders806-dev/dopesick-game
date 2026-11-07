@@ -112,6 +112,7 @@ var _look_pitch: float = 0.0
 ## The pad's look: deadzone, curve, turn acceleration (player/PadLook.gd), and the aim assist the
 ## weapon holder makes in zombie mode (player/AimAssist.gd; null elsewhere).
 const PadLook := preload("res://player/PadLook.gd")
+const StoryHandsScript := preload("res://player/StoryHands.gd")
 var pad_look_state := PadLook.new()
 var assist: Node
 var _tp_camera_base: Transform3D
@@ -119,6 +120,10 @@ var _tp_fov: float
 var _shake_t: float = 0.0
 ## A jolt that dies away fast: a punch, a fall, a knife (kick()).
 var _kick: float = 0.0
+## The head bowed, in radians, added to the pitch (StoryHands: taking a dose, looking down at your hands).
+var fp_dip: float = 0.0
+## Your own hands (player/StoryHands.gd): story first person only.
+var story_hands: Node
 var _cramp_timer: float = 0.0
 
 func _ready() -> void:
@@ -159,7 +164,20 @@ func _apply_view(on: bool) -> void:
 		$CameraMount.rotation = Vector3.ZERO
 		_cam_ready = false
 	FirstPersonRoom.apply(get_tree().current_scene, on)
+	_sync_story_hands(on)
 	_update_camera_rig(0.0)
+
+## Story first person gets its own hands (the gun modes bring theirs with the weapon).
+func _sync_story_hands(on: bool) -> void:
+	# DOPESICK_NO_HANDS=1 leaves them out, for the perf probes' before/after.
+	if on and story_hands == null and GameState.mode == "story" and OS.get_environment("DOPESICK_NO_HANDS") == "":
+		story_hands = StoryHandsScript.new()
+		add_child(story_hands)
+		story_hands.setup(self, camera)
+	elif not on and story_hands != null:
+		story_hands.queue_free()
+		story_hands = null
+		fp_dip = 0.0
 
 ## Where you're looking, in radians: yaw round from -Z, pitch up from level.
 func set_look(yaw: float, pitch: float) -> void:
@@ -253,7 +271,7 @@ func _look_scale() -> float:
 
 func _update_fp_camera() -> void:
 	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
-	$CameraMount.rotation = Vector3(_look_pitch, _look_yaw, 0.0)
+	$CameraMount.rotation = Vector3(clampf(_look_pitch - fp_dip, -PITCH_LIMIT, PITCH_LIMIT), _look_yaw, 0.0)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
@@ -554,6 +572,8 @@ func _try_interact() -> void:
 		return
 	var target := _nearest_interactable()
 	if target:
+		if story_hands != null:
+			story_hands.reach(target.global_position, target.get("item_id") != null)
 		target.interact(self)
 
 ## The closest thing in reach, not the first one that came into range:

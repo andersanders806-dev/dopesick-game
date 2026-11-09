@@ -602,6 +602,8 @@ func _build_high_tint() -> void:
 func _update_high() -> void:
 	var g := GameState.high_glow()
 	if _high_tint != null:
+		# Not drawn at all when there is nothing to show: a full-screen blend is not free on a small GPU.
+		_high_tint.visible = g > 0.003
 		_high_tint.color.a = HIGH_TINT_ALPHA * g
 	var mat := $PostFX.material as ShaderMaterial
 	if mat != null:

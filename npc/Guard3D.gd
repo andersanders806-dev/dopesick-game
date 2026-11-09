@@ -74,11 +74,16 @@ const NOISE_BUMP_DEFAULT := 0.35
 const NOISE_CAP := 0.8
 const NOISE_WALL_FACTOR := 0.5
 ## How long they stay turned to it, and how fast the facing swings there and back.
-const HEAR_TURN_TIME := 2.6
-const HEAR_SWING_IN := 7.0
+const HEAR_TURN_TIME := 3.4
+const HEAR_SWING_IN := 12.0
 const HEAR_SWING_OUT := 1.6
 ## The faster body swing while looking at a noise (TURN_SPEED is the sweep's).
-const HEAR_BODY_TURN := 6.0
+const HEAR_BODY_TURN := 16.0
+## After the first look they scan: the last SCAN_TIME seconds of it sweep +-SCAN_DEG about the sound.
+const SCAN_TIME := 1.6
+const SCAN_DEG := 40.0
+## The startle: a quick lean and hop as the head snaps round.
+const FLINCH_TIME := 0.4
 const BARK_COOLDOWN := 4.0
 ## Said at a small bump, and at a big one.
 const BARKS_MILD := ["Hm?", "Huh?"]
@@ -109,6 +114,7 @@ var _hear_deg: float = 0.0
 var _hear_t: float = 0.0
 var _hear_blend: float = 0.0
 var _bark_cd: float = 0.0
+var _flinch_t: float = 0.0
 ## What the guard last said (the smoke test reads it).
 var last_bark: String = ""
 var last_heard: String = ""
@@ -170,7 +176,16 @@ func _physics_process(delta: float) -> void:
 	else:
 		_hear_blend = move_toward(_hear_blend, 0.0, HEAR_SWING_OUT * delta)
 	if _hear_blend > 0.0:
-		facing_deg = rad_to_deg(lerp_angle(deg_to_rad(facing_deg), deg_to_rad(_hear_deg), smoothstep(0.0, 1.0, _hear_blend)))
+		var look_deg := _hear_deg
+		if _hear_t > 0.0 and _hear_t < SCAN_TIME:
+			# The look-around: left, right, back to the noise.
+			look_deg += sin((SCAN_TIME - _hear_t) / SCAN_TIME * TAU) * SCAN_DEG
+		facing_deg = rad_to_deg(lerp_angle(deg_to_rad(facing_deg), deg_to_rad(look_deg), smoothstep(0.0, 1.0, _hear_blend)))
+	if _flinch_t > 0.0 and not watcher_only:
+		_flinch_t = maxf(0.0, _flinch_t - delta)
+		var k := sin((1.0 - _flinch_t / FLINCH_TIME) * PI)
+		body.rotation.x = -0.22 * k
+		body.position.y = 0.06 * k
 	var facing := Vector2.RIGHT.rotated(deg_to_rad(facing_deg))
 
 	var player := get_tree().get_first_node_in_group("player")
@@ -277,6 +292,10 @@ func _on_noise(pos: Vector3, loudness_m: float, kind: String) -> void:
 	suspicion = maxf(suspicion, minf(suspicion + bump, NOISE_CAP))
 	var to := pos - global_position
 	_hear_deg = rad_to_deg(atan2(to.z, to.x))
+	if _hear_t <= 0.0 and not watcher_only:
+		# The head and shoulders snap most of the way at once: something just made them jump.
+		body.rotation.y = lerp_angle(body.rotation.y, deg_to_rad(90.0 - _hear_deg), 0.7)
+		_flinch_t = FLINCH_TIME
 	_hear_t = HEAR_TURN_TIME
 	last_heard = kind
 	heard_noise.emit(kind, strength)
@@ -291,6 +310,13 @@ func _bark(alert: bool) -> void:
 	if watcher_only:
 		return
 	var speaker := "Security" if role in ["security_guard", "police"] else "Clerk"
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("show_subtitle"):
+		var who := "Clerk"
+		var talk := get_node_or_null("TalkZone")
+		if talk != null and String(talk.npc_name) != "":
+			who = String(talk.npc_name)
+		hud.show_subtitle(line, 2.2, "bark", who)
 	var stream: AudioStream = Voice.bark_stream(speaker, line)
 	if stream != null:
 		var voice := SFX.play_at("", global_position + Vector3(0, 1.6, 0), 1.0, randf_range(0.97, 1.03), stream)

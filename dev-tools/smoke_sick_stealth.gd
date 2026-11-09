@@ -80,6 +80,13 @@ func _run() -> void:
 	gs.take_drug("heroin", 1.0, 1.0)
 	_check(gs.last_risk > 0.0 and gs.last_risk < 0.006, "the overdose risk is still worked from tolerance, untouched (%.4f)" % gs.last_risk)
 
+	# (Six days of clock jumps tripped the rent and put us out of the flat: start over in it.)
+	_fresh(gs)
+	gs.rent_stage = 0
+	await _load("res://world/Apartment3D.tscn")
+	await _frames(20)
+	p = _player()
+	p.dialogue_active = false
 	# The warm part.
 	_fresh(gs, 20.0)
 	gs.take_drug("heroin", 1.0, 0.0)
@@ -120,7 +127,9 @@ func _run() -> void:
 	# The thought, once a run.
 	_fresh(gs, 20.0)
 	var gfx_node := root.get_node("Graphics")
-	gfx_node._show_toast("", 0.0)
+	hud = get_first_node_in_group("hud")
+	hud.show_subtitle("", 0.1)
+	await _frames(12)
 	_check(not gs.flat_noted, "no thought yet in a fresh run")
 	gs.tolerance["opioid"] = 1.0
 	gs.take_drug("heroin", 1.0, 0.0)
@@ -130,13 +139,18 @@ func _run() -> void:
 	gs.take_drug("heroin", 1.0, 0.0)
 	_check(gs.flat_noted, "  a flat one (%.2f) does" % gs.high_felt)
 	await create_timer(3.4).timeout
-	_check(gfx_node._toast.text == gs.FLAT_THOUGHT and gs.FLAT_THOUGHT.contains("doesn't even feel good"), "  \"%s\"" % gfx_node._toast.text)
+	_check(gs.last_thought == gs.FLAT_THOUGHT and gs.FLAT_THOUGHT.contains("doesn't even feel good"), "  \"%s\"" % gs.last_thought)
+	hud = get_first_node_in_group("hud")
+	hud.show_subtitle(gs.FLAT_THOUGHT, 6.5, "thought")
+	await _frames(40)
+	_check(hud._sub.visible and hud._sub.text == gs.FLAT_THOUGHT and hud._sub.get_theme_font_size("font_size") >= 28 and hud._sub.anchor_top > 0.6,
+		"  shown as an inner thought: %d px, %.0f%% down, lower-centre" % [hud._sub.get_theme_font_size("font_size"), hud._sub.anchor_top * 100.0])
 	_check(not gs.FLAT_THOUGHT.contains("0.") and not gs.FLAT_THOUGHT.contains("%"), "  no numbers on the screen")
-	gfx_node._show_toast("", 0.0)
+	gs.last_thought = ""
 	gs.craving = 20.0
 	gs.take_drug("heroin", 1.0, 0.0)
 	await create_timer(3.4).timeout
-	_check(gfx_node._toast.text == "", "  and it isn't said twice")
+	_check(gs.last_thought == "", "  and it isn't said twice")
 
 	await _hearing_checks(gs)
 	print("  (scene after the hearing checks: %s, player %s)" % [current_scene.name if current_scene else "none", _player()])
@@ -202,6 +216,9 @@ func _hearing_checks(gs: Node) -> void:
 	_check(guard._hear_t > 0.0 and guard._hear_blend > 0.9, "the sweep is overridden: the head turns to it (blend %.2f)" % guard._hear_blend)
 	_check(absf(angle_difference(deg_to_rad(guard._hear_deg), deg_to_rad(-90.0))) < 0.05, "  toward the sound, not the room (%.0f deg)" % guard._hear_deg)
 	_check(guard.last_bark != "", "  with a bark: \"%s\"" % guard.last_bark)
+	var shud := get_first_node_in_group("hud")
+	_check(shud._sub.visible and shud._sub.text.contains(guard.last_bark), "  and a subtitle for it (%s)" % shud._sub.text)
+	_check(guard._flinch_t >= 0.0 and absf(angle_difference(guard.body.rotation.y, deg_to_rad(90.0 - guard._hear_deg))) < 0.8, "  the shoulders came round with the head (body yaw %.0f deg, wanted %.0f)" % [rad_to_deg(guard.body.rotation.y), 90.0 - guard._hear_deg])
 	var voice := root.get_node("Voice")
 	_check(voice.bark_stream("Clerk", "Hm?") != null and voice.bark_stream("Security", "Who's there?") != null and voice.bark_stream("Clerk", "What was that?") != null,
 		"  and the bark has a voice (baked Piper lines, not silence)")
@@ -347,11 +364,13 @@ func _burst_checks(gs: Node, p: Node3D) -> void:
 	_check(hint != null, "the HUD has the stifle prompt")
 	sb.stifle_override = 0
 	sb.begin_tell()
-	await _frames(3)
+	for i in 4:
+		await process_frame
 	_check(hint != null and hint.visible and hint.plain().begins_with("Q") and hint.plain().contains("Hold it in"), "  shown during the tell: \"%s\"" % (hint.plain() if hint else ""))
 	_step(sb, 5.0)
-	await _frames(3)
-	_check(hint != null and not hint.visible, "  and gone when it's over (never claims what isn't happening)")
+	for i in 4:
+		await process_frame
+	_check(hint != null and not hint.visible, "  and gone when it's over (never claims what isn't happening) [state %d, hint bursts %s vs %s]" % [sb.state, hint._bursts, sb])
 	_check(InputMap.has_action("stifle") and InputMap.action_get_events("stifle").any(func(e): return e is InputEventKey) and InputMap.action_get_events("stifle").any(func(e): return e is InputEventJoypadMotion or e is InputEventJoypadButton), "an input action 'stifle' on the keyboard and the pad")
 	gs.using_pad = true
 	_check(gs.control_name("stifle") == "L2", "  the pad's glyph is L2")

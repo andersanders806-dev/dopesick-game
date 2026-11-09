@@ -216,6 +216,8 @@ var high_felt: float = 0.0
 var high_at: float = -99999.0
 ## The "it doesn't feel good anymore" thought has been had this run.
 var flat_noted: bool = false
+## The last inner thought shown (the smoke test reads it).
+var last_thought: String = ""
 ## What's on board and still suppressing breathing (see Drugs.LOAD_HALF_LIFE).
 var resp_load: float = 0.0
 ## The treatment program (Outreach3D): a clinic dose every day and nothing
@@ -398,6 +400,7 @@ func start_run() -> void:
 	high_felt = 0.0
 	high_at = -99999.0
 	flat_noted = false
+	last_thought = ""
 	resp_load = 0.0
 	in_treatment = false
 	treatment_streak = 0
@@ -1422,8 +1425,8 @@ func high_feel(drug_id: String) -> float:
 ## settles over HIGH_FALL (real seconds, about the length of Player3D.HIGH_SECONDS), scaled by how
 ## good that dose felt, and washed out as the sickness comes back.
 const HIGH_RISE := 4.0
-const HIGH_HOLD := 25.0
-const HIGH_FALL := 110.0
+const HIGH_HOLD := 22.0
+const HIGH_FALL := 45.0
 
 func high_glow() -> float:
 	if high_felt <= 0.0:
@@ -1444,7 +1447,13 @@ func _note_flat(feel: float) -> void:
 	# A beat after it lands, not over the handoff.
 	get_tree().create_timer(3.0).timeout.connect(func():
 		if mode == "story" and not in_custody:
-			Graphics._show_toast(FLAT_THOUGHT, 6.0)
+			# An inner thought, lower-centre where the eye already is, not a toast up in the corner.
+			last_thought = FLAT_THOUGHT
+			var hud := get_tree().get_first_node_in_group("hud")
+			if hud != null and hud.has_method("show_subtitle"):
+				hud.show_subtitle(FLAT_THOUGHT, 6.5, "thought")
+			else:
+				Graphics._show_toast(FLAT_THOUGHT, 6.0)
 			log_event(FLAT_THOUGHT))
 
 ## Something made a noise (see noise_made).

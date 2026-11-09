@@ -200,8 +200,9 @@ func _process(delta: float) -> void:
 ## The music swells with a dose, by how good it felt (GameState.high_glow()): this many dB at the
 ## top, through an amplifier on the Music bus so it never fights the per-track levels or the
 ## settings' volume.
-const HIGH_MUSIC_DB := 3.5
+const HIGH_MUSIC_DB := 4.5
 var _boost_fx: AudioEffectAmplify
+var _open_fx: AudioEffectEQ6
 var _boost_db := 0.0
 
 func _update_high_boost() -> void:
@@ -215,7 +216,14 @@ func _update_high_boost() -> void:
 			return
 		_boost_fx = AudioEffectAmplify.new()
 		AudioServer.add_bus_effect(i, _boost_fx)
+		# The sound opens up: the top end comes back and the bottom warms, by the same amount.
+		_open_fx = AudioEffectEQ6.new()
+		AudioServer.add_bus_effect(i, _open_fx)
 	_boost_fx.volume_db = _boost_db
+	var k := _boost_db / HIGH_MUSIC_DB
+	_open_fx.set_band_gain_db(0, 2.5 * k)
+	_open_fx.set_band_gain_db(4, 3.0 * k)
+	_open_fx.set_band_gain_db(5, 5.0 * k)
 
 ## A dose lands. How good it felt (GameState.high_feel) decides what you hear: at 1.0 a warm
 ## swell under a long easy breath out; as tolerance builds the swell and the ease thin out and a

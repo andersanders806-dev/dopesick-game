@@ -289,39 +289,57 @@ func _mat(color: Color, metallic := 0.0, rough := 0.6, pbr := "", uv := 1.0) -> 
 		m.uv1_scale = Vector3.ONE * uv
 	return m
 
-func _box(parent: Node3D, nm: String, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.name = nm
+## The leaf's picture is a handful of boxes and bars; drawn one by one that is
+## 25 draw calls a door. They're collected by material (_box, _cyl) and made
+## into one mesh per kind (_commit), shared by every door of it: a draw call
+## per material, six or so.
+var _batch := {}
+static var _mesh_cache := {}
+
+func _box(_parent: Node3D, _nm: String, size: Vector3, pos: Vector3, mat: Material) -> void:
 	var bm := BoxMesh.new()
 	bm.size = size
-	bm.material = mat
-	mi.mesh = bm
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = DRAW_RANGE
-	parent.add_child(mi)
-	mi.position = pos
-	return mi
+	_collect(bm, Transform3D(Basis(), pos), mat)
 
-func _cyl(parent: Node3D, nm: String, radius: float, length: float, pos: Vector3, mat: Material, along := "x") -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.name = nm
+func _cyl(_parent: Node3D, _nm: String, radius: float, length: float, pos: Vector3, mat: Material, along := "x") -> void:
 	var cm := CylinderMesh.new()
 	cm.top_radius = radius
 	cm.bottom_radius = radius
 	cm.height = length
-	cm.radial_segments = 10
+	cm.radial_segments = 8
 	cm.rings = 1
-	cm.material = mat
-	mi.mesh = cm
+	var b := Basis()
+	if along == "x":
+		b = Basis(Vector3.BACK, deg_to_rad(90.0))
+	elif along == "z":
+		b = Basis(Vector3.RIGHT, deg_to_rad(90.0))
+	_collect(cm, Transform3D(b, pos), mat)
+
+func _collect(mesh: Mesh, xf: Transform3D, mat: Material) -> void:
+	if not _batch.has(mat):
+		_batch[mat] = []
+	_batch[mat].append([mesh, xf])
+
+## The collected parts as one MeshInstance3D under `parent` (the mesh is built once per `key`).
+func _commit(parent: Node3D, key: String, nm := "Mesh") -> void:
+	var full := "%s|%s|%.3f|%.3f" % [key, kind, _width, opening]
+	if not _mesh_cache.has(full):
+		var am := ArrayMesh.new()
+		for mat in _batch:
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			for part in _batch[mat]:
+				st.append_from(part[0], 0, part[1])
+			st.commit(am)
+			am.surface_set_material(am.get_surface_count() - 1, mat)
+		_mesh_cache[full] = am
+	_batch = {}
+	var mi := MeshInstance3D.new()
+	mi.name = nm
+	mi.mesh = _mesh_cache[full]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = DRAW_RANGE
 	parent.add_child(mi)
-	mi.position = pos
-	if along == "x":
-		mi.rotation_degrees.z = 90.0
-	elif along == "z":
-		mi.rotation_degrees.x = 90.0
-	return mi
 
 ## Aluminium frame, glass, push bar inside, a pull on the street side, a
 ## door-closer box on the header, a brushed kick plate.
@@ -373,19 +391,13 @@ func _build_glass_leaf() -> void:
 	# Bell on a spring above the latch edge, inside.
 	if _p["bell"]:
 		_cyl(vis, "BellSpring", 0.004, 0.14, Vector3(w - 0.12, h - 0.19, -0.06), dark, "y")
-		var bell := MeshInstance3D.new()
-		bell.name = "Bell"
 		var sm := SphereMesh.new()
 		sm.radius = 0.028
 		sm.height = 0.05
-		sm.radial_segments = 10
-		sm.rings = 5
-		sm.material = _mat(Color(0.85, 0.66, 0.3), 0.3, 0.35)
-		bell.mesh = sm
-		bell.visibility_range_end = DRAW_RANGE
-		bell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		vis.add_child(bell)
-		bell.position = Vector3(w - 0.12, h - 0.27, -0.06)
+		sm.radial_segments = 8
+		sm.rings = 4
+		_collect(sm, Transform3D(Basis(), Vector3(w - 0.12, h - 0.27, -0.06)), _mat(Color(0.85, 0.66, 0.3), 0.3, 0.35))
+	_commit(vis, "glass")
 	_stickers(vis)
 
 ## Hours, as on a real shop door; filled in by `set_hours()`.
@@ -431,6 +443,7 @@ func _build_steel_leaf() -> void:
 	_box(vis, "Closer", Vector3(0.3, 0.08, 0.06), Vector3(w * 0.5, h - 0.12, -0.06), _mat(Color(0.12, 0.12, 0.13), 0.5, 0.5))
 	for y in [0.3, 1.0, 1.85]:
 		_cyl(vis, "HingeBarrel", 0.022, 0.12, Vector3(0.0, y, 0.0), steel, "y")
+	_commit(vis, "steel")
 
 func _build_bar_leaf() -> void:
 	var w := _width
@@ -466,12 +479,13 @@ func _build_bar_leaf() -> void:
 	_box(vis, "Closer", Vector3(0.28, 0.07, 0.06), Vector3(w * 0.5, h - 0.12, -t / 2.0 - 0.03), _mat(Color(0.1, 0.1, 0.11), 0.5, 0.5))
 	for y in [0.3, 1.05, 1.8]:
 		_cyl(vis, "HingeBarrel", 0.02, 0.11, Vector3(0.0, y, 0.0), brass, "y")
+	_commit(vis, "bar")
 
 func _build_frame() -> void:
 	var trim: StandardMaterial3D
 	match kind:
 		"bar":
-			trim = _mat(Color(0.34, 0.24, 0.19), 0.0, 0.8, "wood_dark", 0.55)
+			trim = _mat(Color(0.5, 0.22, 0.18), 0.0, 0.75, "wood_panels", 0.5)
 		"steel_back":
 			trim = _mat(Color(0.28, 0.3, 0.3), 0.5, 0.7, "metal_worn", 0.8)
 		_:
@@ -486,6 +500,7 @@ func _build_frame() -> void:
 		_box(vis, "Post", Vector3(0.08, fh, d), Vector3(s * (fw / 2.0 + 0.04), fh / 2.0, 0), trim)
 	_box(vis, "Header", Vector3(fw + 0.16, 0.1, d), Vector3(0, fh - 0.0, 0), trim)
 	_box(vis, "Threshold", Vector3(fw, 0.02, d + 0.06), Vector3(0, 0.01, 0), _mat(Color(0.6, 0.6, 0.62), 0.25, 0.5, "metal_worn", 0.8))
+	_commit(vis, "frame")
 
 # --- Bodies -----------------------------------------------------------------------------
 

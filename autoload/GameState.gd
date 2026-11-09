@@ -24,6 +24,12 @@ signal strikes_changed(strikes: int)
 ## "saved" -- the HUD narrates it.
 signal dose_taken(drug_id: String, outcome: String)
 signal overdosed(fatal: bool)
+## A dose landed and this is how good it felt, 0..1 (high_feel(): falls as tolerance builds). Only
+## the pleasant part follows it -- the relief is the same whatever the number.
+signal dose_felt(drug_id: String, feel: float)
+## Something made a sound that someone could hear: where, how far it carries in metres (open air),
+## and what it was ("sprint", "drop", "cough", "sniff", "retch"). Guards listen (npc/Guard3D.gd).
+signal noise_made(pos: Vector3, loudness_m: float, kind: String)
 
 ## Everything that can be stolen, which store stocks it, and what a patron
 ## will pay for it. Picked from lists of what gets shoplifted to fund a habit
@@ -204,6 +210,12 @@ var strikes: int = 0
 ## by it. Shared within a class, because cross-tolerance is real: a week on
 ## fentanyl leaves you needing more heroin too.
 var tolerance: Dictionary = {}
+## How good the last dose felt (high_feel() at the time), and when (run_time): the warm part of a
+## dose fades from there (high_glow()).
+var high_felt: float = 0.0
+var high_at: float = -99999.0
+## The "it doesn't feel good anymore" thought has been had this run.
+var flat_noted: bool = false
 ## What's on board and still suppressing breathing (see Drugs.LOAD_HALF_LIFE).
 var resp_load: float = 0.0
 ## The treatment program (Outreach3D): a clinic dose every day and nothing
@@ -383,6 +395,9 @@ func start_run() -> void:
 	orders_delivered = 0
 	cash_earned = 0
 	tolerance.clear()
+	high_felt = 0.0
+	high_at = -99999.0
+	flat_noted = false
 	resp_load = 0.0
 	in_treatment = false
 	treatment_streak = 0
@@ -1135,6 +1150,8 @@ func _setup_input_actions() -> void:
 	_bind("notebook", [KEY_J])
 	_bind("craft", [KEY_C])
 	_bind("walkman", [KEY_T])
+	# Hold it in: stifle a cough in withdrawal (player/SickBursts.gd).
+	_bind("stifle", [KEY_Q])
 	_bind("walkman_next", [KEY_N])
 	_bind("page_next", [KEY_TAB, KEY_RIGHT])
 	_bind("page_prev", [KEY_LEFT])
@@ -1187,6 +1204,7 @@ const PAD := {
 	"notebook": [JOY_BUTTON_TOUCHPAD, JOY_BUTTON_BACK],
 	"craft": [JOY_BUTTON_LEFT_SHOULDER],
 	"walkman": [JOY_BUTTON_Y],
+	"stifle": [[JOY_AXIS_TRIGGER_LEFT, 1.0]],
 	"walkman_next": [JOY_BUTTON_DPAD_RIGHT],
 	"page_next": [JOY_BUTTON_RIGHT_SHOULDER, JOY_BUTTON_DPAD_RIGHT],
 	"page_prev": [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_DPAD_LEFT],
@@ -1238,11 +1256,11 @@ func control_name(action: String) -> String:
 	return KEY_NAMES.get(action, action)
 
 const PAD_NAMES := {"interact": "Square", "cancel_ui": "Circle", "pause": "Options", "fire": "R2",
-	"steady": "L2", "sprint": "L3", "notebook": "Touchpad", "craft": "L1", "walkman": "Triangle",
+	"steady": "L2", "stifle": "L2", "sprint": "L3", "notebook": "Touchpad", "craft": "L1", "walkman": "Triangle",
 	"walkman_next": "D-pad right", "page": "L1/R1", "aim": "Left stick", "look": "Right stick",
 	"drift": "R1", "throttle": "R2", "brake": "L2", "steer": "Left stick", "accept": "Cross"}
 const KEY_NAMES := {"interact": "E", "cancel_ui": "Esc", "pause": "Esc", "fire": "Space",
-	"steady": "Shift", "sprint": "Shift", "notebook": "J", "craft": "C", "walkman": "T", "walkman_next": "N",
+	"steady": "Shift", "stifle": "Q", "sprint": "Shift", "notebook": "J", "craft": "C", "walkman": "T", "walkman_next": "N",
 	"page": "Tab/arrows", "aim": "Mouse", "look": "Wheel", "drift": "Shift/Space", "throttle": "W",
 	"brake": "S", "steer": "A/D", "accept": "E/Enter"}
 
@@ -1386,6 +1404,53 @@ func buy_fix() -> bool:
 func tolerance_for(drug_id: String) -> float:
 	return float(tolerance.get(Drugs.info(drug_id).get("class", ""), 0.0))
 
+## How good a dose of this feels to you now: 1.0 the first time, falling as tolerance in its class
+## builds -- e^(-0.19 x tolerance), floored at HIGH_FEEL_FLOOR. At the street's rates (heroin adds
+## 1.3 a dose, a day halves tolerance in 36 hours, about 2-3 doses a day) the dose you take walks in
+## on ~0 tolerance on day 1 (1.0), ~2 on day 2 (0.7), ~4.5 on day 3 (0.43) and 6-7 on days 4-5
+## (0.30-0.25). Only the pleasant part reads it (high_glow(), SFX, HUD); relief, risk and tolerance
+## itself don't.
+const HIGH_FEEL_K := 0.19
+const HIGH_FEEL_FLOOR := 0.1
+## Below this the dose is "flat": the grade stays put, the exhale is dull, and the thought comes.
+const HIGH_FLAT_BELOW := 0.35
+
+func high_feel(drug_id: String) -> float:
+	return maxf(HIGH_FEEL_FLOOR, exp(-HIGH_FEEL_K * tolerance_for(drug_id)))
+
+## The warm part of the last dose right now, 0..1: it comes up over HIGH_RISE seconds, holds, and
+## settles over HIGH_FALL (real seconds, about the length of Player3D.HIGH_SECONDS), scaled by how
+## good that dose felt, and washed out as the sickness comes back.
+const HIGH_RISE := 4.0
+const HIGH_HOLD := 25.0
+const HIGH_FALL := 110.0
+
+func high_glow() -> float:
+	if high_felt <= 0.0:
+		return 0.0
+	var t := run_time - high_at
+	if t < 0.0:
+		return 0.0
+	var env := smoothstep(0.0, HIGH_RISE, t) * (1.0 - smoothstep(HIGH_HOLD, HIGH_HOLD + HIGH_FALL, t))
+	return high_felt * env * (1.0 - clampf(sickness() * 2.0, 0.0, 1.0))
+
+## Once a run, when a dose first feels flat, the thought that goes with it.
+const FLAT_THOUGHT := "It doesn't even feel good anymore. It just makes it stop."
+
+func _note_flat(feel: float) -> void:
+	if flat_noted or feel >= HIGH_FLAT_BELOW:
+		return
+	flat_noted = true
+	# A beat after it lands, not over the handoff.
+	get_tree().create_timer(3.0).timeout.connect(func():
+		if mode == "story" and not in_custody:
+			Graphics._show_toast(FLAT_THOUGHT, 6.0)
+			log_event(FLAT_THOUGHT))
+
+## Something made a noise (see noise_made).
+func emit_noise(pos: Vector3, loudness_m: float, kind: String) -> void:
+	noise_made.emit(pos, loudness_m, kind)
+
 ## What this drug costs you right now, given the tolerance you've built.
 func price_of(drug_id: String) -> int:
 	var hl := _headlines()
@@ -1450,6 +1515,8 @@ func take_drug(drug_id: String, dose_scale := 1.0, risk_mult := 1.0) -> String:
 		risk *= 1.0 + Drugs.LOAD_STACK * resp_load * resp_load
 		resp_load += (float(d["od_risk"]) / 0.006) * maxf(tol_factor, Drugs.LOAD_TOLERANCE_FLOOR) * dose_scale
 
+	# How good it feels is read off the tolerance you walked in with, before this dose adds to it.
+	var feel := high_feel(drug_id) * minf(1.0, 0.5 + 0.5 * dose_scale)
 	last_dose_at[drug_class] = run_time
 	tolerance[drug_class] = max(0.0, tolerance_for(drug_id) + float(d["tolerance"]) * dose_scale)
 
@@ -1461,6 +1528,11 @@ func take_drug(drug_id: String, dose_scale := 1.0, risk_mult := 1.0) -> String:
 	active_duration = max(0.1, float(d["hours"]))
 	craving_changed.emit(craving)
 	dose_taken.emit(drug_id, "relief")
+	if Drugs.has_lift(drug_id):
+		high_felt = feel
+		high_at = run_time
+		dose_felt.emit(drug_id, feel)
+		_note_flat(feel)
 	return "relief"
 
 ## Going over. Naloxone cancels it at the cost of being thrown straight into

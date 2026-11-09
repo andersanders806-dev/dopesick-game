@@ -146,6 +146,8 @@ func _ready() -> void:
 	_build_film_look()
 	_prompt = preload("res://ui/InteractPrompt.gd").new()
 	add_child(_prompt)
+	add_child(preload("res://ui/StifleHint.gd").new())
+	_build_high_tint()
 	reticle = Reticle.new()
 	reticle.name = "Reticle"
 	add_child(reticle)
@@ -571,6 +573,39 @@ func _on_headline_changed(_id: String) -> void:
 const SICK_SATURATION := 0.3
 var _graded_env: Environment
 
+## The warm side of a dose: an amber wash, a little more colour and bloom, a softer vignette, all
+## by GameState.high_glow() -- how good the dose felt, fading as it wears off. A dose that feels
+## flat (tolerance) leaves the grade where it was.
+const HIGH_TINT := Color(1.0, 0.74, 0.42)
+const HIGH_TINT_ALPHA := 0.10
+const HIGH_SATURATION := 0.16
+const HIGH_BRIGHTNESS := 0.05
+const HIGH_BLOOM := 0.12
+const HIGH_GLOW_INTENSITY := 0.35
+const HIGH_VIGNETTE := 0.4
+var _high_tint: ColorRect
+var _glow_base := Vector2(-1.0, -1.0)
+
+func _build_high_tint() -> void:
+	_high_tint = ColorRect.new()
+	_high_tint.name = "HighTint"
+	_high_tint.color = Color(HIGH_TINT, 0.0)
+	_high_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_high_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_high_tint)
+	move_child(_high_tint, withdrawal_tint.get_index() + 1)
+
+func _update_high() -> void:
+	var g := GameState.high_glow()
+	if _high_tint != null:
+		_high_tint.color.a = HIGH_TINT_ALPHA * g
+	var mat := $PostFX.material as ShaderMaterial
+	if mat != null:
+		mat.set_shader_parameter("vignette_strength", 0.85 * (1.0 - HIGH_VIGNETTE * g))
+		var player := get_tree().get_first_node_in_group("player")
+		var bursts: Node = player.get("sick_bursts") if player != null else null
+		mat.set_shader_parameter("tunnel", float(bursts.get("tunnel")) if bursts != null else 0.0)
+
 func _update_sick_grade() -> void:
 	if _graded_env == null:
 		var scene := get_tree().current_scene
@@ -580,11 +615,19 @@ func _update_sick_grade() -> void:
 		_graded_env = we.environment
 	var s := GameState.sickness()
 	var k := s * s
-	_graded_env.adjustment_saturation = Graphics.SATURATION * lerpf(1.0, SICK_SATURATION, k)
+	var g := GameState.high_glow()
+	_graded_env.adjustment_saturation = Graphics.SATURATION * lerpf(1.0, SICK_SATURATION, k) * (1.0 + HIGH_SATURATION * g)
 	_graded_env.adjustment_contrast = Graphics.CONTRAST * lerpf(1.0, 1.18, k)
+	_graded_env.adjustment_brightness = 1.0 + HIGH_BRIGHTNESS * g
+	if _graded_env.glow_enabled:
+		if _glow_base.x < 0.0:
+			_glow_base = Vector2(_graded_env.glow_intensity, _graded_env.glow_bloom)
+		_graded_env.glow_intensity = _glow_base.x + HIGH_GLOW_INTENSITY * g
+		_graded_env.glow_bloom = _glow_base.y + HIGH_BLOOM * g
 
 func _process(delta: float) -> void:
 	_update_sick_grade()
+	_update_high()
 	_tick_fade(delta)
 	if objective_label and not Cutscene.is_playing() and not get_tree().paused:
 		_tick_objective(delta)

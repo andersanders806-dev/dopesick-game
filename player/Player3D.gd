@@ -37,6 +37,13 @@ const PICKUP_DURATION := 0.6
 ## In withdrawal your hands shake: a grab takes up to this much longer at
 ## the bottom of the meter, which is more time rooted in a guard's view.
 const TREMOR_GRAB_MULT := 0.6
+## Above this sickness a grab can be fumbled: the hands won't hold still, the thing slips and hits
+## the floor (loudly, see items/StealableItem3D.gd) and has to be picked up again. The chance
+## climbs from zero here to FUMBLE_MAX at the bottom of the meter.
+const FUMBLE_FROM := 0.6
+const FUMBLE_MAX := 0.5
+## Running feet in a shop carry this far (m) to a guard's ear, a footfall at a time.
+const SPRINT_NOISE_M := 4.5
 ## Stomach cramps: every so often in withdrawal you double over and can't
 ## move for a moment. Seconds between cramps, and how long one holds you.
 const CRAMP_INTERVAL := Vector2(9.0, 18.0)
@@ -113,6 +120,7 @@ var _look_pitch: float = 0.0
 ## weapon holder makes in zombie mode (player/AimAssist.gd; null elsewhere).
 const PadLook := preload("res://player/PadLook.gd")
 const StoryHandsScript := preload("res://player/StoryHands.gd")
+const SickBurstsScript := preload("res://player/SickBursts.gd")
 var pad_look_state := PadLook.new()
 var assist: Node
 var _tp_camera_base: Transform3D
@@ -125,6 +133,12 @@ var fp_dip: float = 0.0
 ## Your own hands (player/StoryHands.gd): story first person only.
 var story_hands: Node
 var _cramp_timer: float = 0.0
+## Withdrawal's coughs and sniffs, and holding them in (player/SickBursts.gd).
+var sick_bursts: Node
+## A hitch of the head, in radians, added to the pitch (a breath caught, a cough): SickBursts.
+var fp_hitch: float = 0.0
+## Test hook: a fixed roll for the fumble check (-1 leaves it to chance).
+var fumble_roll_override: float = -1.0
 
 func _ready() -> void:
 	add_to_group("player")
@@ -138,6 +152,9 @@ func _ready() -> void:
 	_cam_offset = $CameraMount.position
 	$CameraMount.top_level = true
 	_cramp_timer = randf_range(CRAMP_INTERVAL.x, CRAMP_INTERVAL.y)
+	sick_bursts = SickBurstsScript.new()
+	add_child(sick_bursts)
+	sick_bursts.setup(self)
 	interact_zone.area_entered.connect(_on_area_entered)
 	interact_zone.area_exited.connect(_on_area_exited)
 	Graphics.view_changed.connect(_apply_view)
@@ -271,7 +288,7 @@ func _look_scale() -> float:
 
 func _update_fp_camera() -> void:
 	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
-	$CameraMount.rotation = Vector3(clampf(_look_pitch - fp_dip, -PITCH_LIMIT, PITCH_LIMIT), _look_yaw, 0.0)
+	$CameraMount.rotation = Vector3(clampf(_look_pitch - fp_dip - fp_hitch, -PITCH_LIMIT, PITCH_LIMIT), _look_yaw, 0.0)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
 ## rates, so it never settles into a rhythm you can tune out.
@@ -406,6 +423,8 @@ func _physics_process(delta: float) -> void:
 		speed *= Jobs.CARRY_SPEED
 	if _first_person and feel != null:
 		speed *= feel.speed_mult()
+	if sick_bursts != null:
+		speed *= sick_bursts.speed_mult()
 
 	var target := dir * speed
 	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
@@ -476,6 +495,8 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float, interval :
 	_step_timer = maxf(_step_timer + interval, 0.0)
 	_left_foot = not _left_foot
 	SFX.play_footstep(-8.0, randf_range(0.92, 1.05))
+	if _sprinting:
+		GameState.emit_noise(global_position, SPRINT_NOISE_M, "sprint")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _first_person:
@@ -525,11 +546,23 @@ func play_pickup(target_pos: Vector3) -> float:
 	if to_target.length() > 0.01:
 		_facing_angle = atan2(to_target.x, to_target.z)
 		model.rotation.y = _facing_angle
-	var duration := MetaProgress.pickup_duration(PICKUP_DURATION)
-	if GameState.withdrawn(SICK_THRESHOLD):
-		duration *= 1.0 + TREMOR_GRAB_MULT * GameState.sickness()
+	var duration := MetaProgress.pickup_duration(PICKUP_DURATION) * grab_time_mult()
 	_busy_timer = anim.play_once_timed("pick-up", duration)
 	return _busy_timer
+
+## How much longer a grab takes with shaking hands: nothing when well, +TREMOR_GRAB_MULT at the
+## bottom of the meter, smoothly in between.
+func grab_time_mult() -> float:
+	return 1.0 + TREMOR_GRAB_MULT * GameState.sickness()
+
+## The chance a grab goes wrong right now (see FUMBLE_FROM).
+func fumble_chance() -> float:
+	return FUMBLE_MAX * clampf((GameState.sickness() - FUMBLE_FROM) / (1.0 - FUMBLE_FROM), 0.0, 1.0)
+
+## Rolled once per grab, before anything is taken (items/StealableItem3D.gd).
+func roll_fumble() -> bool:
+	var roll := fumble_roll_override if fumble_roll_override >= 0.0 else randf()
+	return roll < fumble_chance()
 
 ## Walking among passersby (not running, not crouched): a cop more than a
 ## few metres off loses you in the crowd (npc/Police3D.gd).
@@ -601,6 +634,8 @@ func _on_area_exited(area: Area3D) -> void:
 	nearby.erase(area)
 
 func begin_theft_window(duration: float) -> void:
+	# The shaking hands that make the grab longer keep you looking like a thief for as long.
+	duration *= grab_time_mult()
 	is_stealing = true
 	# Only the latest theft's timer may end the window, so a quick second grab
 	# isn't cut short by the first one's timer.

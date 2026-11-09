@@ -34,11 +34,31 @@ const VARIANTS := {
 	"punch": [preload(KENNEY + "punch_0.ogg"), preload(KENNEY + "punch_1.ogg"), preload(KENNEY + "punch_2.ogg")],
 	# Withdrawal cramps: the same wet cough and sigh the bar regulars make.
 	"groan": [preload("res://assets/sfx/patron_cough_wet.wav"), preload("res://assets/sfx/patron_sigh.wav")],
+	# The long easy breath out of a dose that felt good.
+	"sigh": [preload("res://assets/sfx/patron_sigh.wav")],
 }
 ## The Kenney recordings are mastered 6-13 dB hotter than the synthesized
 ## set; this brings them level with it so callers' volume_db still means
 ## the same thing.
 const VARIANT_GAIN_DB := {"door": -12.0, "steal": -5.0, "cash": -12.0, "latch": -10.0, "punch": -6.0}
+
+## Withdrawal's body noises and what a dose does to you (assets/sfx/sick, cut by
+## dev-tools/build_sick_sounds.py from BBC and CC0 recordings; assets/sfx/CREDITS/sick-stealth.md).
+## Cut at -3 dBFS, so callers bring them down with volume_db.
+const SICK_DIR := "res://assets/sfx/sick/"
+const SICK := {
+	"cough": [preload(SICK_DIR + "cough_1.wav"), preload(SICK_DIR + "cough_2.wav"),
+		preload(SICK_DIR + "cough_3.wav"), preload(SICK_DIR + "cough_4.wav")],
+	"cough_fit": [preload(SICK_DIR + "cough_fit_1.wav"), preload(SICK_DIR + "cough_fit_2.wav")],
+	"cough_stifled": [preload(SICK_DIR + "cough_stifled_1.wav"), preload(SICK_DIR + "cough_stifled_2.wav")],
+	"stifle_strain": [preload(SICK_DIR + "stifle_strain.wav")],
+	"sniff": [preload(SICK_DIR + "sniff_1.wav"), preload(SICK_DIR + "sniff_2.wav")],
+	"breath_catch": [preload(SICK_DIR + "breath_catch.wav")],
+	"retch": [preload(SICK_DIR + "retch_1.wav"), preload(SICK_DIR + "retch_2.wav")],
+	"drop": [preload(SICK_DIR + "drop_1.wav"), preload(SICK_DIR + "drop_2.wav")],
+	"exhale_flat": [preload(SICK_DIR + "exhale_flat.wav")],
+	"dose_swell": [preload(SICK_DIR + "dose_swell.wav")],
+}
 
 const FOOTSTEPS := {
 	"concrete": [preload(KENNEY + "step_concrete_0.ogg"), preload(KENNEY + "step_concrete_1.ogg"),
@@ -163,8 +183,10 @@ func _ready() -> void:
 	_rain_indoor.pitch_scale = 0.72
 	add_child(_rain_indoor)
 	GameState.clock_changed.connect(func(_m): if _music_track.begins_with("city"): _update_music())
+	GameState.dose_felt.connect(_on_dose_felt)
 
 func _process(delta: float) -> void:
+	_update_high_boost()
 	if GameState.sickness() < PHANTOM_MIN_SICKNESS:
 		# The first one comes a little while after it gets bad, not at once.
 		_phantom_timer = maxf(_phantom_timer, PHANTOM_INTERVAL.x * 0.5)
@@ -174,6 +196,36 @@ func _process(delta: float) -> void:
 		return
 	_phantom_timer = randf_range(PHANTOM_INTERVAL.x, PHANTOM_INTERVAL.y)
 	play_phantom()
+
+## The music swells with a dose, by how good it felt (GameState.high_glow()): this many dB at the
+## top, through an amplifier on the Music bus so it never fights the per-track levels or the
+## settings' volume.
+const HIGH_MUSIC_DB := 3.5
+var _boost_fx: AudioEffectAmplify
+var _boost_db := 0.0
+
+func _update_high_boost() -> void:
+	var want := HIGH_MUSIC_DB * GameState.high_glow()
+	if absf(want - _boost_db) < 0.02:
+		return
+	_boost_db = want
+	if _boost_fx == null:
+		var i := AudioServer.get_bus_index("Music")
+		if i < 0:
+			return
+		_boost_fx = AudioEffectAmplify.new()
+		AudioServer.add_bus_effect(i, _boost_fx)
+	_boost_fx.volume_db = _boost_db
+
+## A dose lands. How good it felt (GameState.high_feel) decides what you hear: at 1.0 a warm
+## swell under a long easy breath out; as tolerance builds the swell and the ease thin out and a
+## dull exhale takes over, until it is only that. The relief is the same either way.
+func _on_dose_felt(_drug_id: String, feel: float) -> void:
+	var warm := clampf(feel, 0.0, 1.0)
+	if warm > 0.12:
+		play("dose_swell", lerpf(-26.0, -7.0, warm))
+		play("sigh", lerpf(-34.0, -10.0, warm), 0.85)
+	play("exhale_flat", linear_to_db(maxf(0.02, 1.0 - warm)) - 6.0, 1.0)
 
 ## One sound that isn't there, somewhere 4-8 m from you. Returns its kind.
 func play_phantom(kind := "") -> String:
@@ -232,11 +284,42 @@ func play(name: String, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 	if VARIANTS.has(name):
 		stream = VARIANTS[name].pick_random()
 		volume_db += VARIANT_GAIN_DB.get(name, 0.0)
+	elif SICK.has(name):
+		stream = SICK[name].pick_random()
 	elif SOUNDS.has(name):
 		stream = SOUNDS[name]
 	else:
 		return
 	_play_stream(stream, volume_db, pitch)
+
+## A one-shot out in the room, `pos` metres from nothing in particular: heard from where it
+## happened (a dropped item, a guard's bark), not from the player's own head. Returns the player.
+func play_at(name: String, pos: Vector3, volume_db := 0.0, pitch := 1.0, stream: AudioStream = null) -> AudioStreamPlayer3D:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return null
+	if stream == null:
+		if SICK.has(name):
+			stream = SICK[name].pick_random()
+		elif VARIANTS.has(name):
+			stream = VARIANTS[name].pick_random()
+			volume_db += VARIANT_GAIN_DB.get(name, 0.0)
+		elif SOUNDS.has(name):
+			stream = SOUNDS[name]
+		else:
+			return null
+	var p := AudioStreamPlayer3D.new()
+	p.stream = stream
+	p.bus = "SFX"
+	p.volume_db = volume_db
+	p.pitch_scale = pitch
+	p.unit_size = 5.0
+	p.max_distance = 40.0
+	p.finished.connect(p.queue_free)
+	scene.add_child(p)
+	p.global_position = pos
+	p.play()
+	return p
 
 ## A random footfall for the floor of the room you're in.
 func footstep_stream() -> AudioStream:

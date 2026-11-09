@@ -4,6 +4,8 @@ uniform sampler2D screen_tex : hint_screen_texture, repeat_disable, filter_linea
 uniform float vignette_strength : hint_range(0.0, 2.0) = 0.85;
 uniform float vignette_radius : hint_range(0.2, 1.5) = 0.85;
 uniform float grain_strength : hint_range(0.0, 0.3) = 0.05;
+// Holding a cough in (player/SickBursts.gd): the edges of the view close in, 0..1.
+uniform float tunnel : hint_range(0.0, 1.0) = 0.0;
 // 0 = well, 1 = deep withdrawal (GameState.sickness()). Drives everything
 // below: doubled, swimming vision, colour fringing at the edges, a vignette
 // that tightens with the heartbeat, and the colour draining out.
@@ -42,9 +44,9 @@ void fragment() {
 
 	// Vignette, closing in on each heartbeat.
 	float beat = pow(max(0.0, sin(TIME * pulse_rate * 6.2832)), 8.0);
-	float radius = vignette_radius - 0.28 * s - 0.08 * s * beat;
+	float radius = vignette_radius - 0.28 * s - 0.08 * s * beat - 0.42 * tunnel;
 	float dist = length(centered) / max(radius, 0.2);
-	float vig = 1.0 - smoothstep(0.35, 1.0, dist) * (vignette_strength + 0.4 * s);
+	float vig = 1.0 - smoothstep(0.35, 1.0, dist) * (vignette_strength + 0.4 * s + 0.5 * tunnel);
 	col *= max(vig, 0.0);
 
 	float grain = (rand(SCREEN_UV * vec2(960.0, 540.0) + TIME * 60.0) - 0.5) * (grain_strength + 0.06 * s);

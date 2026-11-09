@@ -273,7 +273,7 @@ func _setup_buses() -> void:
 		limiter.ceiling_db = -0.5
 		AudioServer.add_bus_effect(master, limiter)
 	_ensure_muffles.call_deferred()
-	for bus in ["Music", "SFX", "Voice", "Ambience", "Walkman"]:
+	for bus in ["Music", "SFX", "Voice", "Ambience", "Walkman", "Street"]:
 		if AudioServer.get_bus_index(bus) >= 0:
 			continue
 		AudioServer.add_bus()
@@ -297,6 +297,15 @@ func _setup_buses() -> void:
 			AudioServer.set_bus_volume_db(i, 2.0)
 		if bus == "Ambience":
 			AudioServer.set_bus_volume_db(i, -2.0)
+		if bus == "Street":
+			# The street heard from inside: world/StreetBleed.gd opens this
+			# filter as the nearest door opens. Sends to Ambience, which has
+			# the sickness muffle after it.
+			AudioServer.set_bus_send(i, "Ambience")
+			var lp := AudioEffectLowPassFilter.new()
+			lp.cutoff_hz = 600.0
+			lp.resonance = 0.6
+			AudioServer.add_bus_effect(i, lp)
 		if bus == "Walkman":
 			# Cheap foam headphones and a worn tape: thin low end, soft top,
 			# and a little wow from the chorus.

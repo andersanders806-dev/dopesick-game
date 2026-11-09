@@ -258,7 +258,7 @@ func _scene(path: String) -> PackedScene:
 ## `spawn`), fades in and says where you are. Asked again mid-change (a
 ## bust as you go through a door), the later one goes next: the cell wins.
 ## Under a cutscene the room changes unseen, with no fade or card on top.
-func go(path: String, spawn := "") -> void:
+func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 	if _busy:
 		_next = [path, spawn]
 		return
@@ -269,7 +269,7 @@ func go(path: String, spawn := "") -> void:
 	tree.paused = true
 	_card.modulate.a = 0.0
 	if not hidden:
-		await _fade(1.0, FADE_OUT)
+		await _fade(1.0, fade_out)
 	var packed := _scene(path)
 	if packed == null:
 		push_error("SceneLoader: can't load %s" % path)

@@ -50,11 +50,36 @@ func _ready() -> void:
 		return
 	# The street's scene holds the doorway only: the Inside area, the
 	# markers, the gate. The room is built into it later (_process).
+	_install_door()
 	var inside := get_node("Inside") as Area3D
 	inside.body_entered.connect(_on_body_entered)
 	inside.body_exited.connect(_on_body_exited)
 	GameState.clock_changed.connect(func(_m): _refresh_gate())
 	_refresh_gate()
+
+## The shop's front door: a real hinged glass door in the doorway
+## (interactables/HingedDoor3D.gd), locked when the shop's shut.
+const HingedDoor := preload("res://interactables/HingedDoor3D.tscn")
+## Where the leaf's plane stands in the front wall (shop z: 0 inside face, wall to FRONT_WALL_T).
+const DOOR_Z := 0.11
+var door: Node3D = null
+
+func _install_door() -> void:
+	door = HingedDoor.instantiate()
+	door.name = "FrontDoor"
+	door.kind = "shop_glass"
+	door.opening = Facades.shop_geometry(4.0)["gap"]
+	door.hinge_east = true
+	door.position = Vector3(0.0, 0.0, DOOR_Z)
+	add_child(door)
+	door.place = place
+	var hrs: Array = GameState.OPENING_HOURS.get(place, [0, 24])
+	door.set_hours("OPEN 24 HRS" if int(hrs[1]) - int(hrs[0]) >= 24 else "OPEN %02d - %02d" % [int(hrs[0]), int(hrs[1]) % 24])
+
+## The roller shutter that comes down over this front (shaken when the door is rattled).
+func _shutter_node() -> Node3D:
+	var facades := owner.get_node_or_null("Facades") if owner != null else null
+	return facades.get_node_or_null("Front%s/Shutter" % _front) as Node3D if facades != null else null
 
 ## The room's scene, in the background since the title screen (SceneLoader);
 ## null until it is.
@@ -255,6 +280,12 @@ func _refresh_gate() -> void:
 	var shut := not GameState.is_open(place) and not player_inside
 	(get_node("Gate") as CollisionObject3D).collision_layer = 1 if shut else 0
 	(get_node("Locked") as CollisionObject3D).collision_layer = 4 if shut else 0
+	if door != null:
+		door.set_locked(shut)
+		# (The door's own E reach is on only while it isn't locked: the gate answers when it is.)
+		(door.touch as CollisionObject3D).collision_layer = 0 if shut else 4
+		if door.shutter == null:
+			door.shutter = _shutter_node()
 
 
 func _check_closing() -> void:

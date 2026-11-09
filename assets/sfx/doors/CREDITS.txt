@@ -1,0 +1,20 @@
+Door sounds: cut from Freesound previews (freesound.org), all CC0 1.0
+(public domain, no attribution required -- credited here anyway). Cut by
+dev-tools/cut_door_sfx.py: mono, 44.1 kHz, short fades, normalised.
+
+bell.ogg                        "Ryuuzan_shop_door_bell00" by ryuuzan                         freesound.org/s/192761
+slam_wood_a.ogg                 "Door slamming hard" by NachtmahrTV                           freesound.org/s/571797
+slam_wood_b.ogg, slam_wood_c.ogg "Door slam" by TiesWijnen                                    freesound.org/s/455540
+slam_light.ogg                  "door slam" by contramundum                                   freesound.org/s/266440
+slam_heavy.ogg                  "Angry Door - Wooden Entrance Open Close Slam Hard A" by hisoul freesound.org/s/462665
+steel_slam_a.ogg, steel_bar.ogg "stairwell door-panic bar and slam" by klangfabrik            freesound.org/s/341176
+steel_slam_b.ogg                "Fire door closing" by wlabarron                              freesound.org/s/475313
+handle.ogg, latch.ogg           "Door Handle Click" by MarcusGraham325                        freesound.org/s/330828
+wood_close.ogg                  "Wooden door open-close" by Ryding                            freesound.org/s/125958
+rattle_a/b/c.ogg                "RattlingLockedDoor" by shelbyshark                           freesound.org/s/444704
+creak_a.ogg                     "Heavy Door Creaking_05" by rambler52                         freesound.org/s/455324
+creak_b.ogg                     "Creaky Door Closing Slowly" by Rudmer_Rotteveel              freesound.org/s/590950
+creak_c.ogg                     "Door_creak" by Taykiraro                                     freesound.org/s/638490
+creak_d.ogg                     "Door Open 2_Creaky_Near_Mono" by _stubb                      freesound.org/s/406598
+scrape_a.ogg                    "Metallic Scrape 2" by magnuswaker                            freesound.org/s/641048
+scrape_b.ogg                    "metal_door_open" by Krokulator                               freesound.org/s/679460

@@ -6,6 +6,7 @@ extends RefCounted
 ## bulb, the cooler, the TV, the jukebox) still play on top; the generic
 ## synthesised room tone some rooms had is replaced, not doubled.
 
+const StreetBleed := preload("res://world/StreetBleed.gd")
 const DIR := "res://assets/sfx/places/"
 ## Scene name: [recording, volume dB on the Ambience bus]. All are
 ## normalised to -26 LUFS, so these set the mix, not the level.
@@ -51,6 +52,9 @@ static func apply(room: Node) -> void:
 	# Start somewhere in the loop, so walking back into a room doesn't
 	# restart the same car going past.
 	p.play(randf() * maxf(stream.get_length() - 1.0, 0.0))
+	# The Dive Bar's door lets the street in when it opens.
+	if key == "DiveBar3D":
+		StreetBleed.start(room, randf() * 30.0, -6.0)
 
 ## The recordings of the shops you can walk into from the street: preloaded
 ## (nothing loads while you walk), looped on first use.
@@ -72,6 +76,17 @@ static func indoors(room: Node, place: String) -> void:
 	var stream: AudioStream = p.get_meta("street")
 	var db: float = p.get_meta("street_db")
 	var track := DIR + "city.ogg"
+	var bleed := room.get_node_or_null("StreetBleed")
+	if place == "" and bleed != null:
+		# Out on the street again: pick the street's loop up where the bleed had it.
+		var at: float = bleed.position_seconds()
+		bleed.free()
+		if String(p.get_meta("track")) != track:
+			p.set_meta("track", track)
+			p.stream = stream
+			p.volume_db = db
+			p.play(at)
+		return
 	if SHOP_TRACKS.has(place):
 		var t: Array = SHOP_TRACKS[place]
 		if not _looped.has(place):
@@ -85,6 +100,9 @@ static func indoors(room: Node, place: String) -> void:
 		track = DIR + t[1]
 	if String(p.get_meta("track")) == track:
 		return
+	if place != "" and bleed == null:
+		# In a shop: the street goes on, on a bus of its own (StreetBleed) that the door opens.
+		StreetBleed.start(room, p.get_playback_position(), p.get_meta("street_db"))
 	p.set_meta("track", track)
 	p.stream = stream
 	p.volume_db = db

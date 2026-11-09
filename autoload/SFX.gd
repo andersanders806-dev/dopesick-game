@@ -30,7 +30,13 @@ const SOUNDS := {
 	"player_hurt": preload("res://assets/sfx/player_hurt.wav"),
 	"shell": preload("res://assets/sfx/shell.wav"),
 	"pickup_ammo": preload("res://assets/sfx/pickup_ammo.wav"),
+	"kart_finish": preload("res://assets/sfx/kart_finish.wav"),
+	"kart_lap": preload("res://assets/sfx/kart_lap.wav"),
+	"kart_hit": preload("res://assets/sfx/kart_hit.wav"),
+	"kart_start": preload("res://assets/sfx/kart_start.wav"),
 }
+
+var KART_ENGINE_STREAM: AudioStreamWAV = load("res://assets/sfx/kart_engine_loop.wav")
 
 const SIREN_STREAM := preload("res://assets/sfx/siren_loop.wav")
 const HEARTBEAT_STREAM := preload("res://assets/sfx/heartbeat_loop.wav")
@@ -41,6 +47,7 @@ var _siren_player: AudioStreamPlayer
 var _heartbeat_player: AudioStreamPlayer
 
 func _ready() -> void:
+	KART_ENGINE_STREAM.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	for i in range(POOL_SIZE):
 		var p := AudioStreamPlayer.new()
 		add_child(p)

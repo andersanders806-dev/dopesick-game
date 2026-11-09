@@ -17,6 +17,7 @@ const DESTINATIONS := {
 	"StoreSupermarket3D": "Enter the supermarket",
 	"StoreElectronics3D": "Enter the electronics store",
 	"Jail3D": "Enter the police station",
+	"KartTrack3D": "Race the go-kart track",
 }
 
 func prompt_text() -> String:

@@ -13,18 +13,48 @@ extends Node3D
 
 const Effects := preload("res://fx/Effects.gd")
 
-const RPM := 650.0
-const DAMAGE := 34.0
+## Two guns, switched with "weapon_switch" (Tab / D-pad left). Everything
+## that used to be a flat const for "the AK" is now read off PROFILES[_profile]
+## instead, so _apply_profile() can swap the whole feel -- fire rate, damage,
+## reload, hip spread, and the viewmodel fit -- in one place. Model fit
+## numbers (pos/rot/scale) are measured via mesh.get_aabb() the same way the
+## AK's are (see the long comment below); eyeballing the raw scale is what
+## put earlier attempts inside the mesh.
+const PROFILES := [
+	{
+		"name": "AK", "rpm": 650.0, "damage": 34.0, "falloff_start": 25.0,
+		"range": 160.0, "reload_time": 2.1, "spread_hip": 1.6,
+		"model": "res://assets/quaternius/weapons/AssaultRifle_4.fbx",
+		"gun_pos": Vector3(0, 0, -0.15), "gun_rot": Vector3(0, PI / 2.0, 0),
+		"gun_scale": 0.158, "muzzle_local": Vector3(0, 0.01, -0.606),
+		"eject_local": Vector3(0.03, 0.03, 0.02),
+	},
+	{
+		# Weaker and shorter-ranged than the AK, but a much faster cyclic
+		# rate and a snappier reload -- the panic-button sidearm, not a
+		# straight upgrade.
+		"name": "PISTOL", "rpm": 900.0, "damage": 20.0, "falloff_start": 14.0,
+		"range": 90.0, "reload_time": 1.3, "spread_hip": 2.0,
+		"model": "res://assets/quaternius/weapons/Pistol_2.fbx",
+		"gun_pos": Vector3(0, 0, -0.05), "gun_rot": Vector3(0, PI / 2.0, 0),
+		"gun_scale": 0.11, "muzzle_local": Vector3(0, 0.0185, -0.212),
+		"eject_local": Vector3(0.02, 0.02, -0.03),
+	},
+]
+
+var _profile: int = 0
+var RPM: float
+var DAMAGE: float
 ## Damage falls off past this range, down to half at RANGE.
-const FALLOFF_START := 25.0
-const RANGE := 160.0
-const RELOAD_TIME := 2.1
+var FALLOFF_START: float
+var RANGE: float
+var RELOAD_TIME: float
 ## Bullets hit the world (1), floors (16), and hitboxes (32) -- not the
 ## player (2) or the police's movement capsule (8), which has its own hitbox.
 const RAY_MASK := 1 | 16 | 32
 
 # Spread, in degrees of cone half-angle.
-const SPREAD_HIP := 1.6
+var SPREAD_HIP: float
 const SPREAD_MOVING := 2.2
 const SPREAD_AIR := 4.0
 const SPREAD_ADS := 0.15
@@ -80,6 +110,22 @@ func _ready() -> void:
 	camera = get_parent() as Camera3D
 	_build_model()
 
+func weapon_name() -> String:
+	return PROFILES[_profile]["name"]
+
+## Ammo/reserve stay shared across weapons (one pool, not a loadout each) --
+## switching mid-reload cancels it, same as a real reload getting interrupted.
+func _switch_weapon() -> void:
+	_profile = (_profile + 1) % PROFILES.size()
+	_reload_t = -1.0
+	_bloom = 0.0
+	_model.queue_free()
+	_build_model()
+	SFX.play("dry_fire", -8.0, 0.85)
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud and hud.has_method("toast"):
+		hud.toast(weapon_name())
+
 func is_reloading() -> bool:
 	return _reload_t >= 0.0
 
@@ -132,6 +178,9 @@ func _physics_process(delta: float) -> void:
 		var hud := get_tree().get_first_node_in_group("hud")
 		if hud and hud.has_method("toast"):
 			hud.toast("Fire mode: %s" % fire_mode_name())
+	if Input.is_action_just_pressed("weapon_switch"):
+		_switch_weapon()
+		return
 
 	var trigger := Input.is_action_pressed("fire")
 	if not trigger:
@@ -367,43 +416,42 @@ func _build_model() -> void:
 	_mat_glove = _mat(Color(0.07, 0.065, 0.06), 0.0, 0.9)
 	_mat_sleeve = _mat(Color(0.09, 0.095, 0.1), 0.0, 0.95)
 
+	var prof: Dictionary = PROFILES[_profile]
+	RPM = prof["rpm"]
+	DAMAGE = prof["damage"]
+	FALLOFF_START = prof["falloff_start"]
+	RANGE = prof["range"]
+	RELOAD_TIME = prof["reload_time"]
+	SPREAD_HIP = prof["spread_hip"]
+
 	_model = Node3D.new()
 	_model.name = "Model"
 	add_child(_model)
 	var g := _model
 
-	# Receiver and dust cover.
-	_box(g, Vector3(0.05, 0.07, 0.3), Vector3(0, 0, 0), _mat_metal)
-	_box(g, Vector3(0.046, 0.022, 0.27), Vector3(0, 0.044, 0.01), _mat_metal)
-	# Charging handle on the right.
-	_box(g, Vector3(0.03, 0.012, 0.012), Vector3(0.035, 0.02, -0.07), _mat_metal)
-	# Rear sight: a notch between two posts on a raised block, top at y = 0.086.
-	_box(g, Vector3(0.032, 0.03, 0.03), Vector3(0, 0.062, -0.12), _mat_metal)
-	_box(g, Vector3(0.007, 0.012, 0.012), Vector3(-0.009, 0.08, -0.12), _mat_metal)
-	_box(g, Vector3(0.007, 0.012, 0.012), Vector3(0.009, 0.08, -0.12), _mat_metal)
-	# Wooden handguard and upper gas-tube cover.
-	_box(g, Vector3(0.058, 0.052, 0.2), Vector3(0, -0.004, -0.25), _mat_wood)
-	_box(g, Vector3(0.04, 0.03, 0.17), Vector3(0, 0.043, -0.235), _mat_wood)
-	# Barrel, gas block, front sight and muzzle brake.
-	_tube(g, 0.011, 0.34, Vector3(0, 0.012, -0.47), _mat_metal)
-	_box(g, Vector3(0.026, 0.026, 0.03), Vector3(0, 0.03, -0.35), _mat_metal)
-	_box(g, Vector3(0.024, 0.04, 0.026), Vector3(0, 0.04, -0.55), _mat_metal)
-	_box(g, Vector3(0.006, 0.03, 0.008), Vector3(0, 0.071, -0.55), _mat_metal)
-	_tube(g, 0.016, 0.05, Vector3(0, 0.012, -0.645), _mat_metal)
-	# Pistol grip and trigger guard.
-	_box(g, Vector3(0.034, 0.1, 0.045), Vector3(0, -0.075, 0.08), _mat_poly, Vector3(-18, 0, 0))
-	_box(g, Vector3(0.012, 0.006, 0.07), Vector3(0, -0.05, 0.02), _mat_metal)
-	# Stock.
-	_box(g, Vector3(0.044, 0.065, 0.28), Vector3(0, -0.028, 0.28), _mat_wood, Vector3(6, 0, 0))
-	_box(g, Vector3(0.046, 0.1, 0.02), Vector3(0, -0.05, 0.42), _mat_poly, Vector3(6, 0, 0))
+	# Real gun mesh (Quaternius, CC0 -- see assets/quaternius/weapons/LICENSE.txt)
+	# replaces the old procedurally-boxed receiver/handguard/barrel/stock/grip.
+	# Each profile's gun_pos/gun_rot/gun_scale were fitted against this rig's
+	# HIP_POS/ADS_POS anchors using mesh.get_aabb() measurements (see PROFILES
+	# above), not eyeballed -- change them together if a model is swapped.
+	var gun_pos: Vector3 = prof["gun_pos"]
+	var gun_scene: PackedScene = load(prof["model"])
+	var gun: Node3D = gun_scene.instantiate()
+	gun.name = "GunMesh"
+	gun.position = gun_pos
+	gun.rotation = prof["gun_rot"]
+	gun.scale = Vector3.ONE * float(prof["gun_scale"])
+	for mesh in gun.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	g.add_child(gun)
 
-	# Curved magazine, in two segments, on its own node so reloads can move it.
+	# The real mesh's magazine is baked in and can't detach, but reloading
+	# still needs a "rest" anchor to animate without erroring -- kept as an
+	# empty node so _animate_mag() no-ops harmlessly instead of crashing.
 	_mag = Node3D.new()
 	_mag.position = Vector3(0, -0.04, -0.075)
 	_mag.set_meta("rest", _mag.position)
 	g.add_child(_mag)
-	_box(_mag, Vector3(0.028, 0.1, 0.06), Vector3(0, -0.05, 0.0), _mat_metal, Vector3(12, 0, 0))
-	_box(_mag, Vector3(0.028, 0.1, 0.058), Vector3(0, -0.14, -0.03), _mat_metal, Vector3(26, 0, 0))
 
 	# Gloved hands and sleeves, angled back toward where the shoulders are.
 	_box(g, Vector3(0.07, 0.055, 0.1), Vector3(0, -0.02, -0.26), _mat_glove)
@@ -412,10 +460,10 @@ func _build_model() -> void:
 	_limb(g, Vector3(0.02, -0.1, 0.11), Vector3(0.16, -0.32, 0.4), 0.04, _mat_sleeve)
 
 	_muzzle = Node3D.new()
-	_muzzle.position = Vector3(0, 0.012, -0.68)
+	_muzzle.position = gun_pos + (prof["muzzle_local"] as Vector3)
 	g.add_child(_muzzle)
 	_eject = Node3D.new()
-	_eject.position = Vector3(0.03, 0.03, -0.02)
+	_eject.position = gun_pos + (prof["eject_local"] as Vector3)
 	g.add_child(_eject)
 
 	position = HIP_POS

@@ -27,6 +27,11 @@ const GRAVITY := 11.0
 const EYE_HEIGHT := 1.62
 const CROUCH_EYE_HEIGHT := 1.05
 const PITCH_LIMIT := 1.53
+## Radians/sec of turn at full stick deflection. Mouse look is event-driven
+## (raw pixel deltas); the right stick has no equivalent event, so it's
+## polled every frame instead and needs its own deadzone.
+const GAMEPAD_LOOK_SPEED := 3.2
+const GAMEPAD_LOOK_DEADZONE := 0.15
 
 const CharacterAnimator := preload("res://npc/CharacterAnimator.gd")
 const CharacterCast := preload("res://npc/CharacterCast.gd")
@@ -49,6 +54,10 @@ const PICKUP_DURATION := 0.6
 
 var nearby: Array = []
 var dialogue_active: bool = false
+## True while seated in a Kart (vehicles/Kart.gd) -- frozen and hidden the
+## same way dialogue_active freezes the body, but kept separate so the
+## kart's own mouse mode / camera don't fight the dialogue system's.
+var driving: bool = false
 var is_stealing: bool = false
 var anim: CharacterAnimator
 var _step_timer: float = 0.0
@@ -94,6 +103,19 @@ func set_look(new_yaw: float, new_pitch := 0.0) -> void:
 	pitch = new_pitch
 	_apply_look()
 
+## Right-stick look. Mouse look lives in _unhandled_input (event-driven);
+## this is polled per-frame since a held stick produces no motion events.
+func _gamepad_look(delta: float) -> void:
+	if dead:
+		return
+	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	if stick.length() < GAMEPAD_LOOK_DEADZONE:
+		return
+	var sens := GAMEPAD_LOOK_SPEED * lerpf(1.0, 0.6, weapon.ads)
+	yaw -= stick.x * sens * delta
+	pitch -= stick.y * sens * delta * (-1.0 if Settings.invert_y else 1.0)
+	pitch = clampf(pitch, -PITCH_LIMIT, PITCH_LIMIT)
+
 func _apply_look() -> void:
 	head.rotation.y = yaw
 	camera.rotation.x = clampf(pitch + _recoil_pitch, -PITCH_LIMIT, PITCH_LIMIT)
@@ -103,6 +125,7 @@ func _apply_look() -> void:
 
 func _process(delta: float) -> void:
 	_update_mouse_mode()
+	_gamepad_look(delta)
 	_recoil_pitch = lerpf(_recoil_pitch, 0.0, 1.0 - exp(-9.0 * delta))
 	_shake = move_toward(_shake, 0.0, delta * 2.5)
 
@@ -142,6 +165,17 @@ func _update_mouse_mode() -> void:
 	if Input.mouse_mode != want:
 		Input.mouse_mode = want
 
+## Freezes/hides the FPS body for the kart's chase camera to take over, or
+## restores it when getting out. The kart itself moves the player to a spot
+## beside the driver's door before calling this with false.
+func set_driving(value: bool, _kart: Node) -> void:
+	driving = value
+	model.visible = not value
+	weapon.visible = not value
+	collision_layer = 0 if value else 1
+	collision_mask = 0 if value else 1
+	velocity = Vector3.ZERO
+
 func can_use_weapon() -> bool:
 	return not dialogue_active and not dead and _busy_timer <= 0.0 and not get_tree().paused \
 		and get_tree().get_nodes_in_group("modal_ui").is_empty()
@@ -164,9 +198,9 @@ func _physics_process(delta: float) -> void:
 	if not _grounded:
 		velocity.y -= GRAVITY * delta
 
-	if dialogue_active or dead or _busy_timer > 0.0:
-		# Rooted in place while talking, dead, or while an action animation
-		# (e.g. grabbing an item) plays.
+	if dialogue_active or dead or _busy_timer > 0.0 or driving:
+		# Rooted in place while talking, dead, driving a kart, or while an
+		# action animation (e.g. grabbing an item) plays.
 		if _busy_timer > 0.0:
 			_busy_timer -= delta
 		velocity.x = 0.0
@@ -189,7 +223,12 @@ func _physics_process(delta: float) -> void:
 	var sick := GameState.craving <= SICK_THRESHOLD
 	_crouching = Input.is_action_pressed("crouch")
 	_sprinting = (not sick) and (not _crouching) and dir.length() > 0.1 and Input.is_action_pressed("sprint") \
-		and not Input.is_action_pressed("aim") and not Input.is_action_pressed("fire")
+		and not Input.is_action_pressed("aim") and not Input.is_action_pressed("fire") \
+		and GameState.stamina > 0.0
+	if _sprinting:
+		GameState.drain_stamina(GameState.STAMINA_DRAIN_PER_SEC * delta)
+	else:
+		GameState.add_stamina(GameState.STAMINA_REGEN_PER_SEC * delta)
 	if sick:
 		speed *= SICK_SPEED_MULT
 	elif _sprinting:
@@ -252,7 +291,7 @@ func _update_footsteps(delta: float, moving: bool, anim_speed: float) -> void:
 	SFX.play("footstep_a" if _left_foot else "footstep_b", -8.0 - (6.0 if _crouching else 0.0), randf_range(0.92, 1.05))
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not dead:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and not dead and not driving:
 		var sens := Settings.look_radians_per_pixel() * lerpf(1.0, 0.6, weapon.ads)
 		var rel: Vector2 = event.relative
 		yaw -= rel.x * sens
@@ -284,7 +323,7 @@ func is_busy() -> bool:
 	return _busy_timer > 0.0
 
 func _try_interact() -> void:
-	if _busy_timer > 0.0 or dead:
+	if _busy_timer > 0.0 or dead or driving:
 		return
 	if dialogue_active:
 		var hud := get_tree().get_first_node_in_group("hud")

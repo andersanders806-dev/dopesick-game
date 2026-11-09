@@ -1528,7 +1528,7 @@ func _build_city() -> Node3D:
 	_new_root("City3D", "res://world/City3D.gd")
 	_environment(Color(0.35, 0.4, 0.6), 0.3, true)
 
-	var w := 58.0
+	var w := 74.0
 	var d := 9.0
 	var street_z := -4.5
 	_solid(_root, "Floor", Vector3(w, 0.1, d), Vector3(0, -0.05, 0), null, 16)
@@ -1569,6 +1569,8 @@ func _build_city() -> Node3D:
 			"scene": "res://world/StoreSupermarket3D.tscn", "door": "DoorToSupermarket", "spawn": "SpawnFromSupermarket", "scale": 3.6},
 		{"name": "Electronics", "file": "city/building-a.glb", "x": 24.5, "sign": "ELECTRONICS", "color": Color(0.3, 0.9, 1.0),
 			"scene": "res://world/StoreElectronics3D.tscn", "door": "DoorToElectronics", "spawn": "SpawnFromElectronics"},
+		{"name": "KartArena", "file": "city/building-b.glb", "x": 31.5, "sign": "GO-KARTS", "color": Color(1.0, 0.55, 0.1),
+			"scene": "res://world/KartTrack3D.tscn", "door": "DoorToKartArena", "spawn": "SpawnFromKartTrack"},
 	]
 	for f in fronts:
 		var x: float = f["x"]
@@ -1605,7 +1607,7 @@ func _build_city() -> Node3D:
 	for gx in [-21.0, -14.0, -7.0, 0.0, 7.0]:
 		_model(_root, "Filler%d" % int(gx), "city/low-detail-building-a.glb" if int(gx) % 2 == 0 else "city/low-detail-building-b.glb", Vector3(gx, 0, street_z - 1.45), 5.0)
 	_model(_root, "FillerWestEnd", "city/building-e.glb", Vector3(-30.5, 0, street_z - 2.6), 5.0)
-	_model(_root, "FillerEastEnd", "city/building-c.glb", Vector3(30.5, 0, street_z - 2.8), 5.0)
+	_model(_root, "FillerEastEnd", "city/building-c.glb", Vector3(39.5, 0, street_z - 2.8), 5.0)
 	for ax in [14.0, 21.0]:
 		_box_mesh(_root, "Alley%d" % int(ax), Vector3(2.2, 0.1, 5.0), Vector3(ax, -0.04, street_z - 2.5), _tex_mat("res://assets/env/road_tile.png", 0.3, 0.9))
 		_box_mesh(_root, "AlleyFence%d" % int(ax), Vector3(2.2, 2.2, 0.08), Vector3(ax, 1.1, street_z - 5.0), _color_mat(Color(0.25, 0.25, 0.27), 0.6))

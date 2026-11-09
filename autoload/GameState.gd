@@ -17,6 +17,7 @@ signal strikes_changed(strikes: int)
 signal dose_taken(drug_id: String, outcome: String)
 signal overdosed(fatal: bool)
 signal health_changed(health: float)
+signal stamina_changed(stamina: float)
 signal ammo_changed(mag: int, reserve: int)
 ## You took a hit. `from` is where the shot came from, for the HUD's damage
 ## direction and the camera kick.
@@ -134,7 +135,16 @@ const START_RESERVE := 90
 const HOME_RESERVE := 120
 const MAX_RESERVE := 240
 
+const MAX_STAMINA := 100.0
+## Full-tilt sprint burns out in ~6 seconds; standing/walking recovers it in ~10.
+const STAMINA_DRAIN_PER_SEC := 16.0
+const STAMINA_REGEN_PER_SEC := 10.0
+## The reward for taking down an officer instead of running: a shot at
+## outrunning the rest of the response instead of gassing out mid-chase.
+const POLICE_KILL_STAMINA_BONUS := 40.0
+
 var health: float = MAX_HEALTH
+var stamina: float = MAX_STAMINA
 var ammo_mag: int = MAG_SIZE
 var ammo_reserve: int = START_RESERVE
 var kills: int = 0
@@ -171,6 +181,7 @@ func start_run() -> void:
 	bar_patrons.clear()
 	pending_spawn = ""
 	health = MAX_HEALTH
+	stamina = MAX_STAMINA
 	ammo_mag = MAG_SIZE
 	ammo_reserve = START_RESERVE
 	kills = 0
@@ -183,6 +194,7 @@ func start_run() -> void:
 	strikes_changed.emit(strikes)
 	wanted_changed.emit(wanted)
 	health_changed.emit(health)
+	stamina_changed.emit(stamina)
 	ammo_changed.emit(ammo_mag, ammo_reserve)
 	lethal_changed.emit(lethal)
 
@@ -222,38 +234,72 @@ func cheapest_opioid_cost() -> int:
 			best = min(best, price_of(d["id"]))
 	return best
 
-func _setup_input_actions() -> void:
-	_bind("interact", [KEY_E])
-	_bind("sprint", [KEY_SHIFT])
-	_bind("cancel_ui", [KEY_ESCAPE])
-	_bind("move_left", [KEY_A, KEY_LEFT])
-	_bind("move_right", [KEY_D, KEY_RIGHT])
-	_bind("move_up", [KEY_W, KEY_UP])
-	_bind("move_down", [KEY_S, KEY_DOWN])
-	_bind("jump", [KEY_SPACE])
-	_bind("crouch", [KEY_C, KEY_CTRL])
-	_bind("reload", [KEY_R])
-	_bind("flashlight", [KEY_F])
-	_bind("fire_mode", [KEY_B])
-	_bind("pause", [KEY_ESCAPE, KEY_P])
-	_bind_mouse("fire", MOUSE_BUTTON_LEFT)
-	_bind_mouse("aim", MOUSE_BUTTON_RIGHT)
+## DualSense/generic-gamepad button and axis indices (Godot's JoyButton /
+## JoyAxis enums match the standard SDL layout, so these read correctly on
+## Xbox pads too -- Cross/A, Circle/B, Square/X, Triangle/Y).
+const _JOY_CROSS := JOY_BUTTON_A
+const _JOY_CIRCLE := JOY_BUTTON_B
+const _JOY_SQUARE := JOY_BUTTON_X
+const _JOY_TRIANGLE := JOY_BUTTON_Y
+const _JOY_L1 := JOY_BUTTON_LEFT_SHOULDER
+const _JOY_L3 := JOY_BUTTON_LEFT_STICK
+const _JOY_OPTIONS := JOY_BUTTON_START
+const _JOY_DPAD_UP := JOY_BUTTON_DPAD_UP
+const _JOY_DPAD_DOWN := JOY_BUTTON_DPAD_DOWN
+const _JOY_LEFT_X := JOY_AXIS_LEFT_X
+const _JOY_LEFT_Y := JOY_AXIS_LEFT_Y
+const _JOY_L2 := JOY_AXIS_TRIGGER_LEFT
+const _JOY_R2 := JOY_AXIS_TRIGGER_RIGHT
 
-func _bind_mouse(action: String, button: MouseButton) -> void:
+func _setup_input_actions() -> void:
+	_bind("interact", [KEY_E], [], [_JOY_TRIANGLE])
+	_bind("sprint", [KEY_SHIFT], [], [_JOY_L3])
+	_bind("cancel_ui", [KEY_ESCAPE])
+	_bind("move_left", [KEY_A, KEY_LEFT], [[_JOY_LEFT_X, -1.0]])
+	_bind("move_right", [KEY_D, KEY_RIGHT], [[_JOY_LEFT_X, 1.0]])
+	_bind("move_up", [KEY_W, KEY_UP], [[_JOY_LEFT_Y, -1.0]])
+	_bind("move_down", [KEY_S, KEY_DOWN], [[_JOY_LEFT_Y, 1.0]])
+	_bind("jump", [KEY_SPACE], [], [_JOY_CROSS])
+	_bind("crouch", [KEY_C, KEY_CTRL], [], [_JOY_CIRCLE])
+	_bind("reload", [KEY_R], [], [_JOY_SQUARE])
+	_bind("flashlight", [KEY_F], [], [_JOY_DPAD_UP])
+	_bind("fire_mode", [KEY_B], [], [_JOY_DPAD_DOWN])
+	_bind("weapon_switch", [KEY_TAB], [], [JOY_BUTTON_DPAD_LEFT])
+	_bind("pause", [KEY_ESCAPE, KEY_P], [], [_JOY_OPTIONS])
+	_bind_mouse("fire", MOUSE_BUTTON_LEFT, [[_JOY_R2, 1.0]])
+	_bind_mouse("aim", MOUSE_BUTTON_RIGHT, [[_JOY_L2, 1.0]])
+
+## `joy_axes` is an array of [axis, axis_value] pairs -- gamepad look
+## (right stick) isn't bound here since it's continuous per-frame input,
+## not a discrete action; see Player3D._gamepad_look().
+func _bind_mouse(action: String, button: MouseButton, joy_axes: Array = []) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action)
 	var ev := InputEventMouseButton.new()
 	ev.button_index = button
 	InputMap.action_add_event(action, ev)
+	_add_joy_axes(action, joy_axes)
 
-func _bind(action: String, keys: Array) -> void:
+func _bind(action: String, keys: Array, joy_axes: Array = [], joy_buttons: Array = []) -> void:
 	if InputMap.has_action(action):
 		return
 	InputMap.add_action(action)
 	for key in keys:
 		var ev := InputEventKey.new()
 		ev.physical_keycode = key
+		InputMap.action_add_event(action, ev)
+	_add_joy_axes(action, joy_axes)
+	for button in joy_buttons:
+		var bev := InputEventJoypadButton.new()
+		bev.button_index = button
+		InputMap.action_add_event(action, bev)
+
+func _add_joy_axes(action: String, joy_axes: Array) -> void:
+	for pair in joy_axes:
+		var ev := InputEventJoypadMotion.new()
+		ev.axis = pair[0]
+		ev.axis_value = pair[1]
 		InputMap.action_add_event(action, ev)
 
 func item_info(id: String) -> Dictionary:
@@ -466,6 +512,11 @@ func _set_lethal(value: bool) -> void:
 func damage_player(amount: float, from: Vector3) -> void:
 	if health <= 0.0 or in_custody:
 		return
+	# Behind the wheel at the Kart Arena is a no-consequences zone -- the
+	# whole point is a break from the run's stakes, not another way to lose.
+	var player := get_tree().get_first_node_in_group("player")
+	if player and player.get("driving") == true:
+		return
 	health = maxf(0.0, health - amount)
 	_since_damage = 0.0
 	health_changed.emit(health)
@@ -477,6 +528,19 @@ func register_kill(was_police: bool) -> void:
 	kills += 1
 	if was_police:
 		police_killed.emit()
+		add_stamina(POLICE_KILL_STAMINA_BONUS)
+
+func drain_stamina(amount: float) -> void:
+	if amount <= 0.0 or stamina <= 0.0:
+		return
+	stamina = maxf(0.0, stamina - amount)
+	stamina_changed.emit(stamina)
+
+func add_stamina(amount: float) -> void:
+	if amount <= 0.0 or stamina >= MAX_STAMINA:
+		return
+	stamina = minf(MAX_STAMINA, stamina + amount)
+	stamina_changed.emit(stamina)
 
 func use_ammo() -> bool:
 	if ammo_mag <= 0:

@@ -41,6 +41,7 @@ var crosshair: Control
 var _prompt: Label
 var _health_fill: ColorRect
 var _health_label: Label
+var _stamina_fill: ColorRect
 var _ammo_label: Label
 var _reserve_label: Label
 var _mode_label: Label
@@ -55,11 +56,19 @@ var _pause_menu: CanvasLayer
 const VIGNETTE_SHADER := """
 shader_type canvas_item;
 uniform float intensity = 0.0;
+// A permanent, neutral-dark edge vignette for mood -- separate from
+// `intensity`'s red damage flash, so being hurt still reads as "hurt"
+// instead of the screen just always looking that way.
+uniform float mood = 0.45;
 void fragment() {
 	vec2 uv = UV - 0.5;
 	float d = length(uv * vec2(1.0, 0.75));
 	float v = smoothstep(0.22, 0.72, d);
-	COLOR = vec4(0.55, 0.0, 0.0, v * intensity);
+	vec3 mood_color = vec3(0.0, 0.0, 0.0);
+	vec3 danger_color = vec3(0.55, 0.0, 0.0);
+	vec3 col = mix(mood_color, danger_color, intensity);
+	float alpha = max(v * mood, v * intensity);
+	COLOR = vec4(col, alpha);
 }
 """
 
@@ -81,10 +90,12 @@ func _ready() -> void:
 	busted_overlay.visible = false
 	_build_combat_hud()
 	GameState.health_changed.connect(_update_health)
+	GameState.stamina_changed.connect(_update_stamina)
 	GameState.ammo_changed.connect(_update_ammo)
 	GameState.player_damaged.connect(func(amount, _from): _damage_flash = minf(1.0, _damage_flash + amount / 30.0))
 	GameState.lethal_changed.connect(func(_l): _update_wanted(GameState.wanted))
 	_update_health(GameState.health)
+	_update_stamina(GameState.stamina)
 	_update_ammo(GameState.ammo_mag, GameState.ammo_reserve)
 	# The pause menu belongs to the room, not the HUD, so hiding the HUD
 	# behind the drug menu doesn't hide it too.
@@ -154,6 +165,12 @@ func _build_combat_hud() -> void:
 	_health_fill = ColorRect.new()
 	_health_fill.color = Color(0.85, 0.85, 0.8)
 	add_child(_anchored(_health_fill, Vector2(0, 1), Rect2(70, -42, HEALTH_BAR_W, 10)))
+	var stam_back := ColorRect.new()
+	stam_back.color = Color(0.12, 0.12, 0.12, 1)
+	add_child(_anchored(stam_back, Vector2(0, 1), Rect2(70, -28, HEALTH_BAR_W, 6)))
+	_stamina_fill = ColorRect.new()
+	_stamina_fill.color = Color(0.75, 0.68, 0.3)
+	add_child(_anchored(_stamina_fill, Vector2(0, 1), Rect2(70, -28, HEALTH_BAR_W, 6)))
 
 	# Ammo, bottom right.
 	var ammo_bg := Panel.new()
@@ -191,7 +208,7 @@ func _process(delta: float) -> void:
 	var prompt: String = player.interact_prompt()
 	_prompt.text = ("[E]  " + prompt) if prompt != "" else ""
 	var mode: String = "RELOADING" if w.is_reloading() else w.fire_mode_name()
-	_mode_label.text = "AK  ·  %s" % mode
+	_mode_label.text = "%s  ·  %s" % [w.weapon_name(), mode]
 	_damage_flash = maxf(0.0, _damage_flash - delta * 1.4)
 	var low := clampf(1.0 - GameState.health / 40.0, 0.0, 1.0)
 	_vignette_mat.set_shader_parameter("intensity", clampf(_damage_flash + low * (0.55 + sin(Time.get_ticks_msec() * 0.006) * 0.15), 0.0, 1.0))
@@ -206,6 +223,11 @@ func _update_health(hp: float) -> void:
 	_health_fill.size.x = HEALTH_BAR_W * frac
 	_health_label.text = str(int(ceil(hp)))
 	_health_fill.color = Color(0.85, 0.85, 0.8) if frac > 0.35 else Color(0.85, 0.2, 0.18)
+
+func _update_stamina(stamina: float) -> void:
+	var frac := clampf(stamina / GameState.MAX_STAMINA, 0.0, 1.0)
+	_stamina_fill.size.x = HEALTH_BAR_W * frac
+	_stamina_fill.color = Color(0.75, 0.68, 0.3) if frac > 0.15 else Color(0.6, 0.3, 0.25)
 
 func _update_ammo(mag: int, reserve: int) -> void:
 	_ammo_label.text = str(mag)

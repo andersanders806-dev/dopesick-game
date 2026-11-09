@@ -26,7 +26,7 @@ const HOLD_MAX := 4.0
 const BREAKOUT_LOUDER := 1.5
 ## What holding it in costs: the speed you keep, and how closed in the view gets (0..1).
 const STIFLE_SPEED := 0.6
-const STIFLE_TUNNEL := 0.75
+const STIFLE_TUNNEL := 0.55
 ## How long each kind lasts, and how far it carries next to a plain cough.
 const KINDS := {
 	"sniff": {"len": 0.55, "loud": 0.55},

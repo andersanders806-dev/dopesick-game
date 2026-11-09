@@ -576,13 +576,14 @@ var _graded_env: Environment
 ## The warm side of a dose: an amber wash, a little more colour and bloom, a softer vignette, all
 ## by GameState.high_glow() -- how good the dose felt, fading as it wears off. A dose that feels
 ## flat (tolerance) leaves the grade where it was.
-const HIGH_TINT := Color(1.0, 0.74, 0.42)
-const HIGH_TINT_ALPHA := 0.10
-const HIGH_SATURATION := 0.16
-const HIGH_BRIGHTNESS := 0.05
-const HIGH_BLOOM := 0.12
-const HIGH_GLOW_INTENSITY := 0.35
-const HIGH_VIGNETTE := 0.4
+const HIGH_TINT := Color(1.0, 0.62, 0.32)
+## Added light, not a veil: a warm lift over everything, the way a good dose makes the room glow.
+const HIGH_TINT_ALPHA := 0.16
+const HIGH_SATURATION := 0.28
+const HIGH_BRIGHTNESS := 0.06
+const HIGH_BLOOM := 0.2
+const HIGH_GLOW_INTENSITY := 0.6
+const HIGH_VIGNETTE := 0.5
 var _high_tint: ColorRect
 var _glow_base := Vector2(-1.0, -1.0)
 
@@ -590,6 +591,9 @@ func _build_high_tint() -> void:
 	_high_tint = ColorRect.new()
 	_high_tint.name = "HighTint"
 	_high_tint.color = Color(HIGH_TINT, 0.0)
+	var add := CanvasItemMaterial.new()
+	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_high_tint.material = add
 	_high_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_high_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_high_tint)

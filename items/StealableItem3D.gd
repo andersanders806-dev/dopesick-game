@@ -52,8 +52,10 @@ func interact(player: Node) -> void:
 ## The hand opens and it falls: out of the grab, down to the floor with a clatter that carries (a
 ## noise for the guards), and there to be picked up again.
 func _fumble(player: Node) -> void:
+	# Reaching for it looks like a theft until it slips; once it's on the floor you are just a person
+	# with empty hands standing over something that fell.
 	if player.has_method("begin_theft_window"):
-		player.begin_theft_window(theft_window)
+		player.begin_theft_window(0.5)
 	var grab_delay := 0.0
 	if player.has_method("play_pickup"):
 		grab_delay = player.play_pickup(global_position) * GRAB_POINT
@@ -83,5 +85,7 @@ func _fumble(player: Node) -> void:
 	SFX.play_at("drop", global_position, -5.0, randf_range(0.9, 1.15))
 	GameState.emit_noise(global_position, DROP_NOISE_M, "drop")
 	dropped = true
+	if "is_stealing" in player:
+		player.is_stealing = false
 	collision_layer = _layer
 	add_to_group("interactable")

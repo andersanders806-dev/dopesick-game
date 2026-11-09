@@ -92,6 +92,8 @@ var shutter: Node3D
 var place := ""
 
 var _p: Dictionary
+## Which way the closed leaf runs from its hinge, along the door's x: +1 east hinge no, -1 hinge on the east side.
+var _sx := 1.0
 var _width: float
 var _height: float
 var _latched := true
@@ -151,8 +153,11 @@ func out_sign() -> float:
 ## The side of the leaf a world point is on, in the swing's own sign: the
 ## direction the leaf must go to open away from it.
 func away_from(world_pos: Vector3) -> float:
-	var hl := hinge.global_transform.affine_inverse() * world_pos
-	return 1.0 if hl.z >= 0.0 else -1.0
+	return 1.0 if _hl(world_pos).z >= 0.0 else -1.0
+
+## The free edge of the leaf, in the world (for tests and the hand).
+func tip() -> Vector3:
+	return leaf.global_transform * Vector3(_sx * _width, 1.0, 0.0)
 
 func openness() -> float:
 	return smoothstep(0.0, 0.75, absf(angle))
@@ -171,8 +176,8 @@ func _build() -> void:
 	hinge = Node3D.new()
 	hinge.name = "Hinge"
 	hinge.position = Vector3(hx if hinge_east else -hx, 0.0, 0.0)
-	hinge.rotation.y = PI if hinge_east else 0.0
 	add_child(hinge)
+	_sx = -1.0 if hinge_east else 1.0
 	leaf = AnimatableBody3D.new()
 	leaf.name = "Leaf"
 	leaf.sync_to_physics = true
@@ -183,7 +188,7 @@ func _build() -> void:
 	var box := BoxShape3D.new()
 	box.size = Vector3(_width, _height, _p["thick"])
 	cs.shape = box
-	cs.position = Vector3(_width / 2.0, _height / 2.0, 0.0)
+	cs.position = Vector3(_sx * _width / 2.0, _height / 2.0, 0.0)
 	leaf.add_child(cs)
 	match kind:
 		"shop_glass":
@@ -205,7 +210,7 @@ func _build() -> void:
 	var sb := BoxShape3D.new()
 	sb.size = Vector3(_width + 0.8, 2.2, (_width + 0.9) * 2.0)
 	ss.shape = sb
-	ss.position = Vector3(_width / 2.0, 1.1, 0.0)
+	ss.position = Vector3(_sx * _width / 2.0, 1.1, 0.0)
 	sensor.add_child(ss)
 	sensor.body_entered.connect(_on_body_entered)
 	sensor.body_exited.connect(_on_body_exited)
@@ -247,11 +252,29 @@ func _player3d(unit: float) -> AudioStreamPlayer3D:
 	p.attenuation_filter_cutoff_hz = 9000.0
 	p.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
 	leaf.add_child(p)
-	p.position = Vector3(_width * 0.55, 1.1, 0.0)
+	p.position = Vector3(_sx * _width * 0.55, 1.1, 0.0)
 	return p
 
+## The leaf's picture is drawn running along +x from its hinge; a hinge on the
+## east side mirrors it (the leaf runs west), and its sticker is placed by hand.
+func _visual() -> Node3D:
+	var vis := Node3D.new()
+	vis.name = "Visual"
+	vis.scale.x = _sx
+	leaf.add_child(vis)
+	return vis
+
+## Materials are shared by every door (one resource each, one shader each).
+static var _mats := {}
+## Past this the door isn't drawn at all (m).
+const DRAW_RANGE := 38.0
+
 func _mat(color: Color, metallic := 0.0, rough := 0.6, pbr := "", uv := 1.0) -> StandardMaterial3D:
+	var key := [color, metallic, rough, pbr, uv]
+	if _mats.has(key):
+		return _mats[key]
 	var m := StandardMaterial3D.new()
+	_mats[key] = m
 	m.albedo_color = color
 	m.metallic = metallic
 	m.roughness = rough
@@ -274,6 +297,7 @@ func _box(parent: Node3D, nm: String, size: Vector3, pos: Vector3, mat: Material
 	bm.material = mat
 	mi.mesh = bm
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = DRAW_RANGE
 	parent.add_child(mi)
 	mi.position = pos
 	return mi
@@ -290,6 +314,7 @@ func _cyl(parent: Node3D, nm: String, radius: float, length: float, pos: Vector3
 	cm.material = mat
 	mi.mesh = cm
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.visibility_range_end = DRAW_RANGE
 	parent.add_child(mi)
 	mi.position = pos
 	if along == "x":
@@ -304,9 +329,12 @@ func _build_glass_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var alu := _mat(Color(0.7, 0.71, 0.73), 0.85, 0.38, "metal_brushed", 0.6)
-	var dark := _mat(Color(0.1, 0.1, 0.11), 0.4, 0.5)
-	var glass := StandardMaterial3D.new()
+	var alu := _mat(Color(0.86, 0.87, 0.89), 0.25, 0.5, "metal_brushed", 0.6)
+	var dark := _mat(Color(0.14, 0.14, 0.15), 0.2, 0.55)
+	var glass: StandardMaterial3D = _mats.get("glass")
+	if glass == null:
+		glass = StandardMaterial3D.new()
+		_mats["glass"] = glass
 	glass.albedo_color = Color(0.72, 0.82, 0.86, 0.11)
 	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	glass.roughness = 0.04
@@ -314,17 +342,18 @@ func _build_glass_leaf() -> void:
 	glass.metallic_specular = 0.9
 	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var stile := 0.075
-	var vis := Node3D.new()
-	vis.name = "Visual"
-	leaf.add_child(vis)
+	var vis := _visual()
 	_box(vis, "StileHinge", Vector3(stile, h, t), Vector3(stile / 2.0, h / 2.0, 0), alu)
 	_box(vis, "StileLatch", Vector3(stile, h, t), Vector3(w - stile / 2.0, h / 2.0, 0), alu)
 	_box(vis, "RailTop", Vector3(w - 2.0 * stile, 0.09, t), Vector3(w / 2.0, h - 0.045, 0), alu)
 	_box(vis, "RailBottom", Vector3(w - 2.0 * stile, 0.22, t), Vector3(w / 2.0, 0.11, 0),
-		_mat(Color(0.5, 0.5, 0.5), 0.8, 0.5, "metal_worn", 0.8))
+		_mat(Color(0.62, 0.62, 0.62), 0.25, 0.55, "metal_worn", 0.8))
 	_box(vis, "Glass", Vector3(w - 2.0 * stile, h - 0.31, 0.012), Vector3(w / 2.0, 0.22 + (h - 0.31) / 2.0, 0), glass)
 	# A grubby band where hands go, and a worn edge: a darker thin box behind the glass reads as film.
-	var film := StandardMaterial3D.new()
+	var film: StandardMaterial3D = _mats.get("film")
+	if film == null:
+		film = StandardMaterial3D.new()
+		_mats["film"] = film
 	film.albedo_color = Color(0.5, 0.52, 0.5, 0.07)
 	film.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	film.roughness = 0.9
@@ -340,7 +369,7 @@ func _build_glass_leaf() -> void:
 		_box(vis, "PullPost", Vector3(0.02, 0.02, 0.07), Vector3(w - stile / 2.0, 1.0 + dy, 0.035), alu)
 	# The closer's body on the header, inside; the lock cylinder on the latch stile.
 	_box(vis, "Closer", Vector3(0.24, 0.06, 0.05), Vector3(w * 0.5, h - 0.115, -0.045), dark)
-	_box(vis, "Cylinder", Vector3(0.035, 0.07, 0.03), Vector3(w - stile / 2.0, 0.78, 0.035), _mat(Color(0.75, 0.62, 0.3), 0.9, 0.35))
+	_box(vis, "Cylinder", Vector3(0.035, 0.07, 0.03), Vector3(w - stile / 2.0, 0.78, 0.035), _mat(Color(0.8, 0.66, 0.34), 0.3, 0.4))
 	# Bell on a spring above the latch edge, inside.
 	if _p["bell"]:
 		_cyl(vis, "BellSpring", 0.004, 0.14, Vector3(w - 0.12, h - 0.19, -0.06), dark, "y")
@@ -351,8 +380,10 @@ func _build_glass_leaf() -> void:
 		sm.height = 0.05
 		sm.radial_segments = 10
 		sm.rings = 5
-		sm.material = _mat(Color(0.8, 0.62, 0.25), 0.95, 0.3)
+		sm.material = _mat(Color(0.85, 0.66, 0.3), 0.3, 0.35)
 		bell.mesh = sm
+		bell.visibility_range_end = DRAW_RANGE
+		bell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		vis.add_child(bell)
 		bell.position = Vector3(w - 0.12, h - 0.27, -0.06)
 	_stickers(vis)
@@ -370,9 +401,10 @@ func _stickers(vis: Node3D) -> void:
 	_sticker.modulate = Color(0.92, 0.9, 0.82, 0.92)
 	_sticker.double_sided = false
 	_sticker.shaded = false
+	_sticker.visibility_range_end = 14.0
 	_sticker.no_depth_test = false
-	vis.add_child(_sticker)
-	_sticker.position = Vector3(_width * 0.5, 1.58, 0.012)
+	leaf.add_child(_sticker)
+	_sticker.position = Vector3(_sx * _width * 0.5, 1.58, 0.012)
 
 ## "OPEN 07-22" style text for the street side of the glass.
 func set_hours(text: String) -> void:
@@ -383,21 +415,19 @@ func _build_steel_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var paint := _mat(Color(0.34, 0.38, 0.35), 0.35, 0.8, "metal_worn", 0.8)
-	var steel := _mat(Color(0.55, 0.56, 0.58), 0.9, 0.4, "metal_brushed", 0.6)
-	var vis := Node3D.new()
-	vis.name = "Visual"
-	leaf.add_child(vis)
+	var paint := _mat(Color(0.42, 0.47, 0.43), 0.15, 0.8, "metal_worn", 0.8)
+	var steel := _mat(Color(0.75, 0.76, 0.78), 0.25, 0.5, "metal_brushed", 0.6)
+	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), paint)
 	_box(vis, "KickPlate", Vector3(w - 0.08, 0.28, 0.008), Vector3(w / 2.0, 0.16, 0.03), steel)
 	_box(vis, "KickPlateIn", Vector3(w - 0.08, 0.28, 0.008), Vector3(w / 2.0, 0.16, -0.03), steel)
 	# Panic bar, inside.
-	_box(vis, "PanicBar", Vector3(w - 0.22, 0.07, 0.045), Vector3(w / 2.0 + 0.02, 1.0, -0.06), _mat(Color(0.62, 0.1, 0.08), 0.6, 0.45))
+	_box(vis, "PanicBar", Vector3(w - 0.22, 0.07, 0.045), Vector3(w / 2.0 + 0.02, 1.0, -0.06), _mat(Color(0.7, 0.12, 0.09), 0.2, 0.5))
 	for dx in [-0.4, 0.4]:
 		_box(vis, "PanicMount", Vector3(0.09, 0.14, 0.03), Vector3(w / 2.0 + dx + 0.02, 1.0, -0.04), steel)
 	# Outside: no handle but a lock cylinder and a pull plate.
 	_box(vis, "PullPlate", Vector3(0.1, 0.34, 0.012), Vector3(w - 0.14, 1.0, 0.035), steel)
-	_box(vis, "Cylinder", Vector3(0.04, 0.07, 0.03), Vector3(w - 0.14, 0.78, 0.045), _mat(Color(0.75, 0.62, 0.3), 0.9, 0.35))
+	_box(vis, "Cylinder", Vector3(0.04, 0.07, 0.03), Vector3(w - 0.14, 0.78, 0.045), _mat(Color(0.8, 0.66, 0.34), 0.3, 0.4))
 	_box(vis, "Closer", Vector3(0.3, 0.08, 0.06), Vector3(w * 0.5, h - 0.12, -0.06), _mat(Color(0.12, 0.12, 0.13), 0.5, 0.5))
 	for y in [0.3, 1.0, 1.85]:
 		_cyl(vis, "HingeBarrel", 0.022, 0.12, Vector3(0.0, y, 0.0), steel, "y")
@@ -406,25 +436,26 @@ func _build_bar_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var wood := _mat(Color(0.5, 0.36, 0.28), 0.0, 0.75, "wood_dark", 0.55)
-	var brass := _mat(Color(0.78, 0.6, 0.28), 0.9, 0.35)
-	var vis := Node3D.new()
-	vis.name = "Visual"
-	leaf.add_child(vis)
+	var wood := _mat(Color(0.62, 0.27, 0.21), 0.0, 0.7, "wood_panels", 0.5)
+	var raised := _mat(Color(0.74, 0.33, 0.26), 0.0, 0.65, "wood_panels", 0.5)
+	var brass := _mat(Color(0.85, 0.66, 0.32), 0.3, 0.4)
+	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), wood)
 	# Raised panels, both faces.
 	for side in [-1.0, 1.0]:
 		var z: float = side * (t / 2.0 + 0.004)
-		_box(vis, "PanelLow", Vector3(w - 0.3, 0.7, 0.012), Vector3(w / 2.0, 0.55, z), wood)
-		_box(vis, "PanelHigh", Vector3(w - 0.3, 0.7, 0.012), Vector3(w / 2.0, 1.55, z), wood)
+		_box(vis, "PanelLow", Vector3(w - 0.3, 0.7, 0.024), Vector3(w / 2.0, 0.55, z), raised)
+		_box(vis, "PanelHigh", Vector3(w - 0.3, 0.7, 0.024), Vector3(w / 2.0, 1.55, z), raised)
 	# A small window with the room's glow in it, from outside.
-	var glow := StandardMaterial3D.new()
+	var glow: StandardMaterial3D = _mats.get("barglow")
+	if glow == null:
+		glow = StandardMaterial3D.new()
+		_mats["barglow"] = glow
 	glow.albedo_color = Color(0.5, 0.32, 0.15)
 	glow.emission_enabled = true
 	glow.emission = Color(1.0, 0.62, 0.3)
-	glow.emission_energy_multiplier = 0.8
-	var win := _box(vis, "Window", Vector3(0.34, 0.34, 0.01), Vector3(w / 2.0, 1.55, t / 2.0 + 0.012), glow)
-	win.name = "Window"
+	glow.emission_energy_multiplier = 1.4
+	_box(vis, "Window", Vector3(0.34, 0.34, 0.01), Vector3(w / 2.0, 1.55, t / 2.0 + 0.024), glow)
 	_box(vis, "KickPlate", Vector3(w - 0.1, 0.22, 0.01), Vector3(w / 2.0, 0.13, t / 2.0 + 0.006), brass)
 	_box(vis, "KickPlateIn", Vector3(w - 0.1, 0.22, 0.01), Vector3(w / 2.0, 0.13, -t / 2.0 - 0.006), brass)
 	# Pull outside (+z), plate inside.
@@ -444,7 +475,7 @@ func _build_frame() -> void:
 		"steel_back":
 			trim = _mat(Color(0.28, 0.3, 0.3), 0.5, 0.7, "metal_worn", 0.8)
 		_:
-			trim = _mat(Color(0.65, 0.66, 0.68), 0.8, 0.4, "metal_brushed", 0.6)
+			trim = _mat(Color(0.8, 0.81, 0.83), 0.25, 0.5, "metal_brushed", 0.6)
 	var fh := _height + 0.1
 	var fw := opening
 	var d := 0.14
@@ -454,7 +485,7 @@ func _build_frame() -> void:
 	for s in [-1.0, 1.0]:
 		_box(vis, "Post", Vector3(0.08, fh, d), Vector3(s * (fw / 2.0 + 0.04), fh / 2.0, 0), trim)
 	_box(vis, "Header", Vector3(fw + 0.16, 0.1, d), Vector3(0, fh - 0.0, 0), trim)
-	_box(vis, "Threshold", Vector3(fw, 0.02, d + 0.06), Vector3(0, 0.01, 0), _mat(Color(0.5, 0.5, 0.52), 0.85, 0.45, "metal_worn", 0.8))
+	_box(vis, "Threshold", Vector3(fw, 0.02, d + 0.06), Vector3(0, 0.01, 0), _mat(Color(0.6, 0.6, 0.62), 0.25, 0.5, "metal_worn", 0.8))
 
 # --- Bodies -----------------------------------------------------------------------------
 
@@ -466,8 +497,11 @@ func _on_body_exited(body: Node3D) -> void:
 	_bodies.erase(body.get_instance_id())
 	_seen.erase(body.get_instance_id())
 
+## A world point in the hinge's frame, turned so the closed leaf runs along +x and
+## a positive angle swings it toward -z, whichever side the hinge is on.
 func _hl(world: Vector3) -> Vector3:
-	return hinge.global_transform.affine_inverse() * world
+	var h := hinge.global_transform.affine_inverse() * world
+	return Vector3(h.x * _sx, h.y, h.z * _sx)
 
 ## What each body in the sensor is doing to the door.
 func _update_bodies(dt: float) -> void:
@@ -483,6 +517,7 @@ func _update_bodies(dt: float) -> void:
 		var vel := (pos - prev) / dt
 		var h := _hl(pos)
 		var hv := hinge.global_transform.basis.inverse() * vel
+		hv = Vector3(hv.x * _sx, hv.y, hv.z * _sx)
 		var player := b.is_in_group("player")
 		# Where the leaf is across this body's x: it pushes if the leaf is ahead.
 		var dir := 1.0 if h.z >= 0.0 else -1.0
@@ -546,7 +581,7 @@ func _reach_hand() -> void:
 		return
 	var hands: Object = player.get("story_hands")
 	if hands != null and hands.has_method("reach"):
-		var handle := leaf.global_transform * Vector3(_width * 0.8, 1.0, 0.0)
+		var handle := leaf.global_transform * Vector3(_sx * _width * 0.8, 1.0, 0.0)
 		hands.call("reach", handle, true)
 
 # --- Locked ------------------------------------------------------------------------------

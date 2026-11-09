@@ -88,7 +88,7 @@ func _bare_door_checks() -> void:
 		await physics_frame
 		if absf(door.angle) > absf(peak):
 			peak = door.angle
-			tip_z = (door.leaf.global_transform * Vector3(1.0, 1.0, 0.0)).z
+			tip_z = door.tip().z
 		if m.global_position.z < -1.6:
 			break
 	_check(m.global_position.z < -1.0, "  walking in from outside gets you through (z %.2f)" % m.global_position.z)
@@ -112,7 +112,7 @@ func _bare_door_checks() -> void:
 		await physics_frame
 		if absf(door.angle) > absf(peak):
 			peak = door.angle
-			tip_z = (door.leaf.global_transform * Vector3(1.0, 1.0, 0.0)).z
+			tip_z = door.tip().z
 		if m.global_position.z > 1.6:
 			break
 	_check(m.global_position.z > 1.0 and absf(peak) > 0.5 and tip_z > 0.2, "  from inside it swings out, away from you (peak %.0f deg, tip z %.2f)" % [rad_to_deg(peak), tip_z])

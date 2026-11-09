@@ -26,7 +26,8 @@ extends "res://dev-tools/playtest_bot.gd"
 ##   key <NAME>                 tap a key: J, T, N, ESCAPE, TAB, F3, SPACE...
 ##   pad <BUTTON>               tap a DualSense button: CROSS CIRCLE SQUARE
 ##                              TRIANGLE OPTIONS TOUCHPAD L1 R1 L3 R3 DPAD_RIGHT
-##   hold <action> <seconds>    hold an input action (move_up, sprint, fire...)
+##   hold <action>[+<action>] <seconds>   hold input actions (move_up, sprint, fire...)
+##   holdshots <action>[+..] <seconds> <n> <label>   hold, with n screenshots on the way
 ##   look <yaw_deg> [pitch]     turn the first-person view (0 faces -Z, 90 faces -X)
 ##   tp <x> <z>                 stand there, no walking
 ##   closeup <NodeName>         a camera 2.4 m in front of it, at chest height
@@ -180,13 +181,33 @@ func _do(step: String) -> bool:
 				return false
 			await _tap_pad(PAD_BUTTONS[arg.to_upper()])
 		"hold":
-			var a := parts[1] if parts.size() > 1 else ""
-			if not InputMap.has_action(a):
-				log_line("no input action " + a)
-				return false
-			Input.action_press(a)
+			# hold <action>[+<action>...] <seconds>: e.g. hold move_up+sprint 1.2
+			var acts := (parts[1] if parts.size() > 1 else "").split("+")
+			for a in acts:
+				if not InputMap.has_action(a):
+					log_line("no input action " + a)
+					return false
+			for a in acts:
+				Input.action_press(a)
 			await _wait(float(parts[2]) if parts.size() > 2 else 1.0)
-			Input.action_release(a)
+			for a in acts:
+				Input.action_release(a)
+		"holdshots":
+			# holdshots <action>[+<action>...] <seconds> <n> <label>: hold, taking n screenshots evenly.
+			var acts2 := (parts[1] if parts.size() > 1 else "").split("+")
+			for a in acts2:
+				if not InputMap.has_action(a):
+					log_line("no input action " + a)
+					return false
+			var secs := float(parts[2])
+			var n := int(parts[3])
+			for a in acts2:
+				Input.action_press(a)
+			for k in n:
+				await _wait(secs / n)
+				await screenshot("%s%d" % [parts[4] if parts.size() > 4 else "hold", k])
+			for a in acts2:
+				Input.action_release(a)
 		"closeup":
 			var target := current_scene.find_child(arg, true, false) as Node3D
 			if target == null:

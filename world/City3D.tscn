@@ -6445,7 +6445,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9646363, 0)
 shape = SubResource("BoxShape3D_8mkej")
 
 [node name="NewsstandMainW" type="StaticBody3D" parent="Cell_Main" unique_id=565568255]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -28.1, 1.2, -2.625)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -29.9, 1.2, -2.625)
 collision_mask = 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Cell_Main/NewsstandMainW" unique_id=279679214]

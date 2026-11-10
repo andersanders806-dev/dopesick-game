@@ -32,8 +32,8 @@ const PatrolScript := preload("res://npc/PatrolCop3D.gd")
 ## places to go; these are the passers-by.
 const WALKS := [
 	{"points": [
-		Vector3(-66.6, 0, -2.6), Vector3(-53.0, 0, -2.6), Vector3(-29.6, 0, -2.6), Vector3(-29.0, 0, -3.9),
-		Vector3(-27.2, 0, -3.9), Vector3(-26.5, 0, -3.1), Vector3(3.5, 0, -3.1), Vector3(25.9, 0, -3.1),
+		Vector3(-66.6, 0, -2.6), Vector3(-53.0, 0, -2.6), Vector3(-31.4, 0, -2.6), Vector3(-30.8, 0, -3.9),
+		Vector3(-29.0, 0, -3.9), Vector3(-28.3, 0, -3.1), Vector3(3.5, 0, -3.1), Vector3(25.9, 0, -3.1),
 		Vector3(26.6, 0, -3.9), Vector3(28.6, 0, -3.9), Vector3(29.3, 0, -2.6), Vector3(47.0, 0, -2.6),
 		Vector3(66.6, 0, -2.6), Vector3(66.6, 0, -47.8), Vector3(67.5, 0, -48.4), Vector3(67.5, 0, -51.6),
 		Vector3(66.6, 0, -52.2), Vector3(66.6, 0, -85.6), Vector3(53.6, 0, -85.6), Vector3(53.0, 0, -87.0),
@@ -45,8 +45,8 @@ const WALKS := [
 		"doors": [1, 6, 11, 26, 36]},
 	{"points": [
 		Vector3(76.2, 0, -2.35), Vector3(29.2, 0, -2.35), Vector3(28.6, 0, -3.9), Vector3(26.8, 0, -3.9),
-		Vector3(26.2, 0, -2.2), Vector3(17.5, 0, -2.2), Vector3(-26.2, 0, -2.2), Vector3(-27.2, 0, -3.9),
-		Vector3(-29.0, 0, -3.9), Vector3(-29.6, 0, -2.35), Vector3(-61.0, 0, -2.35), Vector3(-76.2, 0, -2.35),
+		Vector3(26.2, 0, -2.2), Vector3(17.5, 0, -2.2), Vector3(-28.0, 0, -2.2), Vector3(-29.0, 0, -3.9),
+		Vector3(-30.8, 0, -3.9), Vector3(-31.4, 0, -2.35), Vector3(-61.0, 0, -2.35), Vector3(-76.2, 0, -2.35),
 		Vector3(-76.2, 0, -45.6), Vector3(-74.9, 0, -46.2), Vector3(-74.9, 0, -49.8), Vector3(-76.2, 0, -50.4),
 		Vector3(-76.2, 0, -57.0), Vector3(-76.2, 0, -95.0), Vector3(-23.4, 0, -95.0), Vector3(-22.8, 0, -96.2),
 		Vector3(-21.2, 0, -96.2), Vector3(-20.6, 0, -95.0), Vector3(-10.0, 0, -95.0), Vector3(10.2, 0, -95.0),

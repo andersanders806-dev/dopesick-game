@@ -31,15 +31,18 @@ void fragment() {
 
 	vec3 col = texture(screen_tex, uv).rgb;
 
-	// Double vision: a ghost of the frame drifting in and out beside it.
-	vec2 ghost = vec2(sin(TIME * 0.55), cos(TIME * 0.4)) * 0.012 * s;
-	col = mix(col, texture(screen_tex, uv + ghost).rgb, 0.22 * s);
+	// (Well, with only the dose's bloom showing, the sickness' extra looks at the frame are skipped.)
+	if (s > 0.001) {
+		// Double vision: a ghost of the frame drifting in and out beside it.
+		vec2 ghost = vec2(sin(TIME * 0.55), cos(TIME * 0.4)) * 0.012 * s;
+		col = mix(col, texture(screen_tex, uv + ghost).rgb, 0.22 * s);
 
-	// Chromatic fringing, strongest toward the edges.
-	float edge = dot(centered, centered) * 4.0;
-	vec2 ca = centered * 0.012 * s * edge;
-	col.r = mix(col.r, texture(screen_tex, uv + ca).r, s);
-	col.b = mix(col.b, texture(screen_tex, uv - ca).b, s);
+		// Chromatic fringing, strongest toward the edges.
+		float edge = dot(centered, centered) * 4.0;
+		vec2 ca = centered * 0.012 * s * edge;
+		col.r = mix(col.r, texture(screen_tex, uv + ca).r, s);
+		col.b = mix(col.b, texture(screen_tex, uv - ca).b, s);
+	}
 
 	// Drain the colour.
 	float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -47,12 +50,11 @@ void fragment() {
 
 	if (high > 0.001) {
 		vec3 bl = vec3(0.0);
-		for (int i = 0; i < 8; i++) {
-			float a = float(i) * 0.785398;
-			vec2 o = vec2(cos(a), sin(a));
-			bl += texture(screen_tex, uv + o * 0.007).rgb + texture(screen_tex, uv + o * 0.017).rgb;
+		for (int i = 0; i < 6; i++) {
+			float a = float(i) * 1.047198 + 0.3;
+			bl += texture(screen_tex, uv + vec2(cos(a), sin(a)) * 0.011).rgb;
 		}
-		bl /= 16.0;
+		bl /= 6.0;
 		col += max(bl - vec3(0.55), vec3(0.0)) * 0.9 * high;       // light bleeding off the bright parts
 		col = mix(col, 0.5 * (col + bl), 0.35 * high);               // everything a little softer
 		col *= mix(vec3(1.0), vec3(1.14, 0.99, 0.76), high);         // golden

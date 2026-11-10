@@ -3,7 +3,7 @@ extends SceneTree
 ## frame time looking round the shop on Medium. For the before/after of the sick-stealth branch: it only
 ## uses what the base has, so the same file runs on both.
 ##   flock /home/anders/dopesick-game/.perf.lock flatpak run org.godotengine.Godot --path . \
-##     -s res://dev-tools/perf_sick_shop_probe.gd -- [craving]
+##     -s res://dev-tools/perf_sick_shop_probe.gd -- [craving] [dose]
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	var args := OS.get_cmdline_user_args()
@@ -27,6 +27,11 @@ func _initialize() -> void:
 	player.global_position = Vector3(3.5, 0.0, -9.0)
 	for i in 120:
 		await process_frame
+	# "dose": the first dose has just landed, so the golden wash is up for the measurement (the base has none).
+	if args.size() > 1 and args[1] == "dose":
+		gs.take_drug("heroin", 1.0, 0.0)
+		for i in 240:
+			await process_frame
 	var rid := root.get_viewport().get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(rid, true)
 	var gpu: Array = []

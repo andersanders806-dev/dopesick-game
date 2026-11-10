@@ -4,8 +4,10 @@ extends Area3D
 
 var door: Node3D
 
+## Not an "interactable" and on no collision layer unless a scene puts it on one:
+## kept as the door's E handler for whoever wants the door itself to be used.
 func _ready() -> void:
-	add_to_group("interactable")
+	pass
 
 func interact(player: Node) -> void:
 	if door == null:

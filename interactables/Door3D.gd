@@ -49,20 +49,46 @@ func _install_hinged() -> void:
 		hinged.door_width = 1.12
 		hinged.opening = 1.2
 		hinged.frame = true
-	add_child(hinged)
+	# Placed before it enters the tree: its leaf is an AnimatableBody3D that keeps
+	# the transform it came in with.
 	hinged.position = off
 	hinged.rotation.y = atan2(approach.x, approach.z)
+	add_child(hinged)
 	_dark_behind(from_street)
 	if from_street:
 		_leak_music()
 	else:
 		_open_wall()
+		_exit_lamp(approach)
+
+## The room's way out is lit: an EXIT sign over it and its red glow on the door.
+func _exit_lamp(approach: Vector3) -> void:
+	var sign := Label3D.new()
+	sign.name = "ExitSign"
+	sign.text = "EXIT"
+	sign.font_size = 44
+	sign.pixel_size = 0.0025
+	sign.shaded = false
+	sign.outline_size = 0
+	sign.modulate = Color(1.0, 0.28, 0.2)
+	sign.double_sided = false
+	add_child(sign)
+	sign.position = hinged.position + approach * 0.12 + Vector3(0, 2.38, 0)
+	sign.rotation.y = hinged.rotation.y
+	var lamp := OmniLight3D.new()
+	lamp.name = "ExitGlow"
+	lamp.light_color = Color(1.0, 0.45, 0.32)
+	lamp.light_energy = 1.1
+	lamp.omni_range = 3.4
+	lamp.shadow_enabled = false
+	add_child(lamp)
+	lamp.position = hinged.position + approach * 0.7 + Vector3(0, 2.0, 0)
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
 func _dark_behind(from_street: bool) -> void:
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.02, 0.012, 0.01))
-	grad.set_color(1, Color(0.16, 0.09, 0.05) if from_street else Color(0.03, 0.04, 0.07))
+	grad.set_color(0, Color(0.02, 0.012, 0.01) if from_street else Color(0.03, 0.04, 0.07))
+	grad.set_color(1, Color(0.16, 0.09, 0.05) if from_street else Color(0.13, 0.17, 0.27))
 	var gt := GradientTexture2D.new()
 	gt.gradient = grad
 	gt.fill_from = Vector2(0.5, 1.0)
@@ -133,7 +159,14 @@ func _open_wall() -> void:
 	q.size = Vector2(6.0, 3.2)
 	var bm2 := StandardMaterial3D.new()
 	bm2.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bm2.albedo_color = Color(0.035, 0.04, 0.06)
+	var ng := Gradient.new()
+	ng.set_color(0, Color(0.025, 0.03, 0.045))
+	ng.set_color(1, Color(0.11, 0.14, 0.24))
+	var ngt := GradientTexture2D.new()
+	ngt.gradient = ng
+	ngt.fill_from = Vector2(0.5, 1.0)
+	ngt.fill_to = Vector2(0.5, 0.0)
+	bm2.albedo_texture = ngt
 	q.material = bm2
 	back.mesh = q
 	wall.add_child(back)

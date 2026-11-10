@@ -218,7 +218,9 @@ func _build() -> void:
 	touch = Area3D.new()
 	touch.name = "Touch"
 	touch.set_script(TouchScript)
-	touch.collision_layer = 4
+	# (Not in the player's reach: a door you walk through has no prompt, a locked
+	# shop one is answered by its gate (ShopGate3D), the bar's by Door3D.)
+	touch.collision_layer = 0
 	touch.collision_mask = 0
 	touch.monitoring = false
 	touch.set("door", self)
@@ -449,8 +451,8 @@ func _build_bar_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var wood := _mat(Color(0.62, 0.27, 0.21), 0.0, 0.7, "wood_panels", 0.5)
-	var raised := _mat(Color(0.74, 0.33, 0.26), 0.0, 0.65, "wood_panels", 0.5)
+	var wood := _mat(Color(0.8, 0.38, 0.29), 0.0, 0.7, "wood_panels", 0.5)
+	var raised := _mat(Color(0.95, 0.46, 0.35), 0.0, 0.65, "wood_panels", 0.5)
 	var brass := _mat(Color(0.85, 0.66, 0.32), 0.3, 0.4)
 	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), wood)
@@ -467,8 +469,11 @@ func _build_bar_leaf() -> void:
 	glow.albedo_color = Color(0.5, 0.32, 0.15)
 	glow.emission_enabled = true
 	glow.emission = Color(1.0, 0.62, 0.3)
-	glow.emission_energy_multiplier = 1.4
+	glow.emission_energy_multiplier = 0.65
 	_box(vis, "Window", Vector3(0.34, 0.34, 0.01), Vector3(w / 2.0, 1.55, t / 2.0 + 0.024), glow)
+	var mull := _mat(Color(0.12, 0.08, 0.06), 0.0, 0.7)
+	_box(vis, "MullionV", Vector3(0.025, 0.36, 0.012), Vector3(w / 2.0, 1.55, t / 2.0 + 0.03), mull)
+	_box(vis, "MullionH", Vector3(0.36, 0.025, 0.012), Vector3(w / 2.0, 1.55, t / 2.0 + 0.03), mull)
 	_box(vis, "KickPlate", Vector3(w - 0.1, 0.22, 0.01), Vector3(w / 2.0, 0.13, t / 2.0 + 0.006), brass)
 	_box(vis, "KickPlateIn", Vector3(w - 0.1, 0.22, 0.01), Vector3(w / 2.0, 0.13, -t / 2.0 - 0.006), brass)
 	# Pull outside (+z), plate inside.

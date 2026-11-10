@@ -46,7 +46,8 @@ const PROP_HEIGHT := 3.0
 const LIGHT_FADE_BEGIN := 9.0
 const LIGHT_FADE_LENGTH := 8.0
 ## Parts of a building (shop doors, signs) and what isn't drawn: never props.
-const NOT_PROPS := ["Door", "Sign", "Hours", "Building", "Bounds", "Number", "Streetlight", "Lamp"]
+## ("WalkIn": a shop on the street, its room is built into it later and its front door is a mesh now.)
+const NOT_PROPS := ["Door", "Sign", "Hours", "Building", "Bounds", "Number", "Streetlight", "Lamp", "WalkIn"]
 
 signal cell_changed(cell: Node3D, awake: bool)
 

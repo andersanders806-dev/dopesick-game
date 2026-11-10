@@ -345,6 +345,9 @@ func _bar_checks(gs: Node) -> void:
 		await physics_frame
 		t += 1
 	_check(ihd != null and ihd.is_closed(), "  ...and it latches shut (%.1f s)" % [t / 60.0])
+	# Closed, its leaf lies along the wall (the door faces the room), not sticking out of it.
+	var along := absf(ihd.tip().x - ihd.hinge.global_position.x) < 0.15 and absf(ihd.tip().z - ihd.hinge.global_position.z) > 0.9
+	_check(ihd != null and along, "  ...and the leaf lies in the wall's doorway (tip %s, hinge %s)" % [ihd.tip().snapped(Vector3.ONE * 0.01), ihd.hinge.global_position.snapped(Vector3.ONE * 0.01)])
 	inside_door.interact(p)
 	await _frames(10)
 	await _transition()

@@ -282,8 +282,7 @@ func _refresh_gate() -> void:
 	(get_node("Locked") as CollisionObject3D).collision_layer = 4 if shut else 0
 	if door != null:
 		door.set_locked(shut)
-		# (The door's own E reach is on only while it isn't locked: the gate answers when it is.)
-		(door.touch as CollisionObject3D).collision_layer = 0 if shut else 4
+		# (The gate answers E at a locked door; an unlocked one you walk through, so the door's own reach is off.)
 		if door.shutter == null:
 			door.shutter = _shutter_node()
 

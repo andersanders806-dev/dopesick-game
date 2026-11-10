@@ -53,9 +53,9 @@ void fragment() {
 	float top = clamp(normalize(NORMAL).y, 0.0, 1.0);
 	col = mix(col, vec3(0.2, 0.18, 0.15), flutter.z * (0.25 + 0.35 * vnoise(lp * 5.0 + seed)) * (1.0 - 0.5 * top));
 	ALBEDO = col * (1.0 - wet * 0.25);
-	ROUGHNESS = mix(0.62, 0.3, wet) * (0.8 + 0.4 * folds);
-	SPECULAR = mix(0.45, 0.7, wet);
+	ROUGHNESS = mix(0.62, 0.5, wet) * (0.85 + 0.3 * folds);
+	SPECULAR = mix(0.45, 0.55, wet);
 	// The cloth's own crinkle, as a nudge to the normal.
 	vec3 g = vec3(vnoise(lp * 14.0 + seed) - 0.5, vnoise(lp * 14.0 + seed + 9.0) - 0.5, vnoise(lp * 14.0 + seed + 21.0) - 0.5);
-	NORMAL = normalize(NORMAL + (VIEW_MATRIX * MODEL_MATRIX * vec4(g, 0.0)).xyz * 0.35);
+	NORMAL = normalize(NORMAL + (VIEW_MATRIX * MODEL_MATRIX * vec4(g, 0.0)).xyz * mix(0.35, 0.16, wet));
 }

@@ -123,6 +123,7 @@ func _run() -> void:
 	_check(van != null and van.find_children("*", "OmniLight3D", false, false).size() == 2 and van.find_children("*", "AudioStreamPlayer3D", false, false).size() == 1,
 		"  a van double-parked on East Ave with hazard lamps and the relay's tick")
 	if van != null:
+		_check(van.find_children("*", "OmniLight3D", false, false).all(func(l: Node) -> bool: return l.is_in_group("always_lit")), "  ...its lamps are tagged so the street's after-dark switch check leaves them to the blink")
 		var mat: StandardMaterial3D = null
 		for mi in van.find_children("*", "MeshInstance3D", false, false):
 			if (mi as MeshInstance3D).material_override is StandardMaterial3D and ((mi as MeshInstance3D).material_override as StandardMaterial3D).emission_enabled:

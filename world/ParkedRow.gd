@@ -569,8 +569,8 @@ func _decal(tex: String, size: Vector3) -> Decal:
 	d.upper_fade = 0.1
 	d.lower_fade = 0.1
 	d.distance_fade_enabled = true
-	d.distance_fade_begin = 36.0
-	d.distance_fade_length = 12.0
+	d.distance_fade_begin = 24.0
+	d.distance_fade_length = 8.0
 	return d
 
 func _on_weather(raining: bool) -> void:
@@ -818,6 +818,8 @@ func _build_hazards(van: Node3D, box: AABB) -> void:
 		light.shadow_enabled = false
 		light.position = Vector3(((box.end.x + 0.5) if end > 0.0 else (box.position.x - 0.5)), 0.8, 0.0)
 		light.visible = false
+		# Switched by the blink and the hour here, not by the street's night lights.
+		light.add_to_group("always_lit", true)
 		van.add_child(light)
 		_hazard_lights.append(light)
 	_hazard_sound = AudioStreamPlayer3D.new()

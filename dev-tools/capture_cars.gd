@@ -42,9 +42,13 @@ func _do(step: String) -> bool:
 			dc.current = true
 			var total := float(parts[9])
 			var t := 0.0
+			var last := Time.get_ticks_usec()
 			while t < total:
 				await process_frame
-				t += get_process_delta_time()
+				# A movie runs on a fixed 30 fps clock whatever the wall clock says.
+				var now := Time.get_ticks_usec()
+				t += 1.0 / 30.0 if OS.has_feature("movie") else (now - last) / 1e6
+				last = now
 				var f := clampf(t / total, 0.0, 1.0)
 				dc.global_position = a.lerp(b2, f) + Vector3(0, sin(t * TAU * 1.7) * 0.02, 0)
 				dc.rotation = Vector3(deg_to_rad(float(parts[8]) + sin(t * TAU * 0.85) * 0.4), deg_to_rad(float(parts[7]) + sin(t * 0.7) * 1.5), 0.0)

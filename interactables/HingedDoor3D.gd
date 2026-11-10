@@ -269,7 +269,7 @@ func _visual() -> Node3D:
 ## Materials are shared by every door (one resource each, one shader each).
 static var _mats := {}
 ## Past this the door isn't drawn at all (m).
-const DRAW_RANGE := 38.0
+const DRAW_RANGE := 26.0
 
 func _mat(color: Color, metallic := 0.0, rough := 0.6, pbr := "", uv := 1.0) -> StandardMaterial3D:
 	var key := [color, metallic, rough, pbr, uv]
@@ -349,7 +349,7 @@ func _build_glass_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var alu := _mat(Color(0.86, 0.87, 0.89), 0.25, 0.5, "metal_brushed", 0.6)
+	var alu := _mat(Color(0.74, 0.75, 0.77), 0.3, 0.45)
 	var dark := _mat(Color(0.14, 0.14, 0.15), 0.2, 0.55)
 	var glass: StandardMaterial3D = _mats.get("glass")
 	if glass == null:
@@ -367,17 +367,8 @@ func _build_glass_leaf() -> void:
 	_box(vis, "StileLatch", Vector3(stile, h, t), Vector3(w - stile / 2.0, h / 2.0, 0), alu)
 	_box(vis, "RailTop", Vector3(w - 2.0 * stile, 0.09, t), Vector3(w / 2.0, h - 0.045, 0), alu)
 	_box(vis, "RailBottom", Vector3(w - 2.0 * stile, 0.22, t), Vector3(w / 2.0, 0.11, 0),
-		_mat(Color(0.62, 0.62, 0.62), 0.25, 0.55, "metal_worn", 0.8))
+		_mat(Color(0.52, 0.52, 0.53), 0.3, 0.55))
 	_box(vis, "Glass", Vector3(w - 2.0 * stile, h - 0.31, 0.012), Vector3(w / 2.0, 0.22 + (h - 0.31) / 2.0, 0), glass)
-	# A grubby band where hands go, and a worn edge: a darker thin box behind the glass reads as film.
-	var film: StandardMaterial3D = _mats.get("film")
-	if film == null:
-		film = StandardMaterial3D.new()
-		_mats["film"] = film
-	film.albedo_color = Color(0.5, 0.52, 0.5, 0.07)
-	film.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	film.roughness = 0.9
-	_box(vis, "Grime", Vector3(w - 2.0 * stile, 0.5, 0.004), Vector3(w / 2.0, 0.95, 0.008), film)
 	# Inside (-z): push bar on two standoffs.
 	var bar_x := w - 0.1 - 0.22
 	_cyl(vis, "PushBar", 0.016, 0.52, Vector3(bar_x, 1.0, -0.055), alu)
@@ -430,7 +421,7 @@ func _build_steel_leaf() -> void:
 	var h := _height
 	var t: float = _p["thick"]
 	var paint := _mat(Color(0.42, 0.47, 0.43), 0.15, 0.8, "metal_worn", 0.8)
-	var steel := _mat(Color(0.75, 0.76, 0.78), 0.25, 0.5, "metal_brushed", 0.6)
+	var steel := _mat(Color(0.64, 0.65, 0.67), 0.3, 0.5)
 	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), paint)
 	_box(vis, "KickPlate", Vector3(w - 0.08, 0.28, 0.008), Vector3(w / 2.0, 0.16, 0.03), steel)
@@ -452,7 +443,7 @@ func _build_bar_leaf() -> void:
 	var h := _height
 	var t: float = _p["thick"]
 	var wood := _mat(Color(0.8, 0.38, 0.29), 0.0, 0.7, "wood_panels", 0.5)
-	var raised := _mat(Color(0.95, 0.46, 0.35), 0.0, 0.65, "wood_panels", 0.5)
+	var raised := _mat(Color(0.7, 0.32, 0.25), 0.0, 0.65)
 	var brass := _mat(Color(0.85, 0.66, 0.32), 0.3, 0.4)
 	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), wood)
@@ -466,10 +457,10 @@ func _build_bar_leaf() -> void:
 	if glow == null:
 		glow = StandardMaterial3D.new()
 		_mats["barglow"] = glow
-	glow.albedo_color = Color(0.5, 0.32, 0.15)
+	glow.albedo_color = Color(0.32, 0.2, 0.1)
 	glow.emission_enabled = true
 	glow.emission = Color(1.0, 0.62, 0.3)
-	glow.emission_energy_multiplier = 0.65
+	glow.emission_energy_multiplier = 0.28
 	_box(vis, "Window", Vector3(0.34, 0.34, 0.01), Vector3(w / 2.0, 1.55, t / 2.0 + 0.024), glow)
 	var mull := _mat(Color(0.12, 0.08, 0.06), 0.0, 0.7)
 	_box(vis, "MullionV", Vector3(0.025, 0.36, 0.012), Vector3(w / 2.0, 1.55, t / 2.0 + 0.03), mull)
@@ -490,11 +481,11 @@ func _build_frame() -> void:
 	var trim: StandardMaterial3D
 	match kind:
 		"bar":
-			trim = _mat(Color(0.5, 0.22, 0.18), 0.0, 0.75, "wood_panels", 0.5)
+			trim = _mat(Color(0.42, 0.19, 0.15), 0.0, 0.75)
 		"steel_back":
-			trim = _mat(Color(0.28, 0.3, 0.3), 0.5, 0.7, "metal_worn", 0.8)
+			trim = _mat(Color(0.28, 0.3, 0.3), 0.4, 0.7)
 		_:
-			trim = _mat(Color(0.8, 0.81, 0.83), 0.25, 0.5, "metal_brushed", 0.6)
+			trim = _mat(Color(0.7, 0.71, 0.73), 0.3, 0.45)
 	var fh := _height + 0.1
 	var fw := opening
 	var d := 0.14
@@ -504,7 +495,7 @@ func _build_frame() -> void:
 	for s in [-1.0, 1.0]:
 		_box(vis, "Post", Vector3(0.08, fh, d), Vector3(s * (fw / 2.0 + 0.04), fh / 2.0, 0), trim)
 	_box(vis, "Header", Vector3(fw + 0.16, 0.1, d), Vector3(0, fh - 0.0, 0), trim)
-	_box(vis, "Threshold", Vector3(fw, 0.02, d + 0.06), Vector3(0, 0.01, 0), _mat(Color(0.6, 0.6, 0.62), 0.25, 0.5, "metal_worn", 0.8))
+	_box(vis, "Threshold", Vector3(fw, 0.02, d + 0.06), Vector3(0, 0.01, 0), _mat(Color(0.5, 0.5, 0.52), 0.3, 0.5))
 	_commit(vis, "frame")
 
 # --- Bodies -----------------------------------------------------------------------------

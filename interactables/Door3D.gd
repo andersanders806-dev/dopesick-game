@@ -77,8 +77,8 @@ func _exit_lamp(approach: Vector3) -> void:
 	sign.rotation.y = hinged.rotation.y
 	var lamp := OmniLight3D.new()
 	lamp.name = "ExitGlow"
-	lamp.light_color = Color(1.0, 0.45, 0.32)
-	lamp.light_energy = 1.1
+	lamp.light_color = Color(1.0, 0.55, 0.42)
+	lamp.light_energy = 0.45
 	lamp.omni_range = 3.4
 	lamp.shadow_enabled = false
 	add_child(lamp)

@@ -578,11 +578,11 @@ var _graded_env: Environment
 ## flat (tolerance) leaves the grade where it was.
 const HIGH_TINT := Color(1.0, 0.62, 0.32)
 ## Added light, not a veil: a warm lift over everything, the way a good dose makes the room glow.
-const HIGH_TINT_ALPHA := 0.10
+const HIGH_TINT_ALPHA := 0.035
 const HIGH_SATURATION := 0.28
-const HIGH_BRIGHTNESS := 0.06
+const HIGH_BRIGHTNESS := 0.02
 const HIGH_BLOOM := 0.2
-const HIGH_GLOW_INTENSITY := 0.6
+const HIGH_GLOW_INTENSITY := 0.3
 const HIGH_VIGNETTE := 0.5
 var _high_tint: ColorRect
 var _glow_base := Vector2(-1.0, -1.0)
@@ -678,7 +678,12 @@ func show_subtitle(text: String, secs := 2.5, kind := "line", speaker := "") -> 
 	_sub_t = secs
 	_sub_len = secs
 	_sub.visible = true
-	_sub.reset_size()
+	# Centred on its anchor whatever the width of the words.
+	var sz := _sub.get_combined_minimum_size()
+	_sub.offset_left = -sz.x * 0.5
+	_sub.offset_right = sz.x * 0.5
+	_sub.offset_top = -sz.y * 0.5
+	_sub.offset_bottom = sz.y * 0.5
 
 func _tick_subtitle(delta: float) -> void:
 	if _sub == null or not _sub.visible:

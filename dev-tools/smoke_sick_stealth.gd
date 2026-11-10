@@ -105,7 +105,9 @@ func _run() -> void:
 	gs.craving = 95.0
 	await _frames(6)
 	var tint_naive: float = hud._high_tint.color.a if hud and hud._high_tint else -1.0
-	_check(tint_naive > 0.07, "naive: the HUD washes the frame warm (alpha %.3f)" % tint_naive)
+	var hud_mat: ShaderMaterial = hud.get_node("PostFX").material
+	_check(tint_naive > 0.025 and float(hud_mat.get_shader_parameter("high")) > 0.9 and hud_mat.shader == hud.POST_FULL,
+		"naive: the HUD washes the frame golden (tint alpha %.3f, bloom shader high %.2f)" % [tint_naive, float(hud_mat.get_shader_parameter("high"))])
 	var sfx := root.get_node("SFX")
 	_check(sfx._boost_db > 2.5, "  and the music swells (%.1f dB)" % sfx._boost_db)
 	gs.tolerance["opioid"] = 8.0
@@ -117,7 +119,7 @@ func _run() -> void:
 	await _frames(6)
 	var feel_tol: float = gs.high_felt
 	var tint_tol: float = hud._high_tint.color.a if hud and hud._high_tint else -1.0
-	_check(feel_tol < 0.3 and tint_tol < tint_naive * 0.4, "tolerant: flat -- feel %.2f, the wash %.3f against %.3f" % [feel_tol, tint_tol, tint_naive])
+	_check(feel_tol < 0.3 and tint_tol < tint_naive * 0.4 and float(hud_mat.get_shader_parameter("high")) < 0.3, "tolerant: flat -- feel %.2f, the wash %.3f against %.3f" % [feel_tol, tint_tol, tint_naive])
 	_check(sfx._boost_db < 1.2, "  and the music barely moves (%.1f dB)" % sfx._boost_db)
 	# Methadone has no lift at all.
 	_fresh(gs, 20.0)

@@ -53,10 +53,10 @@ void fragment() {
 			bl += texture(screen_tex, uv + o * 0.007).rgb + texture(screen_tex, uv + o * 0.017).rgb;
 		}
 		bl /= 16.0;
-		col += max(bl - vec3(0.32), vec3(0.0)) * 1.8 * high;       // light bleeding off the bright parts
-		col = mix(col, 0.5 * (col + bl), 0.45 * high);               // everything a little softer
-		col *= mix(vec3(1.0), vec3(1.22, 1.04, 0.76), high);         // golden
-		col += vec3(0.08, 0.045, 0.0) * high;                        // and lifted
+		col += max(bl - vec3(0.55), vec3(0.0)) * 0.9 * high;       // light bleeding off the bright parts
+		col = mix(col, 0.5 * (col + bl), 0.35 * high);               // everything a little softer
+		col *= mix(vec3(1.0), vec3(1.14, 0.99, 0.76), high);         // golden
+		col += vec3(0.025, 0.012, 0.0) * high;                        // and lifted
 	}
 
 	// Vignette, closing in on each heartbeat.

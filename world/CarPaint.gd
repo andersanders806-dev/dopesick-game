@@ -103,20 +103,20 @@ static func glass_parked() -> ShaderMaterial:
 ## How worn one car is, from a seed: x dirt (0.5 is the old fixed look), y
 ## rust, z dust on the roof and rear glass, w the noise seed. The taxi and
 ## the cruiser are kept up: clean-ish and never rusty.
-static func wear_for(seed_: int, livery: bool) -> Color:
+static func wear_for(seed_: int, livery: bool) -> Vector4:
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_ * 7919 + 13
 	var rust := 0.0 if r.randf() < 0.4 else r.randf_range(0.25, 1.0)
 	if livery:
-		return Color(r.randf_range(0.18, 0.3), 0.0, r.randf_range(0.1, 0.3), r.randf())
-	return Color(r.randf_range(0.28, 0.95), rust, r.randf_range(0.15, 0.95), r.randf())
+		return Vector4(r.randf_range(0.18, 0.3), 0.0, r.randf_range(0.1, 0.3), r.randf())
+	return Vector4(r.randf_range(0.28, 0.95), rust, r.randf_range(0.15, 0.95), r.randf())
 
 ## The axles for the shader's rust arches: front x, rear x, axle height and
 ## the arch radius, from the model's own wheel nodes.
-static func arch_for(model: Node3D) -> Color:
+static func arch_for(model: Node3D) -> Vector4:
 	var ws := wheels(model)
 	if ws.size() < 4:
-		return Color(1.35, -1.35, 0.34, 0.5)
+		return Vector4(1.35, -1.35, 0.34, 0.5)
 	var fx := 0.0
 	var rx := 0.0
 	var y := 0.0
@@ -127,7 +127,7 @@ static func arch_for(model: Node3D) -> Color:
 		else:
 			rx += w.position.x * 0.5
 		y += w.position.y * 0.25
-	return Color(fx, rx, y, y * 1.45)
+	return Vector4(fx, rx, y, y * 1.45)
 
 static func _body_material(base: StandardMaterial3D, paint: Color, livery: bool) -> ShaderMaterial:
 	var key := [base, paint, livery]

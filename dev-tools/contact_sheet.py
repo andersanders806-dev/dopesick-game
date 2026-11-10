@@ -13,6 +13,6 @@ for i, f in enumerate(files):
     im = Image.open(f).convert("RGB").resize((tw, th), Image.LANCZOS)
     x, y = (i % cols) * tw, (i // cols) * (th + 18)
     sheet.paste(im, (x, y + 18))
-    d.text((x + 4, y + 3), os.path.basename(f)[8:-4], fill=(230, 210, 140))
+    d.text((x + 4, y + 3), (os.path.basename(f)[8:-4] if os.path.basename(f).startswith('z5play_') else os.path.basename(f)[:-4]), fill=(230, 210, 140))
 sheet.save(out)
 print(out, len(files), sheet.size)

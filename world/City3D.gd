@@ -326,14 +326,17 @@ func _on_shop_changed(place: String, entered: bool) -> void:
 func _exit_tree() -> void:
 	GameState.indoors = ""
 
+## The parked cars' layout and wear (world/ParkedRow.gd).
+var parked_row: Node3D
+
 ## Every parked car in an old, dull paint of its own (world/CarPaint.gd, the
 ## traffic's too). The builder can't do it: changes to nodes inside an
 ## instanced model don't save with the scene, so it's done here.
 func _paint_parked_cars() -> void:
-	for car in find_children("Car*", "StaticBody3D", true, false) + find_children("PoliceCruiser", "StaticBody3D", true, false):
-		var model := car.get_node_or_null("Model") as Node3D
-		if model != null and String(model.scene_file_path).begins_with("res://assets/cars/"):
-			CarPaint.dress(model, CarPaint.paint_index(car.name), true, CarPaint.PARKED_REACH)
+	var row: Node3D = preload("res://world/ParkedRow.gd").new()
+	add_child(row)
+	row.build(self, zombie_mode)
+	parked_row = row
 
 ## Places on the block to crouch out of sight when the police are after
 ## you: in the mouth of the alley by the pusher's corner, behind a stack of

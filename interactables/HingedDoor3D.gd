@@ -435,8 +435,8 @@ func _build_bar_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var wood := _mat(Color(0.8, 0.38, 0.29), 0.0, 0.7, "wood_panels", 0.5)
-	var raised := _mat(Color(0.7, 0.32, 0.25), 0.0, 0.65)
+	var wood := _mat(Color(0.5, 0.24, 0.19), 0.0, 0.75, "wood_panels", 0.5)
+	var raised := _mat(Color(0.66, 0.31, 0.24), 0.0, 0.7, "wood_panels", 0.5)
 	var brass := _mat(Color(0.85, 0.66, 0.32), 0.3, 0.4)
 	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), wood)

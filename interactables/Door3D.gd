@@ -104,18 +104,25 @@ func _exit_lamp(approach: Vector3) -> void:
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
 func _dark_behind(from_street: bool) -> void:
-	var grad := Gradient.new()
-	grad.set_color(0, Color(0.02, 0.012, 0.01) if from_street else Color(0.03, 0.04, 0.07))
-	grad.set_color(1, Color(0.16, 0.09, 0.05) if from_street else Color(0.13, 0.17, 0.27))
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill_from = Vector2(0.5, 1.0)
-	gt.fill_to = Vector2(0.5, 0.0)
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_texture = gt
+	if from_street:
+		# The room isn't there: a picture of its aisle (assets/doors/interior_*.png) stands behind the door, lit as it would be.
+		var dim: bool = _style()["kind"] in ["bar", "steel_back"]
+		m.albedo_texture = load("res://assets/doors/interior_%s.png" % ("dim" if dim else "store"))
+		if not dim and GameState.daylight() < 0.4:
+			m.albedo_color = Color(0.82, 0.86, 0.95)
+	else:
+		var grad := Gradient.new()
+		grad.set_color(0, Color(0.03, 0.04, 0.07))
+		grad.set_color(1, Color(0.13, 0.17, 0.27))
+		var gt := GradientTexture2D.new()
+		gt.gradient = grad
+		gt.fill_from = Vector2(0.5, 1.0)
+		gt.fill_to = Vector2(0.5, 0.0)
+		m.albedo_texture = gt
 	var q := QuadMesh.new()
-	q.size = Vector2(1.5, 2.2)
+	q.size = Vector2(float(hinged.opening) + 0.1, 2.2)
 	q.material = m
 	var mi := MeshInstance3D.new()
 	mi.name = "DoorwayDark"

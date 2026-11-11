@@ -8,11 +8,11 @@ from PIL import Image, ImageDraw, ImageFilter
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "doors")
 rng = np.random.default_rng(11)
-W, H = 256, 384
+W, H = 512, 768
 
 def render(bright: bool) -> Image.Image:
 	cx, cy = W / 2, H * 0.50
-	F = 190.0
+	F = 380.0
 	def P(x, y, z):  # x across, y up (0 floor .. 1 ceiling), z depth
 		return (cx + x / z * F, cy - (y - 0.46) / z * F)
 	im = Image.new("RGB", (W, H), (20, 20, 22))
@@ -29,9 +29,9 @@ def render(bright: bool) -> Image.Image:
 	d.polygon([P(-1.1, 0, zb), P(1.1, 0, zb), P(1.1, 1, zb), P(-1.1, 1, zb)], fill=(236, 238, 232) if bright else (96, 60, 44))
 	# floor tile lines
 	for z in np.arange(0.5, zb, 0.5):
-		d.line([P(-1.1, 0, z), P(1.1, 0, z)], fill=tuple(int(c * 0.82) for c in floor), width=1)
+		d.line([P(-1.1, 0, z), P(1.1, 0, z)], fill=tuple(int(c * 0.82) for c in floor), width=2)
 	for x in np.arange(-1.0, 1.01, 0.5):
-		d.line([P(x, 0, 0.3), P(x, 0, zb)], fill=tuple(int(c * 0.82) for c in floor), width=1)
+		d.line([P(x, 0, 0.3), P(x, 0, zb)], fill=tuple(int(c * 0.82) for c in floor), width=2)
 	# ceiling light panels
 	for z in np.arange(1.4, zb, 1.8):
 		d.polygon([P(-0.25, 0.995, z), P(0.25, 0.995, z), P(0.25, 0.995, z + 0.7), P(-0.25, 0.995, z + 0.7)], fill=(255, 255, 245) if bright else (255, 190, 120))
@@ -51,12 +51,14 @@ def render(bright: bool) -> Image.Image:
 		# shelf uprights
 		for z in np.arange(0.5, zb, 1.7):
 			d.line([P(xin, 0, z), P(xin, 0.92, z)], fill=(40, 40, 44), width=2)
-	im = im.filter(ImageFilter.GaussianBlur(0.8))
+	im = im.filter(ImageFilter.GaussianBlur(1.4))
 	# vignette so the edges recede
 	a = np.array(im).astype(np.float32)
 	yy, xx = np.mgrid[0:H, 0:W]
 	v = 1.0 - 0.45 * (((xx - cx) / (W * 0.65)) ** 2 + ((yy - cy) / (H * 0.7)) ** 2)
 	a *= np.clip(v, 0.35, 1.0)[..., None]
+	# A little noise so the vignette doesn't band when it's seen big.
+	a += rng.normal(0.0, 1.6, a.shape).astype(np.float32)
 	return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 os.makedirs(OUT, exist_ok=True)

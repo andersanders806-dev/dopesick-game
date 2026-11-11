@@ -41,6 +41,8 @@ var _frozen_t := 0.0
 var _cells: Node = null
 
 func _ready() -> void:
+	# He has his own business on the street: the stealth layer's hearing is the shops'.
+	hears_noise = false
 	super._ready()
 	add_to_group("patrol")
 	_last_minute = GameState.now_minutes()

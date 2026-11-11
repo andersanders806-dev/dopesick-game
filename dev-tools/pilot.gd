@@ -48,7 +48,8 @@ var _failed := false
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	t_start = Time.get_ticks_msec()
-	out_dir = ProjectSettings.globalize_path("res://.pilot")
+	# PILOT_OUT=<dir> keeps a run's screenshots and log apart from the others'.
+	out_dir = OS.get_environment("PILOT_OUT") if OS.has_environment("PILOT_OUT") else ProjectSettings.globalize_path("res://.pilot")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_log = FileAccess.open(out_dir + "/pilot.log", FileAccess.WRITE)
 	await process_frame

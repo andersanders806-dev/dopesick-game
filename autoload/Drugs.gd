@@ -228,6 +228,12 @@ func info(id: String) -> Dictionary:
 			return d
 	return {}
 
+## Whether a drug gives a lift at all, beyond stopping the sickness. Methadone and buprenorphine
+## "have no real lift", and naloxone isn't taken for one.
+func has_lift(id: String) -> bool:
+	var c: String = info(id).get("class", "")
+	return c != "" and c != TREATMENT and c != RESCUE
+
 func name_for(id: String) -> String:
 	return info(id).get("name", id)
 

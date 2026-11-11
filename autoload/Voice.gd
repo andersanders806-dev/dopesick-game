@@ -169,18 +169,31 @@ func _path(key: String) -> String:
 func _have(key: String) -> bool:
 	return FileAccess.file_exists(_path(key)) or ResourceLoader.exists(_path(key))
 
-func _play(key: String, pitch: float) -> void:
-	var stream: AudioStream = null
+func _load(key: String) -> AudioStream:
 	var disk := ProjectSettings.globalize_path(_path(key))
 	if FileAccess.file_exists(disk) and not OS.has_feature("template"):
-		stream = AudioStreamWAV.load_from_file(disk)
+		return AudioStreamWAV.load_from_file(disk)
 	elif ResourceLoader.exists(_path(key)):
-		stream = load(_path(key))
+		return load(_path(key))
+	return null
+
+func _play(key: String, pitch: float) -> void:
+	var stream := _load(key)
 	if stream == null:
 		return
 	_player.stream = stream
 	_player.pitch_scale = pitch
 	_player.play()
+
+## A short line of `speaker`'s as a stream of its own, for a voice that is heard from where it
+## stands (a guard's bark, npc/Guard3D.gd) instead of over the dialogue's single player. Null if
+## it isn't baked yet (and it's queued, where Piper is installed).
+func bark_stream(speaker: String, line: String) -> AudioStream:
+	var key := line_key(speaker, line)
+	if _have(key):
+		return _load(key)
+	_queue(key, line, cast_for(speaker), false)
+	return null
 
 func _queue(key: String, line: String, cast: Dictionary, urgent: bool) -> void:
 	if not _piper_ok:

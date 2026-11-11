@@ -15,6 +15,17 @@ const WHITE := Color(0.92, 0.92, 0.9)
 const BLACK := Color(0.08, 0.08, 0.09)
 const CARD := Color(0.72, 0.6, 0.42)
 
+## Printed packaging for the corner shop's goods (assets/items/labels, drawn by dev-tools/gen_product_labels.py):
+## item id -> {part index in its recipe -> texture}. Boxes use a 3x2 sheet (one design on every face).
+const LABEL_DIR := "res://assets/items/labels/"
+const LABELS := {
+	"cigs": {0: "cigs_box"},
+	"charger": {0: "charger_box"},
+	"batteries": {0: "batteries_box"},
+	"energy": {0: "can_nitro", 1: "can_nitro", 2: "can_peak", 3: "can_peak"},
+	"sunglasses": {3: "sunglasses_box"},
+}
+
 const RECIPES := {
 	"tape": [
 		["box", Vector3(0.11, 0.07, 0.018), Vector3(0, 0.035, 0), Color(0.85, 0.88, 0.9, 0.55), "glass"],
@@ -23,7 +34,6 @@ const RECIPES := {
 	],
 	"cigs": [
 		["box", Vector3(0.24, 0.06, 0.1), Vector3(0, 0.03, 0), WHITE],
-		["box", Vector3(0.242, 0.03, 0.102), Vector3(0, 0.045, 0), RED],
 	],
 	"charger": [
 		["box", Vector3(0.05, 0.05, 0.05), Vector3(-0.05, 0.025, 0), WHITE],
@@ -37,10 +47,10 @@ const RECIPES := {
 		["cyl", Vector3(0.012, 0.09, 0), Vector3(0.03, 0.08, 0.014), Color(0.8, 0.55, 0.15), "metal"],
 	],
 	"energy": [
-		["cyl", Vector3(0.03, 0.12, 0), Vector3(-0.035, 0.06, -0.035), Color(0.3, 0.85, 0.2), "metal"],
-		["cyl", Vector3(0.03, 0.12, 0), Vector3(0.035, 0.06, -0.035), Color(0.3, 0.85, 0.2), "metal"],
-		["cyl", Vector3(0.03, 0.12, 0), Vector3(-0.035, 0.06, 0.035), BLACK, "metal"],
-		["cyl", Vector3(0.03, 0.12, 0), Vector3(0.035, 0.06, 0.035), BLACK, "metal"],
+		["cyl", Vector3(0.03, 0.12, 0), Vector3(-0.035, 0.06, -0.035), Color(0.3, 0.85, 0.2)],
+		["cyl", Vector3(0.03, 0.12, 0), Vector3(0.035, 0.06, -0.035), Color(0.3, 0.85, 0.2)],
+		["cyl", Vector3(0.03, 0.12, 0), Vector3(-0.035, 0.06, 0.035), BLACK],
+		["cyl", Vector3(0.03, 0.12, 0), Vector3(0.035, 0.06, 0.035), BLACK],
 	],
 	"sunglasses": [
 		["box", Vector3(0.06, 0.035, 0.008), Vector3(-0.035, 0.03, 0), BLACK, "glass"],
@@ -150,6 +160,11 @@ static func build(id: String) -> Node3D:
 		var color: Color = part[3]
 		mat.albedo_color = color
 		mat.roughness = 0.6
+		var label: String = LABELS.get(id, {}).get(root.get_child_count(), "")
+		if label != "":
+			mat.albedo_texture = load(LABEL_DIR + label + ".png")
+			mat.albedo_color = Color.WHITE
+			mat.roughness = 0.55
 		var flags: Array = part.slice(4)
 		if "glass" in flags:
 			mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA

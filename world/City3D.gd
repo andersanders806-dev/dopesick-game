@@ -32,8 +32,8 @@ const PatrolScript := preload("res://npc/PatrolCop3D.gd")
 ## places to go; these are the passers-by.
 const WALKS := [
 	{"points": [
-		Vector3(-66.6, 0, -2.6), Vector3(-53.0, 0, -2.6), Vector3(-29.6, 0, -2.6), Vector3(-29.0, 0, -3.9),
-		Vector3(-27.2, 0, -3.9), Vector3(-26.5, 0, -3.1), Vector3(3.5, 0, -3.1), Vector3(25.9, 0, -3.1),
+		Vector3(-66.6, 0, -2.6), Vector3(-53.0, 0, -2.6), Vector3(-31.4, 0, -2.6), Vector3(-30.8, 0, -3.9),
+		Vector3(-29.0, 0, -3.9), Vector3(-28.3, 0, -3.1), Vector3(3.5, 0, -3.1), Vector3(25.9, 0, -3.1),
 		Vector3(26.6, 0, -3.9), Vector3(28.6, 0, -3.9), Vector3(29.3, 0, -2.6), Vector3(47.0, 0, -2.6),
 		Vector3(66.6, 0, -2.6), Vector3(66.6, 0, -47.8), Vector3(67.5, 0, -48.4), Vector3(67.5, 0, -51.6),
 		Vector3(66.6, 0, -52.2), Vector3(66.6, 0, -85.6), Vector3(53.6, 0, -85.6), Vector3(53.0, 0, -87.0),
@@ -45,8 +45,8 @@ const WALKS := [
 		"doors": [1, 6, 11, 26, 36]},
 	{"points": [
 		Vector3(76.2, 0, -2.35), Vector3(29.2, 0, -2.35), Vector3(28.6, 0, -3.9), Vector3(26.8, 0, -3.9),
-		Vector3(26.2, 0, -2.2), Vector3(17.5, 0, -2.2), Vector3(-26.2, 0, -2.2), Vector3(-27.2, 0, -3.9),
-		Vector3(-29.0, 0, -3.9), Vector3(-29.6, 0, -2.35), Vector3(-61.0, 0, -2.35), Vector3(-76.2, 0, -2.35),
+		Vector3(26.2, 0, -2.2), Vector3(17.5, 0, -2.2), Vector3(-28.0, 0, -2.2), Vector3(-29.0, 0, -3.9),
+		Vector3(-30.8, 0, -3.9), Vector3(-31.4, 0, -2.35), Vector3(-61.0, 0, -2.35), Vector3(-76.2, 0, -2.35),
 		Vector3(-76.2, 0, -45.6), Vector3(-74.9, 0, -46.2), Vector3(-74.9, 0, -49.8), Vector3(-76.2, 0, -50.4),
 		Vector3(-76.2, 0, -57.0), Vector3(-76.2, 0, -95.0), Vector3(-23.4, 0, -95.0), Vector3(-22.8, 0, -96.2),
 		Vector3(-21.2, 0, -96.2), Vector3(-20.6, 0, -95.0), Vector3(-10.0, 0, -95.0), Vector3(10.2, 0, -95.0),
@@ -326,14 +326,17 @@ func _on_shop_changed(place: String, entered: bool) -> void:
 func _exit_tree() -> void:
 	GameState.indoors = ""
 
+## The parked cars' layout and wear (world/ParkedRow.gd).
+var parked_row: Node3D
+
 ## Every parked car in an old, dull paint of its own (world/CarPaint.gd, the
 ## traffic's too). The builder can't do it: changes to nodes inside an
 ## instanced model don't save with the scene, so it's done here.
 func _paint_parked_cars() -> void:
-	for car in find_children("Car*", "StaticBody3D", true, false) + find_children("PoliceCruiser", "StaticBody3D", true, false):
-		var model := car.get_node_or_null("Model") as Node3D
-		if model != null and String(model.scene_file_path).begins_with("res://assets/cars/"):
-			CarPaint.dress(model, CarPaint.paint_index(car.name), true, CarPaint.PARKED_REACH)
+	var row: Node3D = preload("res://world/ParkedRow.gd").new()
+	add_child(row)
+	row.build(self, zombie_mode)
+	parked_row = row
 
 ## Places on the block to crouch out of sight when the police are after
 ## you: in the mouth of the alley by the pusher's corner, behind a stack of

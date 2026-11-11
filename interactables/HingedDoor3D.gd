@@ -71,6 +71,8 @@ const HOLD_AFTER := 0.45
 @export var frame := false
 ## A door you can use E on (a set-piece one, locked: rattles, says why). Walk-through doors aren't.
 @export var reachable := false
+## Stencilled on a steel door ("DELIVERIES ONLY"); "" for none.
+var stencil := ""
 ## What E says when it's locked and `reachable` (the line shown after the rattle).
 var lock_text := ""
 ## Variant of the hinge's voice; -1: from the node's name.
@@ -407,32 +409,85 @@ func _stickers(vis: Node3D) -> void:
 	leaf.add_child(_sticker)
 	_sticker.position = Vector3(_sx * _width * 0.5, 1.58, 0.012)
 
-## "OPEN 07-22" style text for the street side of the glass.
+## "OPEN 07-22" style text for the street side of the glass; "CLOSED" over it while it's locked.
+var _hours_text := ""
+
 func set_hours(text: String) -> void:
-	if _sticker != null:
-		_sticker.text = text
+	_hours_text = text
+	_update_sticker()
+
+func _update_sticker() -> void:
+	if _sticker == null:
+		return
+	if locked:
+		_sticker.text = "CLOSED\n" + _hours_text.replace("OPEN", "OPENS").replace("OPENS 24 HRS", "")
+		_sticker.modulate = Color(1.0, 0.42, 0.36, 0.95)
+	else:
+		_sticker.text = _hours_text
+		_sticker.modulate = Color(0.92, 0.9, 0.82, 0.92)
 
 func _build_steel_leaf() -> void:
 	var w := _width
 	var h := _height
 	var t: float = _p["thick"]
-	var paint := _mat(Color(0.42, 0.47, 0.43), 0.15, 0.8, "metal_worn", 0.8)
-	var steel := _mat(Color(0.64, 0.65, 0.67), 0.3, 0.5)
+	var paint := _mat(Color(0.26, 0.33, 0.33), 0.15, 0.8, "metal_worn", 0.8)
+	var steel := _mat(Color(0.64, 0.65, 0.67), 0.25, 0.5)
+	var dark := _mat(Color(0.07, 0.07, 0.08), 0.2, 0.7)
+	var brass := _mat(Color(0.8, 0.66, 0.34), 0.3, 0.4)
 	var vis := _visual()
 	_box(vis, "Slab", Vector3(w, h, t), Vector3(w / 2.0, h / 2.0, 0), paint)
-	_box(vis, "KickPlate", Vector3(w - 0.08, 0.28, 0.008), Vector3(w / 2.0, 0.16, 0.03), steel)
-	_box(vis, "KickPlateIn", Vector3(w - 0.08, 0.28, 0.008), Vector3(w / 2.0, 0.16, -0.03), steel)
+	# Stiffener ribs pressed into the skin, a kick plate low down, both faces.
+	for y in [0.62, 1.55]:
+		_box(vis, "Rib", Vector3(w - 0.12, 0.07, 0.014), Vector3(w / 2.0, y, t / 2.0 + 0.007), paint)
+		_box(vis, "RibDark", Vector3(w - 0.12, 0.012, 0.016), Vector3(w / 2.0, y - 0.04, t / 2.0 + 0.008), dark)
+		_box(vis, "RibIn", Vector3(w - 0.12, 0.07, 0.014), Vector3(w / 2.0, y, -t / 2.0 - 0.007), paint)
+	_box(vis, "KickPlate", Vector3(w - 0.08, 0.28, 0.01), Vector3(w / 2.0, 0.16, t / 2.0 + 0.005), steel)
+	_box(vis, "KickPlateIn", Vector3(w - 0.08, 0.28, 0.01), Vector3(w / 2.0, 0.16, -t / 2.0 - 0.005), steel)
+	# The edge: a dark line down the latch side where the door meets its frame.
+	_box(vis, "Gap", Vector3(0.012, h, 0.02), Vector3(w - 0.006, h / 2.0, t / 2.0 + 0.002), dark)
 	# Panic bar, inside.
 	_box(vis, "PanicBar", Vector3(w - 0.22, 0.07, 0.045), Vector3(w / 2.0 + 0.02, 1.0, -0.06), _mat(Color(0.7, 0.12, 0.09), 0.2, 0.5))
 	for dx in [-0.4, 0.4]:
 		_box(vis, "PanicMount", Vector3(0.09, 0.14, 0.03), Vector3(w / 2.0 + dx + 0.02, 1.0, -0.04), steel)
-	# Outside: no handle but a lock cylinder and a pull plate.
-	_box(vis, "PullPlate", Vector3(0.1, 0.34, 0.012), Vector3(w - 0.14, 1.0, 0.035), steel)
-	_box(vis, "Cylinder", Vector3(0.04, 0.07, 0.03), Vector3(w - 0.14, 0.78, 0.045), _mat(Color(0.8, 0.66, 0.34), 0.3, 0.4))
+	# Outside: a lock plate with a cylinder, a pull handle, a door closer.
+	_box(vis, "LockPlate", Vector3(0.12, 0.42, 0.014), Vector3(w - 0.13, 1.0, t / 2.0 + 0.007), steel)
+	_box(vis, "Cylinder", Vector3(0.05, 0.08, 0.03), Vector3(w - 0.13, 0.84, t / 2.0 + 0.025), brass)
+	_cyl(vis, "Pull", 0.014, 0.3, Vector3(w - 0.13, 1.13, 0.07), steel, "y")
+	_box(vis, "PullPost", Vector3(0.02, 0.02, 0.05), Vector3(w - 0.13, 1.25, 0.045), steel)
+	_box(vis, "PullPost2", Vector3(0.02, 0.02, 0.05), Vector3(w - 0.13, 1.0, 0.045), steel)
 	_box(vis, "Closer", Vector3(0.3, 0.08, 0.06), Vector3(w * 0.5, h - 0.12, -0.06), _mat(Color(0.12, 0.12, 0.13), 0.5, 0.5))
+	# Three heavy hinges: barrels and leaves.
 	for y in [0.3, 1.0, 1.85]:
-		_cyl(vis, "HingeBarrel", 0.022, 0.12, Vector3(0.0, y, 0.0), steel, "y")
+		_cyl(vis, "HingeBarrel", 0.03, 0.16, Vector3(0.0, y, 0.0), steel, "y")
+		_box(vis, "HingeLeaf", Vector3(0.1, 0.14, 0.012), Vector3(0.05, y, t / 2.0 + 0.006), steel)
+	# Rust running down from the hinges and the lock, a corroded foot (one quad, an alpha texture).
+	var quad := QuadMesh.new()
+	quad.size = Vector2(w, h)
+	_collect(quad, Transform3D(Basis(), Vector3(w / 2.0, h / 2.0, t / 2.0 + 0.018)), _rust_mat())
 	_commit(vis, "steel")
+	if stencil != "":
+		var lab := Label3D.new()
+		lab.name = "Stencil"
+		lab.text = stencil
+		lab.font_size = 36
+		lab.pixel_size = 0.0021
+		lab.outline_size = 0
+		lab.shaded = false
+		lab.modulate = Color(0.9, 0.88, 0.7, 0.85)
+		lab.double_sided = false
+		lab.visibility_range_end = 14.0
+		leaf.add_child(lab)
+		lab.position = Vector3(_sx * w * 0.5, 1.37, t / 2.0 + 0.03)
+
+static func _rust_mat() -> StandardMaterial3D:
+	if _mats.has("rust"):
+		return _mats["rust"]
+	var m := StandardMaterial3D.new()
+	_mats["rust"] = m
+	m.albedo_texture = load("res://assets/doors/door_rust.png")
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.roughness = 0.9
+	return m
 
 func _build_bar_leaf() -> void:
 	var w := _width
@@ -479,12 +534,12 @@ func _build_frame() -> void:
 		"bar":
 			trim = _mat(Color(0.42, 0.19, 0.15), 0.0, 0.75)
 		"steel_back":
-			trim = _mat(Color(0.28, 0.3, 0.3), 0.4, 0.7)
+			trim = _mat(Color(0.5, 0.52, 0.5), 0.3, 0.7)
 		_:
 			trim = _mat(Color(0.7, 0.71, 0.73), 0.3, 0.45)
 	var fh := _height + 0.1
 	var fw := opening
-	var d := 0.14
+	var d := 0.14 if kind != "steel_back" else 0.22
 	var vis := Node3D.new()
 	vis.name = "Frame"
 	add_child(vis)
@@ -596,6 +651,7 @@ func _reach_hand() -> void:
 func set_locked(on: bool) -> void:
 	locked = on
 	touch.set_meta("prompt", "Locked door" if on else "")
+	_update_sticker()
 
 func _try_rattle() -> bool:
 	if _rattle_cool > 0.0:

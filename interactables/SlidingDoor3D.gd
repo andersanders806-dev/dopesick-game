@@ -97,11 +97,26 @@ func swing_deg() -> float:
 func tip() -> Vector3:
 	return global_transform * Vector3(opening / 2.0, 1.0, 0.0)
 
-func set_hours(_text: String) -> void:
-	pass
+var _hours_text := ""
+var _sticker: Label3D
+
+func set_hours(text: String) -> void:
+	_hours_text = text
+	_update_sticker()
+
+func _update_sticker() -> void:
+	if _sticker == null:
+		return
+	if locked:
+		_sticker.text = "CLOSED\n" + _hours_text.replace("OPEN", "OPENS")
+		_sticker.modulate = Color(1.0, 0.42, 0.36, 0.95)
+	else:
+		_sticker.text = _hours_text
+		_sticker.modulate = Color(0.92, 0.9, 0.82, 0.92)
 
 func set_locked(on: bool) -> void:
 	locked = on
+	_update_sticker()
 
 func hold_open(secs: float) -> void:
 	_hold = maxf(_hold, secs)
@@ -247,6 +262,17 @@ func _build() -> void:
 	sensor.add_child(ss)
 	sensor.body_entered.connect(_on_enter)
 	sensor.body_exited.connect(func(b: Node3D): _bodies.erase(b.get_instance_id()); _seen.erase(b.get_instance_id()))
+	_sticker = Label3D.new()
+	_sticker.name = "Hours"
+	_sticker.font_size = 28
+	_sticker.pixel_size = 0.0016
+	_sticker.outline_size = 0
+	_sticker.shaded = false
+	_sticker.double_sided = false
+	_sticker.visibility_range_end = 14.0
+	add_child(_sticker)
+	_sticker.position = Vector3(opening / 2.0 - 0.34, 1.68, 0.03)
+	_update_sticker()
 	# (Kept for callers that look for it: a door you don't use with E has no reach area.)
 	touch = Area3D.new()
 	touch.name = "Touch"
@@ -283,6 +309,7 @@ func _update_lock() -> void:
 		var now := not GameState.is_open(place)
 		if now != locked:
 			locked = now
+			_update_sticker()
 
 func _physics_process(dt: float) -> void:
 	if dt <= 0.0:

@@ -15,6 +15,8 @@ const NOTES := [
 	"Locked. Dumpster smell, no handle on this side.",
 ]
 
+const STENCILS := ["STAFF ONLY\nKEEP CLEAR", "FIRE EXIT\nKEEP CLEAR", "No. 14\nDELIVERIES", "PRIVATE\nNO PARKING", "EMERGENCY\nEXIT ONLY"]
+
 ## City3D calls this once the street's built.
 static func install(city: Node3D) -> void:
 	if GameState.mode == "zombies":
@@ -26,7 +28,7 @@ static func install(city: Node3D) -> void:
 		if slab == null:
 			continue
 		slab.visible = false
-		_door(n, Vector3(0.0, 0.0, 0.05), 0.0, NOTES[i % NOTES.size()])
+		_door(n, Vector3(0.0, 0.0, 0.05), 0.0, NOTES[i % NOTES.size()], STENCILS[i % STENCILS.size()])
 		i += 1
 	# The back of the corner shop and of the liquor store, on the service lane.
 	for pair in [["Cell_Main/WalkIn_Convenience", "Back of the corner shop", "Locked. The corner shop's back door: steel, and from the other side someone's fridge hums. Deliveries 06:00-07:00."],
@@ -38,12 +40,13 @@ static func install(city: Node3D) -> void:
 		holder.name = "LaneDoorOf" + String(shop.name)
 		city.add_child(holder)
 		# The shop's back wall's outside face: 11 m back from the front wall plus its 0.2 m.
-		holder.global_position = Vector3(shop.global_position.x, 0.0, shop.global_position.z - 11.2)
+		# (Off to the east of the middle: the drinks coolers stand against the middle of the back wall and poke through it.)
+		holder.global_position = Vector3(shop.global_position.x + (1.5 if shop.name == "WalkIn_Convenience" else 0.0), 0.0, shop.global_position.z - 11.2)
 		holder.rotation.y = PI
-		_door(holder, Vector3(0.0, 0.0, 0.03), 0.0, pair[2])
+		_door(holder, Vector3(0.0, 0.0, 0.03), 0.0, pair[2], "DELIVERIES\nONLY\n06-07")
 		_lamp(holder)
 
-static func _door(parent: Node3D, pos: Vector3, yaw: float, note: String) -> void:
+static func _door(parent: Node3D, pos: Vector3, yaw: float, note: String, stencil := "") -> void:
 	var d := HingedDoor.instantiate()
 	d.name = "BackDoor"
 	d.kind = "steel_back"
@@ -51,6 +54,7 @@ static func _door(parent: Node3D, pos: Vector3, yaw: float, note: String) -> voi
 	d.frame = true
 	d.reachable = true
 	d.lock_text = note
+	d.stencil = stencil
 	d.position = pos
 	d.rotation.y = yaw
 	parent.add_child(d)

@@ -7,6 +7,7 @@ const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 
 const HingedDoor := preload("res://interactables/HingedDoor3D.tscn")
 const SlidingDoor := preload("res://interactables/SlidingDoor3D.tscn")
+const DoorSky := preload("res://interactables/DoorSky.gd")
 ## The doors to the Dive Bar, the pharmacy, the supermarket, the electronics store and the kart track
 ## (both the street's and the room's) are real doors (HingedDoor3D, or SlidingDoor3D for the glass
 ## ones): the scene change is faked round them -- the door starts to swing or slide and the screen
@@ -70,6 +71,10 @@ func _install_hinged() -> void:
 	hinged.position = off
 	hinged.rotation.y = atan2(approach.x, approach.z)
 	add_child(hinged)
+	if from_street:
+		var pl := GameState.place_for_scene(target_scene)
+		var hrs: Array = GameState.OPENING_HOURS.get(pl, [0, 24])
+		hinged.set_hours("OPEN %02d - %02d" % [int(hrs[0]), int(hrs[1]) % 24] if int(hrs[1]) - int(hrs[0]) < 24 and int(hrs[1]) > int(hrs[0]) else "OPEN 24 HRS")
 	_dark_behind(from_street)
 	if from_street:
 		if st["kind"] == "bar":
@@ -103,54 +108,33 @@ func _exit_lamp(approach: Vector3) -> void:
 	lamp.position = hinged.position + approach * 0.7 + Vector3(0, 2.0, 0)
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
-## The picture behind the door is the room lit; shut for the night it's dark.
-var _dark_mat: StandardMaterial3D = null
-var _dark_day := false
+## The room behind a facade's door isn't there: a box room is drawn by interior mapping (interactables/interior_map.gdshader)
+## in the doorway, with depth as you move. Shut for the night it's gone, and the facade's own shutter shows behind the glass.
+var _room_mi: MeshInstance3D = null
 
 func _on_clock(_m: int) -> void:
-	_refresh_dark()
+	_refresh_room()
 
 func _exit_tree() -> void:
 	if GameState.clock_changed.is_connected(_on_clock):
 		GameState.clock_changed.disconnect(_on_clock)
 
-func _refresh_dark() -> void:
-	if _dark_mat == null:
+func _refresh_room() -> void:
+	if _room_mi == null:
 		return
 	var place := GameState.place_for_scene(target_scene)
-	var open := place == "" or GameState.is_open(place)
-	if not open:
-		_dark_mat.albedo_color = Color(0.05, 0.05, 0.07)
-	elif _dark_day and GameState.daylight() < 0.4:
-		_dark_mat.albedo_color = Color(0.82, 0.86, 0.95)
-	else:
-		_dark_mat.albedo_color = Color.WHITE
+	_room_mi.visible = place == "" or GameState.is_open(place)
 
 func _dark_behind(from_street: bool) -> void:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if from_street:
-		# The room isn't there: a picture of its aisle (assets/doors/interior_*.png) stands behind the door, lit as it would be.
-		var dim: bool = _style()["kind"] in ["bar", "steel_back"]
-		m.albedo_texture = load("res://assets/doors/interior_%s.png" % ("dim" if dim else "store"))
-		_dark_mat = m
-		_dark_day = not dim
-		GameState.clock_changed.connect(_on_clock)
-		_refresh_dark()
-	else:
-		var grad := Gradient.new()
-		grad.set_color(0, Color(0.03, 0.04, 0.07))
-		grad.set_color(1, Color(0.13, 0.17, 0.27))
-		var gt := GradientTexture2D.new()
-		gt.gradient = grad
-		gt.fill_from = Vector2(0.5, 1.0)
-		gt.fill_to = Vector2(0.5, 0.0)
-		m.albedo_texture = gt
+	if not from_street:
+		return
+	var dim: bool = _style()["kind"] in ["bar", "steel_back"]
 	var q := QuadMesh.new()
-	q.size = Vector2(float(hinged.opening) + 0.1, 2.2)
-	q.material = m
+	var size := Vector2(float(hinged.opening) + 0.1, 2.2)
+	q.size = size
+	q.material = DoorSky.room_material("dim" if dim else "store", size)
 	var mi := MeshInstance3D.new()
-	mi.name = "DoorwayDark"
+	mi.name = "DoorwayRoom"
 	mi.mesh = q
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
@@ -158,6 +142,9 @@ func _dark_behind(from_street: bool) -> void:
 	var back := n.normalized() * 0.025
 	mi.position = Vector3(n.x + back.x, 1.1, n.z + back.z)
 	mi.rotation.y = hinged.rotation.y
+	_room_mi = mi
+	GameState.clock_changed.connect(_on_clock)
+	_refresh_room()
 
 ## A room's wall has no doorway where its door is: cut one (three boxes round it), and put the night
 ## street behind it. The wall is whichever one's box the door stands in.
@@ -224,26 +211,18 @@ func _open_wall(half: float, off: Vector3) -> void:
 		wall.add_child(cs)
 		cs.position = c
 		i += 1
-	# The street, a little way off and dark: a quad behind the doorway.
+	# The street outside, matching the hour: a quad behind the doorway that shows the street panorama by the
+	# direction you look (at infinity, so it needs no depth and slides right as you move).
 	var back := MeshInstance3D.new()
-	back.name = "NightStreet"
+	back.name = "Street"
 	var q := QuadMesh.new()
-	q.size = Vector2(6.0, 3.2)
-	var bm2 := StandardMaterial3D.new()
-	bm2.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	var ng := Gradient.new()
-	ng.set_color(0, Color(0.025, 0.03, 0.045))
-	ng.set_color(1, Color(0.11, 0.14, 0.24))
-	var ngt := GradientTexture2D.new()
-	ngt.gradient = ng
-	ngt.fill_from = Vector2(0.5, 1.0)
-	ngt.fill_to = Vector2(0.5, 0.0)
-	bm2.albedo_texture = ngt
-	q.material = bm2
+	q.size = Vector2(7.0, 4.0)
+	q.material = DoorSky.sky_material()
 	back.mesh = q
+	back.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(back)
 	var out := Vector3(off.x, 0.0, off.z).normalized()
-	back.position = hinged.position + out * 1.6 + Vector3(0, 0.4, 0)
+	back.position = hinged.position + out * 1.2 + Vector3(0, 0.9, 0)
 	back.rotation.y = hinged.rotation.y
 
 ## A bar leaks: from the street you hear the jukebox through the door, a muffled

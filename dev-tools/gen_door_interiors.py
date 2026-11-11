@@ -1,67 +1,99 @@
 #!/usr/bin/env python3
-"""What you glimpse through a door that is open on a room that isn't there (a facade door of a scene-change store
-or bar): a perspective picture of an aisle, shelves in colours, ceiling lights, the back wall.
-assets/doors/interior_store.png (bright), interior_dim.png (bar / workshop).  usage: gen_door_interiors.py"""
-import os, math
+"""The room seen through a door whose room isn't there (a scene-change store's or bar's facade door): the faces of
+a box room for interactables/interior_map.gdshader (interior mapping: it has real depth as you move).
+Walls with shelves, floor tiles, a ceiling with lights, a back wall; bright (store) and dim (bar, workshop).
+Made for this game, no third-party material.  usage: gen_door_interiors.py -> assets/doors/room_*.png"""
+import os
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "doors")
-rng = np.random.default_rng(11)
-W, H = 512, 768
+rng = np.random.default_rng(23)
+W_ROOM, H_ROOM, D_ROOM = 1.5, 2.2, 7.0
+PX = 140  # pixels per metre
 
-def render(bright: bool) -> Image.Image:
-	cx, cy = W / 2, H * 0.50
-	F = 380.0
-	def P(x, y, z):  # x across, y up (0 floor .. 1 ceiling), z depth
-		return (cx + x / z * F, cy - (y - 0.46) / z * F)
-	im = Image.new("RGB", (W, H), (20, 20, 22))
-	d = ImageDraw.Draw(im)
-	floor = (206, 204, 196) if bright else (58, 40, 30)
-	wall = (200, 214, 210) if bright else (70, 44, 34)
-	ceil = (170, 176, 178) if bright else (30, 24, 24)
-	# back wall, floor, ceiling, side walls
-	zb = 9.0
-	d.polygon([P(-1.1, 0, 0.3), P(1.1, 0, 0.3), P(1.1, 0, zb), P(-1.1, 0, zb)], fill=floor)
-	d.polygon([P(-1.1, 1, 0.3), P(1.1, 1, 0.3), P(1.1, 1, zb), P(-1.1, 1, zb)], fill=ceil)
-	d.polygon([P(-1.1, 0, 0.3), P(-1.1, 1, 0.3), P(-1.1, 1, zb), P(-1.1, 0, zb)], fill=wall)
-	d.polygon([P(1.1, 0, 0.3), P(1.1, 1, 0.3), P(1.1, 1, zb), P(1.1, 0, zb)], fill=tuple(int(c * 0.9) for c in wall))
-	d.polygon([P(-1.1, 0, zb), P(1.1, 0, zb), P(1.1, 1, zb), P(-1.1, 1, zb)], fill=(236, 238, 232) if bright else (96, 60, 44))
-	# floor tile lines
-	for z in np.arange(0.5, zb, 0.5):
-		d.line([P(-1.1, 0, z), P(1.1, 0, z)], fill=tuple(int(c * 0.82) for c in floor), width=2)
-	for x in np.arange(-1.0, 1.01, 0.5):
-		d.line([P(x, 0, 0.3), P(x, 0, zb)], fill=tuple(int(c * 0.82) for c in floor), width=2)
-	# ceiling light panels
-	for z in np.arange(1.4, zb, 1.8):
-		d.polygon([P(-0.25, 0.995, z), P(0.25, 0.995, z), P(0.25, 0.995, z + 0.7), P(-0.25, 0.995, z + 0.7)], fill=(255, 255, 245) if bright else (255, 190, 120))
-	# shelves both sides: levels of coloured boxes
-	cols = [(215, 60, 50), (240, 200, 60), (60, 120, 210), (70, 170, 90), (235, 235, 235), (220, 120, 40)] if bright else [(130, 70, 40), (90, 110, 80), (160, 120, 60), (70, 50, 40)]
-	for side in (-1, 1):
-		xin, xout = side * 0.62, side * 1.05
-		z = 0.5
-		while z < zb - 0.4:
-			dz = 0.42
-			for lvl in range(4):
-				y0, y1 = 0.08 + lvl * 0.2, 0.08 + lvl * 0.2 + 0.16
-				c = cols[int(rng.integers(0, len(cols)))]
-				c = tuple(int(v * (0.55 if not bright else 1.0) * (0.85 + 0.3 * rng.random())) for v in c)
-				d.polygon([P(xin, y0, z), P(xin, y1, z), P(xin, y1, z + dz * 0.8), P(xin, y0, z + dz * 0.8)], fill=c)
-			z += dz
-		# shelf uprights
-		for z in np.arange(0.5, zb, 1.7):
-			d.line([P(xin, 0, z), P(xin, 0.92, z)], fill=(40, 40, 44), width=2)
-	im = im.filter(ImageFilter.GaussianBlur(1.4))
-	# vignette so the edges recede
+def noise(im: Image.Image, sigma=3.0) -> Image.Image:
 	a = np.array(im).astype(np.float32)
-	yy, xx = np.mgrid[0:H, 0:W]
-	v = 1.0 - 0.22 * (((xx - cx) / (W * 0.65)) ** 2 + ((yy - cy) / (H * 0.7)) ** 2)
-	a *= np.clip(v, 0.35, 1.0)[..., None]
-	# A little noise so the vignette doesn't band when it's seen big.
-	a += rng.normal(0.0, 2.4, a.shape).astype(np.float32)
+	a += rng.normal(0, sigma, a.shape)
 	return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
+def shelf_wall(bright: bool) -> Image.Image:
+	w, h = int(D_ROOM * PX), int(H_ROOM * PX)
+	wall = (206, 216, 212) if bright else (62, 40, 30)
+	im = Image.new("RGB", (w, h), wall)
+	d = ImageDraw.Draw(im)
+	pal = [(214, 58, 48), (240, 200, 60), (60, 118, 208), (66, 168, 90), (236, 236, 232), (222, 122, 42), (150, 80, 170)] if bright else [(120, 66, 38), (88, 108, 76), (150, 114, 58), (66, 48, 38), (110, 50, 44)]
+	levels = 5
+	shelf_h = int(h * 0.78 / levels)
+	base = int(h * 0.08)
+	for lv in range(levels):
+		y1 = h - (base + lv * shelf_h)
+		y0 = y1 - shelf_h + 6
+		d.rectangle([0, y1, w, y1 + 5], fill=(60, 60, 66) if bright else (36, 28, 24))  # the shelf board
+		x = 8
+		while x < w - 8:
+			bw = int(rng.integers(14, 40)); bh = int(rng.integers(int(shelf_h * 0.55), shelf_h - 8))
+			c = pal[int(rng.integers(0, len(pal)))]
+			c = tuple(int(v * (0.8 + 0.3 * rng.random())) for v in c)
+			d.rectangle([x, y1 - bh, x + bw, y1], fill=c)
+			# a label band
+			d.rectangle([x + 2, y1 - bh * 0.6, x + bw - 2, y1 - bh * 0.4], fill=tuple(min(255, v + 60) for v in c))
+			x += bw + int(rng.integers(1, 6))
+	# uprights
+	for x in range(0, w, int(PX * 1.4)):
+		d.rectangle([x, int(h * 0.04), x + 6, h], fill=(40, 40, 46))
+	# the kick board and a skirting line, the ceiling margin
+	d.rectangle([0, h - base // 2, w, h], fill=(120, 120, 116) if bright else (30, 22, 18))
+	d.rectangle([0, 0, w, int(h * 0.1)], fill=tuple(int(v * 0.92) for v in wall))
+	return noise(im.filter(ImageFilter.GaussianBlur(0.7)), 2.0)
+
+def floor_tex(bright: bool) -> Image.Image:
+	w, h = int(W_ROOM * PX), int(D_ROOM * PX)
+	base = (204, 202, 194) if bright else (56, 38, 28)
+	im = Image.new("RGB", (w, h), base)
+	d = ImageDraw.Draw(im)
+	step = PX // 2
+	for y in range(0, h, step):
+		d.line([0, y, w, y], fill=tuple(int(v * 0.8) for v in base), width=2)
+	for x in range(0, w, step):
+		d.line([x, 0, x, h], fill=tuple(int(v * 0.8) for v in base), width=2)
+	# scuffs and a worn path down the middle
+	for _ in range(60):
+		x = int(rng.integers(0, w)); y = int(rng.integers(0, h))
+		d.ellipse([x - 10, y - 4, x + 10, y + 4], fill=tuple(int(v * (0.86 + 0.1 * rng.random())) for v in base))
+	return noise(im.filter(ImageFilter.GaussianBlur(0.8)), 2.0)
+
+def ceiling_tex(bright: bool) -> Image.Image:
+	w, h = int(W_ROOM * PX), int(D_ROOM * PX)
+	base = (176, 180, 182) if bright else (30, 24, 22)
+	im = Image.new("RGB", (w, h), base)
+	d = ImageDraw.Draw(im)
+	for y in range(0, h, int(PX * 0.6)):
+		d.line([0, y, w, y], fill=tuple(int(v * 0.85) for v in base), width=2)
+	lamp = (255, 255, 246) if bright else (255, 190, 120)
+	for y in range(int(PX * 1.2), h - PX, int(PX * 1.9)):
+		d.rectangle([w * 0.3, y, w * 0.7, y + int(PX * 0.6)], fill=lamp)
+	im = im.filter(ImageFilter.GaussianBlur(1.6))
+	return noise(im, 2.0)
+
+def back_tex(bright: bool) -> Image.Image:
+	w, h = int(W_ROOM * PX), int(H_ROOM * PX)
+	im = Image.new("RGB", (w, h), (232, 236, 230) if bright else (92, 58, 42))
+	d = ImageDraw.Draw(im)
+	# a pair of doors to the back, a sign over them, a notice
+	dw = int(w * 0.5)
+	x0 = (w - dw) // 2
+	d.rectangle([x0, int(h * 0.22), x0 + dw, h], fill=(244, 244, 240) if bright else (56, 36, 28))
+	d.line([w // 2, int(h * 0.22), w // 2, h], fill=(150, 150, 150), width=3)
+	d.rectangle([x0 + 8, int(h * 0.3), x0 + dw // 2 - 8, int(h * 0.62)], fill=(150, 176, 190) if bright else (80, 60, 48))
+	d.rectangle([w // 2 + 8, int(h * 0.3), x0 + dw - 8, int(h * 0.62)], fill=(150, 176, 190) if bright else (80, 60, 48))
+	d.rectangle([x0, int(h * 0.1), x0 + dw, int(h * 0.19)], fill=(200, 50, 40) if bright else (220, 150, 70))
+	return noise(im.filter(ImageFilter.GaussianBlur(0.7)), 2.0)
+
 os.makedirs(OUT, exist_ok=True)
-render(True).save(os.path.join(OUT, "interior_store.png"))
-render(False).save(os.path.join(OUT, "interior_dim.png"))
+for name, bright in (("store", True), ("dim", False)):
+	shelf_wall(bright).save(os.path.join(OUT, "room_wall_%s.png" % name))
+	floor_tex(bright).save(os.path.join(OUT, "room_floor_%s.png" % name))
+	ceiling_tex(bright).save(os.path.join(OUT, "room_ceiling_%s.png" % name))
+	back_tex(bright).save(os.path.join(OUT, "room_back_%s.png" % name))
 print("done")

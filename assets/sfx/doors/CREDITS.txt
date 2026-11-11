@@ -8,7 +8,7 @@ slam_wood_b.ogg, slam_wood_c.ogg "Door slam" by TiesWijnen                      
 slam_light.ogg                  "door slam" by contramundum                                   freesound.org/s/266440
 slam_heavy.ogg                  "Angry Door - Wooden Entrance Open Close Slam Hard A" by hisoul freesound.org/s/462665
 steel_slam_a.ogg, steel_bar.ogg "stairwell door-panic bar and slam" by klangfabrik            freesound.org/s/341176
-steel_slam_b.ogg                "Fire door closing" by wlabarron                              freesound.org/s/475313
+steel_slam_b.ogg                "FX SaSc Door 01 Metal Rattle Open Close 2 Versions" by Profispiesser freesound.org/s/583059
 handle.ogg, latch.ogg           "Door Handle Click" by MarcusGraham325                        freesound.org/s/330828
 wood_close.ogg                  "Wooden door open-close" by Ryding                            freesound.org/s/125958
 rattle_a/b/c.ogg                "RattlingLockedDoor" by shelbyshark                           freesound.org/s/444704
@@ -18,3 +18,5 @@ creak_c.ogg                     "Door_creak" by Taykiraro                       
 creak_d.ogg                     "Door Open 2_Creaky_Near_Mono" by _stubb                      freesound.org/s/406598
 scrape_a.ogg                    "Metallic Scrape 2" by magnuswaker                            freesound.org/s/641048
 scrape_b.ogg                    "metal_door_open" by Krokulator                               freesound.org/s/679460
+slide_open.ogg, slide_close.ogg "autoslidingdoors02.aiff" by klangfabrik                       freesound.org/s/195906
+chime.ogg                       "Doorbell" by oganesson                                       freesound.org/s/555016

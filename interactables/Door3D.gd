@@ -6,60 +6,78 @@ const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 @export var target_spawn: String = ""
 
 const HingedDoor := preload("res://interactables/HingedDoor3D.tscn")
-## The Dive Bar's two doors (the street's and the room's) are real doors
-## (interactables/HingedDoor3D.gd): the scene change is faked round them -- the
-## leaf starts to swing and the screen fades during it, and the door in the room
-## you arrive in is just finishing its close behind you.
+const SlidingDoor := preload("res://interactables/SlidingDoor3D.tscn")
+## The doors to the Dive Bar, the pharmacy, the supermarket, the electronics store and the kart track
+## (both the street's and the room's) are real doors (HingedDoor3D, or SlidingDoor3D for the glass
+## ones): the scene change is faked round them -- the door starts to swing or slide and the screen
+## fades during it, and the door in the room you arrive in is just closing behind you.
 var hinged: Node3D = null
 const BAR_FADE := 0.45
+
+## By the room behind the door (its scene name): the kind of door, and its leaf width and opening
+## on the street's facade (`s`) and in the room's wall (`r`).
+const STYLES := {
+	"DiveBar3D": {"kind": "bar", "sw": 1.28, "so": 1.4, "rw": 1.12, "ro": 1.2},
+	"StorePharmacy3D": {"kind": "sliding_glass", "so": 1.5, "ro": 1.6},
+	"StoreSupermarket3D": {"kind": "sliding_glass", "so": 1.5, "ro": 1.6},
+	"StoreElectronics3D": {"kind": "shop_glass", "sw": 1.28, "so": 1.4, "rw": 1.28, "ro": 1.4},
+	"KartCenter3D": {"kind": "steel_back", "sw": 1.0, "so": 1.12, "rw": 1.0, "ro": 1.12},
+}
 
 func _ready() -> void:
 	add_to_group("interactable")
 	add_to_group("doors")
-	if _is_bar_door():
+	if not _style().is_empty():
 		_install_hinged()
 
-func _is_bar_door() -> bool:
-	if target_scene.ends_with("DiveBar3D.tscn"):
-		return true
-	return target_scene.ends_with("City3D.tscn") and owner != null and String(owner.name) == "DiveBar3D"
+## The room this door is the door of: where it leads, or where it is.
+func _room() -> String:
+	if target_scene.ends_with("City3D.tscn"):
+		return String(owner.name) if owner != null else ""
+	return target_scene.get_file().get_basename()
 
-## Takes the slab's place: a wood door with a frame, hinged on the east side
-## as seen from where you stand. In the room, the wall gets a doorway cut in it.
+func _style() -> Dictionary:
+	return STYLES.get(_room(), {})
+
+func _from_street() -> bool:
+	return not target_scene.ends_with("City3D.tscn")
+
+## Takes the slab's place: the door with its frame, on the street's facade (which has no opening: a
+## dark doorway is put behind it) or in the room's wall (which gets a doorway cut in it).
 func _install_hinged() -> void:
 	var mesh := get_node_or_null("Mesh") as MeshInstance3D
 	if mesh == null or not (mesh.mesh is BoxMesh):
 		return
-	var from_street := target_scene.ends_with("DiveBar3D.tscn")
+	var st := _style()
+	var from_street := _from_street()
 	var off := Vector3(mesh.position.x, 0.0, mesh.position.z)
 	var approach := -off.normalized()
 	mesh.visible = false
-	hinged = HingedDoor.instantiate()
-	hinged.name = "BarDoor"
-	hinged.kind = "bar"
+	var sliding: bool = st["kind"] == "sliding_glass"
+	hinged = (SlidingDoor if sliding else HingedDoor).instantiate()
+	hinged.name = "StoreDoor" if st["kind"] != "bar" else "BarDoor"
+	hinged.kind = st["kind"]
 	hinged.hinge_east = true
-	hinged.arrival_id = "bar"
+	hinged.arrival_id = "door"
 	hinged.quiet_open = true
-	if from_street:
-		# On the facade (which has the opening): the leaf, the frame, the dark behind it.
-		hinged.door_width = 1.28
-		hinged.opening = 1.4
-		hinged.frame = true
-	else:
-		hinged.door_width = 1.12
-		hinged.opening = 1.2
-		hinged.frame = true
-	# Placed before it enters the tree: its leaf is an AnimatableBody3D that keeps
-	# the transform it came in with.
+	hinged.frame = true
+	hinged.opening = st["so"] if from_street else st["ro"]
+	if not sliding:
+		hinged.door_width = st["sw"] if from_street else st["rw"]
+	if from_street and sliding:
+		hinged.place = GameState.place_for_scene(target_scene)
+	# Placed before it enters the tree: a leaf is an AnimatableBody3D that keeps the transform it came in with.
 	hinged.position = off
 	hinged.rotation.y = atan2(approach.x, approach.z)
 	add_child(hinged)
 	_dark_behind(from_street)
 	if from_street:
-		_leak_music()
+		if st["kind"] == "bar":
+			_leak_music()
 	else:
-		_open_wall()
-		_exit_lamp(approach)
+		_open_wall(float(st["ro"]) / 2.0 + 0.02, off)
+		if st["kind"] == "bar":
+			_exit_lamp(approach)
 
 ## The room's way out is lit: an EXIT sign over it and its red glow on the door.
 func _exit_lamp(approach: Vector3) -> void:
@@ -109,33 +127,55 @@ func _dark_behind(from_street: bool) -> void:
 	mi.position = Vector3(n.x + back.x, 1.1, n.z + back.z)
 	mi.rotation.y = hinged.rotation.y
 
-## The Dive Bar's wall has no doorway where its door is: cut one, and put the
-## night street behind it.
-func _open_wall() -> void:
-	var wall := owner.get_node_or_null("WallEast") as StaticBody3D if owner != null else null
+## A room's wall has no doorway where its door is: cut one (three boxes round it), and put the night
+## street behind it. The wall is whichever one's box the door stands in.
+func _open_wall(half: float, off: Vector3) -> void:
+	if owner == null:
+		return
+	var here := hinged.global_position
+	var wall: StaticBody3D = null
+	for c in owner.get_children():
+		if c is StaticBody3D and String(c.name).begins_with("Wall") and c.get_node_or_null("Mesh") is MeshInstance3D and c.get_node_or_null("CollisionShape3D") is CollisionShape3D:
+			var m := c.get_node("Mesh") as MeshInstance3D
+			if not (m.mesh is BoxMesh):
+				continue
+			var sz: Vector3 = (m.mesh as BoxMesh).size
+			var d: Vector3 = (here - (c as Node3D).global_position).abs()
+			if d.x <= sz.x / 2.0 + 0.1 and d.z <= sz.z / 2.0 + 0.1 and d.y <= sz.y / 2.0 + 1.3:
+				wall = c
+				break
 	if wall == null:
 		return
-	var mesh := wall.get_node_or_null("Mesh") as MeshInstance3D
-	var shape := wall.get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if mesh == null or shape == null or not (mesh.mesh is BoxMesh):
-		return
+	var mesh := wall.get_node("Mesh") as MeshInstance3D
+	var shape := wall.get_node("CollisionShape3D") as CollisionShape3D
 	var size: Vector3 = (mesh.mesh as BoxMesh).size
 	var mat: Material = mesh.material_override if mesh.material_override != null else (mesh.mesh as BoxMesh).material
-	var dz := hinged.global_position.z - wall.global_position.z
-	var half := 0.62
-	var top := 2.15
-	# [z from, z to, y from, y to]
+	# The wall runs along its longer horizontal side.
+	var along_z := size.z >= size.x
+	var local := here - wall.global_position
+	var t := local.z if along_z else local.x
+	var len_total := size.z if along_z else size.x
+	var top := 2.2
+	var floor_y := -wall.global_position.y
+	# [from, to, y from, y to] along the wall
 	var parts := [
-		[-size.z / 2.0, dz - half, -size.y / 2.0, size.y / 2.0],
-		[dz + half, size.z / 2.0, -size.y / 2.0, size.y / 2.0],
-		[dz - half, dz + half, top - wall.global_position.y, size.y / 2.0],
+		[-len_total / 2.0, t - half, -size.y / 2.0, size.y / 2.0],
+		[t + half, len_total / 2.0, -size.y / 2.0, size.y / 2.0],
+		[t - half, t + half, top + floor_y, size.y / 2.0],
 	]
 	mesh.visible = false
 	shape.disabled = true
 	var i := 0
 	for part in parts:
-		var sz := Vector3(size.x, part[3] - part[2], part[1] - part[0])
-		var c := Vector3(0.0, (part[2] + part[3]) / 2.0, (part[0] + part[1]) / 2.0)
+		var p0: float = part[0]
+		var p1: float = part[1]
+		var y0: float = part[2]
+		var y1: float = part[3]
+		if p1 - p0 < 0.01 or y1 - y0 < 0.01:
+			continue
+		var sz: Vector3 = Vector3(size.x, y1 - y0, p1 - p0) if along_z else Vector3(p1 - p0, y1 - y0, size.z)
+		var mid: float = (p0 + p1) / 2.0
+		var c: Vector3 = Vector3(0.0, (y0 + y1) / 2.0, mid) if along_z else Vector3(mid, (y0 + y1) / 2.0, 0.0)
 		var bm := BoxMesh.new()
 		bm.size = sz
 		var mi := MeshInstance3D.new()
@@ -152,7 +192,7 @@ func _open_wall() -> void:
 		wall.add_child(cs)
 		cs.position = c
 		i += 1
-	# The street, a long way off and dark.
+	# The street, a little way off and dark: a quad behind the doorway.
 	var back := MeshInstance3D.new()
 	back.name = "NightStreet"
 	var q := QuadMesh.new()
@@ -169,9 +209,10 @@ func _open_wall() -> void:
 	bm2.albedo_texture = ngt
 	q.material = bm2
 	back.mesh = q
-	wall.add_child(back)
-	back.position = Vector3(1.6, 0.4, dz)
-	back.rotation.y = -PI / 2.0
+	add_child(back)
+	var out := Vector3(off.x, 0.0, off.z).normalized()
+	back.position = hinged.position + out * 1.6 + Vector3(0, 0.4, 0)
+	back.rotation.y = hinged.rotation.y
 
 ## A bar leaks: from the street you hear the jukebox through the door, a muffled
 ## thump of it, and a lot more when the door's open.
@@ -205,9 +246,9 @@ func _swing_through(player: Node) -> void:
 	hinged.process_mode = Node.PROCESS_MODE_ALWAYS
 	var pos := (player as Node3D).global_position
 	# Pulled open from the street, shoved from inside.
-	hinged.push_open(pos, 1.5, target_scene.ends_with("DiveBar3D.tscn"))
+	hinged.push_open(pos, 1.5, _from_street())
 	hinged.hold_open(1.5)
-	hinged.arrival_pending = "bar"
+	hinged.arrival_pending = "door"
 	SceneLoader.go(target_scene, target_spawn, BAR_FADE)
 
 func _show_closed(player: Node, place: String) -> void:

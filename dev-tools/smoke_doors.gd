@@ -16,8 +16,10 @@ func _run() -> void:
 	gs.clock_running = false
 	gs.clock = 17 * 60
 	await _bare_door_checks()
+	await _sliding_checks()
 	await _street_checks(gs)
 	await _bar_checks(gs)
+	await _store_door_checks(gs)
 
 ## A capsule that stands in for the player (or an NPC) for the bare-door checks.
 func _mover(layer: int, grp: String) -> CharacterBody3D:
@@ -364,3 +366,109 @@ func _bar_checks(gs: Node) -> void:
 	var chd: Node3D = out_door.get("hinged")
 	await _frames(5)
 	_check(chd != null and (absf(chd.angle) > 0.05 or chd.is_closed()), "  the bar's door closes behind you on the street too")
+
+
+func _sliding_checks() -> void:
+	await _section("Doors: automatic sliding glass")
+	var world := Node3D.new()
+	root.add_child(world)
+	var floor_body := StaticBody3D.new()
+	var fcs := CollisionShape3D.new()
+	var fb := BoxShape3D.new()
+	fb.size = Vector3(20, 0.2, 20)
+	fcs.shape = fb
+	floor_body.add_child(fcs)
+	floor_body.position.y = -0.1
+	world.add_child(floor_body)
+	var door: Node3D = load("res://interactables/SlidingDoor3D.tscn").instantiate()
+	world.add_child(door)
+	_watch(door)
+	await _frames(3)
+	_check(door.is_closed() and door.leaf is AnimatableBody3D, "  a sliding door is shut, with panels that are bodies moved by script")
+	var m := _mover(2, "player")
+	world.add_child(m)
+	m.global_position = Vector3(0.0, 0, 3.0)
+	await _frames(2)
+	var peak := 0.0
+	var opened_before_contact := false
+	for i in 400:
+		m.velocity = Vector3(0, 0, -1.75)
+		m.move_and_slide()
+		await physics_frame
+		peak = maxf(peak, door.openness())
+		if m.global_position.z < 0.5 and door.openness() > 0.6:
+			opened_before_contact = true
+		if m.global_position.z < -2.5:
+			break
+	_check(m.global_position.z < -1.0, "  you walk straight through it without stopping (z %.2f)" % m.global_position.z)
+	_check(opened_before_contact, "  it opened as you came (the sensor), before you reached it")
+	var t := 0
+	while not door.is_closed() and t < 60 * 10:
+		await physics_frame
+		t += 1
+	_check(door.is_closed() and _latches >= 1, "  and closed after you, %.1f s later" % [t / 60.0])
+	# Someone standing in the doorway keeps it open.
+	door.push_open(Vector3(0, 0, 3.0))
+	m.global_position = Vector3(0.0, 0, 0.1)
+	await _frames(60 * 5)
+	_check(door.openness() > 0.9, "  it doesn't close on someone standing in it")
+	m.global_position = Vector3(6.0, 0, 6.0)
+	t = 0
+	while not door.is_closed() and t < 60 * 10:
+		await physics_frame
+		t += 1
+	_check(door.is_closed(), "  ...and closes when they go")
+	# An NPC passes through like anyone.
+	var npc := _mover(8, "")
+	world.add_child(npc)
+	npc.global_position = Vector3(0.1, 0, 3.0)
+	await _frames(2)
+	await _drive(npc, Vector3(0, 0, -1.2), 1.2, 6.0)
+	_check(npc.global_position.z < -2.0, "  an NPC walks through it (z %.2f)" % npc.global_position.z)
+	# Locked.
+	while not door.is_closed():
+		await physics_frame
+	door.set_locked(true)
+	_rattles = 0
+	m.global_position = Vector3(0.0, 0, 2.0)
+	await _frames(2)
+	await _drive(m, Vector3(0, 0, -1.75), 1.75, 1.2)
+	_check(door.openness() == 0.0 and m.global_position.z > -0.2, "  locked: it stays shut (you at z %.2f)" % m.global_position.z)
+	_check(_rattles >= 1, "  ...and the panels rattle (%d)" % _rattles)
+	world.queue_free()
+	await _frames(2)
+
+## The store doors (pharmacy, supermarket, electronics, kart track): in through the street's door and out of the room's, both faked round a real door.
+func _store_door_checks(gs: Node) -> void:
+	await _section("Doors: the stores' doors, in and out")
+	gs.clock = 14 * 60
+	for pair in [["DoorToPharmacy", "StorePharmacy3D", "sliding_glass"], ["DoorToSupermarket", "StoreSupermarket3D", "sliding_glass"],
+			["DoorToElectronics", "StoreElectronics3D", "shop_glass"], ["DoorToKarts", "KartCenter3D", "steel_back"]]:
+		var city := await _load("res://world/City3D.tscn")
+		_clear_patrol(city)
+		var p := _player()
+		var sdoor := city.get_node(pair[0])
+		var hd: Node3D = sdoor.get("hinged")
+		_check(hd != null and hd.kind == pair[2], "  %s has a %s door" % [pair[0], pair[2]])
+		p.global_position = sdoor.global_position + Vector3(0, 0, 0.6)
+		p.reset_physics_interpolation()
+		await _frames(5)
+		sdoor.interact(p)
+		await _frames(25)
+		_check(hd.openness() > 0.15 or absf(hd.angle) > 0.1, "  the door starts to open as you go in")
+		await _transition()
+		_check(current_scene.name == pair[1], "  you arrive in %s" % pair[1])
+		p = _player()
+		var inner: Node = current_scene.get_node("DoorToCity")
+		var ihd: Node3D = inner.get("hinged")
+		_check(ihd != null and ihd.kind == pair[2], "  the room's own door is a %s door" % pair[2])
+		var t := 0
+		while ihd != null and not ihd.is_closed() and t < 60 * 10:
+			await physics_frame
+			t += 1
+		_check(ihd != null and ihd.is_closed(), "  it closes behind you (%.1f s)" % [t / 60.0])
+		inner.interact(p)
+		await _frames(10)
+		await _transition()
+		_check(current_scene.name == "City3D", "  and out again onto the street")
+		await _frames(5)

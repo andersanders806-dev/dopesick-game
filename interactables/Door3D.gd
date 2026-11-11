@@ -103,6 +103,29 @@ func _exit_lamp(approach: Vector3) -> void:
 	lamp.position = hinged.position + approach * 0.7 + Vector3(0, 2.0, 0)
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
+## The picture behind the door is the room lit; shut for the night it's dark.
+var _dark_mat: StandardMaterial3D = null
+var _dark_day := false
+
+func _on_clock(_m: int) -> void:
+	_refresh_dark()
+
+func _exit_tree() -> void:
+	if GameState.clock_changed.is_connected(_on_clock):
+		GameState.clock_changed.disconnect(_on_clock)
+
+func _refresh_dark() -> void:
+	if _dark_mat == null:
+		return
+	var place := GameState.place_for_scene(target_scene)
+	var open := place == "" or GameState.is_open(place)
+	if not open:
+		_dark_mat.albedo_color = Color(0.05, 0.05, 0.07)
+	elif _dark_day and GameState.daylight() < 0.4:
+		_dark_mat.albedo_color = Color(0.82, 0.86, 0.95)
+	else:
+		_dark_mat.albedo_color = Color.WHITE
+
 func _dark_behind(from_street: bool) -> void:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -110,8 +133,10 @@ func _dark_behind(from_street: bool) -> void:
 		# The room isn't there: a picture of its aisle (assets/doors/interior_*.png) stands behind the door, lit as it would be.
 		var dim: bool = _style()["kind"] in ["bar", "steel_back"]
 		m.albedo_texture = load("res://assets/doors/interior_%s.png" % ("dim" if dim else "store"))
-		if not dim and GameState.daylight() < 0.4:
-			m.albedo_color = Color(0.82, 0.86, 0.95)
+		_dark_mat = m
+		_dark_day = not dim
+		GameState.clock_changed.connect(_on_clock)
+		_refresh_dark()
 	else:
 		var grad := Gradient.new()
 		grad.set_color(0, Color(0.03, 0.04, 0.07))

@@ -197,6 +197,7 @@ func _ready() -> void:
 	entered_shop.connect(_on_shop_changed.bind(true))
 	left_shop.connect(_on_shop_changed.bind(false))
 	zombie_mode = GameState.mode == "zombies"
+	preload("res://world/BackDoors.gd").install.call_deferred(self)
 	# The navmesh was baked round these two too (CityKit.bake_navigation);
 	# they're the story's, so the zombie block goes without.
 	if not zombie_mode:

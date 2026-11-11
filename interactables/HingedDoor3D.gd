@@ -69,6 +69,10 @@ const HOLD_AFTER := 0.45
 @export var opening := -1.0
 ## Draw the posts and header (the shop fronts have their own).
 @export var frame := false
+## A door you can use E on (a set-piece one, locked: rattles, says why). Walk-through doors aren't.
+@export var reachable := false
+## What E says when it's locked and `reachable` (the line shown after the rattle).
+var lock_text := ""
 ## Variant of the hinge's voice; -1: from the node's name.
 @export var voice := -1
 @export var start_open_deg := 0.0
@@ -221,7 +225,7 @@ func _build() -> void:
 	touch.set_script(TouchScript)
 	# (Not in the player's reach: a door you walk through has no prompt, a locked
 	# shop one is answered by its gate (ShopGate3D), the bar's by Door3D.)
-	touch.collision_layer = 0
+	touch.collision_layer = 4 if reachable else 0
 	touch.collision_mask = 0
 	touch.monitoring = false
 	touch.set("door", self)

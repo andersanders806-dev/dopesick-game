@@ -20,6 +20,7 @@ func _run() -> void:
 	await _street_checks(gs)
 	await _bar_checks(gs)
 	await _store_door_checks(gs)
+	await _lane_checks(gs)
 
 ## A capsule that stands in for the player (or an NPC) for the bare-door checks.
 func _mover(layer: int, grp: String) -> CharacterBody3D:
@@ -472,3 +473,31 @@ func _store_door_checks(gs: Node) -> void:
 		await _transition()
 		_check(current_scene.name == "City3D", "  and out again onto the street")
 		await _frames(5)
+
+
+## The steel back doors on the service lane and behind the corner shop: locked set pieces that rattle and say why.
+func _lane_checks(gs: Node) -> void:
+	await _section("Doors: the steel back doors on the lane")
+	gs.clock = 14 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_clear_patrol(city)
+	await _frames(5)
+	var doors := city.find_children("BackDoor", "Node3D", true, false)
+	_check(doors.size() >= 6, "  %d steel back doors stand on the lane and in the alley (the 4 + 4 old slabs, the corner shop's and the liquor store's)" % doors.size())
+	_check(doors.all(func(d): return d.kind == "steel_back" and d.locked and d.touch.collision_layer == 4), "  all steel, all locked, all within the player's reach")
+	var d: Node3D = city.get_node("LaneDoorOfWalkIn_Convenience/BackDoor")
+	var p := _player()
+	p.global_position = d.global_position + d.global_transform.basis.z * 0.9
+	p.reset_physics_interpolation()
+	await _frames(10)
+	_watch(d)
+	p.dialogue_active = false
+	_check(p._nearest_interactable() == d.touch, "  at the corner shop's back door E would use it")
+	d.touch.interact(p)
+	await _frames(5)
+	_check(_rattles == 1, "  E rattles the handle")
+	await _frames(60)
+	var hud := city.get_tree().get_first_node_in_group("hud")
+	_check(hud.dialogue_panel.visible and "Locked" in hud.text_label.text, "  ...and then says why ('%s')" % hud.text_label.text.left(60))
+	hud.advance_or_close_dialogue()
+	p.dialogue_active = false

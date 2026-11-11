@@ -146,6 +146,8 @@ func _ready() -> void:
 	_build_film_look()
 	_prompt = preload("res://ui/InteractPrompt.gd").new()
 	add_child(_prompt)
+	add_child(preload("res://ui/StifleHint.gd").new())
+	_build_high_tint()
 	reticle = Reticle.new()
 	reticle.name = "Reticle"
 	add_child(reticle)
@@ -568,8 +570,52 @@ func _on_headline_changed(_id: String) -> void:
 ## Sick, the world goes grey: the room's grade loses its colour and gains a
 ## hard edge as the craving bottoms out. Graphics sets the base grade; this
 ## leans on it every frame, so it follows the meter both ways.
-const SICK_SATURATION := 0.3
+const SICK_SATURATION := 0.55
 var _graded_env: Environment
+
+## The warm side of a dose: an amber wash, a little more colour and bloom, a softer vignette, all
+## by GameState.high_glow() -- how good the dose felt, fading as it wears off. A dose that feels
+## flat (tolerance) leaves the grade where it was.
+const HIGH_TINT := Color(1.0, 0.62, 0.32)
+## Added light, not a veil: a warm lift over everything, the way a good dose makes the room glow.
+const HIGH_TINT_ALPHA := 0.035
+const HIGH_SATURATION := 0.28
+const HIGH_BRIGHTNESS := 0.02
+const HIGH_BLOOM := 0.2
+const HIGH_GLOW_INTENSITY := 0.3
+const HIGH_VIGNETTE := 0.5
+var _high_tint: ColorRect
+var _glow_base := Vector2(-1.0, -1.0)
+
+func _build_high_tint() -> void:
+	_high_tint = ColorRect.new()
+	_high_tint.name = "HighTint"
+	_high_tint.color = Color(HIGH_TINT, 0.0)
+	var add := CanvasItemMaterial.new()
+	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_high_tint.material = add
+	_high_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_high_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_high_tint)
+	move_child(_high_tint, withdrawal_tint.get_index() + 1)
+
+func _update_high() -> void:
+	var g := GameState.high_glow()
+	# The soft bloom needs a look at the frame, which is the full shader's job; it is only used while it shows.
+	var mat0 := $PostFX.material as ShaderMaterial
+	if mat0 != null and (g > 0.003) != (mat0.shader == POST_FULL) and GameState.sickness() <= 0.0:
+		mat0.shader = POST_FULL if g > 0.003 else POST_LITE
+	if _high_tint != null:
+		# Not drawn at all when there is nothing to show: a full-screen blend is not free on a small GPU.
+		_high_tint.visible = g > 0.003
+		_high_tint.color.a = HIGH_TINT_ALPHA * g
+	var mat := $PostFX.material as ShaderMaterial
+	if mat != null:
+		mat.set_shader_parameter("vignette_strength", 0.85 * (1.0 - HIGH_VIGNETTE * g))
+		mat.set_shader_parameter("high", g)
+		var player := get_tree().get_first_node_in_group("player")
+		var bursts: Node = player.get("sick_bursts") if player != null else null
+		mat.set_shader_parameter("tunnel", float(bursts.get("tunnel")) if bursts != null else 0.0)
 
 func _update_sick_grade() -> void:
 	if _graded_env == null:
@@ -580,11 +626,77 @@ func _update_sick_grade() -> void:
 		_graded_env = we.environment
 	var s := GameState.sickness()
 	var k := s * s
-	_graded_env.adjustment_saturation = Graphics.SATURATION * lerpf(1.0, SICK_SATURATION, k)
-	_graded_env.adjustment_contrast = Graphics.CONTRAST * lerpf(1.0, 1.18, k)
+	var g := GameState.high_glow()
+	_graded_env.adjustment_saturation = Graphics.SATURATION * lerpf(1.0, SICK_SATURATION, k) * (1.0 + HIGH_SATURATION * g)
+	_graded_env.adjustment_contrast = Graphics.CONTRAST * lerpf(1.0, 1.08, k)
+	_graded_env.adjustment_brightness = 1.0 + HIGH_BRIGHTNESS * g
+	if _graded_env.glow_enabled:
+		if _glow_base.x < 0.0:
+			_glow_base = Vector2(_graded_env.glow_intensity, _graded_env.glow_bloom)
+		_graded_env.glow_intensity = _glow_base.x + HIGH_GLOW_INTENSITY * g
+		_graded_env.glow_bloom = _glow_base.y + HIGH_BLOOM * g
+
+## A line that doesn't stop the game: what a guard says over his shoulder, or what goes through your head.
+## "bark": a card with the speaker's name; "thought": bigger, no card, held longer (inner monologue).
+var _sub: Label
+var _sub_t := 0.0
+var _sub_len := 1.0
+
+func show_subtitle(text: String, secs := 2.5, kind := "line", speaker := "") -> void:
+	if _sub == null:
+		_sub = Label.new()
+		_sub.name = "Subtitle"
+		_sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_sub.anchor_left = 0.5
+		_sub.anchor_right = 0.5
+		_sub.anchor_top = 0.76
+		_sub.anchor_bottom = 0.76
+		_sub.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_sub.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		add_child(_sub)
+	if kind == "thought":
+		UiStyle.style_label(_sub, UiStyle.BODY_SEMI, 30, UiStyle.PAPER, 0)
+		_sub.add_theme_constant_override("outline_size", 8)
+		_sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		_sub.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		_sub.text = text
+	else:
+		UiStyle.style_label(_sub, UiStyle.BODY_SEMI, 24, UiStyle.PAPER, 0)
+		_sub.add_theme_constant_override("outline_size", 0)
+		var box := StyleBoxFlat.new()
+		box.bg_color = Color(0.045, 0.048, 0.056, 0.84)
+		box.border_color = UiStyle.AMBER
+		box.border_width_left = 3
+		box.set_corner_radius_all(4)
+		box.content_margin_left = 16
+		box.content_margin_right = 18
+		box.content_margin_top = 4
+		box.content_margin_bottom = 6
+		_sub.add_theme_stylebox_override("normal", box)
+		_sub.text = ("%s:  \"%s\"" % [speaker, text]) if speaker != "" else text
+	_sub_t = secs
+	_sub_len = secs
+	_sub.visible = true
+	# Centred on its anchor whatever the width of the words.
+	var sz := _sub.get_combined_minimum_size()
+	_sub.offset_left = -sz.x * 0.5
+	_sub.offset_right = sz.x * 0.5
+	_sub.offset_top = -sz.y * 0.5
+	_sub.offset_bottom = sz.y * 0.5
+
+func _tick_subtitle(delta: float) -> void:
+	if _sub == null or not _sub.visible:
+		return
+	_sub_t -= delta
+	_sub.modulate.a = clampf(minf(_sub_t, _sub_len - _sub_t) / 0.35, 0.0, 1.0)
+	if _sub_t <= 0.0:
+		_sub.visible = false
 
 func _process(delta: float) -> void:
 	_update_sick_grade()
+	_update_high()
+	_tick_subtitle(delta)
 	_tick_fade(delta)
 	if objective_label and not Cutscene.is_playing() and not get_tree().paused:
 		_tick_objective(delta)
@@ -705,7 +817,8 @@ func _update_craving(craving: float) -> void:
 		wake_soft()
 	# Only once you're actually getting sick -- it used to sit at ~20% green
 	# over everything at a normal craving, which muddied every colour.
-	withdrawal_tint.color.a = GameState.sickness() * 0.3
+	# Pale and sweaty, not night-vision green: the room has to stay readable.
+	withdrawal_tint.color = Color(0.62, 0.62, 0.54, GameState.sickness() * 0.13)
 	_set_post_fx(GameState.sickness())
 
 ## Getting low on what you crave keeps the meter up (sickness itself already does, past half).
@@ -720,7 +833,7 @@ const POST_LITE := preload("res://assets/fx/postfx_lite.gdshader")
 
 func _set_post_fx(sick: float) -> void:
 	var mat := $PostFX.material as ShaderMaterial
-	var want: Shader = POST_FULL if sick > 0.0 else POST_LITE
+	var want: Shader = POST_FULL if (sick > 0.0 or GameState.high_glow() > 0.003) else POST_LITE
 	if mat.shader != want:
 		mat.shader = want
 	mat.set_shader_parameter("sickness", sick)

@@ -4,6 +4,9 @@ signal spotted_theft
 ## Fires the moment this guard becomes suspicious enough to start watching
 ## you rather than the room. Used for feedback, not for the alarm.
 signal suspicion_raised
+## Heard something (a cough, a dropped item, running feet) and turned to look. `kind` is the
+## noise's, `strength` 0..1 how much of its loudness reached this guard.
+signal heard_noise(kind: String, strength: float)
 
 @export var vision_range: float = 6.0
 @export var vision_angle_deg: float = 50.0
@@ -26,6 +29,8 @@ signal suspicion_raised
 ## [11, 19] for the midday rush). Empty means always on shift. Off shift
 ## they simply aren't there when you walk in.
 @export var shift_hours: Array = []
+## Listens for noises (GameState.noise_made). The beat cop, who has his own business, doesn't.
+@export var hears_noise: bool = true
 
 const VISION_COLOR_CALM := Color(0.5, 0.95, 1.0, 0.35)
 const VISION_COLOR_SUSPICIOUS := Color(1.0, 0.75, 0.15, 0.45)
@@ -58,6 +63,32 @@ const SUSPICION_DECAY := 0.30
 ## you, which shows in the cone and drains slower.
 const SUSPICION_NOTICED := 0.35
 
+## --- Hearing --------------------------------------------------------------
+## A noise carries `loudness_m` metres in the open and half that through a wall (a raycast, like
+## sight). Inside it, how far the guard's suspicion jumps depends on how close it was -- the full
+## bump at their feet, none at the edge -- and on what it was; the guard also turns to face it for
+## a couple of seconds, then the sweep takes over again. A sound never fills the bar on its own:
+## it makes them look, and what they see does the rest.
+const NOISE_BUMP := {"drop": 0.6, "retch": 0.5, "cough": 0.45, "cough_fit": 0.5, "sniff": 0.25, "sprint": 0.14}
+const NOISE_BUMP_DEFAULT := 0.35
+const NOISE_CAP := 0.8
+const NOISE_WALL_FACTOR := 0.5
+## How long they stay turned to it, and how fast the facing swings there and back.
+const HEAR_TURN_TIME := 3.4
+const HEAR_SWING_IN := 12.0
+const HEAR_SWING_OUT := 1.6
+## The faster body swing while looking at a noise (TURN_SPEED is the sweep's).
+const HEAR_BODY_TURN := 16.0
+## After the first look they scan: the last SCAN_TIME seconds of it sweep +-SCAN_DEG about the sound.
+const SCAN_TIME := 1.6
+const SCAN_DEG := 40.0
+## The startle: a quick lean and hop as the head snaps round.
+const FLINCH_TIME := 0.4
+const BARK_COOLDOWN := 4.0
+## Said at a small bump, and at a big one.
+const BARKS_MILD := ["Hm?", "Huh?"]
+const BARKS_ALERT := ["Who's there?", "What was that?"]
+
 @onready var vision_cone: MeshInstance3D = $VisionCone
 @onready var body: Node3D = $Body
 
@@ -77,6 +108,16 @@ var can_see_player: bool = false
 var suspicion: float = 0.0
 var _alarm_raised: bool = false
 var _was_noticed: bool = false
+## Turned toward a noise: the direction (cone degrees), seconds left, and how far the facing has
+## swung from the sweep to it (0..1).
+var _hear_deg: float = 0.0
+var _hear_t: float = 0.0
+var _hear_blend: float = 0.0
+var _bark_cd: float = 0.0
+var _flinch_t: float = 0.0
+## What the guard last said (the smoke test reads it).
+var last_bark: String = ""
+var last_heard: String = ""
 
 func _ready() -> void:
 	if not shift_hours.is_empty() and not GameState.hours_contain(shift_hours, GameState.hour()):
@@ -112,6 +153,8 @@ func _ready() -> void:
 	# When a chase ends without an arrest the alarm latch has to come off,
 	# or this guard is deaf to everything you do for the rest of the visit.
 	GameState.wanted_changed.connect(_on_wanted_changed)
+	if hears_noise and not watcher_only:
+		GameState.noise_made.connect(_on_noise)
 
 ## Fills the empty Body mount with this role's model. Kept out of the scene
 ## file so one Guard3D.tscn covers every store's clerk and the door guard.
@@ -125,6 +168,24 @@ func _build_body() -> void:
 func _physics_process(delta: float) -> void:
 	_sweep_t += delta * sweep_speed
 	var facing_deg := base_facing_deg + sin(_sweep_t) * (sweep_arc_deg * 0.5)
+	# Turned to a noise: the sweep is overridden, then eases back to wherever it has got to.
+	_bark_cd = maxf(0.0, _bark_cd - delta)
+	if _hear_t > 0.0:
+		_hear_t -= delta
+		_hear_blend = move_toward(_hear_blend, 1.0, HEAR_SWING_IN * delta)
+	else:
+		_hear_blend = move_toward(_hear_blend, 0.0, HEAR_SWING_OUT * delta)
+	if _hear_blend > 0.0:
+		var look_deg := _hear_deg
+		if _hear_t > 0.0 and _hear_t < SCAN_TIME:
+			# The look-around: left, right, back to the noise.
+			look_deg += sin((SCAN_TIME - _hear_t) / SCAN_TIME * TAU) * SCAN_DEG
+		facing_deg = rad_to_deg(lerp_angle(deg_to_rad(facing_deg), deg_to_rad(look_deg), smoothstep(0.0, 1.0, _hear_blend)))
+	if _flinch_t > 0.0 and not watcher_only:
+		_flinch_t = maxf(0.0, _flinch_t - delta)
+		var k := sin((1.0 - _flinch_t / FLINCH_TIME) * PI)
+		body.rotation.x = -0.22 * k
+		body.position.y = 0.06 * k
 	var facing := Vector2.RIGHT.rotated(deg_to_rad(facing_deg))
 
 	var player := get_tree().get_first_node_in_group("player")
@@ -147,7 +208,8 @@ func _physics_process(delta: float) -> void:
 		# faced -Z -- kept after the cast changed, it turned every guard and
 		# the beat cop round, so he walked the block backwards.
 		var want := deg_to_rad(90.0 - facing_deg)
-		body.rotation.y = lerp_angle(body.rotation.y, want, min(1.0, TURN_SPEED * delta))
+		var turn := HEAR_BODY_TURN if _hear_blend > 0.0 else TURN_SPEED
+		body.rotation.y = lerp_angle(body.rotation.y, want, min(1.0, turn * delta))
 
 	_redraw_cone(facing_deg)
 
@@ -188,6 +250,78 @@ func _update_suspicion(player: Node, delta: float) -> void:
 	if suspicion >= 1.0:
 		_alarm_raised = true
 		spotted_theft.emit()
+
+## Whether `pos` is behind a wall from here: a ray to it that something solid -- not a shelf, a
+## counter or a person -- stops. Sound goes round the stock.
+func _wall_between(pos: Vector3) -> bool:
+	var from := global_position + Vector3(0, 1.4, 0)
+	var to := pos + Vector3(0, 1.0, 0)
+	var exclude: Array[RID] = []
+	var space := get_world_3d().direct_space_state
+	for i in 4:
+		var q := PhysicsRayQueryParameters3D.create(from, to, 1)
+		q.exclude = exclude
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return false
+		var c: Object = hit.collider
+		if c is CharacterBody3D or (c is Node and (c as Node).get_parent() != null and String((c as Node).name).begins_with("Fixture")):
+			exclude.append(hit.rid)
+			continue
+		return true
+	return false
+
+## GameState.noise_made: close enough to hear it? A bump of suspicion by how near, a turn to look,
+## and a bark -- what the player sees of it is the cone going amber and the head swinging round.
+func _on_noise(pos: Vector3, loudness_m: float, kind: String) -> void:
+	# A shop that isn't the one you're in has its vision switched off (WalkInShop): it's off for hearing, too.
+	if vision_range <= 0.0 or GameState.in_custody or _alarm_raised or not is_inside_tree():
+		return
+	var reach := loudness_m
+	var d := global_position.distance_to(pos)
+	if d > reach:
+		return
+	if _wall_between(pos):
+		reach *= NOISE_WALL_FACTOR
+		if d > reach:
+			return
+	var strength := 1.0 - d / maxf(reach, 0.01)
+	var bump: float = float(NOISE_BUMP.get(kind, NOISE_BUMP_DEFAULT)) * strength
+	bump *= MetaProgress.suspicion_scale() * _alertness()
+	# Never to the alarm: a noise makes them look; seeing is what fills the bar.
+	suspicion = maxf(suspicion, minf(suspicion + bump, NOISE_CAP))
+	var to := pos - global_position
+	_hear_deg = rad_to_deg(atan2(to.z, to.x))
+	if _hear_t <= 0.0 and not watcher_only:
+		# The head and shoulders snap most of the way at once: something just made them jump.
+		body.rotation.y = lerp_angle(body.rotation.y, deg_to_rad(90.0 - _hear_deg), 0.7)
+		_flinch_t = FLINCH_TIME
+	_hear_t = HEAR_TURN_TIME
+	last_heard = kind
+	heard_noise.emit(kind, strength)
+	if bump > 0.02 and _bark_cd <= 0.0:
+		_bark(bump >= 0.3)
+
+## "Hm?" at a small one, "Who's there?" at a big one: said from where they stand.
+func _bark(alert: bool) -> void:
+	_bark_cd = BARK_COOLDOWN
+	var line: String = (BARKS_ALERT if alert else BARKS_MILD).pick_random()
+	last_bark = line
+	if watcher_only:
+		return
+	var speaker := "Security" if role in ["security_guard", "police"] else "Clerk"
+	var hud := get_tree().get_first_node_in_group("hud")
+	if hud != null and hud.has_method("show_subtitle"):
+		var who := "Clerk"
+		var talk := get_node_or_null("TalkZone")
+		if talk != null and String(talk.npc_name) != "":
+			who = String(talk.npc_name)
+		hud.show_subtitle(line, 2.2, "bark", who)
+	var stream: AudioStream = Voice.bark_stream(speaker, line)
+	if stream != null:
+		var voice := SFX.play_at("", global_position + Vector3(0, 1.6, 0), 1.0, randf_range(0.97, 1.03), stream)
+		if voice != null:
+			voice.bus = "Voice"
 
 func _on_wanted_changed(is_wanted: bool) -> void:
 	if not is_wanted:

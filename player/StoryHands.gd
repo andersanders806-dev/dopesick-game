@@ -25,6 +25,9 @@ const BOX_L := Vector3(-0.17, -0.2, -0.52)
 const WALKMAN_UP_L := Vector3(-0.07, -0.13, -0.33)
 const WALKMAN_HELD_L := Vector3(-0.15, -0.20, -0.40)
 const MOUTH_R := Vector3(0.02, -0.10, -0.30)
+## A fist to the mouth for a cough (SickBursts), and how long a fumbled grab takes to play out.
+const COVER_R := Vector3(0.01, -0.075, -0.27)
+const FUMBLE_TIME := 0.9
 const AWAY_R := Vector3(0.02, -0.40, -0.30)
 const AWAY_L := Vector3(-0.08, -0.41, -0.30)
 const BOX_SIZE := Vector3(0.27, 0.15, 0.22)
@@ -55,6 +58,10 @@ var _look_prev := Vector2.ZERO
 var _look_known := false
 var _tremor_seed := Vector3(randf() * 10.0, randf() * 10.0, randf() * 10.0)
 var _sprint := 0.0
+## The right hand over the mouth, 0..1 (cover_mouth()), and a grab slipping out of it (fumble()).
+var _cover := 0.0
+var _cover_want := false
+var _fumble_t := -1.0
 
 # Actions: each a timeline in seconds, -1 when not running.
 var _reach_t := -1.0
@@ -223,6 +230,15 @@ func reach(world_pos: Vector3, quiet := false) -> void:
 	if not quiet:
 		_play("cloth", -16.0, randf_range(1.25, 1.45))
 
+## Hand to the mouth for a cough, down again when it's over (player/SickBursts.gd).
+func cover_mouth(on: bool) -> void:
+	_cover_want = on
+
+## The grab slips: the hand jerks open and the thing is gone (items/StealableItem3D.gd drops it).
+func fumble() -> void:
+	_fumble_t = 0.0
+	_play("cloth", -10.0, 0.8)
+
 func _on_tape(id: String) -> void:
 	if id == "":
 		return
@@ -296,6 +312,11 @@ func advance(delta: float) -> void:
 		_wm_stopped_t = 0.0
 		_play("cloth", -14.0, 1.1)
 	_wm_playing = playing
+	_cover = move_toward(_cover, 1.0 if _cover_want else 0.0, delta * (7.0 if _cover_want else 4.0))
+	if _fumble_t >= 0.0:
+		_fumble_t += delta
+		if _fumble_t >= FUMBLE_TIME:
+			_fumble_t = -1.0
 	_carry = move_toward(_carry, 1.0 if (_item != null and not Jobs.carrying_box()) else 0.0, delta * 4.0)
 	_box = move_toward(_box, 1.0 if Jobs.carrying_box() else 0.0, delta * 3.0)
 
@@ -384,6 +405,21 @@ func apply() -> void:
 		open_r = maxf(open_r, w * 0.9)
 		roll_r = lerpf(roll_r, 18.0, w)
 		gr = minf(gr, 1.0 - w)
+	# --- a fist to the mouth
+	if _cover > 0.001:
+		tr = tr.lerp(COVER_R, _cover)
+		gr = maxf(gr, _cover * 0.8)
+		roll_r = lerpf(roll_r, -55.0, _cover)
+		tl = tl.lerp(IDLE_L + Vector3(0.03, -0.03, 0.0), _cover * 0.4)
+	# --- a grab slipping: the hand jerks away and opens
+	var fumble_w := 0.0
+	if _fumble_t >= 0.0:
+		var fp := _fumble_t / FUMBLE_TIME
+		fumble_w = sin(clampf(fp, 0.0, 1.0) * PI)
+		tr += Vector3(0.05, -0.07, 0.04) * smoothstep(0.0, 0.25, fp) * (1.0 - smoothstep(0.6, 1.0, fp))
+		open_r = maxf(open_r, smoothstep(0.1, 0.3, fp))
+		gr = minf(gr, 1.0 - smoothstep(0.1, 0.3, fp))
+		roll_r += sin(_t * 31.0) * 14.0 * fumble_w
 	# --- using
 	var pill_vis := false
 	if _use_t >= 0.0:
@@ -422,6 +458,9 @@ func apply() -> void:
 	# --- the sickness: a tremor, and the hands never settle
 	if sick > 0.02:
 		var amp_t := 0.0015 + 0.011 * sick * sick + 0.004 * sick
+		# Reaching for something, the shake shows: the closer the hand gets, the more it carries.
+		var reach_w := sin(clampf(_reach_t / REACH_TIME, 0.0, 1.0) * PI) if _reach_t >= 0.0 else 0.0
+		amp_t *= 1.0 + (2.2 * reach_w + 2.5 * fumble_w) * sick
 		var n := Vector3(
 			sin(_t * 6.3 + _tremor_seed.x) + 0.6 * sin(_t * 11.7 + _tremor_seed.y),
 			sin(_t * 7.1 + _tremor_seed.y) + 0.6 * sin(_t * 13.3 + _tremor_seed.z),

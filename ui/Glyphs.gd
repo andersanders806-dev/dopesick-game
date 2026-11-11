@@ -9,12 +9,12 @@ const PAD := {
 	"swap_weapon": ["Triangle", "Triangle"], "melee": ["R3", "R3"], "sprint": ["L3", "L3"],
 	"crouch": ["Circle", "Circle"], "inspect": ["DpadDown", "D-pad down"], "pause": ["Options", "Options"],
 	"cancel_ui": ["Circle", "Circle"], "accept": ["Cross", "Cross"], "move": ["LStick", "Left stick"],
-	"look": ["RStick", "Right stick"], "back": ["Circle", "Circle"],
+	"look": ["RStick", "Right stick"], "back": ["Circle", "Circle"], "stifle": ["L2", "L2"],
 }
 const KEY := {
 	"fire": "Left click", "aim": "Right click", "reload": "R", "interact": "E", "swap_weapon": "Q / Wheel",
 	"melee": "V", "sprint": "Shift", "crouch": "C", "inspect": "T", "pause": "Esc", "cancel_ui": "Esc",
-	"accept": "Enter", "move": "WASD", "look": "Mouse", "back": "Esc",
+	"accept": "Enter", "move": "WASD", "look": "Mouse", "back": "Esc", "stifle": "Q",
 }
 
 static func is_pad() -> bool:

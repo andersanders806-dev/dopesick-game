@@ -4,6 +4,8 @@ extends "res://world/WorldRoot3D.gd"
 ## fixture layouts; this picks a layout, shuffles the stock onto the
 ## fixtures, and calls the police when a guard spots a theft.
 
+const StockLook := preload("res://items/StockLook.gd")
+
 ## Which store this is ("pharmacy", ...), matching GameState.REQUEST_POOL.
 @export var store_id: String = ""
 ## How long after grabbing something you still look like you're stealing
@@ -41,6 +43,8 @@ func _setup_store() -> void:
 		fixtures.append(get_node("Fixture%d" % i))
 		item_slots.append(get_node("Item%d" % i))
 		i += 1
+	if store_id == "convenience":
+		StockLook.apply(self)
 	_randomize_layout()
 
 func _wire_guards() -> void:

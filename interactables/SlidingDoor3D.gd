@@ -165,7 +165,9 @@ func _commit(parent: Node3D, key: String) -> void:
 	mi.name = "Mesh"
 	mi.mesh = _mesh_cache[full]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mi.visibility_range_end = 26.0
+	mi.visibility_range_end = 20.0
+	mi.visibility_range_end_margin = 5.0
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	parent.add_child(mi)
 
 func _panel(nm: String, sign: float) -> AnimatableBody3D:

@@ -274,7 +274,7 @@ func _visual() -> Node3D:
 ## Materials are shared by every door (one resource each, one shader each).
 static var _mats := {}
 ## Past this the door isn't drawn at all (m).
-const DRAW_RANGE := 26.0
+const DRAW_RANGE := 20.0
 
 func _mat(color: Color, metallic := 0.0, rough := 0.6, pbr := "", uv := 1.0) -> StandardMaterial3D:
 	var key := [color, metallic, rough, pbr, uv]
@@ -287,13 +287,10 @@ func _mat(color: Color, metallic := 0.0, rough := 0.6, pbr := "", uv := 1.0) -> 
 	m.roughness = rough
 	if pbr != "":
 		var d := "res://assets/pbr/" + pbr
+		# Albedo only, on the box's own UVs: a door is a few big flat faces, and the normal and roughness maps
+		# with triplanar mapping on them cost a street's worth of doors about a millisecond on an iGPU.
 		m.albedo_texture = load(d + "_diff.jpg")
-		m.normal_enabled = true
-		m.normal_texture = load(d + "_nor.jpg")
-		m.roughness_texture = load(d + "_rough.jpg")
-		m.uv1_triplanar = true
-		m.uv1_world_triplanar = false
-		m.uv1_scale = Vector3.ONE * uv
+		m.uv1_scale = Vector3(uv * 2.0, uv * 2.0, 1.0)
 	return m
 
 ## The leaf's picture is a handful of boxes and bars; drawn one by one that is
@@ -346,6 +343,8 @@ func _commit(parent: Node3D, key: String, nm := "Mesh") -> void:
 	mi.mesh = _mesh_cache[full]
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	mi.visibility_range_end = DRAW_RANGE
+	mi.visibility_range_end_margin = 5.0
+	mi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 	parent.add_child(mi)
 
 ## Aluminium frame, glass, push bar inside, a pull on the street side, a

@@ -31,6 +31,7 @@ extends Node3D
 
 const SoundSet := preload("res://interactables/DoorSounds.gd")
 const TouchScript := preload("res://interactables/DoorTouch3D.gd")
+const DoorGlass := preload("res://interactables/DoorGlass.gd")
 
 signal opened
 signal latched
@@ -351,16 +352,6 @@ func _build_glass_leaf() -> void:
 	var t: float = _p["thick"]
 	var alu := _mat(Color(0.74, 0.75, 0.77), 0.3, 0.45)
 	var dark := _mat(Color(0.14, 0.14, 0.15), 0.2, 0.55)
-	var glass: StandardMaterial3D = _mats.get("glass")
-	if glass == null:
-		glass = StandardMaterial3D.new()
-		_mats["glass"] = glass
-	glass.albedo_color = Color(0.72, 0.82, 0.86, 0.11)
-	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.roughness = 0.04
-	glass.metallic = 0.0
-	glass.metallic_specular = 0.9
-	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
 	var stile := 0.075
 	var vis := _visual()
 	_box(vis, "StileHinge", Vector3(stile, h, t), Vector3(stile / 2.0, h / 2.0, 0), alu)
@@ -368,7 +359,9 @@ func _build_glass_leaf() -> void:
 	_box(vis, "RailTop", Vector3(w - 2.0 * stile, 0.09, t), Vector3(w / 2.0, h - 0.045, 0), alu)
 	_box(vis, "RailBottom", Vector3(w - 2.0 * stile, 0.22, t), Vector3(w / 2.0, 0.11, 0),
 		_mat(Color(0.52, 0.52, 0.53), 0.3, 0.55))
-	_box(vis, "Glass", Vector3(w - 2.0 * stile, h - 0.31, 0.012), Vector3(w / 2.0, 0.22 + (h - 0.31) / 2.0, 0), glass)
+	var pane := QuadMesh.new()
+	pane.size = Vector2(w - 2.0 * stile, h - 0.31)
+	_collect(pane, Transform3D(Basis(), Vector3(w / 2.0, 0.22 + (h - 0.31) / 2.0, 0)), DoorGlass.material())
 	# Inside (-z): push bar on two standoffs.
 	var bar_x := w - 0.1 - 0.22
 	_cyl(vis, "PushBar", 0.016, 0.52, Vector3(bar_x, 1.0, -0.055), alu)

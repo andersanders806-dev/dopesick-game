@@ -457,10 +457,10 @@ func _build_bar_leaf() -> void:
 	if glow == null:
 		glow = StandardMaterial3D.new()
 		_mats["barglow"] = glow
-	glow.albedo_color = Color(0.32, 0.2, 0.1)
+	glow.albedo_color = Color(0.06, 0.04, 0.025)
 	glow.emission_enabled = true
 	glow.emission = Color(1.0, 0.62, 0.3)
-	glow.emission_energy_multiplier = 0.28
+	glow.emission_energy_multiplier = 0.12
 	_box(vis, "Window", Vector3(0.34, 0.34, 0.01), Vector3(w / 2.0, 1.55, t / 2.0 + 0.024), glow)
 	var mull := _mat(Color(0.12, 0.08, 0.06), 0.0, 0.7)
 	_box(vis, "MullionV", Vector3(0.025, 0.36, 0.012), Vector3(w / 2.0, 1.55, t / 2.0 + 0.03), mull)

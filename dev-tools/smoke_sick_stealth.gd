@@ -106,7 +106,8 @@ func _run() -> void:
 	await _frames(6)
 	var tint_naive: float = hud._high_tint.color.a if hud and hud._high_tint else -1.0
 	var hud_mat: ShaderMaterial = hud.get_node("PostFX").material
-	_check(tint_naive > 0.025 and float(hud_mat.get_shader_parameter("high")) > 0.9 and hud_mat.shader == hud.POST_FULL,
+	# (The golden wash was cut by about a third after the review: it washed the whole frame yellow and faded the HUD.)
+	_check(tint_naive > 0.015 and tint_naive < 0.03 and float(hud_mat.get_shader_parameter("high")) > 0.9 and hud_mat.shader == hud.POST_FULL,
 		"naive: the HUD washes the frame golden (tint alpha %.3f, bloom shader high %.2f)" % [tint_naive, float(hud_mat.get_shader_parameter("high"))])
 	var sfx := root.get_node("SFX")
 	_check(sfx._boost_db > 2.5, "  and the music swells (%.1f dB)" % sfx._boost_db)

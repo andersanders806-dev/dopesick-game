@@ -35,6 +35,8 @@ var _guard_range := {}
 var _poll := 0.0
 var _inert := false
 var _room: Node = null
+## Which stage of finishing the room is next (0: not finishing).
+var _fin_stage := 0
 ## Which shop is being built right now: one at a time.
 static var _building: Node = null
 
@@ -70,14 +72,19 @@ func _packed(urgent := false) -> PackedScene:
 func ensure_loaded() -> void:
 	if loaded:
 		return
-	if _room == null:
+	if _room == null and _fin_stage == 0:
 		var packed := _packed(true)
 		if packed == null:
 			packed = load(Facades.walk_in_scene(_front)) as PackedScene
 		_start_room(packed)
-	while _room.get_child_count() > 0:
-		_adopt_one()
-	_finish_room()
+	if _room != null:
+		while _room.get_child_count() > 0:
+			_adopt_one()
+		_finish_layers()
+	if _fin_stage == 1:
+		_finish_setup()
+	if _fin_stage == 2:
+		_finish_wire()
 
 func _start_room(packed: PackedScene) -> void:
 	_room = packed.instantiate()
@@ -88,22 +95,33 @@ func _adopt_one() -> void:
 	c.owner = null
 	add_child(c)
 
-func _finish_room() -> void:
+## The finishing, in three stages: walking up to a door does one a frame (_build_step), since setting up a
+## store and shuffling its stock are ~15 ms between them; ensure_loaded does the rest at once.
+## Stage 1: the room's shell is let go and everything in the shop goes on the lamps' layer.
+func _finish_layers() -> void:
 	_room.free()
 	_room = null
-	if _building == self:
-		_building = null
+	_fin_stage = 1
 	# Inside, the lamps are on a layer of their own, so a lamp in the shop
 	# never lights the street: everything here is on it as well as layer 1.
 	for n in find_children("*", "VisualInstance3D", true, false):
 		if not (n is Light3D):
 			(n as VisualInstance3D).layers = 3
+
+## Stage 2: the store's layout and guards (Dead Block: stripped of its people, and done).
+func _finish_setup() -> void:
+	_fin_stage = 2
 	if _inert:
 		_dress_inert()
-		loaded = true
+		_done_building()
 		return
 	_setup_store()
 	_wire_guards()
+
+## Stage 3: the stock, the tape counter, the guards' sight.
+func _finish_wire() -> void:
+	if loaded:
+		return
 	_shuffle_items()
 	if store_id == "music":
 		TapeCounter.wire_zones(self)
@@ -111,13 +129,27 @@ func _finish_room() -> void:
 		if is_ancestor_of(guard):
 			_guard_range[guard] = guard.vision_range
 			guard.vision_range = 0.0
-	loaded = true
+	_done_building()
 	_set_near(false)
+
+func _done_building() -> void:
+	if _building == self:
+		_building = null
+	_fin_stage = 0
+	loaded = true
 
 ## A frame of building: the room is instanced one frame, then handed over a
 ## few nodes at a time (a clerk is the slow part), within a small budget.
 func _build_step(urgent := false) -> void:
+	if _fin_stage == 1:
+		_finish_setup()
+		return
+	if _fin_stage == 2:
+		_finish_wire()
+		return
 	if _room == null:
+		if place == "convenience":
+			StockLook.warm()
 		var packed := _packed(urgent)
 		if packed == null or (_building != null and _building != self):
 			return
@@ -128,7 +160,7 @@ func _build_step(urgent := false) -> void:
 	while _room.get_child_count() > 0 and Time.get_ticks_usec() - t0 < BUILD_BUDGET_USEC:
 		_adopt_one()
 	if _room.get_child_count() == 0:
-		_finish_room()
+		_finish_layers()
 
 ## Dead Block has no shopkeepers: the rooms stand empty and open.
 func _go_inert() -> void:
@@ -160,7 +192,7 @@ static func _let_go_of_materials(n: Node) -> void:
 ## step, not every frame.
 func _process(delta: float) -> void:
 	if not loaded:
-		if _room != null:
+		if _room != null or _fin_stage > 0:
 			_build_step()
 		else:
 			_poll -= delta

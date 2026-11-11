@@ -31,14 +31,6 @@ func _ready() -> void:
 	add_theme_stylebox_override("normal", box)
 	visible = false
 
-## The glyph is laid out as if the text started at the label's edge; the card's top padding pushes it down.
-func _place() -> void:
-	super._place()
-	var pad := get_theme_stylebox("normal").content_margin_top if has_theme_stylebox_override("normal") else 0.0
-	for g in glyphs:
-		if is_instance_valid(g):
-			(g as Control).position.y += pad
-
 ## Each new thing to use eases in: a fade and a short rise.
 const EASE_IN := 0.18
 const RISE := 8.0

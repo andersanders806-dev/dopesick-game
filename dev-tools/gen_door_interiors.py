@@ -55,10 +55,10 @@ def render(bright: bool) -> Image.Image:
 	# vignette so the edges recede
 	a = np.array(im).astype(np.float32)
 	yy, xx = np.mgrid[0:H, 0:W]
-	v = 1.0 - 0.45 * (((xx - cx) / (W * 0.65)) ** 2 + ((yy - cy) / (H * 0.7)) ** 2)
+	v = 1.0 - 0.22 * (((xx - cx) / (W * 0.65)) ** 2 + ((yy - cy) / (H * 0.7)) ** 2)
 	a *= np.clip(v, 0.35, 1.0)[..., None]
 	# A little noise so the vignette doesn't band when it's seen big.
-	a += rng.normal(0.0, 1.6, a.shape).astype(np.float32)
+	a += rng.normal(0.0, 2.4, a.shape).astype(np.float32)
 	return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
 
 os.makedirs(OUT, exist_ok=True)

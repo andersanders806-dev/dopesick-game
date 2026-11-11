@@ -9,7 +9,7 @@ uniform sampler2D smudge : filter_linear, repeat_disable;
 uniform float day_amount : hint_range(0.0, 1.0) = 1.0;
 uniform vec3 tint : source_color = vec3(0.55, 0.68, 0.72);
 uniform float base_alpha = 0.10;
-uniform float reflect_base = 0.16;
+uniform float reflect_base = 0.07;
 uniform float smudge_amount = 0.32;
 
 void fragment() {

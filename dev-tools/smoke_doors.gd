@@ -136,6 +136,9 @@ func _bare_door_checks() -> void:
 	_check(enter10 > 0 and last10 / 60.0 >= 0.6, "  the last 10 degrees take %.1f s (slow)" % [last10 / 60.0])
 
 	# Sprint into it: slam, and a noise event.
+	var heard := []
+	if _gs().has_signal("noise_made"):
+		_gs().noise_made.connect(func(_pos, loud, kind): heard.append([kind, loud]))
 	_slams = 0
 	door.last_noise = {}
 	m.global_position = Vector3(0.1, 0, 3.2)
@@ -150,6 +153,8 @@ func _bare_door_checks() -> void:
 	_check(_slams >= 1, "  sprinting into it slams it against its stop (%d)" % _slams)
 	_check(door.last_noise.get("kind", "") == "door_slam" and float(door.last_noise.get("loudness", 0.0)) >= 10.0,
 		"  ...and makes a door_slam noise (%s)%s" % [door.last_noise, "" if gs_has_noise() else " [GameState.emit_noise not here yet: door stub-checks it]"])
+	if _gs().has_signal("noise_made"):
+		_check(heard.any(func(h): return h[0] == "door_slam" and h[1] >= 10.0), "  ...and GameState heard it (noise_made %s)" % [heard])
 	t = 0
 	while not door.is_closed() and t < 60 * 12:
 		await physics_frame

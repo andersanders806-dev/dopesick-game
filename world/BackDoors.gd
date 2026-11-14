@@ -71,8 +71,8 @@ static func _lamp(parent: Node3D) -> void:
 	var light := OmniLight3D.new()
 	light.name = "Light"
 	light.light_color = Color(1.0, 0.78, 0.5)
-	light.light_energy = 0.9
-	light.omni_range = 5.0
+	light.light_energy = 1.5
+	light.omni_range = 5.5
 	light.shadow_enabled = false
 	light.distance_fade_enabled = true
 	light.distance_fade_begin = 25.0

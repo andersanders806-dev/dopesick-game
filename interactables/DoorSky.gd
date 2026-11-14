@@ -5,8 +5,8 @@ extends RefCounted
 
 const SKY := preload("res://interactables/sky_dome.gdshader")
 const ROOM := preload("res://interactables/interior_map.gdshader")
-const DAY: Texture2D = preload("res://assets/doors/glass_street_day.png")
-const NIGHT: Texture2D = preload("res://assets/doors/glass_street_night.png")
+const DAY: Texture2D = preload("res://assets/doors/glass_street_day_soft.png")
+const NIGHT: Texture2D = preload("res://assets/doors/glass_street_night_soft.png")
 
 static var _sky: ShaderMaterial = null
 static var _rooms := {}

@@ -947,6 +947,19 @@ func _storefront(front: Node3D, x0: float, width: float, walk_in := false) -> vo
 	var ssx := (width - 0.2) / sb.size.x
 	shutter.scale = Vector3(ssx, 2.4 / sb.size.y, 1.0)
 	shutter.position = Vector3(x0 + 0.1 - sb.position.x * ssx, 0.1 - sb.position.y * shutter.scale.y, FACE_Z - sb.end.z)
+	# The kit's slats are a hairline in its texture: a layer of dark slat lines on the shutter's face reads from a few metres.
+	var slats := MeshInstance3D.new()
+	slats.name = "ShutterSlats"
+	var sq := QuadMesh.new()
+	sq.size = Vector2(width - 0.2, 2.4)
+	var sm := ShaderMaterial.new()
+	sm.shader = preload("res://world/shutter_slats.gdshader")
+	sq.material = sm
+	slats.mesh = sq
+	slats.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	front.add_child(slats)
+	slats.position = Vector3(x0 + width / 2.0, 1.3, FACE_Z + 0.012)
+	slats.visible = false
 
 ## The ground floor of a walk-in's front: brick, with a doorway in the middle
 ## and a window either side (the glass is _storefront's). Boxes, not the
@@ -1023,6 +1036,9 @@ func refresh() -> void:
 		if GameState.mode == "zombies" and front.name.trim_prefix("Front") in WALK_INS:
 			open = true
 		front.get_node("Shutter").visible = not open
+		var slats := front.get_node_or_null("ShutterSlats") as Node3D
+		if slats != null:
+			slats.visible = not open
 		# A walk-in near you is the room itself behind the glass: no painted glow.
 		front.get_node("Glow").visible = open and not front.get_meta("near", false)
 

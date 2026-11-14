@@ -7,6 +7,7 @@ const ChoiceMenu := preload("res://ui/ChoiceMenu.gd")
 
 const HingedDoor := preload("res://interactables/HingedDoor3D.tscn")
 const SlidingDoor := preload("res://interactables/SlidingDoor3D.tscn")
+const EXIT_GLOW := preload("res://interactables/exit_glow.gdshader")
 const DoorSky := preload("res://interactables/DoorSky.gd")
 ## The doors to the Dive Bar, the pharmacy, the supermarket, the electronics store and the kart track
 ## (both the street's and the room's) are real doors (HingedDoor3D, or SlidingDoor3D for the glass
@@ -98,19 +99,26 @@ func _exit_lamp(approach: Vector3) -> void:
 	add_child(sign)
 	sign.position = hinged.position + approach * 0.12 + Vector3(0, 2.38, 0)
 	sign.rotation.y = hinged.rotation.y
-	var lamp := OmniLight3D.new()
-	lamp.name = "ExitGlow"
-	lamp.light_color = Color(1.0, 0.55, 0.42)
-	lamp.light_energy = 0.45
-	lamp.omni_range = 3.4
-	lamp.shadow_enabled = false
-	add_child(lamp)
-	lamp.position = hinged.position + approach * 0.7 + Vector3(0, 2.0, 0)
+	# The red glow of the sign on the door and the wall round it: a soft additive haze in the air in front of the
+	# doorway, not a light (an omni here cost 0.2-0.7 ms on the iGPU for what is a patch of wall).
+	var glow := MeshInstance3D.new()
+	glow.name = "ExitGlow"
+	var gq := QuadMesh.new()
+	gq.size = Vector2(3.6, 3.0)
+	var gm := ShaderMaterial.new()
+	gm.shader = EXIT_GLOW
+	gq.material = gm
+	glow.mesh = gq
+	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(glow)
+	glow.position = hinged.position + approach * 0.5 + Vector3(0, 1.55, 0)
+	glow.rotation.y = hinged.rotation.y
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
 ## The room behind a facade's door isn't there: a box room is drawn by interior mapping (interactables/interior_map.gdshader)
 ## in the doorway, with depth as you move. Shut for the night it's gone, and the facade's own shutter shows behind the glass.
 var _room_mi: MeshInstance3D = null
+var _shutter_lamp: Node3D = null
 
 func _on_clock(_m: int) -> void:
 	_refresh_room()
@@ -123,7 +131,11 @@ func _refresh_room() -> void:
 	if _room_mi == null:
 		return
 	var place := GameState.place_for_scene(target_scene)
-	_room_mi.visible = place == "" or GameState.is_open(place)
+	var open := place == "" or GameState.is_open(place)
+	_room_mi.visible = open
+	# Shut after dark: a sodium lamp over the door lights the roller shutter (slats and depth read, brightest at the top).
+	if _shutter_lamp != null:
+		_shutter_lamp.visible = not open and GameState.daylight() < 0.6
 
 func _dark_behind(from_street: bool) -> void:
 	if not from_street:
@@ -143,8 +155,42 @@ func _dark_behind(from_street: bool) -> void:
 	mi.position = Vector3(n.x + back.x, 1.1, n.z + back.z)
 	mi.rotation.y = hinged.rotation.y
 	_room_mi = mi
+	if place_has_shutter():
+		_make_shutter_lamp(hinged.position)
 	GameState.clock_changed.connect(_on_clock)
 	_refresh_room()
+
+## A place that keeps hours has a roller shutter on its front (world/Facades.gd) while it's shut.
+func place_has_shutter() -> bool:
+	return GameState.place_for_scene(target_scene) != ""
+
+## The lamp over a shop door that lights its shutter at night: a caged light (the lane doors' model) and a warm omni,
+## no shadow, faded out beyond a dozen metres so only the shop fronts near you cost anything.
+func _make_shutter_lamp(at: Vector3) -> void:
+	var holder := Node3D.new()
+	holder.name = "ShutterLamp"
+	add_child(holder)
+	holder.position = at
+	holder.rotation.y = hinged.rotation.y
+	var path := "res://assets/polyhaven/security_light/security_light.gltf"
+	if ResourceLoader.exists(path):
+		var lamp: Node3D = (load(path) as PackedScene).instantiate()
+		lamp.name = "Fixture"
+		holder.add_child(lamp)
+		lamp.position = Vector3(0, 2.5, 0.12)
+	var light := OmniLight3D.new()
+	light.name = "Light"
+	light.light_color = Color(1.0, 0.7, 0.4)
+	light.light_energy = 1.7
+	light.omni_range = 4.2
+	light.shadow_enabled = false
+	light.distance_fade_enabled = true
+	light.distance_fade_begin = 12.0
+	light.distance_fade_length = 6.0
+	holder.add_child(light)
+	light.position = Vector3(0, 2.55, 0.3)
+	_shutter_lamp = holder
+	_shutter_lamp.visible = false
 
 ## A room's wall has no doorway where its door is: cut one (three boxes round it), and put the night
 ## street behind it. The wall is whichever one's box the door stands in.

@@ -76,6 +76,10 @@ static func _door(target: String) -> String:
 			return "Go home"
 		"Backyard3D":
 			return "Through the gate"
+	# A shop that's shut says so and when it opens (E rattles the door: Door3D._show_closed).
+	var pid := GameState.place_for_scene(target)
+	if pid != "" and not GameState.is_open(pid):
+		return "Closed — opens %02d:00" % GameState.opening_hour(pid)
 	var place: String = SceneLoader.NAMES.get(room, "")
 	if place == "":
 		return "Go in"

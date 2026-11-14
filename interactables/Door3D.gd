@@ -78,6 +78,7 @@ func _install_hinged() -> void:
 		hinged.set_hours("OPEN %02d - %02d" % [int(hrs[0]), int(hrs[1]) % 24] if int(hrs[1]) - int(hrs[0]) < 24 and int(hrs[1]) > int(hrs[0]) else "OPEN 24 HRS")
 	_dark_behind(from_street)
 	if from_street:
+		_clear_hours_plate()
 		if st["kind"] == "bar":
 			_leak_music()
 	else:
@@ -90,28 +91,32 @@ func _exit_lamp(approach: Vector3) -> void:
 	var sign := Label3D.new()
 	sign.name = "ExitSign"
 	sign.text = "EXIT"
-	sign.font_size = 44
+	sign.font_size = 48
 	sign.pixel_size = 0.0025
 	sign.shaded = false
 	sign.outline_size = 0
 	sign.modulate = Color(1.0, 0.28, 0.2)
 	sign.double_sided = false
 	add_child(sign)
-	sign.position = hinged.position + approach * 0.12 + Vector3(0, 2.38, 0)
+	sign.position = hinged.position + approach * 0.12 + Vector3(0, 2.28, 0)
+	# Front toward the room (so it reads EXIT from inside). The room's ceiling is at 2.4 m: higher up (it was 2.38) the
+	# tops of the letters stood in the ceiling and were hidden, which made E and T look mirrored.
 	sign.rotation.y = hinged.rotation.y
-	# The red glow of the sign on the door and the wall round it: a soft additive haze in the air in front of the
-	# doorway, not a light (an omni here cost 0.2-0.7 ms on the iGPU for what is a patch of wall).
+	# The red glow of the sign on the door and the wall round it: a soft additive haze standing in front of the doorway,
+	# not a light (an omni here cost 0.2-0.7 ms on the iGPU for what is a patch of wall, and a Decal about as much).
+	# It fades to nothing before the quad's edge and the quad stays inside the room (the bar's ceiling is at 2.4 m, its
+	# side walls 1.6 m from the door), so it cuts through no wall, floor or ceiling and no line shows from any spot.
 	var glow := MeshInstance3D.new()
 	glow.name = "ExitGlow"
 	var gq := QuadMesh.new()
-	gq.size = Vector2(3.6, 3.0)
+	gq.size = Vector2(2.6, 2.2)
 	var gm := ShaderMaterial.new()
 	gm.shader = EXIT_GLOW
 	gq.material = gm
 	glow.mesh = gq
 	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(glow)
-	glow.position = hinged.position + approach * 0.5 + Vector3(0, 1.55, 0)
+	glow.position = hinged.position + approach * 0.45 + Vector3(0, 1.15, 0)
 	glow.rotation.y = hinged.rotation.y
 
 ## What shows where the door opens: a doorway of dark, warm at the top.
@@ -159,6 +164,15 @@ func _dark_behind(from_street: bool) -> void:
 		_make_shutter_lamp(hinged.position)
 	GameState.clock_changed.connect(_on_clock)
 	_refresh_room()
+
+## The facade's big hours plate ("OPEN 09-21", world/City3D's, by the door) stood across the door's side trim, which cut
+## letters out of it (and an open sliding door's panels park in front of it): it moves out beside the trim.
+func _clear_hours_plate() -> void:
+	var plate := owner.find_child(String(name).trim_prefix("DoorTo") + "Hours", true, false) as Label3D if owner != null else null
+	if plate != null:
+		plate.global_position.x = global_position.x + float(hinged.opening) / 2.0 + 0.78
+		# ...and out in front of the door's frame and of a sliding door's panels when they park at the side.
+		plate.global_position.z = global_position.z - 0.33
 
 ## A place that keeps hours has a roller shutter on its front (world/Facades.gd) while it's shut.
 func place_has_shutter() -> bool:

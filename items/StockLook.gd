@@ -7,6 +7,14 @@ const DIR := "res://assets/items/labels/"
 const CONVENIENCE := ["northstar", "crunchies", "fizz", "peak", "volt", "minty", "noodle", "cocoa", "dairy", "oats"]
 static var _mats := {}
 
+## The ten box labels start loading on a thread, so that dressing the shelves (a frame of the room's build) finds them in
+## and doesn't read ten PNGs off the disk in one frame (~20 ms cold).
+static func warm() -> void:
+	for name in CONVENIENCE:
+		var path: String = DIR + name + "_box.png"
+		if not ResourceLoader.has_cached(path) and ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			ResourceLoader.load_threaded_request(path)
+
 static func _material(name: String) -> StandardMaterial3D:
 	if not _mats.has(name):
 		var m := StandardMaterial3D.new()

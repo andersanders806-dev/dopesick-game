@@ -15,6 +15,8 @@ uniform float tunnel : hint_range(0.0, 1.0) = 0.0;
 uniform float sickness : hint_range(0.0, 1.0) = 0.0;
 // Beats per second of the pulse; the heartbeat loop runs about this fast.
 uniform float pulse_rate = 1.15;
+// How much of the dose's golden wash reaches the picture at full strength (it was 1.0: too much yellow over everything).
+const float WASH = 0.65;
 
 float rand(vec2 co) {
 	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
@@ -34,19 +36,19 @@ void fragment() {
 	// (Well, with only the dose's bloom showing, the sickness' extra looks at the frame are skipped.)
 	if (s > 0.001) {
 		// Double vision: a ghost of the frame drifting in and out beside it.
-		vec2 ghost = vec2(sin(TIME * 0.55), cos(TIME * 0.4)) * 0.012 * s;
-		col = mix(col, texture(screen_tex, uv + ghost).rgb, 0.22 * s);
+		vec2 ghost = vec2(sin(TIME * 0.55), cos(TIME * 0.4)) * 0.010 * s;
+		col = mix(col, texture(screen_tex, uv + ghost).rgb, 0.16 * s);
 
 		// Chromatic fringing, strongest toward the edges.
 		float edge = dot(centered, centered) * 4.0;
-		vec2 ca = centered * 0.012 * s * edge;
+		vec2 ca = centered * 0.0065 * s * edge;
 		col.r = mix(col.r, texture(screen_tex, uv + ca).r, s);
 		col.b = mix(col.b, texture(screen_tex, uv - ca).b, s);
 	}
 
 	// Drain the colour.
 	float lum = dot(col, vec3(0.299, 0.587, 0.114));
-	col = mix(col, vec3(lum), 0.32 * s);
+	col = mix(col, vec3(lum), 0.18 * s);
 
 	if (high > 0.001) {
 		vec3 bl = vec3(0.0);
@@ -57,8 +59,18 @@ void fragment() {
 		bl /= 6.0;
 		col += max(bl - vec3(0.55), vec3(0.0)) * 0.9 * high;       // light bleeding off the bright parts
 		col = mix(col, 0.5 * (col + bl), 0.35 * high);               // everything a little softer
-		col *= mix(vec3(1.0), vec3(1.14, 0.99, 0.76), high);         // golden
-		col += vec3(0.025, 0.012, 0.0) * high;                        // and lifted
+		// Golden, but not on skin: a hand under the dose stays a hand (the wash and the grade's own extra
+		// colour would take its orange to neon). Skin is warm with green between red and blue.
+		float mx = max(col.r, max(col.g, col.b));
+		float mn = min(col.r, min(col.g, col.b));
+		float chroma = (mx - mn) / max(mx, 0.001);
+		float hue_k = (col.g - col.b) / max(col.r - col.b, 0.001);
+		float skin = step(col.g, col.r) * step(col.b, col.g) * smoothstep(0.18, 0.32, chroma) * (1.0 - smoothstep(0.75, 0.95, chroma))
+				* smoothstep(0.12, 0.25, hue_k) * (1.0 - smoothstep(0.55, 0.75, hue_k));
+		float wash = high * WASH * (1.0 - 0.75 * skin);
+		col *= mix(vec3(1.0), vec3(1.14, 0.99, 0.76), wash);         // golden
+		col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), 0.25 * skin * high);  // skin: a little less colour, not more
+		col += vec3(0.025, 0.012, 0.0) * wash;                        // and lifted
 	}
 
 	// Vignette, closing in on each heartbeat.
@@ -68,7 +80,7 @@ void fragment() {
 	float vig = 1.0 - smoothstep(0.35, 1.0, dist) * (vignette_strength + 0.12 * s + 0.5 * tunnel);
 	col *= max(vig, 0.0);
 
-	float grain = (rand(SCREEN_UV * vec2(960.0, 540.0) + TIME * 60.0) - 0.5) * (grain_strength + 0.06 * s);
+	float grain = (rand(SCREEN_UV * vec2(960.0, 540.0) + TIME * 60.0) - 0.5) * (grain_strength + 0.03 * s);
 	col += grain;
 
 	COLOR = vec4(col, 1.0);

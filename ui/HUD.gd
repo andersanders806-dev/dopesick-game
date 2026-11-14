@@ -570,7 +570,7 @@ func _on_headline_changed(_id: String) -> void:
 ## Sick, the world goes grey: the room's grade loses its colour and gains a
 ## hard edge as the craving bottoms out. Graphics sets the base grade; this
 ## leans on it every frame, so it follows the meter both ways.
-const SICK_SATURATION := 0.55
+const SICK_SATURATION := 0.47
 var _graded_env: Environment
 
 ## The warm side of a dose: an amber wash, a little more colour and bloom, a softer vignette, all
@@ -578,9 +578,9 @@ var _graded_env: Environment
 ## flat (tolerance) leaves the grade where it was.
 const HIGH_TINT := Color(1.0, 0.62, 0.32)
 ## Added light, not a veil: a warm lift over everything, the way a good dose makes the room glow.
-const HIGH_TINT_ALPHA := 0.035
-const HIGH_SATURATION := 0.28
-const HIGH_BRIGHTNESS := 0.02
+const HIGH_TINT_ALPHA := 0.023
+const HIGH_SATURATION := 0.18
+const HIGH_BRIGHTNESS := 0.013
 const HIGH_BLOOM := 0.2
 const HIGH_GLOW_INTENSITY := 0.3
 const HIGH_VIGNETTE := 0.5

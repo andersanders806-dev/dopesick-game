@@ -90,14 +90,20 @@ func _place() -> void:
 	var fs := _fsize()
 	var line_w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	var line_h := font.get_height(fs)
-	var x0 := 0.0
+	# The text lives inside the label's own style box (a card's padding); the glyphs go by the same room.
+	var box := get_theme_stylebox("normal")
+	var ml := box.get_margin(SIDE_LEFT)
+	var mr := box.get_margin(SIDE_RIGHT)
+	var mt := box.get_margin(SIDE_TOP)
+	var mb := box.get_margin(SIDE_BOTTOM)
+	var x0 := ml
 	match horizontal_alignment:
-		HORIZONTAL_ALIGNMENT_CENTER: x0 = (size.x - line_w) * 0.5
-		HORIZONTAL_ALIGNMENT_RIGHT: x0 = size.x - line_w
-	var y0 := 0.0
+		HORIZONTAL_ALIGNMENT_CENTER: x0 = ml + (size.x - ml - mr - line_w) * 0.5
+		HORIZONTAL_ALIGNMENT_RIGHT: x0 = size.x - mr - line_w
+	var y0 := mt
 	match vertical_alignment:
-		VERTICAL_ALIGNMENT_CENTER: y0 = (size.y - line_h) * 0.5
-		VERTICAL_ALIGNMENT_BOTTOM: y0 = size.y - line_h
+		VERTICAL_ALIGNMENT_CENTER: y0 = mt + (size.y - mt - mb - line_h) * 0.5
+		VERTICAL_ALIGNMENT_BOTTOM: y0 = size.y - mb - line_h
 	for g in glyphs:
 		if not is_instance_valid(g):
 			continue

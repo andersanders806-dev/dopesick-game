@@ -3,6 +3,7 @@ extends "res://dev-tools/pilot.gd"
 ##   clearpeople                 no pedestrians, scheduled people or cops in the street
 ##   customer <x> <z0> <z1>      a customer (Rocketbox, walking clip) walks from z0 to z1 at x, through whatever door is there
 ##   tpl <x> <z> <yaw>           stand there looking that way (yaw deg, 0 = -Z)
+##   facedoor [dist]             stand dist m (default 2.5) from the hinged door nearest you, looking at it (a room's way out)
 ##   doorinfo                    log every hinged door's state
 ##   flatpak run org.godotengine.Godot --path . -s res://dev-tools/capture_doors.gd -- "clock 17:00" "scene City3D" ...
 
@@ -27,6 +28,26 @@ func _do(step: String) -> bool:
 				player().global_position = Vector3(float(parts[1]), player().global_position.y, float(parts[2]))
 				player().set_look(deg_to_rad(float(parts[3])), 0.0)
 			await _wait(0.5)
+			return true
+		"facedoor":
+			var best: Node3D = null
+			var bd := 1e9
+			for d in get_nodes_in_group("hinged_doors"):
+				var dd: float = (d as Node3D).global_position.distance_to(player().global_position)
+				if dd < bd:
+					bd = dd
+					best = d
+			if best == null or player() == null:
+				log_line("facedoor: no door")
+				return false
+			var away := player().global_position - best.global_position
+			away.y = 0.0
+			away = away.normalized() if away.length() > 0.1 else Vector3.BACK
+			var dist := float(parts[1]) if parts.size() > 1 else 2.5
+			player().global_position = Vector3(best.global_position.x + away.x * dist, player().global_position.y, best.global_position.z + away.z * dist)
+			player().set_look(atan2(away.x, away.z), 0.0)
+			log_line("facedoor %s at %s" % [best.get_path(), best.global_position.snapped(Vector3.ONE * 0.1)])
+			await _wait(1.5)
 			return true
 		"customer":
 			await _customer(float(parts[1]), float(parts[2]), float(parts[3]))

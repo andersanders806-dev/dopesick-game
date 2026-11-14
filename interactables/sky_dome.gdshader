@@ -14,9 +14,20 @@ void vertex() {
 	dir_world = wp.xyz - CAMERA_POSITION_WORLD;
 }
 
+// Seen from a dim room the street is out of focus and bright: a doorway shows a hand-wide slice of the panorama,
+// so it is blurred (a ring of taps, enough to melt the pixel blocks) and by day lifted toward daylight glare.
+vec3 pano(vec2 uv) {
+	return mix(texture(street_night, uv).rgb, texture(street_day, uv).rgb, day_amount);
+}
+
 void fragment() {
 	vec3 r = normalize(dir_world);
 	vec2 puv = vec2(atan(r.x, r.z) / TAU + 0.5, acos(clamp(r.y, -1.0, 1.0)) / PI);
-	vec3 c = mix(texture(street_night, puv).rgb, texture(street_day, puv).rgb, day_amount);
-	ALBEDO = c;
+	vec3 c = pano(puv) * 0.2;
+	for (int i = 0; i < 8; i++) {
+		float a = float(i) * (TAU / 8.0);
+		c += pano(puv + vec2(cos(a) * 0.006, sin(a) * 0.012)) * 0.1;
+	}
+	c = mix(c, vec3(0.92, 0.93, 0.9), 0.18 * day_amount);
+	ALBEDO = c * (1.0 + 0.3 * day_amount);
 }

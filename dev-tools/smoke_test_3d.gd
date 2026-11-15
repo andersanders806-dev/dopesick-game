@@ -19,9 +19,9 @@ func _initialize() -> void:
 	await process_frame
 	# Graphics has already read the player's settings.cfg by now. Put the
 	# defaults back (the sandbox never saves) so checks don't depend on
-	# whether you last played in first person or on High.
+	# whether you last played on High. (First person is the only view.)
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	gfx.set_preset(gfx.Preset.MEDIUM)
 	# A quiet day every day unless a check asks for something else.
 	root.get_node("Headlines").forced = "quiet"
@@ -44,6 +44,9 @@ func _initialize() -> void:
 	meta.hints_seen = {"move": true, "craving": true, "body": true, "keys": true, "goal": true}
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
+	# The files this process's sandbox wrote in user:// (named by SaveGame.run_token()) go with it.
+	for f in [root.get_node("SaveGame").PATH, root.get_node("ZombieMode").PATH]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
 	await _finished()
 	quit(1 if _failures > 0 else 0)
@@ -70,6 +73,12 @@ func _load(path: String) -> Node:
 		await process_frame
 	change_scene_to_file(path)
 	await _frames(10)
+	# First person walks where you look. Most checks think in world axes (up the screen is -Z, right is +X),
+	# which is where a player looking along -Z walks; a room's arrival look (WorldRoot3D._face_player) is
+	# tested on its own.
+	var pl := _player()
+	if pl != null and pl.has_method("set_look"):
+		pl.set_look(0.0, 0.0)
 	return current_scene
 
 ## The drug menu parents itself to the tree root, not the current scene.
@@ -84,7 +93,7 @@ func _player() -> Node3D:
 
 ## Walks the player with real move input along the navmesh until `target`
 ## is the interactable E would use. Returns false on timeout.
-func _walk_until_nearest(target: Node3D, timeout_frames := 600) -> bool:
+func _walk_until_nearest(target: Node3D, timeout_frames := 900) -> bool:
 	var p := _player()
 	var map: RID = p.get_world_3d().navigation_map
 	for i in timeout_frames:
@@ -101,10 +110,24 @@ func _walk_until_nearest(target: Node3D, timeout_frames := 600) -> bool:
 		var dir := Vector2(next.x - p.global_position.x, next.z - p.global_position.z).normalized()
 		for a in ["move_left", "move_right", "move_up", "move_down"]:
 			Input.action_release(a)
-		if dir.x > 0: Input.action_press("move_right", dir.x)
-		elif dir.x < 0: Input.action_press("move_left", -dir.x)
-		if dir.y > 0: Input.action_press("move_down", dir.y)
-		elif dir.y < 0: Input.action_press("move_up", -dir.y)
+		# First person: the move keys are relative to the view. On the way look along the path; once
+		# close, look at the thing (the crosshair picks what E uses) and walk the path sideways to it.
+		var aim_at: Vector3 = target.global_position + Vector3(0, 1.0, 0)
+		var shape := target.find_child("CollisionShape3D", true, false) as Node3D
+		if shape != null:
+			aim_at = shape.global_position
+		var to_target: Vector3 = aim_at - p.camera.global_position
+		var yaw := atan2(-dir.x, -dir.y)
+		var pitch := 0.0
+		if Vector2(to_target.x, to_target.z).length() < 2.5:
+			yaw = atan2(-to_target.x, -to_target.z)
+			pitch = atan2(to_target.y, Vector2(to_target.x, to_target.z).length())
+		p.set_look(yaw, pitch)
+		var local := Vector3(dir.x, 0.0, dir.y).rotated(Vector3.UP, -yaw)
+		if local.x > 0.01: Input.action_press("move_right", local.x)
+		elif local.x < -0.01: Input.action_press("move_left", -local.x)
+		if local.z > 0.01: Input.action_press("move_down", local.z)
+		elif local.z < -0.01: Input.action_press("move_up", -local.z)
 		await physics_frame
 	for a in ["move_left", "move_right", "move_up", "move_down"]:
 		Input.action_release(a)
@@ -156,6 +179,121 @@ func _check_store(store: Node) -> void:
 func GameState_has(id: String) -> bool:
 	return not _gs().item_info(id).is_empty()
 
+## SHIP 3: the whole game in first person. Title and settings offer no view choice; a room is entered looking
+## into it; the crosshair picks what E uses (and the prompt names the same thing); nobody stands in your face;
+## hiding crouches the eyes; the kart race is seen from the driver's seat.
+func _fp_only_checks(gs: Node) -> void:
+	await _section("First person only: no view choice, arrival look, aim, personal space, hiding, karts")
+	gs.start_run()
+	var title: Node = load("res://ui/TitleScreen.tscn").instantiate()
+	root.add_child(title)
+	await _frames(3)
+	var names: Array = title.find_children("*", "Button", true, false).map(func(b): return b.text)
+	_check(names.has("New run") and names.has("Zombies") and names.has("Ghetto Wars"), "  the title has one start per mode (%s)" % [names])
+	title.find_children("*", "Button", true, false).filter(func(b): return b.text == "New run")[0].pressed.emit()
+	await _frames(3)
+	_check(not title.find_children("*", "Button", true, false).any(func(b): return String(b.text).containsn("person")),
+		"  New run starts straight away: no First/Third person choice")
+	await _transition()
+	title.queue_free()
+	var menu: Node = load("res://ui/SettingsMenu.gd").new()
+	root.add_child(menu)
+	menu.open()
+	await _frames(3)
+	var texts: Array = menu.find_children("*", "BaseButton", true, false).map(func(b): return String(b.text))
+	_check(not texts.any(func(t): return t.containsn("first person")), "  Settings has no 'First person view' switch (%d buttons)" % texts.size())
+	menu.queue_free()
+	await _frames(2)
+
+	# Coming in through a door you look into the room, away from the door.
+	gs.clock_running = false
+	gs.clock = 17 * 60
+	var city := await _load("res://world/City3D.tscn")
+	_player().global_position = city.get_node("DoorToBar").global_position + Vector3(-1.5, 0, 0)
+	city.get_node("DoorToBar").interact(_player())
+	await _transition()
+	var bar := current_scene
+	var p := _player()
+	var door: Node3D = bar.get_node("DoorToCity")
+	var away := (p.global_position - door.global_position)
+	away.y = 0.0
+	var fwd := Vector3(-sin(p._look_yaw), 0.0, -cos(p._look_yaw))
+	_check(current_scene.name == "DiveBar3D" and fwd.dot(away.normalized()) > 0.7, "  the bar is entered looking into it, not at the door (%.2f)" % fwd.dot(away.normalized()))
+
+	# Aim decides: in the pool zone with the door 2 m away, the crosshair picks the door or the table.
+	var Prompts := load("res://ui/Prompts.gd")
+	var pool: Node3D = bar.get_node("PoolTable/PoolZone")
+	p.global_position = Vector3(5.6, 0.0, 2.2)
+	await _frames(4)
+	var picked := {}
+	for t in [door, pool]:
+		var to: Vector3 = t.global_position + Vector3(0, 1.0, 0) - p.camera.global_position
+		p.set_look(atan2(-to.x, -to.z), atan2(to.y, Vector2(to.x, to.z).length()))
+		await _frames(2)
+		picked[t.name] = p._nearest_interactable()
+	_check(p.nearby.has(door) and p.nearby.has(pool), "  both the door and the pool zone are in reach (%s)" % [p.nearby.map(func(a): return a.name)])
+	_check(picked["DoorToCity"] == door and picked["PoolZone"] == pool, "  looking at the door picks the door, at the table the table (%s / %s)" % [picked["DoorToCity"], picked["PoolZone"]])
+	p.set_look(atan2(-(door.global_position.x - p.global_position.x), -(door.global_position.z - p.global_position.z)), 0.0)
+	await _frames(2)
+	_check(Prompts.text_for(p._nearest_interactable()) == Prompts.text_for(door) and Prompts.text_for(door) != "", "  the prompt names what E would use: \"%s\"" % Prompts.text_for(p._nearest_interactable()))
+	# Turned away from everything: the nearest one in front, else the nearest.
+	p.set_look(0.0, 0.0)
+	await _frames(2)
+	_check(p._nearest_interactable() != null, "  nothing aimed at: still the nearest thing in reach")
+
+	# People never fill the view: stand in a patron and you are eased out to PERSONAL_SPACE.
+	for other in bar.patrons:
+		other.position = Vector3(0, -50, 0)
+	var patron: Node3D = bar.get_node("Patron1")
+	patron.position = Vector3(-2.7, 0.0, 0.25)
+	p.global_position = patron.global_position + Vector3(0.15, 0.0, 0.1)
+	await _frames(40)
+	var gap := Vector2(p.global_position.x - patron.global_position.x, p.global_position.z - patron.global_position.z).length()
+	_check(gap >= p.PERSONAL_SPACE - 0.05, "  walked into a patron, you are %.2f m from them, not inside them" % gap)
+	# ...and talking to them turns the view to their face.
+	p.set_look(PI * 0.5, 0.0)
+	await _frames(2)
+	p._try_interact()
+	await _frames(45)
+	var to_p: Vector3 = patron.global_position + Vector3(0, 1.45, 0) - p.camera.global_position
+	var look_fwd: Vector3 = -p.camera.global_transform.basis.z
+	_check(look_fwd.dot(to_p.normalized()) > 0.97, "  starting a conversation turns the view to the person (%.3f)" % look_fwd.dot(to_p.normalized()))
+	get_first_node_in_group("hud").advance_or_close_dialogue()
+	await _frames(3)
+
+	# Hiding is a crouch: the eyes go down with the body.
+	var eye_up: float = p.camera.global_position.y - p.global_position.y
+	p.set_hiding(true)
+	await _frames(60)
+	var eye_down: float = p.camera.global_position.y - p.global_position.y
+	_check(eye_up - eye_down > 0.4, "  hiding lowers the eyes (%.2f -> %.2f m)" % [eye_up, eye_down])
+	p.set_hiding(false)
+	await _frames(60)
+
+	# Karts: a driver's-eye camera riding the player's kart, no chase cam, no helmet on your own head.
+	var race = load("res://ui/KartRace.gd").new()
+	root.add_child(race)
+	race.start()
+	race._phase = race.Phase.RACE
+	await _frames(8)
+	var you: Dictionary = race._karts[0]
+	var knode := you["node"] as Node3D
+	var dist: float = race._camera.global_position.distance_to(knode.global_position)
+	var cam_fwd: Vector3 = -race._camera.global_transform.basis.z
+	var kart_fwd: Vector3 = -knode.global_transform.basis.z
+	_check(dist < 1.3 and race._camera.global_position.y > 0.6, "  the race camera sits in the kart at helmet height (%.2f m from it, %.2f m up)" % [dist, race._camera.global_position.y])
+	_check(cam_fwd.dot(kart_fwd) > 0.95, "  ...looking where the nose points (%.3f)" % cam_fwd.dot(kart_fwd))
+	_check(knode.find_children("*", "BoneAttachment3D", true, false).is_empty() and not (race._karts[1]["node"] as Node3D).find_children("*", "BoneAttachment3D", true, false).is_empty(),
+		"  your own helmet is left off (the others wear theirs)")
+	# Wheel hard over: the head leans and looks into the turn.
+	you["steer"] = 1.0
+	await _frames(3)
+	var lean: float = race._camera.global_transform.basis.get_euler().z
+	_check(absf(lean) > 0.02, "  a hard right leans the head into it (roll %.3f)" % lean)
+	race._close()
+	await _frames(3)
+	gs.start_run()
+
 func _gs() -> Node:
 	return root.get_node("GameState")
 
@@ -168,10 +306,24 @@ func _run() -> void:
 	gs.clock = 17 * 60
 
 	await _section("The test sandbox ignores the player's own settings")
-	# Whatever you picked in your own game (first person, High) mustn't
-	# change what the checks below see.
+	# Whatever you picked in your own game (High) mustn't change what the
+	# checks below see.
 	var gfx := root.get_node("Graphics")
-	_check(not gfx.first_person and gfx.preset == gfx.Preset.MEDIUM, "  third person, Medium, whatever settings.cfg says (fp %s, %s)" % [gfx.first_person, gfx.PRESET_NAMES[gfx.preset]])
+	_check(gfx.first_person and gfx.preset == gfx.Preset.MEDIUM, "  first person, Medium, whatever settings.cfg says (fp %s, %s)" % [gfx.first_person, gfx.PRESET_NAMES[gfx.preset]])
+	# First person is the only view: a settings.cfg from when it was a choice (first_person=false)
+	# is ignored, set_first_person(false) does nothing, and nothing writes the key back.
+	var stale := ConfigFile.new()
+	stale.set_value("controls", "first_person", false)
+	var stale_path: String = root.get_node("SaveGame").sandboxed("user://stale_settings_test.cfg")
+	stale.save(stale_path)
+	gfx._load_settings(stale_path)
+	_check(gfx.first_person, "  a stale first_person=false in settings.cfg is ignored")
+	gfx.set_first_person(false)
+	_check(gfx.first_person, "  set_first_person(true) leaves it on")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(stale_path))
+	gfx.set_preset(gfx.Preset.MEDIUM)
+
+	await _fp_only_checks(gs)
 
 	await _section("Every 3D room loads with a player, HUD, and baked navmesh")
 	# The corner shop goes last: the tests below carry on inside it.
@@ -1892,7 +2044,7 @@ func _showcase_checks(gs: Node) -> void:
 	_check(hud.hud_needed(), "  and the setting turns the fading off")
 	# Camera feel.
 	var p := _player()
-	var base: float = p._tp_fov
+	var base: float = p.FP_FOV
 	gfx.camera_motion = true
 	p._sprinting = true
 	p.velocity = Vector3(5, 0, 0)
@@ -1904,12 +2056,10 @@ func _showcase_checks(gs: Node) -> void:
 		p._update_camera_feel(0.05)
 	_check(absf(p.camera.fov - base) < 0.5, "  camera motion off: no push")
 	gfx.camera_motion = true
-	p._first_person = true
 	var bobbed := 0.0
 	for i in 30:
 		bobbed = maxf(bobbed, p._update_camera_feel(0.05).length())
 	_check(bobbed > 0.01, "  first person: the head bobs as you walk (%.3f m)" % bobbed)
-	p._first_person = false
 	p._sprinting = false
 	p.velocity = Vector3.ZERO
 	# The prompt eases in.
@@ -2121,11 +2271,11 @@ func _round4_checks(gs: Node) -> void:
 	jobs._on_machine(null, _player())
 	_check(gs.cash == cash_before + jobs.BOTTLES_PER_DAY / jobs.BOTTLES_PER_DOLLAR and jobs.bottles == jobs.BOTTLES_PER_DAY % jobs.BOTTLES_PER_DOLLAR, "  the machine pays a dollar a %d, keeps the change" % jobs.BOTTLES_PER_DOLLAR)
 	_player().dialogue_active = false
-	# The camera eases after you and settles back on you.
+	# First person: the camera is your eyes -- move the player and it is there at once, at eye height.
 	_player().global_position.x += 3.0
-	await _frames(90)
-	var off: Vector3 = _player()._cam_focus - _player().global_position
-	_check(Vector2(off.x, off.z).length() < 0.2, "  the camera settles back on you (%.2f m off)" % Vector2(off.x, off.z).length())
+	await _frames(10)
+	var off: Vector3 = _player().camera.global_position - _player().global_position
+	_check(Vector2(off.x, off.z).length() < 0.2 and absf(off.y - _player().EYE_HEIGHT) < 0.1, "  the camera stays at your eyes (%.2f m off, %.2f m up)" % [Vector2(off.x, off.z).length(), off.y])
 	# The notebook.
 	var book = load("res://ui/Notebook.gd").new()
 	root.add_child(book)
@@ -3197,11 +3347,11 @@ func _controller_checks(gs: Node) -> void:
 	_stick(JOY_AXIS_LEFT_X, 0.0)
 	await _frames(1)
 	_check(InputMap.action_get_events("interact").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "  square is use")
-	var z0: float = p._user_zoom
+	var pitch_before: float = p._look_pitch
 	_stick(JOY_AXIS_RIGHT_Y, 1.0)
 	await _frames(20)
 	_stick(JOY_AXIS_RIGHT_Y, 0.0)
-	_check(p._user_zoom > z0, "  the right stick pulls the camera back (%.2f -> %.2f)" % [z0, p._user_zoom])
+	_check(absf(p._look_pitch - pitch_before) > 0.05 and p._user_zoom == 1.0, "  the right stick looks up and down (first person; it no longer zooms): %.2f -> %.2f" % [pitch_before, p._look_pitch])
 	await _tap(JOY_BUTTON_TOUCHPAD)
 	var book := _find_root_child("_draw_map")
 	_check(book != null, "  the touchpad opens the notebook")
@@ -3309,21 +3459,14 @@ func _controller_checks(gs: Node) -> void:
 	gs.start_run()
 
 func _view_checks(gs: Node) -> void:
-	await _section("First person or third, picked when the run starts")
+	await _section("First person, the only view")
 	_close_menus()
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
-	# New run asks which.
+	# New run starts straight away, in first person.
 	var title := await _load("res://ui/TitleScreen.tscn")
 	title._on_new_run()
-	await _frames(2)
-	var labels: Array = title._buttons.get_children().filter(func(b): return b is Button and b.visible).map(func(b): return b.text)
-	_check(labels.has("First person") and labels.has("Third person"), "  new run asks: first person or third (%s)" % [labels])
-	var fp_button: Button = title._buttons.get_children().filter(func(b): return b is Button and b.text == "First person")[0] if labels.has("First person") else null
-	if fp_button:
-		fp_button.pressed.emit()
 	await _frames(20)
-	_check(gfx.first_person and current_scene != null and current_scene.name == "Apartment3D", "  ...first person, and you wake up in the apartment")
+	_check(gfx.first_person and current_scene != null and current_scene.name == "Apartment3D", "  new run: first person, and you wake up in the apartment")
 	var p := _player()
 	gs.clock_running = false
 	p.dialogue_active = false
@@ -3364,28 +3507,13 @@ func _view_checks(gs: Node) -> void:
 	# The street, in first person.
 	await _load("res://world/City3D.tscn")
 	_check(_player().camera.global_position.y < 2.0 and current_scene.find_child("FPCeiling", true, false) == null, "  out on the street: eye level, open sky")
-	# Third person is the old camera, high and behind.
-	gfx.set_first_person(false)
+	# Indoors: a lid on the room, eyes at eye height, and your own body only throws a shadow.
 	await _load("res://world/Apartment3D.tscn")
 	p = _player()
 	await _frames(3)
-	_check(p.camera.global_position.y > 4.0 and current_scene.find_child("FPCeiling", true, false) == null, "  third person: the camera's back up over the room, no lid on it")
+	_check(p.camera.global_position.y < 2.0 and current_scene.find_child("FPCeiling", true, false) != null, "  indoors: eye level, a ceiling over the room")
 	var shown: Array = p.model.find_children("*", "GeometryInstance3D", true, false)
-	_check(shown.all(func(m): return m.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY), "  ...and you can see yourself")
-	# Switchable mid-run from settings.
-	var SettingsMenu = load("res://ui/SettingsMenu.gd")
-	var sm = SettingsMenu.new()
-	root.add_child(sm)
-	sm.open()
-	await _frames(2)
-	var fp_check: Array = sm.find_children("*", "CheckButton", true, false).filter(func(c): return c.text.begins_with("First person"))
-	_check(fp_check.size() == 1, "  settings has a first-person switch")
-	if fp_check.size() == 1:
-		fp_check[0].button_pressed = true
-		await _frames(3)
-		_check(gfx.first_person and p.camera.global_position.y < 2.0, "  ...which takes effect right away")
-	sm.queue_free()
-	gfx.set_first_person(false)
+	_check(shown.all(func(m): return m.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY), "  ...and you only see your shadow, not your own head")
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	gs.start_run()
 
@@ -4749,9 +4877,6 @@ func _smooth_quick_checks(gs: Node) -> void:
 	pl._process(0.016)
 	_check(is_equal_approx(mount.rotation.y, 1.0) and is_equal_approx(mount.rotation.x, 0.2), "  ...and turns with the mouse the same frame, not on the next physics tick")
 	_check(mount.global_position.distance_to(pl.get_global_transform_interpolated().origin + Vector3(0, pl.EYE_HEIGHT, 0)) < 0.01, "  ...from where the body is drawn")
-	gfx.set_first_person(false)
-	await _frames(2)
-	_check(mount.physics_interpolation_mode != Node.PHYSICS_INTERPOLATION_MODE_OFF, "  third person: interpolated as before")
 	# Mailbox vsync doesn't cap anything: the title screen ran at 515 FPS on
 	# the UHD 620, heating it into throttling. Off, it's held at the screen's
 	# refresh (60 where there's no screen to ask).
@@ -5084,10 +5209,9 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 			if not inside:
 				strays.append("%s/%s" % [cn, cell.get_path_to(n)])
 	_check(strays.is_empty(), "  everything in a cell lies inside its bounds (%d strays: %s)" % [strays.size(), strays.slice(0, 5)])
-	# The overpass: nothing hangs below the camera's highest zoom plus half
-	# a metre (its pillars aside).
+	# The overpass: nothing hangs below head height (the eyes plus a hand's breadth, its pillars aside).
 	var player := _player()
-	var cam_top: float = player._cam_offset.y * player.CAM_ZOOM * player.CAM_USER_ZOOM.y
+	var cam_top: float = player.EYE_HEIGHT - 0.2
 	var low := []
 	for mi in city.get_node("Overpass").find_children("*", "VisualInstance3D", true, false):
 		if String(mi.name).begins_with("Pillar") or String(mi.get_parent().name).begins_with("Pillar"):
@@ -5095,7 +5219,7 @@ func _block_structure_checks(gs: Node, city: Node) -> void:
 		var b: AABB = mi.global_transform * mi.get_aabb()
 		if b.position.y < cam_top + 0.5:
 			low.append("%s %.2f" % [mi.name, b.position.y])
-	_check(low.is_empty(), "  the overpass clears the camera at its highest zoom (%.2f m + 0.5): %s" % [cam_top, low.slice(0, 4)])
+	_check(low.is_empty(), "  the overpass clears a walking head (%.2f m + 0.5): %s" % [cam_top, low.slice(0, 4)])
 	# By day the block's after-dark lights are off; at night they're on.
 	gs.clock = 14 * 60
 	# A dry afternoon: in the rain the lamps come half on (City3D).
@@ -5360,51 +5484,21 @@ func _block_cells_checks(gs: Node) -> void:
 		pq.position = player.camera.global_position
 		pq.collision_mask = 1
 		var inside: Array = city.get_world_3d().direct_space_state.intersect_point(pq, 8).filter(func(r): return String(r["collider"].name).begins_with("Building"))
-		var dist: float = player.camera.global_position.distance_to(player.global_position + Vector3(0, 1.2, 0))
-		if not inside.is_empty() or dist < 1.0:
-			in_wall.append("x%.0f %s cam %s %.1f m from you" % [bx, inside.map(func(r): return r["collider"].name), player.camera.global_position, dist])
-	_check(in_wall.is_empty(), "  on Back Street's south sidewalk the camera stays out of the buildings behind you (%s)" % [in_wall.slice(0, 3)])
-	# The walls: standing at the service lane's east end, a shop's roof and
-	# walls are between you and the camera (which is out in the open above
-	# them), and they're cutaway material.
+		if not inside.is_empty():
+			in_wall.append("x%.0f %s cam %s" % [bx, inside.map(func(r): return r["collider"].name), player.camera.global_position])
+	_check(in_wall.is_empty(), "  on Back Street's south sidewalk your eyes are never inside a building (%s)" % [in_wall.slice(0, 3)])
+	# First person: nothing dithers (the cutaway of the walls between a high camera and you is the
+	# third-person rig's). The shader still gets where you are, and a radius of nothing.
 	player.global_position = Vector3(16.0, 0, -18.0)
 	player.reset_physics_interpolation()
 	await _frames(BLOCK_SETTLE_FRAMES)
-	var cam: Camera3D = player.camera
-	var from := cam.global_position
-	var to := player.global_position + Vector3(0, 1.0, 0)
-	var between := []
-	var plain := []
-	for mi in get_nodes_in_group("cutaway"):
-		if not (mi is GeometryInstance3D and city.is_ancestor_of(mi) and mi.is_visible_in_tree()):
-			continue
-		var box: AABB = (mi as GeometryInstance3D).global_transform * (mi as VisualInstance3D).get_aabb()
-		if box.intersects_segment(from, to):
-			between.append(mi)
-	var builds := city.get_node("Cell_Main").find_children("Building*", "StaticBody3D", false, false)
-	var q := PhysicsRayQueryParameters3D.create(from, to, 1)
-	# The camera hangs inside the building's box.
-	q.hit_from_inside = true
-	var hit: Dictionary = city.get_world_3d().direct_space_state.intersect_ray(q)
-	for mi in between:
-		for s in _surface_mats(mi):
-			if not (s is ShaderMaterial and (s as ShaderMaterial).shader and (s as ShaderMaterial).shader.resource_path.begins_with("res://assets/shaders/cutaway")):
-				plain.append("%s" % mi.name)
-				break
-	_check(not hit.is_empty() and hit["collider"] in builds and between.size() > 0 and plain.is_empty(),
-		"  from the lane's east end a Main Street building (%s) stands between camera and you, and its %d meshes there dither (plain: %s)" % [hit["collider"].name if hit else "nothing", between.size(), plain.slice(0, 3)])
-	# The globals as the player last set them (a headless RenderingServer
-	# keeps no values to read back).
 	var pw: Vector3 = player.cutaway_globals[0]
 	var radius: float = player.cutaway_globals[1]
-	_check(pw.distance_to(player.get_global_transform_interpolated().origin) < 0.05 and radius > 0.5,
-		"  player_world_pos follows you (%s vs %s), cutaway radius %.1f m" % [pw, player.global_position, radius])
-	root.get_node("Graphics").set_first_person(true)
+	_check(pw.distance_to(player.get_global_transform_interpolated().origin) < 0.05,
+		"  player_world_pos follows you (%s vs %s)" % [pw, player.global_position])
 	await _frames(3)
 	radius = player.cutaway_globals[1]
 	_check(radius == 0.0, "  in first person nothing dithers (radius %.1f)" % radius)
-	root.get_node("Graphics").set_first_person(false)
-	await _frames(3)
 	# Static occluders: a box per building, in its cell.
 	var buildings := 0
 	var boxed := 0
@@ -5779,12 +5873,12 @@ func _zombie_shell_checks(gs: Node) -> void:
 	var cfg2 := ConfigFile.new()
 	_check(cfg2.load(zm.PATH) == OK and int(cfg2.get_value("best", "round", 0)) == 3 and gs.mode == "story", "  leaving mid-round keeps the round reached (3)")
 
-	# The title screen's entry, with its view choice.
+	# The title screen's entry (no view choice).
 	var title := current_scene
 	var entry := _buttons_named(title, "Zombies")
 	_check(entry.size() == 1, "  the title screen has a Zombies button")
 	if entry.size() == 1:
-		root.get_node("Graphics").set_first_person(false)
+		root.get_node("Graphics").set_first_person(true)
 		entry[0].pressed.emit()
 		_check(_buttons_named(title, "Third person").is_empty(), "  it asks no view: Dead Block is first person")
 		while root.get_node("SceneLoader").busy():
@@ -5799,7 +5893,7 @@ func _zombie_shell_checks(gs: Node) -> void:
 	paused = false
 	zm.leave()
 	DirAccess.remove_absolute(zm.PATH)
-	root.get_node("Graphics").set_first_person(false)
+	root.get_node("Graphics").set_first_person(true)
 	gs.start_run()
 
 ## Clips that have a real source: Quaternius UAL1/UAL2 retargeted onto Bip01, and the
@@ -6385,7 +6479,7 @@ func _zombie_dead_checks(gs: Node) -> void:
 		old.free()
 	zm.leave()
 	DirAccess.remove_absolute(zm.PATH)
-	root.get_node("Graphics").set_first_person(false)
+	root.get_node("Graphics").set_first_person(true)
 	gs.start_run()
 # --- Dead Block: fix round 1 (spawn hitches, round loop, stuck dead, attack ring) --
 func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, player: Node3D) -> void:
@@ -6511,17 +6605,32 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	lz.free()
 
 	# --- Boxed in, out of sight: put back on the map; in sight: left alone ---
-	player.global_position = home
+	# (First person looks along the street from eye height, so this is done mid-street, with ground both ways.)
+	player.global_position = Vector3(0.0, 0.0, -2.0)
 	player.velocity = Vector3.ZERO
 	await _frames(40)
+	# First person: from eye height the spot in view needs street under it (look along the street, not at
+	# the map's edge, where a boxed-in walker would drop through), so turn until there is ground 6 m ahead and 8 m behind.
 	var cam: Camera3D = root.get_viewport().get_camera_3d()
-	var fwd := -cam.global_transform.basis.z
-	fwd.y = 0.0
-	fwd = fwd.normalized()
-	var behind := cam.global_position - fwd * 8.0
-	behind.y = 0.0
-	var ahead := cam.global_position + fwd * 6.0
-	ahead.y = 0.0
+	var fwd := Vector3.FORWARD
+	var ahead := Vector3.ZERO
+	var behind := Vector3.ZERO
+	var space := city.get_world_3d().direct_space_state
+	for yaw in [-PI / 2.0, PI / 2.0, 0.0, PI]:
+		player.set_look(yaw, 0.0)
+		await _frames(3)
+		fwd = -cam.global_transform.basis.z
+		fwd.y = 0.0
+		fwd = fwd.normalized()
+		ahead = cam.global_position + fwd * 6.0
+		ahead.y = 0.0
+		behind = cam.global_position - fwd * 8.0
+		behind.y = 0.0
+		var has_ground := true
+		for spot in [ahead, behind]:
+			has_ground = has_ground and not space.intersect_ray(PhysicsRayQueryParameters3D.create(spot + Vector3(0, 3, 0), spot + Vector3(0, -3, 0), 1)).is_empty()
+		if has_ground:
+			break
 	_check(not cam.is_position_in_frustum(behind + Vector3.UP) and cam.is_position_in_frustum(ahead + Vector3.UP) and not cam.is_position_behind(ahead + Vector3.UP),
 		"  (the test's two spots: one out of the camera's view, one in front of it)")
 	var boxes := []
@@ -7115,43 +7224,10 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	holder.fire()
 	_check(_zw_hits(zf).size() == 1 and (_zw_hits(zf)[0][0] == "head" or _zw_hits(zf)[0][0] == "neck"), "  first person: the shot goes where the crosshair points (%s)" % [_zw_hits(zf)])
 	zf.queue_free()
-	gfx.set_first_person(false)
-	await _frames(4)
-	_check(holder.viewmodel == null, "  back in third person the camera carries no gun")
-
-	# Third person: from the chest to what the active camera sees under the crosshair.
+	# (Third person's pointer aim -- the head under the mouse, the pad's crosshair six metres ahead of the
+	# chest -- went with the view: the crosshair is the centre of the screen.)
 	player.global_position = Vector3(-20, 0, -3)
 	await _frames(10)
-	var cam: Camera3D = player.camera
-	var pistol3: Resource = load("res://weapons/pistol.tres")
-	holder.give(pistol3)
-	holder.aim_source = Callable()
-	holder.no_spread = true
-	zm.points = 0
-	var ztp: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	holder.screen_aim_source = func(): return cam.unproject_position(_zw_part_at(ztp, "head"))
-	ztp.health = 300.0
-	holder.advance(10.0)
-	holder.fire()
-	_check(_zw_hits(ztp).size() == 1 and _zw_hits(ztp)[0][0] == "head" and _zw_hits(ztp)[0][1] > pistol3.damage_at("torso", 4.0) * 1.9,
-		"  third person: aiming the crosshair at the head hits it for the head multiplier (%s)" % [_zw_hits(ztp)])
-	holder.advance(10.0)
-	holder.fire()
-	_check(not ztp.is_alive() and zm.points == 110, "  ...and a third-person headshot kill pays 100 (+10 for the first): %d" % zm.points)
-	ztp.queue_free()
-	var zneck: Node = await _zw_target(city, -20.0, -3.0, 4.0)
-	holder.screen_aim_source = func(): return cam.unproject_position(_zw_part_at(zneck, "torso"))
-	holder.advance(10.0)
-	holder.fire()
-	_check(_zw_hits(zneck).size() == 1 and _zw_hits(zneck)[0][0] == "torso", "  ...and where the crosshair is on the torso, the torso (%s)" % [_zw_hits(zneck)])
-	# The pad has no pointer: its crosshair is 6 m ahead of the chest, whatever the mouse did.
-	holder.screen_aim_source = Callable()
-	gs.using_pad = true
-	var ahead: Vector2 = cam.unproject_position(player.global_position + Vector3(0, 1.25, 0) + holder._facing() * 6.0)
-	_check(holder.aim_screen_point().is_equal_approx(ahead), "  with the pad the crosshair is ahead of the player, not at the stale mouse (%s)" % [holder.aim_screen_point()])
-	gs.using_pad = false
-	_check(holder.aim_screen_point().is_equal_approx(root.get_mouse_position()), "  with the mouse it is under the mouse")
-	zneck.queue_free()
 
 	# Wall-buys.
 	_check(block.wall_buys.size() == 5, "  five wall guns on the block (%d)" % block.wall_buys.size())
@@ -8794,7 +8870,7 @@ func _zombie_fp_checks(gs: Node) -> void:
 	feel.reset_state()
 	player.velocity = Vector3.ZERO
 
-	# --- Third person in the middle of aiming and reloading.
+	# --- A reload in the middle of aiming still finishes.
 	holder.give(load("res://weapons/ar.tres"))
 	feel.reset_state()
 	feel.swap_blend = 0.0
@@ -8807,20 +8883,11 @@ func _zombie_fp_checks(gs: Node) -> void:
 	_fp_step(feel, holder, 20)
 	holder.aiming = true
 	_fp_step(feel, holder, 5)
-	gfx.set_first_person(false)
 	await _frames(8)
-	var tp_cam: Camera3D = player.get("camera")
-	_check(feel.ads == 0.0 and feel.recoil == Vector2.ZERO and not feel.sliding and holder.viewmodel == null,
-		"  switching to third person mid-aim and mid-reload drops the sights, the recoil and the viewmodel")
-	_check(absf(tp_cam.fov - player.get("_tp_fov")) < 1.0, "  and the camera has its third-person field of view back (%.1f vs %.1f)" % [tp_cam.fov, player.get("_tp_fov")])
 	var still_reloading: bool = holder.reloading
 	for i in int(holder.reload_left() * 120.0) + 10:
 		holder.advance(1.0 / 120.0)
 	_check(still_reloading and not holder.reloading and holder.mag == 30, "  the reload still finishes: the gun is loaded, not stuck (%d)" % holder.mag)
-	gfx.set_first_person(true)
-	await _frames(8)
-	_check(holder.viewmodel != null and feel.ads == 0.0 and not holder.reloading and absf(player.get("camera").fov - hip_fov) < 2.0,
-		"  back in first person everything is at the hip (viewmodel %s, ads %.2f, fov %.1f)" % [holder.viewmodel != null, feel.ads, player.get("camera").fov])
 
 	# --- The viewmodel: depth shader on every surface, real arms, hands on the gun.
 	var all_shader := true
@@ -8875,7 +8942,7 @@ func _zombie_fp_checks(gs: Node) -> void:
 
 	# --- The horde's cost (step 0): hit zones follow the animation when a ray needs them,
 	# and a far zombie still gets there.
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	await _frames(4)
 	holder.aim_source = Callable()
 	block.spawner.round_no = 1

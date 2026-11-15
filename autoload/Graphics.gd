@@ -62,9 +62,11 @@ const VOLUME_BUSES := ["Master", "Music", "SFX", "Voice", "Walkman"]
 var preset: int = Preset.MEDIUM
 var show_fps: bool = false
 var fullscreen: bool = false
-## Through your own eyes, or the camera up over the room. Asked on New run,
-## and switchable from Settings.
-var first_person: bool = false
+## The game is played through your own eyes, in every mode: this is always
+## true. (The third-person rig in player/Player3D.gd is still in the file but
+## nothing selects it; a stale `first_person=false` in an old settings.cfg is
+## ignored, and set_first_person(false) does nothing.)
+var first_person: bool = true
 ## First-person look: a multiplier on mouse and stick speed, and up/down
 ## inverted for those who fly planes.
 var look_sensitivity: float = 1.0
@@ -211,12 +213,13 @@ func migrate_preset(saved: int, version: int, integrated: bool) -> int:
 		return Preset.MEDIUM
 	return saved
 
-func set_first_person(on: bool) -> void:
-	if on == first_person:
+## Kept for the dev tools and old callers: first person is the only view, so
+## this never changes anything.
+func set_first_person(_on: bool = true) -> void:
+	if first_person:
 		return
-	first_person = on
-	_save_settings()
-	view_changed.emit(on)
+	first_person = true
+	view_changed.emit(true)
 
 func set_laptop_mode(on: bool) -> void:
 	laptop_mode = on
@@ -751,14 +754,14 @@ func _show_toast(text: String, time := 2.0) -> void:
 	_toast.text = text
 	_toast_timer = time
 
-func _load_settings() -> void:
+func _load_settings(path: String = SETTINGS_PATH) -> void:
 	# First launch starts on Medium everywhere: adaptive resolution keeps it
 	# smooth even on integrated graphics.
 	var integrated := RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU
 	_integrated = integrated
 	preset = Preset.MEDIUM
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	if cfg.load(path) == OK:
 		# Settings from before adaptive resolution (version 1) kept High on
 		# integrated graphics at 15 FPS; start those over on Medium once.
 		var saved := clampi(int(cfg.get_value("graphics", "preset", Preset.MEDIUM)), 0, PRESET_NAMES.size() - 1)
@@ -768,7 +771,6 @@ func _load_settings() -> void:
 			_migrated = true
 		show_fps = bool(cfg.get_value("graphics", "show_fps", false))
 		fullscreen = bool(cfg.get_value("graphics", "fullscreen", false))
-		first_person = bool(cfg.get_value("controls", "first_person", false))
 		look_sensitivity = clampf(float(cfg.get_value("controls", "look_sensitivity", 1.0)), 0.3, 2.5)
 		laptop_mode = bool(cfg.get_value("graphics", "laptop_mode", false))
 		Engine.max_fps = fps_cap()
@@ -798,7 +800,6 @@ func _save_settings() -> void:
 	for bus in VOLUME_BUSES:
 		cfg.set_value("audio", bus, volumes[bus])
 	cfg.set_value("graphics", "show_fps", show_fps)
-	cfg.set_value("controls", "first_person", first_person)
 	cfg.set_value("controls", "look_sensitivity", look_sensitivity)
 	cfg.set_value("graphics", "laptop_mode", laptop_mode)
 	cfg.set_value("controls", "invert_look", invert_look)

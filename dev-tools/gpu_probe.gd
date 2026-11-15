@@ -14,7 +14,7 @@ func _initialize() -> void:
 	var hour := int(args[1]) if args.size() > 1 else 14
 	await process_frame
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	gfx.set_preset(gfx.PRESET_NAMES.find(preset_name))
 	var gs := root.get_node("GameState")
 	gs.start_run()

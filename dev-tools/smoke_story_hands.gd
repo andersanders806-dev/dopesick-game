@@ -125,10 +125,6 @@ func _run() -> void:
 	# A shown pill is not left in the air.
 	_check(not h._pill.visible, "  no pill left floating")
 
-	# Third person: no hands.
-	gfx.set_first_person(false)
+	# First person is the only view: the hands are always there.
 	await _frames(5)
-	_check(p.story_hands == null, "third person: no hands")
-	gfx.set_first_person(true)
-	await _frames(5)
-	_check(p.story_hands != null, "  ...and back in first person they return")
+	_check(p.story_hands != null, "  your hands are there")

@@ -20,7 +20,7 @@ func _initialize() -> void:
 	var action := args[2] if args.size() > 2 else "move_right"
 	await process_frame
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	gfx.set_preset(gfx.PRESET_NAMES.find(preset_name))
 	var mode := args[4] if args.size() > 4 else ""
 	if mode == "fifo":

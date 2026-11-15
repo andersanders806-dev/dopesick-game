@@ -12,13 +12,13 @@ extends "res://dev-tools/playtest_bot.gd"
 ##
 ## Screenshots and pilot.log go to .pilot/ in the project (gitignored;
 ## flatpak Godot can't write to /tmp). Runs sandboxed: nothing is saved, and
-## the view starts in third person on Medium whatever settings.cfg says.
+## the view is first person (the game's only view), on Medium, whatever settings.cfg says.
 ##
 ## Steps (one quoted argument each):
 ##   scene <Name|res://path>    load a room: City3D, DiveBar3D, Apartment3D,
 ##                              StoreLiquor3D... or "title" for the title screen
 ##   clock HH:MM | day N | cash N | craving N | give <item_id> | strip N
-##   preset Low|Medium|High|PS5 | view first|third
+##   preset Low|Medium|High|PS5
 ##   list                       interactables in the room, nearest first
 ##   walk <NodeName>            walk there on the navmesh until E would use it
 ##   interact | talk | close    press E | E, log the dialogue, close it | close
@@ -54,7 +54,7 @@ func _initialize() -> void:
 	_log = FileAccess.open(out_dir + "/pilot.log", FileAccess.WRITE)
 	await process_frame
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	gfx.set_preset(gfx.Preset.MEDIUM)
 	var gs := root.get_node("GameState")
 	gs.start_run()
@@ -137,7 +137,7 @@ func _do(step: String) -> bool:
 				return false
 			root.get_node("Graphics").set_preset(i)
 		"view":
-			root.get_node("Graphics").set_first_person(arg == "first")
+			root.get_node("Graphics").set_first_person(true)  # first person is the only view
 		"look":
 			# look <yaw_deg> [pitch_deg]: turn the first-person view (0 = -Z, 90 = -X).
 			if player():

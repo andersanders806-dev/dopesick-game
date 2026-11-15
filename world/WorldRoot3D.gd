@@ -19,6 +19,7 @@ func _ready() -> void:
 	_bake_navigation()
 	var spawn_marker := _place_player_at_spawn()
 	_restore_saved_position()
+	_face_player(spawn_marker)
 	_maybe_continue_chase(spawn_marker)
 	if GameState.mode == "story":
 		Jobs.decorate(self)
@@ -106,6 +107,45 @@ func _place_player_at_spawn() -> Marker3D:
 		player.reset_physics_interpolation()
 	GameState.pending_spawn = ""
 	return marker
+
+## First person: you arrive looking into the room, not at the wall behind the
+## door. A spawn marker that is turned says which way; otherwise it is away
+## from the door you came through (the nearest one), and with no door near
+## (the apartment's bed, the jail cell) towards the middle of what there is to
+## use. The story only: Dead Block and Ghetto Wars keep their own start.
+func _face_player(marker: Marker3D) -> void:
+	if GameState.mode != "story":
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node3D
+	if player == null or not player.has_method("set_look"):
+		return
+	var at := player.global_position
+	var fwd := Vector3.ZERO
+	if marker != null and absf(marker.global_transform.basis.get_euler().y) > 0.01:
+		fwd = -marker.global_transform.basis.z
+	else:
+		var door: Node3D = null
+		var best := 5.0
+		for d in get_tree().get_nodes_in_group("doors"):
+			if d is Node3D and is_ancestor_of(d):
+				var dist := Vector2(d.global_position.x - at.x, d.global_position.z - at.z).length()
+				if dist < best:
+					best = dist
+					door = d
+		if door != null:
+			fwd = at - door.global_position
+		else:
+			var sum := Vector3.ZERO
+			var n := 0
+			for i in get_tree().get_nodes_in_group("interactable"):
+				if i is Node3D and is_ancestor_of(i) and not i.is_in_group("doors"):
+					sum += (i as Node3D).global_position
+					n += 1
+			if n > 0:
+				fwd = sum / n - at
+	fwd.y = 0.0
+	if fwd.length() > 0.2:
+		player.call("set_look", atan2(-fwd.x, -fwd.z), 0.0)
 
 ## Continue from the title screen: stand where the save left you.
 func _restore_saved_position() -> void:

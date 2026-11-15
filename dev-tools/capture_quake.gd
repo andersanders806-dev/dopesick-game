@@ -30,7 +30,7 @@ func _initialize() -> void:
 	block.spawner.enabled = false
 	for z in get_nodes_in_group("zombies"):
 		z.free()
-	root.get_node("Graphics").set_first_person(not tp)
+	root.get_node("Graphics").set_first_person(true)
 	p = get_first_node_in_group("player") as Node3D
 	p.global_position = pos
 	var pitch := 0.0

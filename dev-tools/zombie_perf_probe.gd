@@ -64,10 +64,10 @@ func _initialize() -> void:
 	var shoot := args.has("shoot")
 	await process_frame
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(args.has("fp"))
+	gfx.set_first_person(true)
 	gfx.set_preset(gfx.PRESET_NAMES.find(preset_name))
 	var zm := root.get_node("ZombieMode")
-	zm.begin(false)
+	zm.begin()
 	change_scene_to_file("res://world/City3D.tscn")
 	for i in 240:
 		await process_frame

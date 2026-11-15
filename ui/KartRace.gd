@@ -135,7 +135,6 @@ var _banner_text: String = ""
 var _banner_t: float = 0.0
 var _banner_color: Color = Color.WHITE
 var _cam_shake: float = 0.0
-var _cam_pos: Vector3
 var _cam_ready: bool = false
 var _fov_boost: float = 0.0
 var _hidden_scene: Node3D
@@ -354,7 +353,7 @@ func _environment() -> void:
 	_env.glow_intensity = 0.9
 	_env.glow_bloom = 0.08
 	_env.glow_hdr_threshold = 1.1
-	# No SSAO: it costs more than it shows from a chase cam at speed, and
+	# No SSAO: it costs more than it shows from the driver's seat at speed, and
 	# the race needs its frame rate on modest GPUs.
 	_env.fog_enabled = true
 	_env.fog_light_color = Color(0.2, 0.16, 0.22)
@@ -1057,7 +1056,7 @@ func _kart_mesh(color: Color, number: int, with_wheels := true) -> Node3D:
 	return k
 
 ## Puts `role`'s character in the seat, sitting, with a helmet on.
-func _seat_driver(kart: Node3D, role: String, helmet_color: Color) -> void:
+func _seat_driver(kart: Node3D, role: String, helmet_color: Color, with_helmet := true) -> void:
 	var path := CharacterCast.model_for(role)
 	if not ResourceLoader.exists(path):
 		return
@@ -1082,7 +1081,8 @@ func _seat_driver(kart: Node3D, role: String, helmet_color: Color) -> void:
 		if bn.ends_with("head") or bn == "head":
 			head_bone = b
 			break
-	if head_bone < 0:
+	# Your own helmet is the one you see out of.
+	if head_bone < 0 or not with_helmet:
 		return
 	var attach := BoneAttachment3D.new()
 	attach.bone_idx = head_bone
@@ -1121,7 +1121,7 @@ func _build_karts() -> void:
 		var d: Dictionary = drivers[i]
 		var node := _kart_mesh(d["color"], d["num"])
 		_world.add_child(node)
-		_seat_driver(node, d["role"], (d["color"] as Color).lightened(0.25) if d["ai"] else Color(0.95, 0.95, 0.95))
+		_seat_driver(node, d["role"], (d["color"] as Color).lightened(0.25) if d["ai"] else Color(0.95, 0.95, 0.95), bool(d["ai"]))
 		var kart := {
 			"name": d["name"], "ai": d["ai"], "skill": d["skill"], "color": d["color"],
 			"node": node, "pos": Vector3.ZERO, "yaw": 0.0, "vel": Vector3.ZERO, "steer": 0.0,
@@ -1806,50 +1806,45 @@ func _set_start_lights(n: int) -> void:
 # Camera
 # =============================================================================
 
+## The driver's eyes in the kart's own frame: helmet height, the seat's z. From here the
+## steering wheel turns under your hands and the nose and the front slicks sit at the bottom of the view.
+const DRIVER_EYE := Vector3(0.0, 0.84, 0.24)
+## How far the head follows the kart round a drift (the rest of the kart's swing stays: it is the
+## tail stepping out, seen), and how far it looks into a turn and leans.
+const HEAD_DRIFT_KEEP := 0.35
+const HEAD_LOOK := 0.12
+const HEAD_LEAN := 0.05
+const HEAD_SHIFT := 0.04
+
+## First person, the only view: a driver's-eye camera riding the player's kart. A slight head
+## lean and look into the turns, the road's rumble and crash shake on top. No chase cam.
 func _update_camera(delta: float) -> void:
 	var you: Dictionary = _karts[0]
-	var pos: Vector3 = you["pos"]
-	var yaw: float = you["yaw"]
-	var fwd := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var node := you["node"] as Node3D
 	var speed := (you["vel"] as Vector3).length()
-	var want: Vector3
-	var look: Vector3
+	var steer: float = you["steer"]
+	var drift: int = you["drift"]
+	# Where the head looks, off the kart's nose: the start's slow glance along the grid, the
+	# finish's look round at the others, otherwise into the turn.
+	var yaw_off := -steer * HEAD_LOOK + float(drift) * 0.32 * (1.0 - HEAD_DRIFT_KEEP)
 	if _phase == Phase.INTRO:
-		# A slow swing round the grid while the field settles in.
-		var a := _t / 3.2
-		var centre: Vector3 = _pts[_idx(-16)]
-		var ang := lerpf(-0.9, 0.9, a) + atan2(_tan[0].x, _tan[0].z) + PI
-		want = centre + Vector3(sin(ang), 0.0, cos(ang)) * lerpf(26.0, 9.0, a) + Vector3.UP * lerpf(12.0, 3.0, a)
-		look = pos.lerp(centre, 1.0 - a) + Vector3.UP * 0.6
-		_cam_pos = want
-		_cam_ready = true
+		var a := clampf(_t / 3.2, 0.0, 1.0)
+		yaw_off += lerpf(0.75, 0.0, a * a * (3.0 - 2.0 * a))
 	elif _phase == Phase.DONE and _race_time - float(you["time"]) > 1.5:
-		# Victory lap: orbit the kart.
-		var ang := _t * 0.35
-		want = pos + Vector3(sin(ang), 0.0, cos(ang)) * 6.0 + Vector3.UP * 2.4
-		look = pos + Vector3.UP * 0.7
-	else:
-		# Chase cam: behind and above, swinging wide in a drift.
-		var drift: int = you["drift"]
-		var swing := Basis(Vector3.UP, float(drift) * -0.22)
-		var back := swing * -fwd
-		var dist := 4.4 + speed * 0.06
-		want = pos + back * dist + Vector3.UP * (2.3 + speed * 0.02)
-		look = pos + fwd * 4.5 + Vector3.UP * 0.7
-	if not _cam_ready:
-		_cam_pos = want
-		_cam_ready = true
-	_cam_pos = _cam_pos.lerp(want, 1.0 - exp(-7.0 * delta))
-	var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * _cam_shake * 0.12
+		yaw_off += sin(_t * 0.7) * 0.5
+	var roll := -steer * HEAD_LEAN
+	var eye := DRIVER_EYE + Vector3(steer * HEAD_SHIFT, 0.0, 0.0)
+	var base := node.global_transform
+	var basis := base.basis * Basis.from_euler(Vector3(-0.05, yaw_off, roll))
+	var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * _cam_shake * 0.04
 	_cam_shake = move_toward(_cam_shake, 0.0, delta * 2.5)
 	# A rumble at speed, from the engine and the seams in the asphalt.
-	shake += Vector3(0, sin(_t * 47.0), 0) * 0.008 * clampf(speed / MAX_SPEED, 0.0, 1.0)
-	_camera.global_position = _cam_pos + shake
-	if _camera.global_position.distance_to(look) > 0.1:
-		_camera.look_at(look, Vector3.UP)
+	shake += Vector3(0, sin(_t * 47.0), 0) * 0.004 * clampf(speed / MAX_SPEED, 0.0, 1.0)
+	_camera.global_transform = Transform3D(basis, base * eye + shake)
+	_cam_ready = true
 	_fov_boost = move_toward(_fov_boost, 0.0, delta * 6.0)
 	var boosting := float(you["boost"]) > 0.0
-	_camera.fov = lerpf(_camera.fov, 68.0 + 10.0 * clampf(speed / MAX_SPEED, 0.0, 1.0) + (_fov_boost if boosting else _fov_boost * 0.5), 1.0 - exp(-5.0 * delta))
+	_camera.fov = lerpf(_camera.fov, 76.0 + 12.0 * clampf(speed / MAX_SPEED, 0.0, 1.0) + (_fov_boost if boosting else _fov_boost * 0.5), 1.0 - exp(-5.0 * delta))
 
 # =============================================================================
 # HUD

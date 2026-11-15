@@ -19,7 +19,7 @@ func _initialize() -> void:
 	if "novsync" in args:
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	var gfx := root.get_node("Graphics")
-	gfx.set_first_person(fp)
+	gfx.set_first_person(true)
 	gfx.set_preset(0)
 	gfx.set_laptop_mode(true)
 	root.get_node("Survival").enabled = false

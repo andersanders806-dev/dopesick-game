@@ -34,12 +34,12 @@ const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 const REAL_PATH := "user://zombies.cfg"
 ## Tests and bots (Engine meta "sandbox") keep a file of their own.
 const SANDBOX_PATH := "user://zombies_sandbox.cfg"
-## (headless suites run side by side, so each one gets its own file)
+## (runs go side by side, so each process gets its own file: SaveGame.run_token())
 var PATH: String:
 	get:
 		if not Engine.get_meta("sandbox", false):
 			return REAL_PATH
-		return SANDBOX_PATH.replace(".cfg", "_%d.cfg" % OS.get_process_id()) if DisplayServer.get_name() == "headless" else SANDBOX_PATH
+		return SaveGame.sandboxed(SANDBOX_PATH)
 
 const START_POINTS := 500
 ## Alive at once; the rest of a round waits in reserve. The cap moves between these two with
@@ -158,26 +158,26 @@ func player_hit(dmg: float, from := Vector3.INF) -> void:
 # --- The run -------------------------------------------------------------------
 
 ## Sets a run up without changing scene (tests load the block themselves).
-func begin(first_person: bool) -> void:
+func begin(_first_person: bool = true) -> void:
 	gangs = false
-	_begin(first_person)
+	_begin()
 
 ## Ghetto Wars: the same, against the rival crew, in first person.
 func begin_gangs() -> void:
 	gangs = true
-	_begin(true)
+	_begin()
 
-func _begin(first_person: bool) -> void:
+func _begin() -> void:
 	_reset()
 	load_best()
 	active = true
 	GameState.mode = "zombies"
 	ZombieControls.apply()
-	Graphics.set_first_person(first_person)
+	Graphics.set_first_person()
 
 ## begin(), then the block.
-func start(first_person: bool) -> void:
-	begin(first_person)
+func start(_first_person: bool = true) -> void:
+	begin()
 	SceneLoader.go(CITY_SCENE)
 
 ## Ghetto Wars, straight in.
@@ -185,12 +185,12 @@ func start_gangs() -> void:
 	begin_gangs()
 	SceneLoader.go(CITY_SCENE)
 
-## Another go, in the view and the mode you had.
+## Another go, in the mode you had.
 func restart() -> void:
 	if gangs:
 		start_gangs()
 	else:
-		start(Graphics.first_person)
+		start()
 
 ## Out of the mode, back to the story's footing. Quitting mid-run counts.
 func leave() -> void:

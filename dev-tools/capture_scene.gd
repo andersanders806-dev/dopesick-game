@@ -18,8 +18,8 @@ func _initialize() -> void:
 		# A sandboxed run: don't save over the player's game.
 		Engine.set_meta("sandbox", true)
 		await process_frame
-		# The game's own camera, whatever settings.cfg says.
-		root.get_node("Graphics").set_first_person(false)
+		# First person, the only view, whatever settings.cfg says.
+		root.get_node("Graphics").set_first_person(true)
 		var gs := root.get_node("GameState")
 		gs.clock_running = false
 		gs.clock = int(args[4]) * 60

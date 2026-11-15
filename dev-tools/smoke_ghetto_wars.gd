@@ -48,7 +48,7 @@ func _ghetto_checks(gs: Node) -> void:
 	gm.player_downed.connect(func(): downed.append(true))
 
 	# --- The title: a button next to Zombies, straight in, first person, the shooter's controls.
-	gfx.set_first_person(false)
+	gfx.set_first_person(true)
 	var title: Node = load("res://ui/TitleScreen.tscn").instantiate()
 	root.add_child(title)
 	await _frames(3)

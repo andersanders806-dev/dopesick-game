@@ -72,7 +72,6 @@ func open() -> void:
 	var laptop := _check("Laptop mode  (cooler, lower resolution)", Graphics.laptop_mode, Graphics.set_laptop_mode)
 	laptop.name = "LaptopMode"
 	col.add_child(laptop)
-	col.add_child(_check("First person view", Graphics.first_person, Graphics.set_first_person))
 
 	col.add_child(U.section("Sound"))
 	for bus in Graphics.VOLUME_BUSES:

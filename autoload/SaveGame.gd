@@ -14,12 +14,24 @@ const REAL_PATH := "user://save.json"
 ## Tests and bots (Engine meta "sandbox") save and delete a file of their
 ## own, so they never touch the player's run.
 const SANDBOX_PATH := "user://save_sandbox.json"
-## (headless suites run side by side, so each one gets its own file)
+## (suites and windowed runs go side by side, in several worktrees, on one user:// folder: each
+## process gets its own file, named by run_token())
 var PATH: String:
 	get:
 		if not Engine.get_meta("sandbox", false):
 			return REAL_PATH
-		return SANDBOX_PATH.replace(".json", "_%d.json" % OS.get_process_id()) if DisplayServer.get_name() == "headless" else SANDBOX_PATH
+		return SANDBOX_PATH.replace(".json", "_%s.json" % run_token())
+
+## A random token made once per process (not the pid: every flatpak instance is in its own PID
+## namespace and gets the same small one). Names the files a sandboxed run writes in user://.
+func run_token() -> String:
+	if not Engine.has_meta("run_token"):
+		Engine.set_meta("run_token", Crypto.new().generate_random_bytes(4).hex_encode())
+	return String(Engine.get_meta("run_token"))
+
+## `path` ("user://x.cfg") with this process's token in its name ("user://x_<token>.cfg").
+func sandboxed(path: String) -> String:
+	return path.get_basename() + "_" + run_token() + "." + path.get_extension()
 const VERSION := 1
 ## GameState fields that make up a run. Everything else is derived, or
 ## per-visit, or reset on load.

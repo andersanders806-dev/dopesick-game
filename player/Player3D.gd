@@ -115,6 +115,7 @@ var _first_person: bool = false
 ## Dead Block's first-person feel (player/FPFeel.gd), if the mode made one: ADS, recoil, slide.
 var feel: Node
 var _look_yaw: float = 0.0
+var _look_set: bool = false
 var _look_pitch: float = 0.0
 ## The pad's look: deadzone, curve, turn acceleration (player/PadLook.gd), and the aim assist the
 ## weapon holder makes in zombie mode (player/AimAssist.gd; null elsewhere).
@@ -170,8 +171,9 @@ func _apply_view(on: bool) -> void:
 	# fix Godot's jitter/stutter guide gives for first-person cameras.
 	$CameraMount.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF if on else Node.PHYSICS_INTERPOLATION_MODE_INHERIT
 	if on:
-		# Look the way you were facing.
-		set_look(_facing_angle + PI, 0.0)
+		# Look the way you were facing, unless a room has already turned you (world/WorldRoot3D.gd).
+		if not _look_set:
+			set_look(_facing_angle + PI, 0.0)
 		_camera_base = Transform3D()
 		camera.fov = FP_FOV
 		camera.near = 0.05
@@ -198,8 +200,29 @@ func _sync_story_hands(on: bool) -> void:
 
 ## Where you're looking, in radians: yaw round from -Z, pitch up from level.
 func set_look(yaw: float, pitch: float) -> void:
+	_look_set = true
 	_look_yaw = wrapf(yaw, -PI, PI)
 	_look_pitch = clampf(pitch, -PITCH_LIMIT, PITCH_LIMIT)
+
+## The view turns to look at `point` over `duration` s, the shorter way round
+## (a conversation starting, a beat that wants your eyes somewhere). Level
+## enough that the horizon stays put: pitch is held to +-0.35 rad.
+var _look_tween: Tween
+
+func ease_look_to(point: Vector3, duration := 0.4) -> void:
+	var to := point - camera.global_position
+	if to.length() < 0.1:
+		return
+	var yaw := atan2(-to.x, -to.z)
+	var pitch := clampf(atan2(to.y, Vector2(to.x, to.z).length()), -0.35, 0.35)
+	if absf(angle_difference(_look_yaw, yaw)) < deg_to_rad(4.0) and absf(pitch - _look_pitch) < 0.06:
+		return
+	if _look_tween != null and _look_tween.is_valid():
+		_look_tween.kill()
+	var y0 := _look_yaw
+	var p0 := _look_pitch
+	_look_tween = create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_look_tween.tween_method(func(t: float): set_look(lerp_angle(y0, yaw, t), lerpf(p0, pitch, t)), 0.0, 1.0, duration)
 
 ## Graphics asks, each frame: should the mouse be steering the view?
 func wants_mouse_captured() -> bool:
@@ -286,8 +309,13 @@ func pad_look(delta: float) -> void:
 func _look_scale() -> float:
 	return feel.sens_scale() if (_first_person and feel != null) else 1.0
 
+## Hiding is a crouch (the body sits 0.35 lower): the eyes go down with it.
+const HIDE_EYE_DROP := 0.55
+var _eye_drop := 0.0
+
 func _update_fp_camera() -> void:
-	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT, 0)
+	_eye_drop = lerpf(_eye_drop, HIDE_EYE_DROP if hiding else 0.0, 1.0 - exp(-8.0 * get_process_delta_time()))
+	$CameraMount.global_position = get_global_transform_interpolated().origin + Vector3(0, EYE_HEIGHT - _eye_drop, 0)
 	$CameraMount.rotation = Vector3(clampf(_look_pitch - fp_dip - fp_hitch, -PITCH_LIMIT, PITCH_LIMIT), _look_yaw, 0.0)
 
 ## The view trembles and lists in withdrawal: two sine waves at unrelated
@@ -352,7 +380,44 @@ func take_gun_hit(dmg: float, from: Vector3, _by: Node) -> void:
 func is_sliding() -> bool:
 	return feel != null and bool(feel.get("sliding"))
 
+## First person: nobody comes closer to your eyes than this (m, along the floor). The story's
+## people have no body to bump into, so the player is eased out of them instead, or a head
+## fills the whole view (hair at the near plane).
+const PERSONAL_SPACE := 0.95
+const PERSONAL_GROUPS := ["pedestrians", "scheduled_people"]
+
+func _keep_people_out(delta: float) -> void:
+	if GameState.mode != "story" or not _first_person:
+		return
+	var here := Vector2(global_position.x, global_position.z)
+	var push := Vector2.ZERO
+	var seen := {}
+	var people: Array = []
+	for g in PERSONAL_GROUPS:
+		people.append_array(get_tree().get_nodes_in_group(g))
+	for a in nearby:
+		if is_instance_valid(a) and "npc_name" in a:
+			people.append(a)
+	for n in people:
+		if seen.has(n) or not (n is Node3D) or not n.is_visible_in_tree():
+			continue
+		seen[n] = true
+		var off := here - Vector2((n as Node3D).global_position.x, (n as Node3D).global_position.z)
+		var d := off.length()
+		if d >= PERSONAL_SPACE:
+			continue
+		if d < 0.01:
+			var back := camera.global_transform.basis.z
+			off = Vector2(back.x, back.z)
+			d = 0.0
+		push += off.normalized() * (PERSONAL_SPACE - d)
+	if push.length() > 0.001:
+		# Eased: a step or two, never a shove, and a wall stops it.
+		var step := push.limit_length(maxf(3.0 * delta, 0.02))
+		move_and_collide(Vector3(step.x, 0.0, step.y))
+
 func _physics_process(delta: float) -> void:
+	_keep_people_out(delta)
 	if not _first_person:
 		# (First person: the right stick looks round in pad_look(), every drawn frame.)
 		# The right stick pulls the camera in and out, as the wheel does.
@@ -605,26 +670,147 @@ func _try_interact() -> void:
 		return
 	var target := _nearest_interactable()
 	if target:
+		# Talking to someone: the view settles on them, as your head would.
+		if "npc_name" in target and _first_person:
+			ease_look_to(target.global_position + Vector3(0, 1.45, 0))
 		if story_hands != null:
 			story_hands.reach(target.global_position, target.get("item_id") != null)
 		target.interact(self)
 
-## The closest thing in reach, not the first one that came into range:
-## interaction areas can overlap (the Apartment's phone reaches almost to the
-## door), and "first in" would keep picking the phone long after you'd
-## walked over to the door.
+## What E would use, and what the prompt names: the thing the crosshair is on,
+## else the closest thing in reach. Both ask here, so the prompt and E agree.
+##
+## The closest is not the first one that came into range: interaction areas
+## overlap (the Apartment's phone reaches almost to the door), and "first in"
+## would keep picking the phone long after you'd walked over to the door.
+## But in first person the nearest alone is wrong too -- the pool zone under
+## your feet is nearer than the bar door you are looking at -- so the view ray
+## decides, and distance only breaks the tie when nothing is aimed at.
 func _nearest_interactable() -> Node3D:
 	nearby = nearby.filter(func(a): return is_instance_valid(a) and a.is_in_group("interactable"))
 	var best: Node3D = null
+	if _first_person and camera != null and camera.is_inside_tree():
+		best = _aimed_interactable()
+		if best != null:
+			return best
+	# Nothing aimed at: the closest, preferring what is in front of you (a door behind your back is
+	# only offered when there is nothing else).
+	var fwd := -camera.global_transform.basis.z if camera != null and camera.is_inside_tree() else Vector3.ZERO
 	var best_dist := INF
+	var best_behind: Node3D = null
+	var best_behind_dist := INF
 	for area in nearby:
 		if not area.has_method("interact"):
 			continue
 		var d := Vector2(area.global_position.x - global_position.x, area.global_position.z - global_position.z).length()
+		var to := Vector3(area.global_position.x - global_position.x, 0.0, area.global_position.z - global_position.z)
+		if _first_person and d > 0.5 and Vector3(fwd.x, 0.0, fwd.z).dot(to) < 0.0:
+			if d < best_behind_dist:
+				best_behind_dist = d
+				best_behind = area
+			continue
 		if d < best_dist:
 			best_dist = d
 			best = area
+	return best if best != null else best_behind
+
+## A thing counts as aimed at when the view ray enters one of its shapes, or
+## the centre of one is within this many degrees of the crosshair.
+const AIM_CONE_DEG := 9.0
+## Inside a thing's own area, the crosshair this close to its centre is a hit.
+const INSIDE_AIM_COS := 0.996
+## An aimed thing behind a wall is not aimed at: the ray must reach it
+## within this much (m) of its centre.
+const AIM_OCCLUDE_SLACK := 0.6
+var _shape_aabbs := {}
+
+## The interactable (in reach) under the crosshair, or null. Ray entry beats
+## the cone; among ray hits the nearer entry wins, among cone hits the smaller angle.
+func _aimed_interactable() -> Node3D:
+	var from := camera.global_position
+	var dir := -camera.global_transform.basis.z
+	var cone_cos := cos(deg_to_rad(AIM_CONE_DEG))
+	var best: Node3D = null
+	var best_score := INF
+	var best_point := Vector3.ZERO
+	for area in nearby:
+		if not area.has_method("interact"):
+			continue
+		for sh in (area as Node).find_children("*", "CollisionShape3D", true, false):
+			var cs := sh as CollisionShape3D
+			if cs.disabled or cs.shape == null:
+				continue
+			var box := _shape_aabb(cs.shape)
+			var xf := cs.global_transform
+			var inv := xf.affine_inverse()
+			var centre := xf * box.get_center()
+			var score := INF
+			var point := centre
+			var t := _ray_box(inv * from, inv.basis * dir, box)
+			if t > 0.0:
+				# Entered from outside: nearer entries first, ahead of every cone hit.
+				# (Equal entries, as overlapping boxes have looking down at them: the one the crosshair is
+				# nearer the middle of.)
+				var to_c := centre - from
+				score = -1.0 + t * 0.001 + (1.0 - dir.dot(to_c.normalized())) * 0.01
+				point = from + dir * t
+			else:
+				var to := centre - from
+				var dist := to.length()
+				if dist > 0.05 and dir.dot(to / dist) >= cone_cos:
+					score = 1.0 - dir.dot(to / dist)
+					# Standing in someone's reach and looking straight at them beats a zone you only graze.
+					if dir.dot(to / dist) >= INSIDE_AIM_COS and box.has_point(inv * from):
+						score = -1.0 + dist * 0.001
+			if score < best_score:
+				best_score = score
+				best = area
+				best_point = point
+	if best == null:
+		return null
+	# A wall between the eye and it: not what you are looking at.
+	var q := PhysicsRayQueryParameters3D.create(from, best_point, 1, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if not hit.is_empty() and from.distance_to(hit["position"]) < from.distance_to(best_point) - AIM_OCCLUDE_SLACK:
+		return null
 	return best
+
+func _shape_aabb(shape: Shape3D) -> AABB:
+	if _shape_aabbs.has(shape):
+		return _shape_aabbs[shape]
+	var box: AABB
+	if shape is BoxShape3D:
+		box = AABB(-shape.size * 0.5, shape.size)
+	elif shape is SphereShape3D:
+		box = AABB(Vector3.ONE * -shape.radius, Vector3.ONE * shape.radius * 2.0)
+	elif shape is CapsuleShape3D:
+		box = AABB(Vector3(-shape.radius, -shape.height * 0.5, -shape.radius), Vector3(shape.radius * 2.0, shape.height, shape.radius * 2.0))
+	elif shape is CylinderShape3D:
+		box = AABB(Vector3(-shape.radius, -shape.height * 0.5, -shape.radius), Vector3(shape.radius * 2.0, shape.height, shape.radius * 2.0))
+	else:
+		box = shape.get_debug_mesh().get_aabb()
+	_shape_aabbs[shape] = box
+	return box
+
+## Distance along a ray (local space; `dir` need not be unit) to where it
+## enters `box` from outside, or -1 when it misses, starts inside, or points away.
+static func _ray_box(from: Vector3, dir: Vector3, box: AABB) -> float:
+	var t_near := -INF
+	var t_far := INF
+	var lo := box.position
+	var hi := box.end
+	for i in 3:
+		if absf(dir[i]) < 1e-8:
+			if from[i] < lo[i] or from[i] > hi[i]:
+				return -1.0
+		else:
+			var t1 := (lo[i] - from[i]) / dir[i]
+			var t2 := (hi[i] - from[i]) / dir[i]
+			t_near = maxf(t_near, minf(t1, t2))
+			t_far = minf(t_far, maxf(t1, t2))
+	if t_near > t_far or t_far < 0.0 or t_near <= 0.0:
+		return -1.0
+	return t_near
 
 func _on_area_entered(area: Area3D) -> void:
 	if area.is_in_group("interactable"):

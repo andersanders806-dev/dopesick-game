@@ -174,27 +174,6 @@ func _zombie_quake_checks(_gs_node: Node) -> void:
 	gfx.camera_motion = true
 	_check(reduced < full * 0.4 and reduced > 0.0, "  Camera motion off lowers the shake (%.2f vs %.2f)" % [reduced, full])
 
-	# --- third person: the camera is jolted through the player's kick
-	gfx.set_first_person(false)
-	await _frames(3)
-	player._kick = 0.0
-	zm.surge_warning.emit()
-	zm.surge_started.emit()
-	for i in 30:
-		q.advance(1.0 / 60.0)
-	var kick_full: float = player._kick
-	player._kick = 0.0
-	gfx.camera_motion = false
-	q.advance(1.0 / 60.0)
-	var kick_off: float = player._kick
-	gfx.camera_motion = true
-	zm.surge_ended.emit()
-	for i in 60 * 3:
-		q.advance(1.0 / 60.0)
-	_check(kick_full > 0.4 and kick_off == 0.0, "  third person shakes through the player's kick (%.2f) and not with Camera motion off (%.2f)" % [kick_full, kick_off])
-	gfx.set_first_person(true)
-	await _frames(3)
-
 	# --- the real surge logic reaches it: its warning starts the build-up, and a run that ends
 	# mid-surge (it aborts without surge_ended) lets everything go
 	_check(block.surge != null and block.surge.trigger(25), "  the real ZombieSurge starts a surge")

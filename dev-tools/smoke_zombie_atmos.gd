@@ -12,7 +12,7 @@ func _check(ok: bool, what: String) -> void:
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	await process_frame
-	root.get_node("ZombieMode").begin(false)
+	root.get_node("ZombieMode").begin()
 	change_scene_to_file("res://world/City3D.tscn")
 	for i in 40:
 		await process_frame

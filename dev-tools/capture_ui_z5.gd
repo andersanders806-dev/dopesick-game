@@ -24,9 +24,6 @@ func _initialize() -> void:
 	for n in root.get_children():
 		if n is CanvasLayer and n.has_signal("closed"):
 			n.queue_free()
-	title.call("_choose_view", Callable(title, "_start_zombies"), true)
-	await _wait(0.6)
-	await _snap("title_zombies")
 	var zm := root.get_node("ZombieMode")
 	root.get_node("GameState").no_sickness = true
 	zm.begin(true)

@@ -6,7 +6,6 @@ extends Control
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const PadFocus := preload("res://ui/PadFocus.gd")
 const U := preload("res://ui/UiStyle.gd")
-const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
 ## Backdrops, one picked at random each time.
 const BACKDROPS := ["intro_street", "first_score_walk", "busted_car", "released_steps", "intro_mattress"]
@@ -15,7 +14,6 @@ const MUSIC := "res://assets/tapes/la_war_zone.ogg"
 var _art: TextureRect
 var _buttons: VBoxContainer
 var _music: AudioStreamPlayer
-var _choosing_view: bool = false
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -79,10 +77,10 @@ void fragment() {
 	col.add_child(_buttons)
 	# No Continue: it's a survival run, and every start is a fresh one --
 	# you die, you start over.
-	var first := _button("New run", _choose_view.bind(_start_run))
-	# Dead Block is a shooter: straight in, first person (gore and damage numbers live in the pause menu).
-	_button("Zombies", _start_zombies.bind(true))
-	# Ghetto Wars: the same block, first person, held against a rival crew with guns.
+	var first := _button("New run", _start_run)
+	# Dead Block is a shooter: straight in (gore and damage numbers live in the pause menu).
+	_button("Zombies", _start_zombies)
+	# Ghetto Wars: the same block, held against a rival crew with guns.
 	_button("Ghetto Wars", _start_gangs)
 	_button("Settings", _on_settings)
 	_button("Record", _on_record)
@@ -93,7 +91,7 @@ void fragment() {
 
 	if MetaProgress.know_how > 0:
 		var kh := _label("Know-How: %d" % MetaProgress.know_how, 14, Color(0.85, 0.78, 0.35))
-		kh.position = Vector2(90, 660)
+		kh.position = Vector2(90, 690)
 		add_child(kh)
 	var hint := _label("Music: \"L.A. War Zone\" - Tsorthan Grove (CC0)", 11, Color(0.45, 0.43, 0.4))
 	hint.position = Vector2(930, 690)
@@ -137,48 +135,11 @@ func _label(text: String, size: int, color: Color) -> Label:
 	U.style_label(l, U.BODY, size, color)
 	return l
 
-## New run asks how you want to see it first: through your own eyes, or
-## the camera up over the room. Back (Esc / circle) returns to the menu.
+## The game is first person only, so every mode just starts: no view to choose.
 func _on_new_run() -> void:
-	_choose_view(_start_run)
+	_start_run()
 
-## `start` takes whether it's first person.
-func _choose_view(start: Callable, zombie_options := false) -> void:
-	for b in _buttons.get_children():
-		b.visible = false
-	var fp := _button("First person", start.bind(true))
-	var tp := _button("Third person", start.bind(false))
-	_choose_extra = 3
-	if zombie_options:
-		# The mode's options: gore on, damage numbers off, unless you change them.
-		for opt in [["Gore", "gore_enabled"], ["Damage numbers", "damage_numbers"], ["Mature language (Ghetto Wars)", "mature_language"]]:
-			var c := CheckButton.new()
-			c.text = opt[0]
-			c.button_pressed = bool(ZombieMode.get(opt[1]))
-			c.focus_mode = Control.FOCUS_ALL
-			c.toggled.connect(func(on: bool): ZombieMode.set(opt[1], on))
-			_buttons.add_child(c)
-			_choose_extra += 1
-	var note := _label("Through your own eyes, or from up over the room. Settings can change it later.", 13, Color(0.6, 0.58, 0.54))
-	_buttons.add_child(note)
-	if zombie_options:
-		var hint := GlyphLabelScript.new()
-		hint.name = "PadHint"
-		hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		hint.add_theme_font_size_override("font_size", 13)
-		hint.add_theme_color_override("font_color", Color(0.7, 0.66, 0.6))
-		_buttons.add_child(hint)
-		hint.markup = "{accept} Choose      {back} Back"
-		_choose_extra += 1
-	PadFocus.dress(_buttons)
-	_choosing_view = true
-	# Last time's choice is the default.
-	(fp if Graphics.first_person else tp).grab_focus.call_deferred()
-
-var _choose_extra := 3
-
-func _start_run(first_person: bool) -> void:
-	Graphics.set_first_person(first_person)
+func _start_run() -> void:
 	SaveGame.delete()
 	GameState.start_run()
 	_fade_out()
@@ -186,25 +147,13 @@ func _start_run(first_person: bool) -> void:
 
 ## Dead Block: the block at night, the dead, and rounds (autoload/ZombieMode.gd).
 ## Its own save; the story's run is left as it is.
-func _start_zombies(first_person: bool) -> void:
+func _start_zombies() -> void:
 	_fade_out()
-	ZombieMode.start(first_person)
+	ZombieMode.start()
 
 func _start_gangs() -> void:
 	_fade_out()
 	ZombieMode.start_gangs()
-
-func _unhandled_input(event: InputEvent) -> void:
-	if _choosing_view and event.is_action_pressed("cancel_ui"):
-		get_viewport().set_input_as_handled()
-		_choosing_view = false
-		var kids := _buttons.get_children()
-		for i in kids.size():
-			if i >= kids.size() - _choose_extra:
-				kids[i].queue_free()
-			else:
-				kids[i].visible = true
-		(kids[0] as Control).grab_focus()
 
 func _on_settings() -> void:
 	_buttons.visible = false

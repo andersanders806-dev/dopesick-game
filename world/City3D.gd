@@ -210,6 +210,8 @@ func _ready() -> void:
 		add_child(mailbox)
 		mailbox.position = MAILBOX_POS
 	super._ready()
+	# The street's far side: the edge of the block is a row of brick fronts, not the end of the world.
+	add_child(preload("res://world/SouthRow.gd").new())
 	if not zombie_mode:
 		_add_scavenge_spots()
 		_check_post()

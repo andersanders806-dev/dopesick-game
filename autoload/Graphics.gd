@@ -34,6 +34,7 @@ extends Node
 enum Preset { LOW, MEDIUM, HIGH, PS5 }
 const PRESET_NAMES := ["Low", "Medium", "High", "PS5"]
 const SETTINGS_PATH := "user://settings.cfg"
+const Sandbox := preload("res://autoload/Sandbox.gd")
 const LUT_SIZE := 32
 
 ## Grade, applied at every preset.
@@ -699,7 +700,7 @@ var _perf_worst := 0.0
 var _perf_session := 0.0
 
 func _perf_log(delta: float) -> void:
-	if Engine.get_meta("sandbox", false) or DisplayServer.get_name() == "headless":
+	if Sandbox.active() or DisplayServer.get_name() == "headless":
 		return
 	if _perf_file == null:
 		_perf_file = FileAccess.open(PERF_LOG, FileAccess.WRITE)
@@ -791,7 +792,7 @@ func _load_settings(path: String = SETTINGS_PATH) -> void:
 			volumes[bus] = float(cfg.get_value("audio", bus, 1.0))
 
 func _save_settings() -> void:
-	if Engine.get_meta("sandbox", false):
+	if Sandbox.active():
 		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "preset", preset)
@@ -815,4 +816,5 @@ func _save_settings() -> void:
 	cfg.set_value("interface", "immersive_hud", immersive_hud)
 	cfg.set_value("controls", "camera_motion", camera_motion)
 	cfg.set_value("graphics", "rain_fx", rain_fx)
+	Sandbox.backup_once(SETTINGS_PATH)
 	cfg.save(SETTINGS_PATH)

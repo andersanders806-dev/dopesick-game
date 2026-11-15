@@ -34,12 +34,17 @@ const TITLE_SCENE := "res://ui/TitleScreen.tscn"
 const REAL_PATH := "user://zombies.cfg"
 ## Tests and bots (Engine meta "sandbox") keep a file of their own.
 const SANDBOX_PATH := "user://zombies_sandbox.cfg"
-## (runs go side by side, so each process gets its own file: SaveGame.run_token())
+## (every non-game run -- see autoload/Sandbox.gd -- gets its own file, removed on exit)
+const Sandbox := preload("res://autoload/Sandbox.gd")
 var PATH: String:
 	get:
-		if not Engine.get_meta("sandbox", false):
+		if not Sandbox.active():
 			return REAL_PATH
-		return SaveGame.sandboxed(SANDBOX_PATH)
+		return Sandbox.sandboxed(SANDBOX_PATH)
+
+func _exit_tree() -> void:
+	if Sandbox.active():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 
 const START_POINTS := 500
 ## Alive at once; the rest of a round waits in reserve. The cap moves between these two with
@@ -382,6 +387,8 @@ func _save_options() -> void:
 	cfg.set_value("options", "gore", gore_enabled)
 	cfg.set_value("options", "damage_numbers", damage_numbers)
 	cfg.set_value("options", "mature_language", mature_language)
+	if not Sandbox.active():
+		Sandbox.backup_once(PATH)
 	cfg.save(PATH)
 
 ## Dead Block and Ghetto Wars keep their bests apart.
@@ -420,4 +427,6 @@ func save_best() -> void:
 	cfg.set_value(sec, "kills", best_kills)
 	cfg.set_value(sec, "headshots", best_headshots)
 	cfg.set_value(sec, "time", best_time)
+	if not Sandbox.active():
+		Sandbox.backup_once(PATH)
 	cfg.save(PATH)

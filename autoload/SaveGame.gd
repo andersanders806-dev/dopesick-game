@@ -14,24 +14,25 @@ const REAL_PATH := "user://save.json"
 ## Tests and bots (Engine meta "sandbox") save and delete a file of their
 ## own, so they never touch the player's run.
 const SANDBOX_PATH := "user://save_sandbox.json"
-## (suites and windowed runs go side by side, in several worktrees, on one user:// folder: each
-## process gets its own file, named by run_token())
+## (every non-game run -- anything launched with -s, --no-sick or --sandbox, see autoload/Sandbox.gd --
+## gets a file of its own, named by a per-process token, and removes it on exit)
+const Sandbox := preload("res://autoload/Sandbox.gd")
 var PATH: String:
 	get:
-		if not Engine.get_meta("sandbox", false):
+		if not Sandbox.active():
 			return REAL_PATH
-		return SANDBOX_PATH.replace(".json", "_%s.json" % run_token())
+		return Sandbox.sandboxed(SANDBOX_PATH)
 
-## A random token made once per process (not the pid: every flatpak instance is in its own PID
-## namespace and gets the same small one). Names the files a sandboxed run writes in user://.
 func run_token() -> String:
-	if not Engine.has_meta("run_token"):
-		Engine.set_meta("run_token", Crypto.new().generate_random_bytes(4).hex_encode())
-	return String(Engine.get_meta("run_token"))
+	return Sandbox.run_token()
 
-## `path` ("user://x.cfg") with this process's token in its name ("user://x_<token>.cfg").
 func sandboxed(path: String) -> String:
-	return path.get_basename() + "_" + run_token() + "." + path.get_extension()
+	return Sandbox.sandboxed(path)
+
+func _exit_tree() -> void:
+	# A sandboxed run's throw-away save goes with it.
+	if Sandbox.active():
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 const VERSION := 1
 ## GameState fields that make up a run. Everything else is derived, or
 ## per-visit, or reset on load.
@@ -81,6 +82,8 @@ func save() -> bool:
 	if player:
 		var p := player.global_position
 		data["position"] = [p.x, p.y, p.z]
+	if not Sandbox.active():
+		Sandbox.backup_once(PATH)
 	var file := FileAccess.open(PATH, FileAccess.WRITE)
 	if file == null:
 		return false
@@ -150,6 +153,8 @@ func continue_run() -> bool:
 
 func delete() -> void:
 	if has_save():
+		if not Sandbox.active():
+			Sandbox.backup_once(PATH)
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))
 
 func _read() -> Dictionary:

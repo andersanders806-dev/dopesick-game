@@ -194,6 +194,7 @@ func start(player_role := "player", deal: Dictionary = {}) -> void:
 	_build_viewport()
 	_build_world()
 	_build_karts()
+	_build_hands()
 	_build_hud()
 	_build_sound()
 	_reset_race()
@@ -982,74 +983,151 @@ func _lay_skid(pos: Vector3, yaw: float) -> void:
 # Karts
 # =============================================================================
 
-## A rental kart: tube chassis, side pods and nose in the driver's colour,
-## a seat, a lawnmower engine with an exhaust on the right, fat slicks.
-## The wheel nodes are returned in meta so they can spin and steer.
+## Shared kart materials (one set for every kart): worn painted metal, brushed tube, rubber grip,
+## leather, and the printed decals. `kind` picks, `color` tints the paint.
+var _kmat_cache := {}
+
+func _kit_mat(tex: String, tint: Color, rough: float, metal: float, scale := 1.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	var path := "res://assets/pbr/%s_%%s.jpg" % tex
+	m.albedo_texture = load(path % "diff")
+	m.albedo_color = tint
+	if ResourceLoader.exists(path % "nor"):
+		m.normal_enabled = true
+		m.normal_texture = load(path % "nor")
+		m.normal_scale = 0.6
+	if ResourceLoader.exists(path % "rough"):
+		m.roughness_texture = load(path % "rough")
+	m.roughness = rough
+	m.metallic = metal
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * scale
+	return m
+
+func _kmat(kind: String, color := Color.WHITE) -> StandardMaterial3D:
+	var key := "%s%s" % [kind, color.to_html()]
+	if _kmat_cache.has(key):
+		return _kmat_cache[key]
+	var m: StandardMaterial3D
+	match kind:
+		"paint":
+			# Gloss paint over worn metal: the dents and brushing show through the clearcoat.
+			m = _kit_mat("metal_worn", color, 0.45, 0.35, 1.6)
+			m.clearcoat_enabled = true
+			m.clearcoat = 1.0
+			m.clearcoat_roughness = 0.12
+		"tube":
+			m = _kit_mat("metal_brushed", Color(0.55, 0.56, 0.6), 0.5, 0.85, 2.0)
+		"tray":
+			m = _kit_mat("metal_worn", Color(0.32, 0.32, 0.34), 0.7, 0.6, 1.0)
+		"rubber":
+			m = _kit_mat("asphalt", Color(0.16, 0.16, 0.17), 0.95, 0.0, 6.0)
+		"seat":
+			m = _kit_mat("leather_red", Color(0.28, 0.24, 0.24), 0.7, 0.0, 3.0)
+		"engine":
+			m = _kit_mat("metal_brushed", Color(0.7, 0.7, 0.72), 0.4, 0.9, 3.0)
+		"cover":
+			m = _kit_mat("metal_worn", Color(0.7, 0.12, 0.1), 0.5, 0.5, 4.0)
+		"rim":
+			m = _kit_mat("metal_brushed", color.lerp(Color(0.85, 0.85, 0.88), 0.55), 0.3, 0.95, 4.0)
+		_:
+			m = _mat(color)
+	_kmat_cache[key] = m
+	return m
+
+var _tyre_scene: PackedScene
+
+## A rental kart: tube chassis, side pods and nose in the driver's colour (gloss paint over worn metal),
+## a leather seat, a lawnmower engine with an exhaust on the right, real tyres on bright rims, a steering
+## wheel with spokes on its column, decals. The wheel nodes are returned in meta so they can spin and steer.
 func _kart_mesh(color: Color, number: int, with_wheels := true) -> Node3D:
 	var k := Node3D.new()
-	var body := _mat(color, 0.35, 0.0, 0.2)
-	body.clearcoat_enabled = true
-	body.clearcoat = 0.6
-	var dark := _mat(Color(0.08, 0.08, 0.09), 0.6)
-	var chrome := _mat(Color(0.75, 0.76, 0.78), 0.2, 0.0, 0.9)
-	var tube := _mat(Color(0.18, 0.18, 0.2), 0.4, 0.0, 0.7)
+	var body := _kmat("paint", color)
+	var dark := _kmat("tray")
+	var chrome := _kmat("tube")
+	var tube := _kmat("tube")
+	var rubber := _kmat("rubber")
 	# Floor tray and frame rails.
 	_box(k, Vector3(0.95, 0.05, 1.55), Vector3(0, 0.12, 0), dark)
 	for x in [-0.42, 0.42]:
-		_box(k, Vector3(0.05, 0.05, 1.7), Vector3(x, 0.14, 0), tube)
+		_cyl(k, 0.025, 1.7, Vector3(x, 0.14, 0), tube, 8).rotation.x = PI / 2.0
 	# Nose cone and front fairing.
 	var nose := _box(k, Vector3(0.95, 0.22, 0.45), Vector3(0, 0.22, -0.85), body)
 	nose.rotation.x = -0.25
 	_box(k, Vector3(1.25, 0.08, 0.12), Vector3(0, 0.15, -1.08), body)
-	# Side pods.
+	# Side pods, with the track's name down them.
 	for x in [-0.62, 0.62]:
 		_box(k, Vector3(0.22, 0.2, 0.75), Vector3(x, 0.2, 0.08), body)
-	# Steering column and wheel.
-	var col := _cyl(k, 0.02, 0.5, Vector3(0, 0.38, -0.42), tube, 6)
+		var tag := _label(k, "SOUTHSIDE", Vector3(x + (0.112 if x > 0 else -0.112), 0.2, 0.08), 48, Color(0.97, 0.97, 0.95), PI / 2.0 if x > 0 else -PI / 2.0, 0.0028)
+		tag.outline_size = 0
+		tag.shaded = true
+	# Steering column and a spoked wheel on it.
+	var col := _cyl(k, 0.02, 0.5, Vector3(0, 0.38, -0.42), tube, 8)
 	col.rotation.x = 1.0
-	var wheel := MeshInstance3D.new()
-	var tor := TorusMesh.new()
-	tor.inner_radius = 0.13
-	tor.outer_radius = 0.16
-	tor.rings = 16
-	tor.ring_segments = 6
-	wheel.mesh = tor
-	wheel.material_override = dark
+	var wheel := Node3D.new()
 	k.add_child(wheel)
 	wheel.position = Vector3(0, 0.56, -0.28)
+	var grip := _kmat("rubber")
+	var rim_mesh := MeshInstance3D.new()
+	var tor := TorusMesh.new()
+	tor.inner_radius = 0.125
+	tor.outer_radius = 0.16
+	tor.rings = 24
+	tor.ring_segments = 10
+	rim_mesh.mesh = tor
+	rim_mesh.material_override = grip
+	wheel.add_child(rim_mesh)
+	for ang in [0.0, TAU / 3.0, 2.0 * TAU / 3.0]:
+		var spoke := _box(wheel, Vector3(0.02, 0.012, 0.13), Vector3.ZERO, tube)
+		spoke.position = Vector3(sin(ang) * 0.065, 0.0, -cos(ang) * 0.065)
+		spoke.rotation.y = ang
+	var hub := _cyl(wheel, 0.045, 0.03, Vector3(0, 0.005, 0), _kmat("paint", color), 14)
+	var cap := _label(hub, "S", Vector3(0, 0.0165, 0), 40, Color(1, 1, 1), 0.0, 0.0016)
+	cap.rotation.x = -PI / 2.0
+	cap.outline_size = 0
+	# The wheel lies flat (its axle up) on the column, tipped up to the driver.
 	wheel.rotation.x = 1.15
 	k.set_meta("steering_wheel", wheel)
 	# Seat.
-	_box(k, Vector3(0.48, 0.1, 0.48), Vector3(0, 0.2, 0.25), _mat(Color(0.05, 0.05, 0.05), 0.5))
-	var back := _box(k, Vector3(0.48, 0.55, 0.08), Vector3(0, 0.45, 0.52), _mat(Color(0.05, 0.05, 0.05), 0.5))
+	_box(k, Vector3(0.48, 0.1, 0.48), Vector3(0, 0.2, 0.25), _kmat("seat"))
+	var back := _box(k, Vector3(0.48, 0.55, 0.08), Vector3(0, 0.45, 0.52), _kmat("seat"))
 	back.rotation.x = -0.35
 	# Engine, exhaust, rear bumper.
-	_box(k, Vector3(0.32, 0.32, 0.32), Vector3(0.42, 0.32, 0.6), _mat(Color(0.5, 0.5, 0.52), 0.4, 0.0, 0.6))
-	_box(k, Vector3(0.26, 0.12, 0.2), Vector3(0.42, 0.52, 0.6), _mat(Color(0.75, 0.1, 0.1), 0.5))
-	var pipe := _cyl(k, 0.04, 0.4, Vector3(0.55, 0.3, 0.85), chrome, 8)
+	_box(k, Vector3(0.32, 0.32, 0.32), Vector3(0.42, 0.32, 0.6), _kmat("engine"))
+	_box(k, Vector3(0.26, 0.12, 0.2), Vector3(0.42, 0.52, 0.6), _kmat("cover"))
+	var pipe := _cyl(k, 0.04, 0.4, Vector3(0.55, 0.3, 0.85), chrome, 10)
 	pipe.rotation.x = PI / 2.0
 	k.set_meta("exhaust", Vector3(0.55, 0.3, 1.05))
 	_box(k, Vector3(1.3, 0.08, 0.08), Vector3(0, 0.18, 0.98), tube)
-	# Number board on the nose.
+	# Number board on the nose, and the sponsor's name across the nose's top.
 	if number > 0:
 		var plate := _box(k, Vector3(0.36, 0.26, 0.02), Vector3(0, 0.36, -0.98), _mat(Color(0.95, 0.95, 0.92), 0.5))
 		plate.rotation.x = -0.6
 		var num := _label(plate, str(number), Vector3(0, 0, -0.012), 72, Color(0.05, 0.05, 0.05), PI, 0.0035)
 		num.outline_size = 0
 		num.shaded = true
+	var spons := _label(k, "SOUTHSIDE KARTS", Vector3(0, 0.343, -0.84), 52, Color(1, 1, 1), 0.0, 0.0034)
+	spons.rotation = Vector3(-PI / 2.0 - 0.25, 0.0, 0.0)
+	spons.outline_size = 0
+	spons.shaded = true
 	if with_wheels:
+		if _tyre_scene == null:
+			_tyre_scene = load("res://assets/polyhaven/old_tyre/old_tyre.gltf")
 		var wheels: Array[Node3D] = []
-		var tyre_m := _mat(Color(0.05, 0.05, 0.05), 0.85)
-		var rim_m := _mat(color.lerp(Color(0.8, 0.8, 0.8), 0.5), 0.3, 0.0, 0.8)
+		var rim_m := _kmat("rim", color)
 		for spec in [[-0.6, -0.72, 0.13, 0.17], [0.6, -0.72, 0.13, 0.17], [-0.62, 0.68, 0.14, 0.24], [0.62, 0.68, 0.14, 0.24]]:
 			var pivot := Node3D.new()
 			k.add_child(pivot)
 			pivot.position = Vector3(spec[0], spec[2], spec[1])
 			var spin := Node3D.new()
 			pivot.add_child(spin)
-			var t := _cyl(spin, spec[2], spec[3], Vector3.ZERO, tyre_m, 18)
-			t.rotation.z = PI / 2.0
-			var rim := _cyl(spin, spec[2] * 0.6, spec[3] + 0.01, Vector3.ZERO, rim_m, 10)
+			# Poly Haven's old tyre (CC0): 0.6 m across, 0.165 m wide, axle along Z; the kart's tyre is a
+			# fat slick, turned so its axle runs along X.
+			var tyre: Node3D = _tyre_scene.instantiate()
+			spin.add_child(tyre)
+			tyre.rotation.y = PI / 2.0
+			tyre.scale = Vector3(spec[2] / 0.3, spec[2] / 0.3, spec[3] / 0.165)
+			var rim := _cyl(spin, spec[2] * 0.6, spec[3] + 0.01, Vector3.ZERO, rim_m, 14)
 			rim.rotation.z = PI / 2.0
 			wheels.append(pivot)
 		k.set_meta("wheels", wheels)
@@ -1122,6 +1200,17 @@ func _build_karts() -> void:
 		var node := _kart_mesh(d["color"], d["num"])
 		_world.add_child(node)
 		_seat_driver(node, d["role"], (d["color"] as Color).lightened(0.25) if d["ai"] else Color(0.95, 0.95, 0.95), bool(d["ai"]))
+		if not d["ai"]:
+			# The speedway's lit, the cockpit is lit: a soft light over your own kart so the paint, the
+			# wheel, the nose and the front tyres read at night.
+			var cockpit := OmniLight3D.new()
+			cockpit.name = "CockpitLight"
+			cockpit.position = Vector3(0.0, 1.1, -0.35)
+			cockpit.light_energy = 1.6
+			cockpit.omni_range = 3.2
+			cockpit.light_color = Color(1.0, 0.95, 0.88)
+			cockpit.shadow_enabled = false
+			node.add_child(cockpit)
 		var kart := {
 			"name": d["name"], "ai": d["ai"], "skill": d["skill"], "color": d["color"],
 			"node": node, "pos": Vector3.ZERO, "yaw": 0.0, "vel": Vector3.ZERO, "steer": 0.0,
@@ -1782,7 +1871,8 @@ func _place_kart(kart: Dictionary, dt: float) -> void:
 		(pivot.get_child(0) as Node3D).rotation.x = -float(kart["wheel_spin"])
 	var sw := node.get_meta("steering_wheel") as Node3D
 	if sw:
-		sw.rotation = Vector3(1.15, 0.0, float(kart["steer"]) * 1.2)
+		# Turned about its own axle (up, before the tip towards the driver).
+		sw.basis = Basis(Vector3.RIGHT, 1.15) * Basis(Vector3.UP, float(kart["steer"]) * 1.4)
 
 func _set_start_lights(n: int) -> void:
 	for i in _start_lights.size():
@@ -1808,13 +1898,48 @@ func _set_start_lights(n: int) -> void:
 
 ## The driver's eyes in the kart's own frame: helmet height, the seat's z. From here the
 ## steering wheel turns under your hands and the nose and the front slicks sit at the bottom of the view.
-const DRIVER_EYE := Vector3(0.0, 0.84, 0.24)
+const DRIVER_EYE := Vector3(0.0, 0.84, 0.16)
+## Tipped down a little so the nose and both front tyres sit in the lower corners of the view.
+const DRIVER_PITCH := -0.14
 ## How far the head follows the kart round a drift (the rest of the kart's swing stays: it is the
 ## tail stepping out, seen), and how far it looks into a turn and leans.
 const HEAD_DRIFT_KEEP := 0.35
 const HEAD_LOOK := 0.12
 const HEAD_LEAN := 0.05
 const HEAD_SHIFT := 0.04
+
+const Viewmodel := preload("res://player/Viewmodel.gd")
+var _hands: Viewmodel
+## Where the hands take the wheel's rim (m from its centre, at 9 and 3 o'clock) and how they lie on it.
+const WHEEL_GRIP_R := 0.145
+const HAND_ROLL_R := -35.0
+const HAND_ROLL_L := 215.0
+
+## Your own arms (the same rig and skin as the story's hands, player/Viewmodel.gd), on the camera.
+func _build_hands() -> void:
+	_hands = Viewmodel.new().setup_hands_only() as Viewmodel
+	_hands.position = Vector3.ZERO
+	_camera.add_child(_hands)
+	_hands.set_arm_param("bare", 1.0)
+	var lamp := OmniLight3D.new()
+	lamp.light_energy = 0.5
+	lamp.omni_range = 1.4
+	lamp.shadow_enabled = false
+	lamp.light_color = Color(1.0, 0.93, 0.86)
+	lamp.position = Vector3(0.0, 0.25, 0.2)
+	_hands.add_child(lamp)
+
+## Both hands on the wheel, turning with it: the wrists at its 9 and 3 o'clock, in the camera's space.
+func _hands_on_wheel(kart_node: Node3D, steer: float) -> void:
+	if _hands == null:
+		return
+	var wheel := kart_node.get_meta("steering_wheel") as Node3D
+	var to_cam := _camera.global_transform.affine_inverse()
+	var wt := wheel.global_transform
+	_hands.set_hand("R", Viewmodel.blend_shape("relaxed", "hold", 1.0), HAND_ROLL_R, 0.9)
+	_hands.set_hand("L", Viewmodel.blend_shape("relaxed", "hold", 1.0), HAND_ROLL_L, 0.9)
+	_hands.grip_r = to_cam * (wt * Vector3(WHEEL_GRIP_R, 0.0, 0.0))
+	_hands.aim_hands(to_cam * (wt * Vector3(-WHEEL_GRIP_R, 0.0, 0.0)))
 
 ## First person, the only view: a driver's-eye camera riding the player's kart. A slight head
 ## lean and look into the turns, the road's rumble and crash shake on top. No chase cam.
@@ -1835,16 +1960,17 @@ func _update_camera(delta: float) -> void:
 	var roll := -steer * HEAD_LEAN
 	var eye := DRIVER_EYE + Vector3(steer * HEAD_SHIFT, 0.0, 0.0)
 	var base := node.global_transform
-	var basis := base.basis * Basis.from_euler(Vector3(-0.05, yaw_off, roll))
+	var basis := base.basis * Basis.from_euler(Vector3(DRIVER_PITCH, yaw_off, roll))
 	var shake := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * _cam_shake * 0.04
 	_cam_shake = move_toward(_cam_shake, 0.0, delta * 2.5)
 	# A rumble at speed, from the engine and the seams in the asphalt.
 	shake += Vector3(0, sin(_t * 47.0), 0) * 0.004 * clampf(speed / MAX_SPEED, 0.0, 1.0)
 	_camera.global_transform = Transform3D(basis, base * eye + shake)
 	_cam_ready = true
+	_hands_on_wheel(node, steer)
 	_fov_boost = move_toward(_fov_boost, 0.0, delta * 6.0)
 	var boosting := float(you["boost"]) > 0.0
-	_camera.fov = lerpf(_camera.fov, 76.0 + 12.0 * clampf(speed / MAX_SPEED, 0.0, 1.0) + (_fov_boost if boosting else _fov_boost * 0.5), 1.0 - exp(-5.0 * delta))
+	_camera.fov = lerpf(_camera.fov, 80.0 + 10.0 * clampf(speed / MAX_SPEED, 0.0, 1.0) + (_fov_boost if boosting else _fov_boost * 0.5), 1.0 - exp(-5.0 * delta))
 
 # =============================================================================
 # HUD

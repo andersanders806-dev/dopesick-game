@@ -44,9 +44,6 @@ func _initialize() -> void:
 	meta.hints_seen = {"move": true, "craving": true, "body": true, "keys": true, "goal": true}
 	PoliceScene = load("res://npc/Police3D.tscn")
 	await _run()
-	# The files this process's sandbox wrote in user:// (named by SaveGame.run_token()) go with it.
-	for f in [root.get_node("SaveGame").PATH, root.get_node("ZombieMode").PATH]:
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	print("\n%s (%d failure(s))" % ["PASS" if _failures == 0 else "FAIL", _failures])
 	await _finished()
 	quit(1 if _failures > 0 else 0)
@@ -261,6 +258,29 @@ func _fp_only_checks(gs: Node) -> void:
 	get_first_node_in_group("hud").advance_or_close_dialogue()
 	await _frames(3)
 
+	# Sprinting at someone never takes the eyes through them (the push-out alone is slower than a sprint).
+	for other in bar.patrons:
+		other.position = Vector3(0, -50, 0)
+	patron.position = Vector3(-2.7, 0.0, 0.25)
+	p.global_position = Vector3(1.3, 0.0, 0.25)
+	p.velocity = Vector3.ZERO
+	p.set_look(PI / 2.0, 0.0)
+	Input.action_press("sprint")
+	Input.action_press("move_up")
+	var nearest_eye := 99.0
+	for i in 120:
+		await physics_frame
+		nearest_eye = minf(nearest_eye, Vector2(p.camera.global_position.x - patron.global_position.x, p.camera.global_position.z - patron.global_position.z).length())
+	Input.action_release("sprint")
+	Input.action_release("move_up")
+	_check(nearest_eye >= p.PERSONAL_SPACE - 0.1, "  sprinting straight at a patron: the eyes get no nearer than %.2f m" % nearest_eye)
+	p.global_position = Vector3(5.6, 0.0, 2.2)
+	await _frames(3)
+	# One answer per drawn frame: asked twice, the aim pick is not worked out twice.
+	var first_pick: Node3D = p._aimed_interactable()
+	var frame_asked: int = p._aim_frame
+	_check(p._aimed_interactable() == first_pick and p._aim_frame == frame_asked, "  the aim pick is cached for the frame")
+
 	# Hiding is a crouch: the eyes go down with the body.
 	var eye_up: float = p.camera.global_position.y - p.global_position.y
 	p.set_hiding(true)
@@ -269,6 +289,71 @@ func _fp_only_checks(gs: Node) -> void:
 	_check(eye_up - eye_down > 0.4, "  hiding lowers the eyes (%.2f -> %.2f m)" % [eye_up, eye_down])
 	p.set_hiding(false)
 	await _frames(60)
+
+	# The dealer: sprint at him on the corner, then talk -- the view turns to his face.
+	var pcity := await _load("res://world/City3D.tscn")
+	var pusher := pcity.get_node("Pusher") as Area3D
+	var waited := 0
+	while waited < 1800 and not (pusher.state == pusher.State.POST and pusher.global_position.distance_to(Vector3(14.0, 0, -3.5)) < 3.0):
+		await _frames(10)
+		waited += 10
+	p = _player()
+	p.global_position = pusher.global_position + Vector3(-6.0, 0.0, 0.0)
+	p.velocity = Vector3.ZERO
+	p.set_look(-PI / 2.0, 0.0)
+	Input.action_press("sprint")
+	Input.action_press("move_up")
+	nearest_eye = 99.0
+	for i in 120:
+		await physics_frame
+		nearest_eye = minf(nearest_eye, Vector2(p.camera.global_position.x - pusher.global_position.x, p.camera.global_position.z - pusher.global_position.z).length())
+	Input.action_release("sprint")
+	Input.action_release("move_up")
+	_check(nearest_eye >= p.PERSONAL_SPACE - 0.1, "  sprinting at the dealer (no npc_name, an Area): the eyes stop %.2f m short" % nearest_eye)
+	p.set_look(PI / 2.0, 0.0)
+	await _frames(3)
+	p.nearby.erase(null)
+	p._try_interact()
+	await _frames(45)
+	var to_d: Vector3 = pusher.global_position + Vector3(0, 1.45, 0) - p.camera.global_position
+	var dealer_fwd: Vector3 = -p.camera.global_transform.basis.z
+	_check(dealer_fwd.dot(to_d.normalized()) > 0.95, "  talking to the dealer turns the view to him (%.3f)" % dealer_fwd.dot(to_d.normalized()))
+	p.dialogue_active = false
+	# (His deal menu lives on the root: put it away, or it outlasts this scene and answers the later checks.)
+	for c in root.get_children():
+		if c is CanvasLayer and (c.has_method("open_with") or c.has_method("open") or c.has_method("start")):
+			c.queue_free()
+	await _frames(2)
+	for hud_node in get_nodes_in_group("hud"):
+		if hud_node.dialogue_panel.visible:
+			hud_node.advance_or_close_dialogue()
+	await _frames(3)
+
+	# The far side of Main Street: a brick row, walls facing the street, windows in the kit's glass.
+	var row := pcity.get_node_or_null("SouthRow")
+	_check(row != null and row.get_child_count() > 20, "  Main Street has a south side (%d nodes)" % (row.get_child_count() if row else 0))
+	if row != null:
+		var wound := true
+		var low_under_overpass := true
+		var windows := 0
+		for ch in row.get_children():
+			if ch is MeshInstance3D and String(ch.name).begins_with("Front"):
+				var arr: Array = (ch as MeshInstance3D).mesh.surface_get_arrays(0)
+				var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var ns: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+				for t in range(0, vs.size(), 3):
+					var face := (vs[t + 2] - vs[t]).cross(vs[t + 1] - vs[t])
+					if face.dot(ns[t]) <= 0.0:
+						wound = false
+				var box: AABB = (ch as MeshInstance3D).get_aabb()
+				if box.position.x < 68.0 and box.end.x > 54.0 and box.end.y > 9.0:
+					low_under_overpass = false
+			elif ch is MultiMeshInstance3D:
+				windows += (ch as MultiMeshInstance3D).multimesh.instance_count
+		_check(wound, "  every wall of the row faces out (winding agrees with its normal)")
+		_check(low_under_overpass, "  under the overpass (x 54-68) the row stays below the deck")
+		_check(windows > 100, "  the row has kit windows (%d)" % windows)
+		_check(row.get_node("Face") != null, "  and a solid face along the kerb")
 
 	# Karts: a driver's-eye camera riding the player's kart, no chase cam, no helmet on your own head.
 	var race = load("res://ui/KartRace.gd").new()
@@ -285,6 +370,14 @@ func _fp_only_checks(gs: Node) -> void:
 	_check(cam_fwd.dot(kart_fwd) > 0.95, "  ...looking where the nose points (%.3f)" % cam_fwd.dot(kart_fwd))
 	_check(knode.find_children("*", "BoneAttachment3D", true, false).is_empty() and not (race._karts[1]["node"] as Node3D).find_children("*", "BoneAttachment3D", true, false).is_empty(),
 		"  your own helmet is left off (the others wear theirs)")
+	_check(race._hands != null and race._hands.get_parent() == race._camera, "  your own hands are on the camera")
+	var spokes := (knode.get_meta("steering_wheel") as Node3D).get_children().filter(func(c): return c is MeshInstance3D and (c.mesh is BoxMesh)).size()
+	_check(spokes == 3, "  the wheel has its three spokes on a column (%d)" % spokes)
+	var front_pivots: Array = knode.get_meta("wheels")
+	you["steer"] = 1.0
+	race._place_kart(you, 0.016)
+	_check(absf((front_pivots[0] as Node3D).rotation.y) > 0.2 and absf((front_pivots[3] as Node3D).rotation.y) < 0.01, "  the front tyres steer, the rear do not")
+	you["steer"] = 0.0
 	# Wheel hard over: the head leans and looks into the turn.
 	you["steer"] = 1.0
 	await _frames(3)
@@ -319,7 +412,25 @@ func _run() -> void:
 	gfx._load_settings(stale_path)
 	_check(gfx.first_person, "  a stale first_person=false in settings.cfg is ignored")
 	gfx.set_first_person(false)
-	_check(gfx.first_person, "  set_first_person(true) leaves it on")
+	_check(gfx.first_person, "  set_first_person(false) leaves it on")
+	# User data safety: this run is a sandbox by itself (launched with -s), whatever the script says, so the
+	# player's own files are never the ones written; and a real file is kept as .bak before an overwrite.
+	var Sandbox := load("res://autoload/Sandbox.gd")
+	var save_node: Node = root.get_node("SaveGame")
+	_check(Sandbox.active() and save_node.PATH != save_node.REAL_PATH and root.get_node("ZombieMode").PATH != root.get_node("ZombieMode").REAL_PATH,
+		"  a script run is a sandbox: save and Dead Block save are not the real files (%s)" % save_node.PATH)
+	var bak_src: String = Sandbox.sandboxed("user://backup_test.txt")
+	var bf := FileAccess.open(bak_src, FileAccess.WRITE)
+	bf.store_string("the player's")
+	bf.close()
+	Sandbox.backup_once(bak_src)
+	bf = FileAccess.open(bak_src, FileAccess.WRITE)
+	bf.store_string("overwritten")
+	bf.close()
+	Sandbox.backup_once(bak_src)
+	_check(FileAccess.get_file_as_string(bak_src + ".bak") == "the player's", "  the first overwrite keeps the old file as .bak, a second one does not replace it")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(bak_src))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(bak_src + ".bak"))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(stale_path))
 	gfx.set_preset(gfx.Preset.MEDIUM)
 

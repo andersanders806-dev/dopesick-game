@@ -20,6 +20,7 @@ extends Node
 ## learn which shops watch the aisles, who pays, and how long you've got.
 
 const SAVE_PATH := "user://progress.cfg"
+const Sandbox := preload("res://autoload/Sandbox.gd")
 
 signal know_how_changed(amount: int)
 signal upgrade_bought(id: String)
@@ -175,8 +176,9 @@ func load_progress() -> void:
 func save_progress() -> void:
 	# Tests, sims and bots set Engine meta "sandbox": thousands of simulated
 	# runs used to land in the player's real Know-How.
-	if Engine.get_meta("sandbox", false):
+	if Sandbox.active():
 		return
+	Sandbox.backup_once(SAVE_PATH)
 	var cfg := ConfigFile.new()
 	cfg.set_value("meta", "know_how", know_how)
 	cfg.set_value("meta", "runs_completed", runs_completed)

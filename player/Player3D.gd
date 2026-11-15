@@ -204,6 +204,21 @@ func set_look(yaw: float, pitch: float) -> void:
 	_look_yaw = wrapf(yaw, -PI, PI)
 	_look_pitch = clampf(pitch, -PITCH_LIMIT, PITCH_LIMIT)
 
+## Something you talk to (not a counter, a door or a sign): anyone with a name, the dealer, the collector, a guard
+## or a shopkeeper's talk zone, a hustler, a pedestrian.
+const PERSON_SCRIPTS := ["Pusher3D.gd", "Collector3D.gd", "Guard3D.gd", "PatrolCop3D.gd", "TalkZone3D.gd", "Pedestrian3D.gd",
+	"Lookout3D.gd", "Homeless3D.gd", "KartHustler3D.gd", "Outreach3D.gd", "NPC3D.gd", "Police3D.gd", "Postman3D.gd"]
+
+func _is_person(n: Node) -> bool:
+	if "npc_name" in n:
+		return true
+	var sc: Script = n.get_script()
+	while sc != null:
+		if sc.resource_path.get_file() in PERSON_SCRIPTS:
+			return true
+		sc = sc.get_base_script()
+	return false
+
 ## The view turns to look at `point` over `duration` s, the shorter way round
 ## (a conversation starting, a beat that wants your eyes somewhere). Level
 ## enough that the horizon stays put: pitch is held to +-0.35 rad.
@@ -381,28 +396,83 @@ func is_sliding() -> bool:
 	return feel != null and bool(feel.get("sliding"))
 
 ## First person: nobody comes closer to your eyes than this (m, along the floor). The story's
-## people have no body to bump into, so the player is eased out of them instead, or a head
-## fills the whole view (hair at the near plane).
+## people mostly have no body to bump into (areas, or nodes with no collider at all), so the player
+## keeps out of them instead, or a head fills the whole view (hair at the near plane).
+## Two parts: the player's own movement slides round the ring at any speed (a sprint included), and
+## someone walking into the player eases him back out (never through a wall).
 const PERSONAL_SPACE := 0.95
-const PERSONAL_GROUPS := ["pedestrians", "scheduled_people"]
+## Every kind of person in the story that can be walked into. (The police and muggers have bodies and
+## are meant to be touched; Dead Block's dead and the gangs are not in the story.)
+const PERSONAL_GROUPS := ["pedestrians", "scheduled_people", "guards", "patrol", "pusher", "collector", "postman"]
+## Only people this close (m) are looked at each physics tick.
+const PEOPLE_RANGE := 3.0
+const PEOPLE_PUSH_SPEED := 6.0
+var _people_frame := -1
+var _people: Array[Node3D] = []
+
+## The people within PEOPLE_RANGE, worked out once per physics tick: squared distances first, visibility
+## only for those that are close.
+func _people_close() -> Array[Node3D]:
+	var f := Engine.get_physics_frames()
+	if f == _people_frame:
+		return _people
+	_people_frame = f
+	_people.clear()
+	if GameState.mode != "story" or not _first_person:
+		return _people
+	var tree := get_tree()
+	var r2 := PEOPLE_RANGE * PEOPLE_RANGE
+	var here := global_position
+	var seen := {}
+	var all: Array = []
+	for g in PERSONAL_GROUPS:
+		all.append_array(tree.get_nodes_in_group(g))
+	for a in nearby:
+		if is_instance_valid(a) and "npc_name" in a:
+			all.append(a)
+	for n in all:
+		var n3 := n as Node3D
+		if n3 == null or seen.has(n3):
+			continue
+		var dx: float = n3.global_position.x - here.x
+		var dz: float = n3.global_position.z - here.z
+		if dx * dx + dz * dz > r2 or not n3.is_visible_in_tree():
+			continue
+		seen[n3] = true
+		_people.append(n3)
+	return _people
+
+## Walking (or sprinting) at someone: the part of the velocity that would take the eyes inside the ring
+## this tick is taken off, so the player slides round them instead of through them. Wall-safe: it only
+## ever removes velocity.
+func _slide_round_people(delta: float) -> void:
+	var people := _people_close()
+	if people.is_empty() or delta <= 0.0:
+		return
+	var here := Vector2(global_position.x, global_position.z)
+	var v := Vector2(velocity.x, velocity.z)
+	for _pass in 2:
+		for n in people:
+			var to := Vector2(n.global_position.x, n.global_position.z) - here
+			var d := to.length()
+			if d < 0.01:
+				continue
+			var dir := to / d
+			var closing := v.dot(dir)
+			var room := maxf(d - PERSONAL_SPACE, 0.0)
+			if closing * delta > room:
+				v -= dir * (closing - room / delta)
+	velocity.x = v.x
+	velocity.z = v.y
 
 func _keep_people_out(delta: float) -> void:
-	if GameState.mode != "story" or not _first_person:
+	var people := _people_close()
+	if people.is_empty():
 		return
 	var here := Vector2(global_position.x, global_position.z)
 	var push := Vector2.ZERO
-	var seen := {}
-	var people: Array = []
-	for g in PERSONAL_GROUPS:
-		people.append_array(get_tree().get_nodes_in_group(g))
-	for a in nearby:
-		if is_instance_valid(a) and "npc_name" in a:
-			people.append(a)
 	for n in people:
-		if seen.has(n) or not (n is Node3D) or not n.is_visible_in_tree():
-			continue
-		seen[n] = true
-		var off := here - Vector2((n as Node3D).global_position.x, (n as Node3D).global_position.z)
+		var off := here - Vector2(n.global_position.x, n.global_position.z)
 		var d := off.length()
 		if d >= PERSONAL_SPACE:
 			continue
@@ -412,8 +482,8 @@ func _keep_people_out(delta: float) -> void:
 			d = 0.0
 		push += off.normalized() * (PERSONAL_SPACE - d)
 	if push.length() > 0.001:
-		# Eased: a step or two, never a shove, and a wall stops it.
-		var step := push.limit_length(maxf(3.0 * delta, 0.02))
+		# Eased: never a shove, and a wall stops it (then the person is the one in the ring).
+		var step := push.limit_length(maxf(PEOPLE_PUSH_SPEED * delta, 0.02))
 		move_and_collide(Vector3(step.x, 0.0, step.y))
 
 func _physics_process(delta: float) -> void:
@@ -493,6 +563,7 @@ func _physics_process(delta: float) -> void:
 
 	var target := dir * speed
 	velocity = velocity.move_toward(target, (ACCEL if dir.length() > 0.1 else DECEL) * delta)
+	_slide_round_people(delta)
 	move_and_slide()
 	GameState.stat("walked", Vector2(velocity.x, velocity.z).length() * delta)
 	# Withdrawal slows the stride along with the movement, so it reads as a
@@ -671,7 +742,7 @@ func _try_interact() -> void:
 	var target := _nearest_interactable()
 	if target:
 		# Talking to someone: the view settles on them, as your head would.
-		if "npc_name" in target and _first_person:
+		if _first_person and _is_person(target):
 			ease_look_to(target.global_position + Vector3(0, 1.45, 0))
 		if story_hands != null:
 			story_hands.reach(target.global_position, target.get("item_id") != null)
@@ -727,6 +798,36 @@ var _shape_aabbs := {}
 ## The interactable (in reach) under the crosshair, or null. Ray entry beats
 ## the cone; among ray hits the nearer entry wins, among cone hits the smaller angle.
 func _aimed_interactable() -> Node3D:
+	# The prompt, the HUD, the weapon holder and E all ask, several times a frame: one answer per drawn
+	# frame for the same view, place and set of things in reach.
+	var frame := Engine.get_process_frames()
+	var xf := camera.global_transform
+	if frame == _aim_frame and xf == _aim_xf and global_position == _aim_pos and nearby.size() == _aim_n and (_aim_result == null or is_instance_valid(_aim_result)):
+		return _aim_result
+	_aim_result = _aimed_uncached()
+	_aim_frame = frame
+	_aim_xf = xf
+	_aim_pos = global_position
+	_aim_n = nearby.size()
+	return _aim_result
+
+var _aim_frame := -1
+var _aim_xf := Transform3D()
+var _aim_pos := Vector3.ZERO
+var _aim_n := -1
+var _aim_result: Node3D
+## Each reachable area's collision shapes, found once (find_children on an NPC walks its whole model).
+var _shape_cache := {}
+
+func _shapes_of(area: Node) -> Array:
+	var id := area.get_instance_id()
+	var shapes: Array = _shape_cache.get(id, [])
+	if shapes.is_empty() or not is_instance_valid(shapes[0]):
+		shapes = area.find_children("*", "CollisionShape3D", true, false)
+		_shape_cache[id] = shapes
+	return shapes
+
+func _aimed_uncached() -> Node3D:
 	var from := camera.global_position
 	var dir := -camera.global_transform.basis.z
 	var cone_cos := cos(deg_to_rad(AIM_CONE_DEG))
@@ -736,7 +837,7 @@ func _aimed_interactable() -> Node3D:
 	for area in nearby:
 		if not area.has_method("interact"):
 			continue
-		for sh in (area as Node).find_children("*", "CollisionShape3D", true, false):
+		for sh in _shapes_of(area):
 			var cs := sh as CollisionShape3D
 			if cs.disabled or cs.shape == null:
 				continue
@@ -818,6 +919,7 @@ func _on_area_entered(area: Area3D) -> void:
 
 func _on_area_exited(area: Area3D) -> void:
 	nearby.erase(area)
+	_shape_cache.erase(area.get_instance_id())
 
 func begin_theft_window(duration: float) -> void:
 	# The shaking hands that make the grab longer keep you looking like a thief for as long.

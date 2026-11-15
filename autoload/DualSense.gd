@@ -25,6 +25,7 @@ extends Node
 ## Everything goes through write_report(), so the tests give `sink` a Callable and read the bytes.
 ## With the settings Adaptive triggers and Lightbar effects both off nothing is ever written.
 
+const Sandbox := preload("res://autoload/Sandbox.gd")
 const VENDOR := 0x054C
 const PRODUCTS := [0x0CE6, 0x0DF2]
 const USB_SIZE := 63
@@ -355,7 +356,7 @@ func _can_use_hardware() -> bool:
 		return true
 	if DisplayServer.get_name() == "headless" and not allow_headless:
 		return false
-	return not Engine.get_meta("sandbox", false) or allow_headless
+	return not Sandbox.active() or allow_headless
 
 ## Opens the child process on the controller, if there is one. False: nothing to drive.
 func open_device() -> bool:

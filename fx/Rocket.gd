@@ -184,6 +184,28 @@ static func _cyl(r0: float, r1: float, h: float) -> CylinderMesh:
 static func _cone(r0: float, r1: float, h: float) -> CylinderMesh:
 	return _cyl(r0, r1, h)
 
+## Drawn once at `at` with every part on (fx/Prewarm.gd, behind the loading black), and put away.
+func show_for_warm(at: Vector3) -> void:
+	global_position = at
+	visible = true
+	_body.visible = true
+	_flame.visible = true
+	_trail.emitting = true
+	for p in [_fire, _smoke, _grit]:
+		(p as CPUParticles3D).global_position = at
+		(p as CPUParticles3D).restart()
+	_flash.visible = true
+	_flash.light_energy = 1.0
+
+func hide_after_warm() -> void:
+	_trail.emitting = false
+	_body.visible = false
+	_flame.visible = false
+	_flash.visible = false
+	for p in [_fire, _smoke, _grit]:
+		(p as CPUParticles3D).emitting = false
+	visible = false
+
 ## Off it goes from `from` along `dir`.
 func fire(from: Vector3, dir: Vector3, d: Resource) -> void:
 	data = d

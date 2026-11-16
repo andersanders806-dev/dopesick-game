@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b8q1q67peuex6"
-path="res://.godot/imported/lambert1_normal.png-036434bbec25cdf65f97a3dfa884eaac.ctex"
+uid="uid://bhkcpxkokwtbr"
+path="res://.godot/imported/Material.001_normal.png-0a289d953f3d6c1363c99f4d2816db35.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/guns/sawnoff/textures/lambert1_normal.png"
-dest_files=["res://.godot/imported/lambert1_normal.png-036434bbec25cdf65f97a3dfa884eaac.ctex"]
+source_file="res://assets/guns/sawnoff/textures/Material.001_normal.png"
+dest_files=["res://.godot/imported/Material.001_normal.png-0a289d953f3d6c1363c99f4d2816db35.ctex"]
 
 [params]
 

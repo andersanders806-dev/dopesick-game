@@ -27,8 +27,11 @@ const GunModelScript := preload("res://weapons/GunModel.gd")
 const SOUND_DIRS := ["res://assets/sfx/guns/", "res://assets/sfx/quake/", "res://assets/sfx/tsunami/"]
 const TEXTURE_DIRS := ["res://assets/decals/"]
 const WEAPON_DIR := "res://weapons/"
-## The guns that can be bought (the pistol is in the hand already).
-const GUNS := ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]
+## The guns that can be bought (the pistol is in the hand already), and (SHIP 16 B2) the sixteen new ones with the
+## two melee weapons.
+const GUNS := ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder", "glock", "tec9", "uzi", "mp5", "vector", "ak", "m16", "sawnoff",
+	"deagle", "aa12", "dmr", "amr", "saw", "rpg", "bat", "machete"]
+const GunSoundsScript := preload("res://weapons/GunSounds.gd")
 ## Microseconds of work per frame: in the black of a scene change, and behind the banner.
 const BUDGET_BLACK_US := 45000
 const BUDGET_US := 6000
@@ -416,16 +419,29 @@ func _viewmodels() -> void:
 		vm.global_position = _bay_pos + Vector3(0.0, 1.0, 0.0)
 		vm.show_flash(rng, 1.6)
 		made.append(vm)
+		# Its recordings and foley (a swap to it loads them otherwise), and the gun as the box and the wall show it
+		# (the world's materials, not the viewmodel's).
+		GunSoundsScript.warm(d)
+		var plain: Node3D = GunModelScript.build(d)
+		_bay.add_child(plain)
+		plain.global_position = _bay_pos + Vector3(0.6, 1.0, 0.0)
+		made.append(plain)
 		_end_step("viewmodel " + id)
 		await _slice()
 		if not _alive():
 			return
+	# The launcher's rockets, trail and blast with them.
+	if holder.has_method("warm_rockets"):
+		holder.warm_rockets(_bay_pos + Vector3(-0.6, 1.0, 0.0))
 	# All drawn together for a couple of frames, then put away.
 	_begin_step()
 	await _frames(2)
+	if holder.has_method("unwarm_rockets"):
+		holder.unwarm_rockets()
 	for vm in made:
 		if is_instance_valid(vm):
-			vm.hide_flash()
+			if vm.has_method("hide_flash"):
+				vm.hide_flash()
 			vm.queue_free()
 	_end_step("viewmodels drawn")
 

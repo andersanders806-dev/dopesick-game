@@ -15,6 +15,8 @@ list sits. Credits shown in the game: ui/TitleScreen.gd (CREDITS).
 | First-person arms (assets/viewmodel/arms.glb): the forearms and hands cut from the Rocketbox Male_Adult_20 avatar by dev-tools/make_fp_arms.py | Microsoft Rocketbox | MIT | assets/rocketbox/LICENSE.md |
 | Blood and impact decals (assets/decals/blood_*, impact_*): procedurally generated for Dope Sick, no third-party material | n/a | Ours | assets/decals/ |
 | Zombie voices (assets/sfx/zombie/*.wav): groans, rasps, snarls, lunge roars, pain grunts | Synthesized for this game by dev-tools/gen_zombie_voice.py (a glottal pulse train, formant filters and noise); no recording, sample or speech model | Ours | dev-tools/gen_zombie_voice.py |
+| Gun models, SHIP 16 B2: OWK 19 Pistol 9mm (OKacin Creative), Tec-9 (wallon), UZI (creationwasteland), HK MP5 (quick_loop), KRSV VECTOR (h1ggs), AK-47 Game Ready (Billy Jackman), low-poly M16A4 (notcplkerry), Sawed-Off Dirty / Double Barrel (HenRi), Desert Eagle (ELIZION), low-poly AA-12 and low-poly Barrett M82 A1 (D_U), M14 RIFLE (Ecler), M249 saw (yeetuseleetus), RPG 7 Free Model (javadbayat), Baseball bat (DVLT), Machete (Belonosoff) | Sketchfab | CC BY 4.0 | assets/guns/LICENSE.md, assets/guns/*/license.txt |
+| Gun and melee sounds, SHIP 16 B2 (assets/sfx/guns/<glock, tec9, uzi, mp5, vector, ak, m16, sawnoff, deagle, aa12, dmr, amr, saw, rpg>/, the bat, machete, launcher and explosion files in assets/sfx/guns/common/) | The Free Firearm Sound Library (Still North Media, CC0); dklon -- Rocket Launch Pack (CC BY 3.0); Joth, NenadSimic -- explosions (CC0); will_leamon -- Fleshy Fight Sounds (OGA-BY 3.0); CGEffex -- Punch Slap n Kick (CC BY 3.0); artisticdude, Independent.nu, qubodup (CC0); layered and level-matched for this game | CC0 / CC BY / OGA-BY | assets/sfx/CREDITS/guns-recorded.md |
 | First-person gun sounds, recorded (assets/sfx/guns/<pistol, magnum, smg, ar, shotgun, sniper, lmg>/ and assets/sfx/guns/common/): shots, far shots, room and street tails, action, dry fire, reload foley | The Free Firearm Sound Library (Still North Media: Ben Jaszczak, Brian Nelson, Kevin Heras, Matthew Nanney), kurt, SpringySpringo, BMacZero, zer0_sol, LFA (all CC0); KuraiWolf (CC BY 4.0); Michel Baradari, Mike Koenig (CC BY 3.0); layered and level-matched for this game | CC0 / CC BY | assets/sfx/CREDITS/guns-recorded.md |
 | First-person gun sounds (assets/sfx/guns/*.wav): the arc caster's shots, reloads, brass, cloth, slide, hit ticks | Synthesized for this game by dev-tools/gen_gun_sfx.py and gen_gun_sfx_v2.py (shots, flesh, gore, impacts) from noise and sine sweeps; no recording or sample of any game or library | Ours | dev-tools/gen_gun_sfx.py |
 | Door sounds (assets/sfx/doors/: bell, chime, slams, rattles, hinge creaks, latch, panic bar, steel scrape, automatic sliding door), cut from the previews | Freesound (freesound.org) by ryuuzan, NachtmahrTV, TiesWijnen, contramundum, hisoul, klangfabrik, Profispiesser, oganesson, MarcusGraham325, Ryding, shelbyshark, rambler52, Rudmer_Rotteveel, Taykiraro, _stubb, magnuswaker, Krokulator | CC0 | assets/sfx/doors/CREDITS.txt, dev-tools/cut_door_sfx.py |
@@ -52,3 +54,25 @@ Fetched by dev-tools/fetch_guns.py on 2026-10-27; textures scaled to 1024 px max
 - "Low Poly Magnum Revolver" by austincford (https://sketchfab.com/3d-models/low-poly-magnum-revolver-9191c62d1cec4087809102dcc81493bb): the magnum
 - "DP28 Light Machine Gun Low-poly PBR" by MaX3Dd (https://sketchfab.com/3d-models/dp28-light-machine-gun-low-poly-pbr-03978b66f0c646f19e9502634f0ad20a): the LMG
 - assets/sfx/ghetto/gw/*.wav and assets/sfx/ghetto/amb/*.ogg: Ghetto Wars raid sounds (door ram, bullhorn, flashbang, helicopter pass, siren) and the night-street and burning-block beds, synthesised for this project (CC0), see the generator scripts in gw-assets/gen
+
+## Gun models, SHIP 16 B2 (CC BY 4.0, https://creativecommons.org/licenses/by/4.0/)
+
+Staged by the arsenal pass (SHIP 16a) on 2026-11-16; textures at 1024 px max, nothing else changed in the files. The full list with links and the
+gun each one is: assets/guns/LICENSE.md.
+
+- "OWK 19 Pistol 9mm (G19)" by OKacin Creative (https://sketchfab.com/3d-models/owk-19-pistol-9mm-g19-3a773b0f46f246dc855742ef413bf4a6)
+- "Tec-9" by wallon (https://sketchfab.com/3d-models/tec-9-fed8b9bad25242b8ba7c81d675ff050f)
+- "UZI" by creationwasteland (https://sketchfab.com/3d-models/uzi-fde60adc8aff4c61b6a8bea1f9e0743f)
+- "HK MP5 (9mm submachine gun)" by quick_loop (https://sketchfab.com/3d-models/hk-mp5-9mm-submachine-gun-c503d96157614fb78b5953d49e643b78)
+- "KRSV VECTOR" by h1ggs (https://sketchfab.com/3d-models/krsv-vector-609166faf8e5416f957c88e0af657e09)
+- "AK-47 - Game Ready Assault Rifle Weapon" by Billy Jackman (https://sketchfab.com/3d-models/ak-47-game-ready-assault-rifle-weapon-dc58144409534abbb60970638d171f9f)
+- "low-poly M16A4 [remade from scratch]" by notcplkerry (https://sketchfab.com/3d-models/low-poly-m16a4-remade-from-scratch-ccfef9f2093c46ba95e71d4a0f417c74)
+- "Sawed-Off Dirty / Double Barrel" by HenRi (https://sketchfab.com/3d-models/sawed-off-dirty-double-barrel-907aa49d5ae94bfc952d37f686f26ad1)
+- "Desert Eagle" by ELIZION (https://sketchfab.com/3d-models/desert-eagle-cabde59f5cf24effaf80536e35d04e95)
+- "low-poly AA-12" by D_U (https://sketchfab.com/3d-models/low-poly-aa-12-6b26f9d65d8c4838a12918d8e232510a)
+- "M14 RIFLE" by Ecler (https://sketchfab.com/3d-models/m14-rifle-94920332fc7a4d63939b88a8a54baead)
+- "low-poly Barrett M82 A1" by D_U (https://sketchfab.com/3d-models/low-poly-barrett-m82-a1-bb0831f237494699b6651da9177d36e4)
+- "M249 saw" by yeetuseleetus (https://sketchfab.com/3d-models/m249-saw-e43c7b0b261c4e31bb753791794a9bf9)
+- "RPG 7 ( Free Model )" by javadbayat (https://sketchfab.com/3d-models/rpg-7-free-model-99c0af8a1803490a86edc48cd3bfc700)
+- "Baseball bat" by DVLT (https://sketchfab.com/3d-models/baseball-bat-2669cf86386747449611396c0409db47)
+- "Machete" by Belonosoff (https://sketchfab.com/3d-models/machete-340a3bed238f48b0aa169c38e1e75066)

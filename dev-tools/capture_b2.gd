@@ -4,9 +4,10 @@ extends SceneTree
 ##                  the sight's offset from the screen centre at ADS on stdout ("SIGHT id dx dy" in pixels)
 ##   reload  <ids>: an empty reload at 15 / 30 / 45 / 60 / 75 / 90 % -> <id>_reload_NN.png
 ##   fire    <ids>: hip and ADS shots (fired in the window, the rounds counted) -> <id>_shot_hip.png, _shot_ads.png
-##   rpg:           a rocket into a crowd -> rpg_flight.png, rpg_blast.png
+##   blast:         a rocket into a crowd -> rpg_flight.png, rpg_blast.png
 ##   melee <ids>:   a light and a heavy swing into a zombie -> <id>_swing_NN.png
 ##   buys:          the new wall boards, the box holding a gun -> wall_<id>.png, box.png
+##   gang:          Ghetto Wars: a gangster with an AK, then a fight against the crews' new guns -> gang_*.png
 ## Needs a window: under `flock /home/anders/dopesick-game/.gpu.lock`, 1280x720, never fullscreen, `--no-sick`.
 ##   flatpak run org.godotengine.Godot --path . --resolution 1280x720 --windowed -s res://dev-tools/capture_b2.gd -- views glock ak --no-sick
 const ALL := ["glock", "tec9", "uzi", "mp5", "vector", "ak", "m16", "sawnoff", "deagle", "aa12", "dmr", "amr", "saw", "rpg"]
@@ -26,7 +27,7 @@ func _initialize() -> void:
 			out = ProjectSettings.globalize_path("res://.pilot/" + a.substr(6))
 		elif a.begins_with("--"):
 			continue
-		elif a in ["views", "reload", "fire", "rpg", "melee", "buys"]:
+		elif a in ["views", "reload", "fire", "blast", "melee", "buys", "gang"]:
 			mode = a
 		else:
 			ids.append(a)
@@ -37,7 +38,10 @@ func _initialize() -> void:
 	var gfx := root.get_node("Graphics")
 	gfx.set_preset(gfx.Preset.LOW)
 	var zm := root.get_node("ZombieMode")
-	zm.begin(false)
+	if mode == "gang":
+		zm.begin_gangs()
+	else:
+		zm.begin(false)
 	change_scene_to_file("res://world/City3D.tscn")
 	for i in 30:
 		await process_frame
@@ -45,6 +49,8 @@ func _initialize() -> void:
 	while not block.purchases_ready:
 		await process_frame
 	block.spawner.enabled = false
+	if block.get("surge") != null:
+		block.surge.enabled = false
 	for z in get_nodes_in_group("zombies"):
 		z.free()
 	gfx.set_first_person(true)
@@ -64,13 +70,48 @@ func _initialize() -> void:
 			await _reloads(ids)
 		"fire":
 			await _fires(ids)
-		"rpg":
+		"blast":
 			await _rpg()
 		"melee":
 			await _melee(ids)
 		"buys":
 			await _buys(ids)
+		"gang":
+			await _gang()
 	quit()
+
+## Ghetto Wars: an Eastside Kings man with an AK in front of you, then a fight with the crews' new guns (they shoot, you
+## shoot back with the AK): gang_ak.png, gang_fight_1..3.png and the guns they carried on stdout.
+func _gang() -> void:
+	h.set_process(true)
+	feel.auto = true
+	h.no_spread = false
+	var sp: Node = block.spawner
+	sp.crew_name = "Eastside Kings"
+	p.global_position = Vector3(-20, 0, -3)
+	p.set_look(-PI / 2.0, 0.0)
+	var g: Node3D = sp.spawn_one("grunt", Vector3(-13.0, 0.0, -2.6), "", "ak")
+	await _run_real(150)
+	if is_instance_valid(g):
+		g.look_at(Vector3(p.global_position.x, g.global_position.y, p.global_position.z), Vector3.UP, true)
+	await _run_real(20)
+	await _snap("gang_ak")
+	# The fight: two crews' worth of men with the new guns, the player with the AK.
+	_give("ak")
+	var guns := ["glock", "tec9", "uzi", "ak", "sawnoff", "uzi", "tec9", "glock"]
+	for k in guns.size():
+		sp.crew_name = "Dock Boys" if k % 2 == 0 else "Eastside Kings"
+		sp.spawn_one("grunt", Vector3(-4.0 + (k % 4) * 3.0, 0.0, -1.0 - (k / 4) * 5.0), "", guns[k])
+	var fx: Node = get_first_node_in_group("gang_fx")
+	var shots0: int = fx.shot_sounds if fx != null else 0
+	for shot in 3:
+		await _run_real(200)
+		await _snap("gang_fight_%d" % (shot + 1))
+	print("GANG guns %s, %d shots heard, player health %.0f" % [sp.gun_counts, (fx.shot_sounds if fx != null else 0) - shots0, root.get_node("ZombieMode").health])
+
+func _run_real(frames: int) -> void:
+	for i in frames:
+		await process_frame
 
 func _zombies(n: int, at: Vector3, step: Vector3) -> Array:
 	var made: Array = []
@@ -93,7 +134,7 @@ func _views(ids: Array) -> void:
 	_zombies(2, Vector3(-8.0, 0.0, -3.0), Vector3(5.0, 0.0, 0.6))
 	for id in ids:
 		_give(id)
-		await _run(30)
+		await _run(int(h.current.swap_time * 60.0) + 24)
 		await _snap("%s_hip" % id)
 		h.aiming = true
 		await _run(40)

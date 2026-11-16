@@ -61,5 +61,6 @@ model = "res://assets/guns/saw/scene.gltf"
 model_yaw = 90.0
 model_length = 1.04
 model_bones = {
-"Bipod_01": 0.001
+"Bipod_01": 0.001,
+"Carrying_Handle_05": 0.001
 }

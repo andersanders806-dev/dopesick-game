@@ -31,7 +31,7 @@ const VIEW := {
 		"sight_pts": [Vector3(0.0, 0.0795, -0.173), Vector3(0.0, 0.079, 0.03)],
 		"parts": {"slide": ["group001/"], "mag": ["_magazine_0"]},
 		"slide_back": 0.03,
-		"hands": [Vector3(0.5, 0.2, 0.17), Vector3(-0.9, 0.05, 0.2), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pistol_l", 0.86],
+		"hands": [Vector3(0.5, 0.3, 0.24), Vector3(-0.9, 0.1, 0.26), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pistol_l", 0.86],
 	},
 	"tec9": {
 		"sights": [0.0, 0.1, 0.72, 0.95, 0.3, false, 0.0],
@@ -42,14 +42,15 @@ const VIEW := {
 	"uzi": {
 		"sights": [0.0, 0.08, 0.6, 0.68, 0.24, false, 0.0],
 		"parts": {"mag": ["clip/"], "charge": ["/slide/"]},
-		"hands": [Vector3(0.5, 0.25, 0.52), Vector3(0.5, 0.45, 0.82), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
+		"hands": [Vector3(0.5, 0.29, 0.4), Vector3(0.5, 0.45, 0.8), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 	},
 	"mp5": {
 		# The model's own reflex sight on its claw mount: the eye looks down its tube (the glass cut away), the dot in it.
-		"sights": [0.02, 0.12, 0.5, 0.62, 0.15, false, 0.0],
-		"sight_pts": [Vector3(0.0, 0.109, -0.3), Vector3(0.0, 0.109, -0.15)],
-		"hole": [Vector3(-0.0115, 0.1, -0.33), Vector3(0.0115, 0.1185, -0.14)],
-		"dot": Vector3(0.0, 0.109, -0.24),
+		# (Measured: the sight's body is y 0.132..0.164, x +-0.018, z -0.24..-0.16, on a rail at 0.124.)
+		"sights": [0.02, 0.12, 0.5, 0.62, 0.14, false, 0.0],
+		"sight_pts": [Vector3(0.0, 0.1485, -0.24), Vector3(0.0, 0.1485, -0.16)],
+		"hole": [Vector3(-0.0135, 0.1365, -0.25), Vector3(0.0135, 0.1605, -0.15)],
+		"dot": Vector3(0.0, 0.1485, -0.21),
 		"hands": [Vector3(0.5, 0.25, 0.38), Vector3(-0.3, 0.55, 0.7), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 	},
 	"vector": {
@@ -61,27 +62,31 @@ const VIEW := {
 		"sight_pts": [Vector3(-0.009, 0.129, -0.579), Vector3(-0.009, 0.128, -0.215)],
 		"relief": 0.34,
 		"parts": {"mag": ["magazine_low"], "carrier": ["slide_low"]},
+		# (Hands measured on the model: the pistol grip at 0.33 from the back, the C-grip on the wooden handguard.)
+		"hands": [Vector3(0.5, 0.42, 0.33), Vector3(-0.35, 0.66, 0.7), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 		"carrier_back": 0.07,
 	},
 	"m16": {
 		"sight_pts": [Vector3(-0.001, 0.1235, -0.482), Vector3(-0.001, 0.115, -0.004)],
 		"relief": 0.11,
 		"parts": {"mag": ["magazine_3"], "charge": ["charging_handle_16"]},
+		"hands": [Vector3(0.5, 0.36, 0.29), Vector3(-0.35, 0.68, 0.72), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 	},
 	"sawnoff": {
-		"sights": [0.0, 0.1, 0.4, 0.55, 0.3, false, 0.008],
-		"parts": {"barrels": ["barrels_low", "barrelstart_low", "bigchunk_low", "screw1_low", "screw2_low", "bolt1_low", "bolt2_low", "bolt3_low", "bolt4_low"],
-			"shells": ["shell1_low"]},
-		"hinge": [Vector3(0.0, -0.03, -0.11), Vector3(1.0, 0.0, 0.0)],
-		# Held like a big pistol: the right hand on the grip, the left under the barrels, carried high and centred.
-		"hip": [Vector3(0.11, -0.13, -0.38), Vector3(-3.0, 1.0, 0.0)],
-		"hands": [Vector3(0.5, 0.3, 0.2), Vector3(0.5, 0.42, 0.66), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pump_l", 0.95],
+		# HenRi's double barrel (the alt pick: the "extremely" sawn-off's 10 cm barrels hide behind its own grip in first
+		# person). Barrels and forend are one part that drops on the hinge pin; the two shells sit in its chambers.
+		"sight_pts": [Vector3(0.0, 0.044, -0.268), Vector3(0.0, 0.044, -0.045)],
+		"parts": {"barrels": ["cube_009"], "shells": ["bullet1", "bullet2"]},
+		"hinge": [Vector3(0.0, -0.004, -0.045), Vector3(1.0, 0.0, 0.0)],
+		"hands": [Vector3(0.5, 0.22, 0.13), Vector3(0.5, 0.45, 0.65), 0.0, 0.0, 1.0, 1.0, "rifle_r", "pump_l", 1.0],
 	},
 	"aa12": {
 		"sights": [0.0, 0.12, 0.62, 0.76, 0.2, false, 0.0],
 		"parts": {"mag": ["drum mag empty_12"], "charge": ["reload handle_10"], "carrier": ["bolt carrier_6"]},
 		"carrier_back": 0.05,
 		"eject": {"port": Vector3(1.0, 0.7, 0.55), "lo": Vector3(1.2, 1.4, 0.2), "hi": Vector3(2.0, 2.4, 0.8), "spin": 24.0, "size": Vector2(0.0105, 0.07), "kind": 1},
+		# (The drum makes the box wide: the hands are placed on the gun's middle, not the box's edge.)
+		"hands": [Vector3(0.5, 0.36, 0.31), Vector3(0.5, 0.42, 0.6), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 	},
 	"dmr": {
 		"sights": [0.0, 0.06, 0.58, 0.7, 0.12, false, 0.0],
@@ -92,6 +97,12 @@ const VIEW := {
 		"carrier_back": 0.03,
 		"eject": {"port": Vector3(1.0, 0.75, 0.62), "lo": Vector3(1.4, 1.4, 0.3), "hi": Vector3(2.2, 2.2, 1.0), "spin": 20.0, "size": Vector2(0.0075, 0.1), "kind": 0},
 		"weight": 1.7,
+		# The .50 is long: the support hand holds the front of the receiver, and the gun rides higher to show it.
+		"hands": [Vector3(0.5, 0.21, 0.22), Vector3(0.5, 0.34, 0.47), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
+		"hip": [Vector3(0.19, -0.155, -0.27), Vector3(0.0, 5.0, 0.0)],
+		# Its rail is the receiver's top (y 0.088); the scope sits over the magazine well.
+		"scope": Vector3(-0.018, 0.088, -0.02),
+		"relief": 0.09,
 	},
 	"saw": {
 		"sights": [0.45, 0.62, 0.55, 0.0, 0.17, true, 0.0],
@@ -105,6 +116,7 @@ const VIEW := {
 		"sight_pts": [Vector3(-0.065, 0.075, -0.3), Vector3(-0.065, 0.075, -0.05)],
 		"parts": {"mag": ["pcylinder8"]},
 		"muzzle": Vector3(-0.02, 0.0, -0.66),
+		"hands": [Vector3(0.34, 0.13, 0.52), Vector3(0.5, 0.13, 0.6), 0.0, 0.0, 1.0, 1.0, "rifle_r", "vert_l", 1.0],
 		"weight": 1.5,
 	},
 	# Melee: both hands choked up on the bat's handle; the machete in the right hand alone.

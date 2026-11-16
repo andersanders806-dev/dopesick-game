@@ -904,14 +904,30 @@ func _launch(origin: Vector3, dir: Vector3, d: WD) -> void:
 			r = x
 			break
 	if r == null:
-		r = RocketScript.new()
-		r.name = "Rocket%d" % _rockets.size()
-		r.holder = self
-		var world := get_tree().current_scene if get_tree().current_scene != null else get_tree().root
-		world.add_child(r)
-		_rockets.append(r)
+		r = _new_rocket()
 	var spread := 0.0 if no_spread else (d.spread_ads if aiming else d.spread_hip)
 	r.fire(origin + dir * 0.6, _scatter(dir, spread * 0.3), d)
+
+func _new_rocket() -> Node3D:
+	var r: Node3D = RocketScript.new()
+	r.name = "Rocket%d" % _rockets.size()
+	r.holder = self
+	var world := get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+	world.add_child(r)
+	_rockets.append(r)
+	return r
+
+## The two rockets made now (fx/Prewarm.gd), and shown at `at` with their trail and blast on until unwarm_rockets():
+## the first shot of the launcher would make them, and draw their materials for the first time, mid-fight.
+func warm_rockets(at: Vector3) -> void:
+	while _rockets.size() < 2:
+		_new_rocket()
+	for r in _rockets:
+		r.show_for_warm(at)
+
+func unwarm_rockets() -> void:
+	for r in _rockets:
+		r.hide_after_warm()
 
 ## A rocket's blast at `at` (fx/Rocket.gd calls it): full damage at the middle down to a quarter at the edge for every
 ## zombie in the radius not behind a wall, the one it struck taking it whole; the shooter takes up to self_damage.

@@ -183,10 +183,15 @@ Cars (Sketchfab, CC BY 4.0): 8sianDude -- Crown Victoria taxi and police; Daniel
 Comrade1280 -- Generic passenger car pack; Rashad Ibrahimli -- abandoned sedan, crashed car; Renafox -- burned-out cars.
 Guns (Poly Haven, CC0; Sketchfab, CC BY 4.0, creativecommons.org/licenses/by/4.0): nebula075 -- MPX SMG (sketchfab.com/nebula075);
 AK -- Mossberg500 Shotgun low-poly (sketchfab.com/skaf13); Michael Makivic -- FPS Red Dot Sight (sketchfab.com/makivic); Derek Flanagan -- HK 416 Low Poly (sketchfab.com/derek_flanagan);
-austincford -- Low Poly Magnum Revolver (sketchfab.com/austincford); MaX3Dd -- DP28 Low-poly PBR (sketchfab.com/MaX3Dd).
+austincford -- Low Poly Magnum Revolver (sketchfab.com/austincford); MaX3Dd -- DP28 Low-poly PBR (sketchfab.com/MaX3Dd);
+OKacin Creative -- OWK 19 Pistol; wallon -- Tec-9; creationwasteland -- UZI; quick_loop -- HK MP5; h1ggs -- KRSV VECTOR; Billy Jackman -- AK-47 Game Ready;
+notcplkerry -- low-poly M16A4; HenRi -- Sawed-Off Dirty / Double Barrel; ELIZION -- Desert Eagle; D_U -- low-poly AA-12 and Barrett M82 A1; Ecler -- M14 Rifle;
+yeetuseleetus -- M249 saw; javadbayat -- RPG 7; DVLT -- Baseball bat; Belonosoff -- Machete.
 Model links: assets/guns/LICENSE.md.
 Gun sounds (OpenGameArt): The Free Firearm Sound Library by Still North Media (CC0); KuraiWolf -- Light Machine Gun (CC BY 4.0); Michel Baradari, Mike Koenig (CC BY 3.0);
 SpringySpringo, BMacZero, zer0_sol, LFA, kurt (CC0), layered and level-matched for this game. Lists: assets/sfx/CREDITS/guns-recorded.md.
+Launcher and melee sounds (OpenGameArt): dklon -- Rocket Launch Pack, CGEffex -- Punch Slap n Kick (CC BY 3.0); will_leamon -- Fleshy Fight Sounds (OGA-BY 3.0);
+Joth, NenadSimic, artisticdude, Independent.nu, qubodup (CC0).
 Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.
 Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model License) through kimodo.cpp (Apache-2.0); built with Meta Llama 3.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.

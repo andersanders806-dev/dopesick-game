@@ -1,11 +1,11 @@
 Model Information:
-* title:	Extremely Sawed Off Shotgun
-* source:	https://sketchfab.com/3d-models/extremely-sawed-off-shotgun-d74308827c8948c1a0fcf1208b174f14
-* author:	Brendan (https://sketchfab.com/Brendan52)
+* title:	Sawed-Off Dirty / Double Barrel
+* source:	https://sketchfab.com/3d-models/sawed-off-dirty-double-barrel-907aa49d5ae94bfc952d37f686f26ad1
+* author:	HenRi (https://sketchfab.com/HenR1)
 
 Model License:
 * license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 * requirements:	Author must be credited. Commercial use is allowed.
 
 If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
-This work is based on "Extremely Sawed Off Shotgun" (https://sketchfab.com/3d-models/extremely-sawed-off-shotgun-d74308827c8948c1a0fcf1208b174f14) by Brendan (https://sketchfab.com/Brendan52) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+This work is based on "Sawed-Off Dirty / Double Barrel" (https://sketchfab.com/3d-models/sawed-off-dirty-double-barrel-907aa49d5ae94bfc952d37f686f26ad1) by HenRi (https://sketchfab.com/HenR1) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

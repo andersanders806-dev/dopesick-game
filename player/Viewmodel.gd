@@ -427,6 +427,12 @@ func _measure_sights(f: String) -> void:
 		var d := front - rear
 		ads_pitch = atan(d.y / d.z) if absf(d.z) > 0.01 else 0.0
 		sight_point = Vector3(rear.x if view.has("sight_pts") else 0.0, rear.y + lift, rear.z)
+		# A rifle scope on the rail (the .50's: its model has none): the eye behind its eyepiece.
+		if data != null and data.optic == "scope" and view.has("scope"):
+			var at: Vector3 = view["scope"]
+			_build_scope(at)
+			sight_point = Vector3(at.x, at.y + SCOPE_AXIS, at.z + SCOPE_LEN * 0.5 + 0.03)
+			ads_pitch = 0.0
 		# A reflex sight built into the model (the MP5's): its glass is cut away (_apply_hole) and the dot floats in it.
 		if data != null and data.optic == "built_in" and view.has("dot"):
 			optic = Node3D.new()
@@ -439,6 +445,77 @@ func _measure_sights(f: String) -> void:
 	var rot := Basis(Vector3.RIGHT, ads_pitch)
 	ads_position = Vector3(0.0, 0.0, -relief) - rot * sight_point
 	muzzle = Vector3(0.0, muzzle.y, muzzle.z)
+
+## A rifle scope, turned and built of tubes (no CC model of one fits): rings on a picatinny base, the main tube, the
+## objective and eyepiece bells, the elevation and windage turrets. `at` is the middle of its base on the rail.
+const SCOPE_LEN := 0.3
+const SCOPE_AXIS := 0.042
+
+func _build_scope(at: Vector3) -> void:
+	var dark := ShaderMaterial.new()
+	dark.shader = SHADER
+	dark.set_shader_parameter("viewmodel_fov", VM_FOV)
+	dark.set_shader_parameter("albedo", Color(0.025, 0.025, 0.027))
+	dark.set_shader_parameter("metallic", 0.55)
+	dark.set_shader_parameter("roughness", 0.42)
+	dark.set_shader_parameter("near_cut", 0.05)
+	var glass := ShaderMaterial.new()
+	glass.shader = GLASS_SHADER
+	glass.set_shader_parameter("viewmodel_fov", VM_FOV)
+	var root := Node3D.new()
+	root.name = "Scope"
+	root.position = at
+	add_child(root)
+	var y := SCOPE_AXIS
+	var half := SCOPE_LEN * 0.5
+	_scope_tube(root, dark, 0.0155, 0.0155, SCOPE_LEN * 0.62, Vector3(0, y, 0.0))
+	# The objective bell in front, the eyepiece behind, and the tapers into them.
+	_scope_tube(root, dark, 0.026, 0.026, 0.07, Vector3(0, y, -half + 0.035))
+	_scope_tube(root, dark, 0.0155, 0.026, 0.04, Vector3(0, y, -half + 0.09))
+	_scope_tube(root, dark, 0.021, 0.021, 0.055, Vector3(0, y, half - 0.0275))
+	_scope_tube(root, dark, 0.021, 0.0155, 0.03, Vector3(0, y, half - 0.07))
+	# The turrets on the saddle: elevation on top, windage on the right.
+	var t1 := MeshInstance3D.new()
+	t1.mesh = _cyl(0.012, 0.022)
+	t1.material_override = dark
+	t1.position = Vector3(0, y + 0.024, 0.0)
+	root.add_child(t1)
+	var t2 := MeshInstance3D.new()
+	t2.mesh = _cyl(0.012, 0.022)
+	t2.material_override = dark
+	t2.position = Vector3(0.024, y, 0.0)
+	t2.rotation_degrees = Vector3(0, 0, 90)
+	root.add_child(t2)
+	# Two rings on the base (the rail's own slots under it).
+	for zz in [-0.075, 0.075]:
+		_riser_box(root, dark, Vector3(0.026, y - 0.008, 0.016), Vector3(0, (y - 0.008) * 0.5, zz))
+		_scope_tube(root, dark, 0.0185, 0.0185, 0.016, Vector3(0, y, zz))
+	_riser_box(root, dark, Vector3(0.03, 0.006, 0.2), Vector3(0, 0.003, 0.0))
+	# The lenses: a dark, faintly blue glass at either end.
+	for zz2 in [-half - 0.001, half + 0.001]:
+		var lens := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE * (0.046 if zz2 < 0.0 else 0.036)
+		lens.mesh = q
+		lens.material_override = glass
+		lens.position = Vector3(0, y, zz2)
+		root.add_child(lens)
+	for mi in root.find_children("*", "MeshInstance3D", true, false):
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+func _scope_tube(root: Node3D, mat: Material, r_front: float, r_back: float, l: float, at: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = r_front
+	cm.bottom_radius = r_back
+	cm.height = l
+	cm.radial_segments = 18
+	cm.rings = 1
+	mi.mesh = cm
+	mi.material_override = mat
+	mi.position = at
+	mi.rotation_degrees = Vector3(-90, 0, 0)
+	root.add_child(mi)
 
 ## The glass of a sight built into the model is not drawn (player/viewmodel.gdshader's hole), so you see through it.
 func _apply_hole() -> void:
@@ -957,6 +1034,13 @@ func set_part(pname: String, offset: Vector3, show := true, turn := Vector3.ZERO
 		if not show:
 			g = g.scaled_local(Vector3.ONE * 0.001)
 		skel.set_bone_global_pose(int(pt["bone"]), g)
+		# The M249's red dot rides its feed cover: it lifts with it.
+		if pname == "cover":
+			for extra in [optic, get_node_or_null("Riser")]:
+				if extra != null:
+					var rest_xf: Transform3D = _extra_rest.get(extra, (extra as Node3D).transform)
+					_extra_rest[extra] = rest_xf
+					(extra as Node3D).transform = about * rest_xf
 		return
 	var nodes: Array = pt["nodes"]
 	var rest: Array = pt["rest"]

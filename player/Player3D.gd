@@ -99,6 +99,8 @@ var _user_zoom: float = 1.0
 ## Zoom per second at full right-stick tilt.
 const PAD_ZOOM_RATE := 0.8
 var _sprint_latched: bool = false
+## The weapon holds it while the trigger is down: a gun fired on the run ends the sprint.
+var sprint_blocked: bool = false
 var _cam_ready: bool = false
 
 # --- First person ------------------------------------------------------------
@@ -547,7 +549,7 @@ func _physics_process(delta: float) -> void:
 	# lasts until you let the stick go.
 	if dir.length() <= 0.1:
 		_sprint_latched = false
-	_sprinting = (not sick) and (not hurt) and dir.length() > 0.1 and (Input.is_action_pressed("sprint") or _sprint_latched)
+	_sprinting = (not sick) and (not hurt) and dir.length() > 0.1 and not sprint_blocked and (Input.is_action_pressed("sprint") or _sprint_latched)
 	if sick:
 		speed *= SICK_SPEED_MULT
 	elif _sprinting:

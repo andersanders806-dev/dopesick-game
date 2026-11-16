@@ -11,6 +11,9 @@ var city: Node
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	out = ProjectSettings.globalize_path("res://.pilot")
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("out="):
+			out = ProjectSettings.globalize_path("res://.pilot/" + a.substr(4))
 	DirAccess.make_dir_recursive_absolute(out)
 	await process_frame
 	var zm := root.get_node("ZombieMode")
@@ -23,7 +26,8 @@ func _initialize() -> void:
 	while not block.purchases_ready:
 		await process_frame
 	block.spawner.enabled = false
-	block.surge.enabled = false
+	if block.surge != null:
+		block.surge.enabled = false
 	for z in get_nodes_in_group("zombies"):
 		z.free()
 	for c in root.get_children():
@@ -83,9 +87,15 @@ func _initialize() -> void:
 		cam.global_position = Vector3(8.0, 1.5, -1.8)
 		cam.look_at(Vector3(18.0, 1.0, 0.8))
 		var guard := 0
+		# (follow the car with the camera from a distance and take the frame as its window flashes)
+		var veh = set_.get("vehicles")
 		while car.global_position.x < 11.0 and guard < 3000:
 			await process_frame
 			guard += 1
+			if car.global_position.x > -14.0:
+				cam.look_at(car.global_position + Vector3(0.0, 0.9, 0.0))
+				if veh != null and car.global_position.x > -6.0 and int(veh.get("_burst_left")) > 0 and guard % 3 == 0:
+					break
 		await _snap("drive")
 	# The laundromat, the markers, the raid and the endings (a fresh night each: `only=lm,markers,raid,endings`).
 	if want.call("lm"):

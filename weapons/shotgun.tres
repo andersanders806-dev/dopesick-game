@@ -20,12 +20,33 @@ rpm = 72.0
 auto = false
 mag_size = 6
 reserve_max = 54
-reload_time = 3.0
+reload_time = 2.55
+reload_time_empty = 3.7
+chambers = true
 spread_hip = 5.5
 spread_ads = 4.5
 recoil = 4.0
 ads_zoom = 1.2
 swap_time = 0.4
+ads_time = 0.25
+sprint_fire_delay = 0.25
+recoil_pattern = PackedVector2Array(-0.6247, 1.8, 0.161, 1.8, 0.5833, 1.8, -0.3113, 1.8, -0.503, 1.8, 0.4409, 1.8, 0.3894, 1.8, -0.5413, 1.8, -0.2499, 1.8, 0.6057, 1.8, 0.0939, 1.8, -0.6299, 1.8, 0.0684, 1.8, 0.6122, 1.8, -0.2262, 1.8, -0.5539, 1.8, 0.369, 1.8, 0.4589, 1.8, -0.4872, 1.8, -0.3333, 1.8, 0.5731, 1.8, 0.1856, 1.8, -0.6209, 1.8, -0.0256, 1.8)
+recoil_recover = 17.0
+recoil_hold = 3.0
+recoil_first = 1.0
+recoil_ads = 0.75
+recoil_random = 0.1
+kick_back = 0.05
+kick_up = 6.0
+kick_roll = 0.06
+optic = "none"
+sound_set = "shotgun"
+foley = {
+"pump": ["common/pump_1", "common/pump_2", "common/pump_3"],
+"shell_in": ["common/shell_insert_1", "common/shell_insert_2", "common/shell_insert_3"]
+}
+reload_cues_tactical = []
+reload_cues_empty = [[0.88, "pump"]]
 price = 1200
 ammo_price = 600
 in_box = true

@@ -15,6 +15,7 @@ const WD := preload("res://weapons/WeaponData.gd")
 const Viewmodel := preload("res://player/Viewmodel.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
 const GH := preload("res://player/GunHandling.gd")
+const GunSounds := preload("res://weapons/GunSounds.gd")
 
 # --- The numbers (research §2) -------------------------------------------------------
 const HIP_FOV := 70.0
@@ -150,15 +151,21 @@ var _audio: Array[AudioStreamPlayer] = []
 var _audio_next := 0
 ## Gunshots have voices of their own, so a burst never starves the clicks and swishes (and cannot pile
 ## up more than this many tails and bodies: the oldest is cut off for the newest).
-const SHOT_VOICES := 4
+const SHOT_VOICES := 8
 var _shot_audio: Array[AudioStreamPlayer] = []
 var _shot_next := 0
-## Full-auto guns play a short body per round and one echo tail when the trigger lets go: the family
-## of the burst waiting for its tail, the time since its last round, and the gap that counts as letting go.
-const AUTO_FAMILIES := ["smg", "ar", "lmg"]
-var _tail_family := ""
+## The street's (or the room's) answer to a shot comes once, when the rounds stop: the gun whose tail is
+## waiting, the time since its last round, and the gap that counts as stopping. Two voices, so a tail is
+## not cut by the next one until it has rung out for a while.
+const TAIL_VOICES := 2
+var _tail_audio: Array[AudioStreamPlayer] = []
+var _tail_next := 0
+var _tail_gun: WD
 var _tail_idle := 0.0
 var _tail_gap := 0.15
+## Which of a gun's recordings plays next (so the same one never plays twice running), and the foley's.
+var _shot_n := 0
+var _foley_n := 0
 ## How many times each sound was played (the tests read it).
 var sound_counts := {}
 static var _streams := {}
@@ -183,6 +190,11 @@ func _ready() -> void:
 		sp.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
 		add_child(sp)
 		_shot_audio.append(sp)
+	for i in TAIL_VOICES:
+		var tp := AudioStreamPlayer.new()
+		tp.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
+		add_child(tp)
+		_tail_audio.append(tp)
 	holder.connect("fired", _on_fired)
 	holder.connect("hit", _on_hit)
 	holder.connect("reload_started", _on_reload_started)
@@ -227,24 +239,17 @@ func ads_fov_mult() -> float:
 	var d := _data()
 	if d == null:
 		return 1.0
-	var z := maxf(d.ads_zoom, 1.0)
+	var z := maxf(d.sight_zoom(), 1.0)
 	if z >= 2.5:
 		return 1.0 / z
 	return 1.0 - (1.0 - 1.0 / z) * 0.8
 
-## Seconds from hip to sights: 0.2 pistols and SMGs, 0.3 rifles, 0.4 LMG and sniper.
+## Seconds from hip to sights: the gun's own (0.2 pistols and SMGs, 0.3 rifles, 0.4 LMG and sniper).
 func ads_time() -> float:
 	var d := _data()
 	if d == null:
 		return 0.2
-	match d.family():
-		"pistol", "smg", "magnum", "wonder":
-			return 0.2
-		"lmg", "sniper":
-			return 0.4
-		"shotgun":
-			return 0.25
-	return 0.3
+	return d.ads_time if d.ads_time > 0.0 else 0.3
 
 # --- The slide -----------------------------------------------------------------------
 
@@ -286,34 +291,31 @@ func _on_fired() -> void:
 		return
 	# The shot is heard in either view; the rest is the first person's.
 	var fam := _fire_family(d)
-	if d.auto and fam in AUTO_FAMILIES:
-		# Full auto: a short body per round with a little pitch and level variation; the echo comes once,
-		# when the rounds stop (advance).
-		_sound("fire_%s_body_%s" % [fam, "ab"[rng.randi() % 2]], rng.randf_range(-3.5, -1.0), rng.randf_range(0.93, 1.07))
-		_tail_family = fam
-		_tail_idle = 0.0
-		_tail_gap = maxf(d.interval() * 1.7, 0.1)
-	else:
-		_sound(_fire_sound(d), -2.0, rng.randf_range(0.97, 1.04))
+	_shot_sound(d)
 	if not _fp():
 		return
 	shots += 1
 	_burst += 1
 	_burst_idle = 0.0
 	_since_shot = 0.0
-	# Actual recoil: the view climbs, with a pattern to the side and a little jitter.
-	var kick := deg_to_rad(d.recoil * CAM_KICK_DEG) * lerpf(1.0, CAM_ADS_KICK, ads)
-	var side := sin(float(_burst) * 1.7) * 0.35 + rng.randf_range(-0.2, 0.2)
-	recoil += Vector2(kick, kick * side)
-	# Visual recoil: the gun jumps back 2 to 5 cm and up 2 to 6 degrees, and rolls a little.
+	# Actual recoil: the gun's own pattern, shot by shot, a little random, less aimed and on the first shot of a burst.
+	var k := d.kick_of(_burst - 1)
+	var mult := lerpf(1.0, d.recoil_ads, ads) * (d.recoil_first if _burst == 1 else 1.0)
+	var rnd := d.recoil_random
+	var up_deg := k.y * mult * (1.0 + rng.randf_range(-rnd, rnd))
+	var side_deg := (k.x + k.y * rng.randf_range(-2.0 * rnd, 2.0 * rnd)) * mult
+	# (the pattern says right is positive; the view's yaw is positive to the left)
+	recoil += Vector2(deg_to_rad(up_deg), deg_to_rad(-side_deg))
+	# Visual recoil: the gun jumps back and up in the hands, and rolls a little; each gun's own numbers.
 	var heavy := clampf(d.recoil / 4.0, 0.0, 1.0)
-	var back := lerpf(0.02, 0.05, heavy) * lerpf(1.0, 0.5, ads)
-	var up := deg_to_rad(lerpf(2.0, 6.0, heavy)) * lerpf(1.0, 0.6, ads)
+	var back := (d.kick_back if d.kick_back > 0.0 else lerpf(0.02, 0.05, heavy)) * lerpf(1.0, 0.5, ads)
+	var up := deg_to_rad(d.kick_up if d.kick_up > 0.0 else lerpf(2.0, 6.0, heavy)) * lerpf(1.0, 0.6, ads)
+	var roll: float = d.kick_roll if d.kick_roll > 0.0 else 0.03 * (1.0 + heavy)
 	# (A burst keeps the gun juddering, not walking back: the more it's back, the less a shot adds.)
 	var room := clampf(1.0 - kick_pos.z / 0.05, 0.0, 1.0)
 	var room_rot := clampf(1.0 - kick_rot.x / deg_to_rad(6.0), 0.0, 1.0)
 	kick_pos_v += Vector3(rng.randf_range(-0.004, 0.004), 0.004, back * room) * 38.0
-	kick_rot_v += Vector3(up * room_rot, rng.randf_range(-0.012, 0.012), rng.randf_range(-0.03, 0.03) * (1.0 + heavy)) * 38.0
+	kick_rot_v += Vector3(up * room_rot, rng.randf_range(-0.012, 0.012), rng.randf_range(-roll, roll)) * 38.0
 	add_trauma(0.05 + d.recoil * 0.018)
 	_muzzle_flash(d)
 	if fam in ["pistol", "smg", "ar", "lmg"]:
@@ -322,9 +324,32 @@ func _on_fired() -> void:
 		_later.append([maxf(d.interval() * 0.45, 0.2), "pump"])
 	elif fam == "sniper":
 		_later.append([maxf(d.interval() * 0.3, 0.3), "bolt"])
+	# The last round: the slide or bolt stays back (the action's own click).
+	var left = holder.get("mag")
+	if left != null and int(left) <= 0 and fam in ["pistol", "magnum", "smg", "ar"]:
+		_later.append([0.06, "mech"])
+
+## The shot's sound: one of the gun's recorded takes with a little pitch and level variation (the upgraded gun's own, ringing
+## ones), and the answer of the place -- a room's tail or the street's -- once the rounds stop.
+func _shot_sound(d: WD) -> void:
+	var st := GunSounds.shot(d, _shot_n)
+	_shot_n += 1 + rng.randi() % 2
+	if st != null:
+		_play_voice(_shot_audio, "_shot_next", st, "fire_" + d.id, rng.randf_range(-2.5, -0.5), rng.randf_range(0.97, 1.04))
+	var tl := GunSounds.tail(d, GunSounds.indoors(self))
+	if tl != null:
+		_tail_gun = d
+		_tail_idle = 0.0
+		# A slow gun is answered at once; a fast one when it has stopped.
+		_tail_gap = 0.02 if d.interval() >= 0.4 else clampf(d.interval() * 1.7, 0.1, 0.35)
 
 func _on_dry() -> void:
-	_sound("dry_click", -6.0, rng.randf_range(0.95, 1.05))
+	var d := _data()
+	var st := GunSounds.dry(d) if d != null else null
+	if st != null:
+		_play_voice(_audio, "_audio_next", st, "dry_click", -6.0, rng.randf_range(0.95, 1.05))
+	else:
+		_sound("dry_click", -6.0, rng.randf_range(0.95, 1.05))
 
 ## Sounds still to come after a shot (the shotgun's pump, the rifle's bolt):
 ## [seconds left, name].
@@ -332,15 +357,16 @@ var _later: Array = []
 ## The left hand working the pump after a shotgun shot: seconds left.
 var _pump_t := 0.0
 const PUMP_TIME := 0.5
+## A revolver keeps its brass: opening the cylinder lets the spent cases fall out, one after another.
+const CASING_DUMP := {"port": Vector3(0.8, 0.45, 0.5), "lo": Vector3(0.1, -0.6, 0.0), "hi": Vector3(0.8, -0.2, 0.5), "spin": 14.0, "size": Vector2(0.006, 0.03), "kind": 0}
+var _dump_n := 0
+var _dump_t := 0.0
 
 func _fire_family(d: WD) -> String:
-	var fam := d.family()
+	var fam := d.handling_family()
 	if not (fam in ["pistol", "smg", "ar", "shotgun", "sniper", "magnum", "lmg", "wonder"]):
 		fam = "pistol"
 	return fam
-
-func _fire_sound(d: WD) -> String:
-	return "fire_%s_%s" % [_fire_family(d), "ab"[rng.randi() % 2]]
 
 func _on_hit(part: String, killed: bool) -> void:
 	if killed:
@@ -362,11 +388,33 @@ func _on_reload_started() -> void:
 		missing = maxi(d.mag_size - int(m), 1)
 	var fam := _fire_family(d) if d != null else "ar"
 	_reload_def = GH.reload_plan(fam, reload_empty, missing)
-	_reload_events = _reload_def.get("ev", [])
+	_reload_events = _reload_events_for(d, _reload_def.get("ev", []), reload_empty)
+	if fam == "magnum" and d != null:
+		_dump_n = clampi(d.mag_size - (int(m) if m != null else 0), 0, 6)
+		_dump_t = _reload_total * 0.22
 	raising = false
 	var v := _vm()
 	if v != null and v.mag_prop != null:
 		v.mag_prop.visible = false
+
+## The reload's events: the choreography's, with the cues the gun's data names (at the times it names) in place of the
+## choreography's own of those names.
+func _reload_events_for(d: WD, plan_events: Array, empty: bool) -> Array:
+	if d == null:
+		return plan_events
+	var cues: Array = d.reload_cues_empty if empty else d.reload_cues_tactical
+	if cues.is_empty():
+		return plan_events
+	var named := {}
+	for c in cues:
+		named[String(c[1])] = true
+	var out := []
+	for e in plan_events:
+		if String(e[1]) == "" or not named.has(String(e[1])):
+			out.append(e)
+	for c in cues:
+		out.append([float(c[0]), String(c[1]), ""])
+	return out
 
 func _on_reload_finished() -> void:
 	_reload_prev = 0.0
@@ -386,6 +434,7 @@ func _clear_reload_parts(v: Viewmodel) -> void:
 		v.set_part(pn, Vector3.ZERO, true)
 
 func _on_weapon_changed(d: WD) -> void:
+	GunSounds.warm(d)
 	swap_blend = 1.0
 	_reload_events = []
 	_reload_def = {}
@@ -423,6 +472,7 @@ func _on_traced(from: Vector3, to: Vector3) -> void:
 func reset_state() -> void:
 	ads = 0.0
 	_pump_t = 0.0
+	_dump_n = 0
 	recoil = Vector2.ZERO
 	trauma = 0.0
 	sliding = false
@@ -502,11 +552,13 @@ func _process(delta: float) -> void:
 func advance(delta: float) -> void:
 	_t += delta
 	# The trigger let go (or the magazine ran dry): the street answers, once.
-	if _tail_family != "":
+	if _tail_gun != null:
 		_tail_idle += delta
 		if _tail_idle >= _tail_gap:
-			_sound("fire_%s_tail" % _tail_family, -4.0, rng.randf_range(0.98, 1.03))
-			_tail_family = ""
+			var tl := GunSounds.tail(_tail_gun, GunSounds.indoors(self))
+			if tl != null:
+				_play_voice(_tail_audio, "_tail_next", tl, "fire_%s_tail" % _tail_gun.id, -4.0, rng.randf_range(0.98, 1.03))
+			_tail_gun = null
 	_slide_cd = maxf(_slide_cd - delta, 0.0)
 	if not _fp():
 		return
@@ -539,7 +591,9 @@ func advance(delta: float) -> void:
 	# While the trigger is down it creeps back slowly (so a burst climbs, but not
 	# without end); a tenth of a second after the last shot it comes home fast.
 	_since_shot += delta
-	recoil *= exp(-(CAM_HOLD_RATE if _since_shot < CAM_HOLD_TIME else CAM_RECOVER) * delta)
+	var rate_hold: float = d.recoil_hold if d != null else CAM_HOLD_RATE
+	var rate_home: float = d.recoil_recover if d != null else CAM_RECOVER
+	recoil *= exp(-(rate_hold if _since_shot < CAM_HOLD_TIME else rate_home) * delta)
 	if recoil.length() < 0.00002:
 		recoil = Vector2.ZERO
 	# --- trauma shake
@@ -591,10 +645,21 @@ func advance(delta: float) -> void:
 			if is_instance_valid(_light):
 				_light.visible = false
 	_pump_t = maxf(_pump_t - delta, 0.0)
+	if _dump_n > 0:
+		_dump_t -= delta
+		if _dump_t <= 0.0:
+			_dump_n -= 1
+			_dump_t = 0.05
+			_eject_shell(_data(), CASING_DUMP)
 	for i in range(_later.size() - 1, -1, -1):
 		_later[i][0] -= delta
 		if _later[i][0] <= 0.0:
-			_sound(_later[i][1], -4.0, rng.randf_range(0.97, 1.03))
+			if _later[i][1] == "mech":
+				var ms := GunSounds.mech(_data(), _shot_n)
+				if ms != null:
+					_play_voice(_audio, "_audio_next", ms, "mech", -8.0, rng.randf_range(0.97, 1.03))
+			else:
+				_cue(_later[i][1], -4.0, rng.randf_range(0.97, 1.03))
 			if _later[i][1] == "pump":
 				_pump_t = PUMP_TIME
 				_eject_shell(_data())
@@ -824,7 +889,7 @@ func _update_raise(delta: float, sprinting: bool) -> void:
 	for i in range(_raise_events.size() - 1, -1, -1):
 		if p >= _raise_events[i][0]:
 			if String(_raise_events[i][1]) != "":
-				_sound(_raise_events[i][1], -3.0, rng.randf_range(0.97, 1.03))
+				_cue(_raise_events[i][1], -3.0, rng.randf_range(0.97, 1.03))
 			_raise_events.remove_at(i)
 
 func _curve(keys: Array, t: float) -> float:
@@ -865,7 +930,7 @@ func _update_reload(_delta: float) -> void:
 	for ev in _reload_events:
 		if _reload_prev < ev[0] and p >= ev[0]:
 			if String(ev[1]) != "":
-				_sound(ev[1], -3.0, rng.randf_range(0.97, 1.03))
+				_cue(ev[1], -3.0, rng.randf_range(0.97, 1.03))
 			if String(ev[2]) == "drop":
 				_drop_mag()
 	_reload_prev = p
@@ -899,7 +964,7 @@ func apply() -> void:
 ## A sniper rifle with the sights up shows the scope's circle instead of the gun.
 func _scoped() -> bool:
 	var d := _data()
-	return d != null and d.family() == "sniper" and ads > 0.92
+	return d != null and d.optic == "scope" and ads > 0.92
 
 # --- Muzzle flash, light, shells, tracers -------------------------------------------------
 
@@ -926,7 +991,7 @@ func _muzzle_flash(d: WD) -> void:
 	if vm == null:
 		return
 	var size := lerpf(1.1, 2.3, clampf(d.recoil / 4.0, 0.0, 1.0))
-	if d.family() == "wonder":
+	if d.handling_family() == "wonder":
 		size = 1.0
 	vm.show_flash(rng, size)
 	_flash_left = FLASH_TIME
@@ -989,12 +1054,12 @@ func unwarm() -> void:
 		s["on"] = false
 		(s["node"] as Node3D).visible = false
 
-func _eject_shell(d: WD) -> void:
+func _eject_shell(d: WD, profile := {}) -> void:
 	var vm := _vm()
 	if vm == null or camera == null:
 		return
 	var fam := _fire_family(d) if d != null else "ar"
-	var ej: Dictionary = GH.EJECT.get(fam, GH.EJECT["ar"])
+	var ej: Dictionary = profile if not profile.is_empty() else GH.EJECT.get(fam, GH.EJECT["ar"])
 	if (ej["hi"] as Vector3).length() < 0.01:
 		return
 	# The port as the gun has it: a spot on the gun's box, and the case leaves to the right, up and back.
@@ -1048,7 +1113,7 @@ func _eject_shell(d: WD) -> void:
 	m.top_level = true
 	add_child(m)
 	_shell_pool.append({"node": m, "on": false, "v": Vector3.ZERO, "spin": Vector3.ZERO, "age": 0.0, "bounced": false})
-	_eject_shell(d)
+	_eject_shell(d, profile)
 
 # --- A magazine dropped to the floor ---------------------------------------------------------------------
 
@@ -1241,13 +1306,21 @@ func _sound(name_: String, volume_db := 0.0, pitch := 1.0) -> void:
 	var s := stream(name_)
 	if s == null:
 		return
-	var p: AudioStreamPlayer
-	if name_.begins_with("fire_"):
-		p = _shot_audio[_shot_next]
-		_shot_next = (_shot_next + 1) % _shot_audio.size()
-	else:
-		p = _audio[_audio_next]
-		_audio_next = (_audio_next + 1) % _audio.size()
+	_play_voice(_audio, "_audio_next", s, name_, volume_db, pitch)
+
+## A handling cue ("mag_out", "pump", "shell_in") in the gun's own recording, or the synthesised file of that name.
+func _cue(name_: String, volume_db := 0.0, pitch := 1.0) -> void:
+	var s := GunSounds.foley(_data(), name_, _foley_n)
+	_foley_n += 1
+	if s == null:
+		return
+	_play_voice(_audio, "_audio_next", s, name_, volume_db, pitch)
+
+## Plays `s` on the next voice of a pool (a node that exists, no allocation) and notes the name for the tests.
+func _play_voice(pool: Array, next_var: String, s: AudioStream, name_: String, volume_db: float, pitch: float) -> void:
+	var i: int = get(next_var)
+	var p: AudioStreamPlayer = pool[i]
+	set(next_var, (i + 1) % pool.size())
 	p.stream = s
 	p.volume_db = volume_db
 	p.pitch_scale = pitch

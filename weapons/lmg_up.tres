@@ -21,12 +21,35 @@ rpm = 620.0
 auto = true
 mag_size = 150
 reserve_max = 600
-reload_time = 4.76
+reload_time = 4.05
+reload_time_empty = 5.44
+chambers = false
 spread_hip = 3.6
 spread_ads = 0.96
 recoil = 0.9
 ads_zoom = 1.4
 swap_time = 0.7
+ads_time = 0.4
+sprint_fire_delay = 0.3
+recoil_pattern = PackedVector2Array(-0.1406, 0.405, 0.0362, 0.405, 0.1312, 0.405, -0.07, 0.405, -0.1132, 0.405, 0.0992, 0.405, 0.0876, 0.405, -0.1218, 0.405, -0.0562, 0.405, 0.1363, 0.405, 0.0211, 0.405, -0.1417, 0.405, 0.0154, 0.405, 0.1378, 0.405, -0.0509, 0.405, -0.1246, 0.405, 0.083, 0.405, 0.1032, 0.405, -0.1096, 0.405, -0.075, 0.405, 0.1289, 0.405, 0.0418, 0.405, -0.1397, 0.405, -0.0058, 0.405)
+recoil_recover = 17.0
+recoil_hold = 3.0
+recoil_first = 1.0
+recoil_ads = 0.75
+recoil_random = 0.1
+kick_back = 0.0268
+kick_up = 2.9
+kick_roll = 0.0367
+optic = "red_dot"
+sound_set = "lmg"
+foley = {
+"mag_out": ["common/lmg_cover_open"],
+"mag_in": ["common/lmg_cover_close"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/charge_rifle"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.16, "mag_out"], [0.6, "mag_in"], [0.82, "bolt"]]
 price = 0
 ammo_price = 4500
 in_box = false

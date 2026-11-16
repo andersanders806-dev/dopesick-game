@@ -84,6 +84,17 @@ var _swap_left := 0.0
 var _reload_left := 0.0
 var _melee_cd := 0.0
 var _trigger_down := false
+## Rounds of the burst still to come, and seconds after a sprint before the trigger answers.
+var _burst_left := 0
+var _sprint_hold := 0.0
+## A reload that a sprint or a swap cut short, to begin again when the way is clear.
+var _reload_resume := false
+## A press of the trigger that came while the sprint-out was still going: it fires when the delay is over.
+var _fire_queued := false
+## The seconds of the reload under way (the fraction of it that is done decides what a cut leaves).
+var _reload_total := 0.0
+## The reload under way began on an empty gun.
+var reload_empty := false
 ## This shot's zombies hurt but not killed (instance id -> true), paid 10 each when it's over.
 var _wounded: Dictionary = {}
 var _in_melee := false
@@ -160,10 +171,19 @@ func give(data: WD) -> void:
 	_switch_to(i)
 
 func _switch_to(i: int) -> void:
+	# A reload that a swap cuts short is remembered by its gun, and begins again when you are back on it.
+	var cut_short := reloading and not _cut_reload()
+	if cut_short and slots[active] != null:
+		slots[active]["resume"] = true
 	active = i
 	_cancel_reload()
+	_burst_left = 0
 	_cooldown = 0.0
 	_swap_left = current.swap_time if current else 0.0
+	_reload_resume = false
+	if slots[active] != null and bool(slots[active].get("resume", false)):
+		slots[active]["resume"] = false
+		_reload_resume = true
 	aiming = false
 	_rebuild_viewmodel()
 	weapon_changed.emit(current)
@@ -173,7 +193,7 @@ func _switch_to(i: int) -> void:
 func refill_current() -> void:
 	if slots[active] == null:
 		return
-	slots[active].mag = current.mag_size
+	slots[active].mag = maxi(int(slots[active].mag), current.mag_size)
 	slots[active].reserve = current.reserve_max
 	ammo_changed.emit()
 
@@ -181,7 +201,7 @@ func refill_current() -> void:
 func refill_all() -> void:
 	for s in slots:
 		if s != null:
-			s.mag = s.data.mag_size
+			s.mag = maxi(int(s.mag), s.data.mag_size)
 			s.reserve = s.data.reserve_max
 	ammo_changed.emit()
 
@@ -213,13 +233,28 @@ func swap() -> bool:
 func _process(delta: float) -> void:
 	if not _can_act():
 		_trigger_down = false
+		_release_sprint()
 		return
-	advance(delta)
 	var down := Input.is_action_pressed("fire")
+	# The trigger wins over a reload that a sprint cut short, when there are rounds in the gun to fire.
+	if down and mag > 0:
+		_reload_resume = false
+	if not down:
+		_fire_queued = false
+	advance(delta)
+	# Pulling the trigger on the run ends the sprint (Call of Duty's sprint-out); the gun answers a moment later.
+	if player != null and player.get("sprint_blocked") != null:
+		if down and _sprinting():
+			player.set("sprint_blocked", true)
+			player.set("_sprint_latched", false)
+		elif not down:
+			player.set("sprint_blocked", false)
 	if down and current != null and (current.auto or not _trigger_down):
-		fire()
+		# A press on the run is kept until the sprint-to-fire delay is over (a semi gun would lose it).
+		if not fire() and mag > 0 and not reloading and (_sprint_hold > 0.0 or _sprinting()):
+			_fire_queued = true
 	_trigger_down = down
-	aiming = Input.is_action_pressed("aim") and not reloading and not (player != null and player.has_method("is_sprinting") and player.is_sprinting())
+	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting()
 
 ## The one-shot buttons (a press is an event: the mouse wheel has no "held").
 func _unhandled_input(event: InputEvent) -> void:
@@ -267,8 +302,38 @@ func _can_act() -> bool:
 
 ## Runs the cooldowns and the reload.
 func advance(delta: float) -> void:
-	_cooldown = maxf(_cooldown - delta, 0.0)
+	var cd := _cooldown - delta
+	_cooldown = maxf(cd, 0.0)
+	var carry := maxf(-cd, 0.0)
 	_swap_left = maxf(_swap_left - delta, 0.0)
+	# The sprint: the trigger waits for it to end (and a moment more), and a reload on the run is cut short.
+	if _sprinting():
+		_sprint_hold = current.sprint_fire_delay if current != null else 0.2
+		_burst_left = 0
+		if reloading:
+			_reload_resume = not _cut_reload()
+	else:
+		_sprint_hold = maxf(_sprint_hold - delta, 0.0)
+	if _fire_queued and _sprint_hold <= 0.0 and not _sprinting():
+		_fire_queued = false
+		fire()
+	if _reload_resume and not reloading and _swap_left <= 0.0 and _sprint_hold <= 0.0:
+		_reload_resume = false
+		reload()
+	# The rest of a burst, at the gun's rate.
+	while _burst_left > 0 and _cooldown <= 0.0:
+		var d := current
+		if d == null or reloading or mag <= 0 or _swap_left > 0.0:
+			_burst_left = 0
+			break
+		_fire_round()
+		_burst_left -= 1
+		if _burst_left <= 0 or mag <= 0:
+			_burst_left = 0
+			_cooldown += d.burst_delay
+		var used := minf(carry, _cooldown)
+		_cooldown -= used
+		carry -= used
 	_melee_cd = maxf(_melee_cd - delta, 0.0)
 	if _hold >= 0.0:
 		_hold += delta
@@ -286,10 +351,15 @@ func advance(delta: float) -> void:
 func reload() -> bool:
 	var d := current
 	if d == null or reloading or mag >= d.mag_size or reserve <= 0:
+		_reload_resume = false
 		return false
 	reloading = true
 	aiming = false
-	_reload_left = d.reload_time * reload_mult
+	_burst_left = 0
+	_reload_resume = false
+	reload_empty = mag <= 0
+	_reload_left = d.reload_for(reload_empty) * reload_mult
+	_reload_total = _reload_left
 	reload_started.emit()
 	return true
 
@@ -297,15 +367,47 @@ func _finish_reload() -> void:
 	reloading = false
 	var d := current
 	if d != null:
-		var take := mini(d.mag_size - mag, reserve)
+		# A tactical reload leaves a round in the chamber as well.
+		var take := mini(d.mag_cap(not reload_empty) - mag, reserve)
 		mag += take
 		reserve -= take
 	reload_finished.emit()
 	ammo_changed.emit()
 
+## A reload cut short (a sprint, a swap): once the new magazine is in (its cue has played) it counts as done, as in
+## Call of Duty; before that nothing is loaded and it starts again later. True if it counted as done.
+func _cut_reload() -> bool:
+	if not reloading:
+		return false
+	var d := current
+	var done := false
+	if d != null and _reload_total > 0.0:
+		var progress := 1.0 - _reload_left / _reload_total
+		var cues: Array = d.reload_cues_empty if reload_empty else d.reload_cues_tactical
+		for c in cues:
+			if String(c[1]) == "mag_in" and progress >= float(c[0]):
+				done = true
+	if done:
+		_finish_reload()
+	else:
+		_cancel_reload()
+	return done
+
 func _cancel_reload() -> void:
 	reloading = false
 	_reload_left = 0.0
+
+## The sprint is the player's again (the trigger is up, or the holder is gone).
+func _release_sprint() -> void:
+	if player != null and is_instance_valid(player) and player.get("sprint_blocked") == true:
+		player.set("sprint_blocked", false)
+
+func _exit_tree() -> void:
+	_release_sprint()
+
+## Whether the player is running (the sights and the trigger wait for it).
+func _sprinting() -> bool:
+	return player != null and player.has_method("is_sprinting") and player.is_sprinting()
 
 func reload_left() -> float:
 	return _reload_left if reloading else 0.0
@@ -313,13 +415,13 @@ func reload_left() -> float:
 # --- Firing -------------------------------------------------------------------------
 
 func can_fire() -> bool:
-	return current != null and not reloading and _cooldown <= 0.0 and _swap_left <= 0.0 and mag > 0
+	return current != null and not reloading and _cooldown <= 0.0 and _swap_left <= 0.0 and _sprint_hold <= 0.0 and mag > 0
 
 ## Pulls the trigger once. False if nothing came out (cooling, reloading,
 ## swapping, or empty: which starts a reload while there is anything to load).
 func fire() -> bool:
 	var d := current
-	if d == null or reloading or _cooldown > 0.0 or _swap_left > 0.0:
+	if d == null or reloading or _cooldown > 0.0 or _swap_left > 0.0 or _sprint_hold > 0.0:
 		return false
 	if mag <= 0:
 		if reserve > 0:
@@ -327,6 +429,18 @@ func fire() -> bool:
 		else:
 			dry_fired.emit()
 		return false
+	_reload_resume = false
+	_fire_round()
+	# A burst gun: the rest of the rounds follow at its rate (advance), then the trigger waits.
+	if d.burst_count > 1:
+		_burst_left = mini(d.burst_count - 1, mag)
+		if _burst_left == 0:
+			_cooldown += d.burst_delay
+	return true
+
+## One round: ammo, the shot, the signals. No checks (fire() and the burst do those).
+func _fire_round() -> void:
+	var d := current
 	mag -= 1
 	_cooldown = d.interval() / maxf(rate_mult, 0.1)
 	var aim := _aim()
@@ -335,7 +449,6 @@ func fire() -> bool:
 	ammo_changed.emit()
 	if player != null and player.has_method("kick"):
 		player.kick(clampf(d.recoil * 0.12, 0.0, 0.6))
-	return true
 
 ## Shoots the gun's bullets from `origin` along `dir` (no ammo, no cooldown):
 ## fire() is this plus the trigger.

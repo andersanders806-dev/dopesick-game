@@ -88,7 +88,7 @@ func enabled() -> bool:
 
 func reach() -> float:
 	var d = holder.get("current") if holder != null else null
-	return float(REACH.get(d.family(), DEFAULT_REACH)) if d != null else DEFAULT_REACH
+	return float(REACH.get(d.handling_family(), DEFAULT_REACH)) if d != null else DEFAULT_REACH
 
 ## The look this frame (right, up in radians) with the assist in it. `active` is whether the player is
 ## moving or looking at all; `delta` the frame's seconds.

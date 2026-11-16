@@ -507,7 +507,7 @@ func _census() -> void:
 
 ## Switches the named cost: on = as the game has it, off = removed.
 func _ab_apply(on: bool) -> void:
-	if _ab_nodes.is_empty() and ab_what != "far60" and ab_what != "lod8" and ab_what != "hud" and ab_what != "zombies":
+	if _ab_nodes.is_empty() and ab_what != "far60" and ab_what != "lod8" and ab_what != "hud" and ab_what != "zombies" and ab_what != "fsr" and ab_what != "fxaa" and ab_what != "adj" and ab_what != "postfx" and ab_what != "fog":
 		for n in current_scene.find_children("*", "", true, false):
 			match ab_what:
 				"facades":
@@ -547,6 +547,16 @@ func _ab_apply(on: bool) -> void:
 				root.get_camera_3d().far = 4000.0 if on else 60.0
 		"lod8":
 			root.mesh_lod_threshold = 4.0 if on else 8.0
+		"fsr":
+			root.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if on else Viewport.SCALING_3D_MODE_BILINEAR
+		"fxaa":
+			root.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if on else Viewport.SCREEN_SPACE_AA_DISABLED
+		"adj":
+			for we in current_scene.find_children("*", "WorldEnvironment", true, false):
+				(we as WorldEnvironment).environment.adjustment_enabled = on
+		"postfx":
+			for c in root.find_children("PostFX", "", true, false):
+				c.visible = on
 		"fog":
 			for we in current_scene.find_children("*", "WorldEnvironment", true, false):
 				(we as WorldEnvironment).environment.fog_enabled = on

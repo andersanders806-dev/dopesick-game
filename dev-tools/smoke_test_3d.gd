@@ -4010,8 +4010,8 @@ func _polish_checks(gs: Node) -> void:
 	gs.clock_running = false
 	gs.clock = 14 * 60
 	var city := await _load("res://world/City3D.tscn")
-	var piece := _kit_piece(city)
-	var mesh_id := piece.mesh.get_instance_id()
+	var piece := _kit_mesh(city)
+	var mesh_id := piece.get_instance_id()
 	var dressing := func(c: Node) -> Array:
 		return ["FireEscapeHome", "AirCon", "Camera", "Shutter"].map(func(n): return c.get_node("Facades").find_child(n + "*", true, false).find_children("*", "MeshInstance3D", true, false)[0].mesh.get_instance_id())
 	var dress_ids: Array = dressing.call(city)
@@ -4024,8 +4024,8 @@ func _polish_checks(gs: Node) -> void:
 	var t0 := Time.get_ticks_msec()
 	city = await _load("res://world/City3D.tscn")
 	var reentry := Time.get_ticks_msec() - t0
-	var again := _kit_piece(city)
-	_check(again.mesh.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
+	var again := _kit_mesh(city)
+	_check(again.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
 	_check(dressing.call(city) == dress_ids, "  ...and so are fire escapes, air-con units, cameras and shutters")
 	_check(Cast.scene_for(booster).get_instance_id() == cast_id
 		and Cast.scene_for(booster) is PackedScene, "  character models are loaded once per session")
@@ -4052,6 +4052,14 @@ func _kit_piece(city: Node) -> MeshInstance3D:
 	for mi in city.get_node("Facades").find_children("*", "MeshInstance3D", true, false):
 		if not (mi.mesh is PrimitiveMesh):
 			return mi
+	return null
+
+## The mesh of the first facade piece (the fronts' repeating pieces are MultiMeshes: world/Facades.gd _flush_batch).
+func _kit_mesh(city: Node) -> Mesh:
+	for mmi in city.get_node("Facades").find_children("*", "MultiMeshInstance3D", true, false):
+		var m: Mesh = (mmi as MultiMeshInstance3D).multimesh.mesh
+		if m != null and not (m is PrimitiveMesh):
+			return m
 	return null
 
 ## Interacts with a door and waits for the room change (fade and all).
@@ -4278,7 +4286,7 @@ func _lean_checks(gs: Node) -> void:
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(20)
 	var env: Environment = city.get_node("WorldEnvironment").environment
-	var kit_mat: BaseMaterial3D = _kit_piece(city).get_active_material(0)
+	var kit_mat: BaseMaterial3D = _kit_mesh(city).surface_get_material(0)
 	var shadows: int = city.find_children("*", "OmniLight3D", true, false).filter(func(l): return l.shadow_enabled).size() \
 		+ city.find_children("*", "SpotLight3D", true, false).filter(func(l): return l.shadow_enabled).size()
 	_check(gfx.lean() and not env.ssao_enabled and env.glow_enabled and not env.get_glow_level(4) and not kit_mat.normal_enabled and shadows <= 1,
@@ -4322,7 +4330,7 @@ func _low_checks(gs: Node) -> void:
 	gfx.set_preset(gfx.Preset.LOW)
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(5)
-	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_piece(city).get_active_material(0).normal_enabled,
+	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_mesh(city).surface_get_material(0).normal_enabled,
 		"  Low on laptop graphics is lean too: FXAA, flat facades")
 	var post: ColorRect = get_first_node_in_group("hud").get_node("PostFX")
 	gs.craving = 100.0

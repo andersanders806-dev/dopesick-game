@@ -165,7 +165,12 @@ func _release_due(delta := 0.0) -> void:
 		return
 	_skipped = 0
 	var made := 0
-	while released < total and times[released] <= _clock and made < 1:
+	# (A schedule far behind - a compressed clock in the tests - catches up by a sixth of its backlog a frame.)
+	var due := 0
+	while released + due < total and times[released + due] <= _clock:
+		due += 1
+	var allowed := maxi(1, due / 6)
+	while released < total and times[released] <= _clock and made < allowed:
 		if spawner.alive() >= surge_limit():
 			return
 		made += 1

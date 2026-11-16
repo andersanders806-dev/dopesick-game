@@ -64,6 +64,19 @@ var exps: PackedStringArray = PackedStringArray()
 var shot_at_s := -1.0
 var shot_done := false
 var _censused := false
+## ab=<what>: every 90 frames the named cost is switched off and on again, and the GPU time, frame time and the
+## renderer's counters are summed per state: an A/B inside one run, so the machine's drift (the iGPU's clock follows
+## the CPU load) cancels. what: facades, props, mm, decals, lights, particles, zombies, hud, fog, far60, lod8.
+var ab_what := ""
+var ab_on := true
+var ab_n := [0, 0]
+var ab_gpu := [0.0, 0.0]
+var ab_ms := [0.0, 0.0]
+var ab_prims := [0.0, 0.0]
+var ab_calls := [0.0, 0.0]
+var ab_objs := [0.0, 0.0]
+var _ab_nodes: Array = []
+var _ab_saved := {}
 var seg_scripts: PackedFloat32Array = PackedFloat32Array()
 var seg_draws: PackedFloat32Array = PackedFloat32Array()
 var cnt_prims := 0.0
@@ -83,6 +96,12 @@ func _initialize() -> void:
 			night = true
 		elif s.begins_with("scale="):
 			fixed_scale = float(s.substr(6))
+		elif s.begins_with("ab="):
+			ab_what = s.substr(3)
+		elif s == "nomerge":
+			Engine.set_meta("no_merge", true)
+		elif s == "nobatch":
+			Engine.set_meta("no_batch", true)
 		elif s == "viatitle":
 			via_title = true
 		elif s.begins_with("x="):
@@ -172,6 +191,7 @@ func _tick() -> float:
 	gpus.append(g)
 	fades.append(fa)
 	scales += root.scaling_3d_scale
+	_ab_tick(g, dt)
 	var cur := _snapshot()
 	var fa_before := _prev_fa
 	_prev_fa = fa
@@ -250,6 +270,7 @@ func _finish() -> void:
 		ts += seg_scripts[i]
 		td += seg_draws[i]
 	var m := float(n - t0i)
+	_ab_print()
 	print("COUNTERS per frame: primitives %.0f draw calls %.0f objects %.0f" % [cnt_prims / n, cnt_calls / n, cnt_objs / n])
 	print("TAIL gpu mean %.2f frame mean %.2f scripts+physics %.2f draw %.2f (the last 60%% of the run)" % [tg / m, tf / m, ts / m, td / m])
 	var path := out_dir + "/results.txt"
@@ -427,6 +448,10 @@ func _census() -> void:
 			var key := path[0]
 			if path.size() > 2 and not (path[0] in ["Facades", "Cell_Main"]):
 				key += "/" + path[1]
+			elif path[0] == "Facades":
+				# By what the node is, not by which front: "Front12/Sign3" -> "Facades:Sign".
+				var leaf := String(path[path.size() - 1]).rstrip("0123456789")
+				key = "Facades:" + (leaf if path.size() > 2 else String(path[1]).rstrip("0123456789"))
 			if mi.skin != null or mi.get_parent() is Skeleton3D:
 				key = "SKINNED " + key
 			var surfs := mi.mesh.get_surface_count()
@@ -452,11 +477,105 @@ func _census() -> void:
 				g["surf"] += mm.mesh.get_surface_count()
 				g["multi"] += mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
 				groups[key] = g
+	if "mergedebug" in exps:
+		var why := {}
+		for n in current_scene.get_node("Facades").find_children("@*", "MeshInstance3D", true, false):
+			var mi := n as MeshInstance3D
+			var par := String(mi.get_parent().name).rstrip("0123456789")
+			var r := "ok"
+			if mi.get_child_count() > 0: r = "children"
+			elif mi.material_override != null: r = "override"
+			elif not mi.get_groups().is_empty(): r = "groups " + str(mi.get_groups())
+			elif not mi.get_meta_list().is_empty(): r = "meta " + str(mi.get_meta_list())
+			elif not mi.visible: r = "hidden"
+			else:
+				for sidx in mi.mesh.get_surface_count():
+					var mat := mi.mesh.surface_get_material(sidx)
+					if mi.get_surface_override_material(sidx) != null: r = "surface override"
+					elif mat is BaseMaterial3D and (mat as BaseMaterial3D).transparency != BaseMaterial3D.TRANSPARENCY_DISABLED: r = "transparent"
+					elif mat is BaseMaterial3D and (mat as BaseMaterial3D).uv1_triplanar and not (mat as BaseMaterial3D).uv1_world_triplanar: r = "object triplanar"
+					elif mat is ShaderMaterial: r = "shader"
+			var k := "%s | %s | %s" % [par, mi.get_parent().get_class(), r]
+			why[k] = int(why.get(k, 0)) + 1
+		for k in why:
+			print("  MERGEWHY ", k, " x", why[k])
 	print("  CENSUS lights ", lights, " counts ", counts)
 	var keys := groups.keys()
 	keys.sort_custom(func(a, b): return groups[a]["surf"] > groups[b]["surf"])
 	for k in keys.slice(0, 30):
 		print("  CENSUS %-48s meshes %4d surfaces %4d prims(1x) %8d shadow-casters %4d multi-instances %d" % [k, groups[k]["n"], groups[k]["surf"], groups[k]["prims"], groups[k]["shadow"], groups[k]["multi"]])
+
+## Switches the named cost: on = as the game has it, off = removed.
+func _ab_apply(on: bool) -> void:
+	if _ab_nodes.is_empty() and ab_what != "far60" and ab_what != "lod8" and ab_what != "hud" and ab_what != "zombies":
+		for n in current_scene.find_children("*", "", true, false):
+			match ab_what:
+				"facades":
+					if n is Node3D and n.get_parent() == current_scene.get_node_or_null("Facades"):
+						_ab_nodes.append(n)
+				"props":
+					var par := n.get_parent()
+					if n is Node3D and par != null and String(par.name).begins_with("Cell_") and not n is StaticBody3D and not n is MultiMeshInstance3D and not n is OccluderInstance3D and not n is Light3D:
+						_ab_nodes.append(n)
+				"mm":
+					if n is MultiMeshInstance3D:
+						_ab_nodes.append(n)
+				"decals":
+					if n is Decal:
+						_ab_nodes.append(n)
+				"lights":
+					if n is Light3D and not n is DirectionalLight3D:
+						_ab_nodes.append(n)
+				"particles":
+					if n is GPUParticles3D or n is CPUParticles3D:
+						_ab_nodes.append(n)
+	for n in _ab_nodes:
+		if is_instance_valid(n):
+			(n as Node3D).visible = on
+	match ab_what:
+		"zombies":
+			for z in get_nodes_in_group("zombies"):
+				var mr = z.get("_model_root")
+				if mr != null:
+					(mr as Node3D).visible = on
+		"hud":
+			for l in root.find_children("*", "CanvasLayer", true, false):
+				if l.name != "SceneLoader" and l.get_parent() != root.get_node_or_null("SceneLoader"):
+					(l as CanvasLayer).visible = on
+		"far60":
+			if root.get_camera_3d() != null:
+				root.get_camera_3d().far = 4000.0 if on else 60.0
+		"lod8":
+			root.mesh_lod_threshold = 4.0 if on else 8.0
+		"fog":
+			for we in current_scene.find_children("*", "WorldEnvironment", true, false):
+				(we as WorldEnvironment).environment.fog_enabled = on
+
+func _ab_tick(g: float, dt: float) -> void:
+	if ab_what == "":
+		return
+	var f := Engine.get_process_frames()
+	if f % 90 == 0:
+		ab_on = not ab_on
+		_ab_apply(ab_on)
+		return
+	if f % 90 < 15:
+		return  # let the switch settle (the GPU time lags a frame or two, meshes upload)
+	var i := 0 if ab_on else 1
+	ab_n[i] += 1
+	ab_gpu[i] += g
+	ab_ms[i] += dt
+	ab_prims[i] += _info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	ab_calls[i] += _info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	ab_objs[i] += _info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
+
+func _ab_print() -> void:
+	if ab_what == "" or ab_n[0] == 0 or ab_n[1] == 0:
+		return
+	for i in 2:
+		var n: float = ab_n[i]
+		print("AB %s %s: frames %d gpu %.2f ms frame %.2f ms | primitives %.0f draw calls %.0f objects %.0f" % [ab_what, "ON (as is)" if i == 0 else "OFF", n, ab_gpu[i] / n, ab_ms[i] / n, ab_prims[i] / n, ab_calls[i] / n, ab_objs[i] / n])
+	print("AB %s: costs %.2f ms GPU, %.0f primitives, %.0f draw calls, %.0f objects" % [ab_what, ab_gpu[0] / ab_n[0] - ab_gpu[1] / ab_n[1], ab_prims[0] / ab_n[0] - ab_prims[1] / ab_n[1], ab_calls[0] / ab_n[0] - ab_calls[1] / ab_n[1], ab_objs[0] / ab_n[0] - ab_objs[1] / ab_n[1]])
 
 func _frames(n: int) -> void:
 	for i in n:
@@ -520,6 +639,9 @@ func _street(sick: bool) -> void:
 		player.global_position = Vector3(stand_x, 0, -2.6)
 		player.reset_physics_interpolation()
 		await _frames(60)
+		if "census" in exps:
+			_census()
+			return
 		_begin_recording()
 		var k := 0
 		while (Time.get_ticks_usec() - t0_us) < secs * 1e6:
@@ -529,6 +651,9 @@ func _street(sick: bool) -> void:
 			_tick()
 			phase = "stand x=%d" % int(stand_x)
 			_maybe_shot()
+		return
+	if "census" in exps and stand_x == INF:
+		_census()
 		return
 	_begin_recording()
 	var dir := 1.0

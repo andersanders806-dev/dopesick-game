@@ -12,7 +12,7 @@ LINE = re.compile(
     r"RESULT (\S+) \[(\S+)\] frames (\d+) \(([\d.]+) s\) \| gpu mean ([\d.]+) p95 ([\d.]+) \| frame mean ([\d.]+) "
     r"p50 ([\d.]+) p95 ([\d.]+) p99 ([\d.]+) max ([\d.]+) \| >25ms (\d+) \(visible (\d+)\) \| scale ([\d.]+)")
 ORDER = ["street", "sick", "room:DiveBar3D", "room:StorePharmacy3D", "room:StoreSupermarket3D", "shop", "horde", "ghetto",
-         "kart", "go:street_shop", "go:shop_street", "go:title_story", "go:title_zombies", "title"]
+         "kart", "go:street_shop", "go:shop_street", "go:title_story", "go:title_zombies", "title", "floor"]
 
 
 def parse(paths):
@@ -49,7 +49,7 @@ def table(paths, last=3):
                 " / ".join("%d (%d)" % (x["slow"], x["vis"]) for x in r)))
 
 
-def sheet(d, tag, out):
+def sheet(d, tag, out, floor_label=""):
     from PIL import Image, ImageDraw
     import csv
     import os
@@ -81,7 +81,7 @@ def sheet(d, tag, out):
             dr.line([x, 360, x, 360 - h], fill=(255, 90, 60, 255) if v > 25.0 else (150, 200, 255, 220))
         slow = sum(1 for v in ms if v > 25.0)
         dr.rectangle([0, 0, 640, 22], fill=(0, 0, 0, 190))
-        dr.text((6, 5), "%s [%s]   max %.1f ms   frames > 25 ms: %d of %d" % (s, tag, max(ms), slow, n), fill=(255, 255, 255, 255))
+        dr.text((6, 5), "%s [%s]   max %.1f ms   frames > 25 ms: %d of %d%s" % (s, tag, max(ms), slow, n, ("   (" + floor_label + ")") if floor_label else ""), fill=(255, 255, 255, 255))
         cells.append(img)
     if not cells:
         print("nothing to put on the sheet")
@@ -99,4 +99,4 @@ if __name__ == "__main__":
     if sys.argv[1] == "table":
         table(sys.argv[2:])
     elif sys.argv[1] == "sheet":
-        sheet(sys.argv[2], sys.argv[3], sys.argv[4])
+        sheet(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] if len(sys.argv) > 5 else "")

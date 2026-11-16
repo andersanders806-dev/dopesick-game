@@ -244,6 +244,7 @@ func _ready() -> void:
 	# their early depth test for nothing. (_apply_cutaway() stays for a camera that hangs outside.)
 	if Engine.has_meta("keep_cutaway"):
 		_apply_cutaway()
+	_merge_statics()
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()
@@ -277,6 +278,19 @@ func _apply_cutaway() -> void:
 			Cutaway.apply(n)
 		elif n.name.begins_with("RoofAirCons") and n.get_meta("cell", "") in ["Cell_Main", "Cell_Inner"]:
 			Cutaway.apply(n)
+
+## The small anonymous slabs and trims under every front, mass and roof become one mesh per material
+## (world/StaticMerge.gd): ~750 draw calls on the street.
+const StaticMerge := preload("res://world/StaticMerge.gd")
+var merged_nodes := 0
+
+func _merge_statics() -> void:
+	if Engine.has_meta("no_merge"):
+		return
+	merged_nodes += StaticMerge.merge_anonymous(self)
+	for c in find_children("*", "Node3D", true, false):
+		if is_instance_valid(c):  # (the slabs a parent just merged are gone from the list's later entries)
+			merged_nodes += StaticMerge.merge_anonymous(c as Node3D)
 
 ## The fire escape, air-con, camera and shutter models, kept for the
 ## session for the same reason (half a second a visit).
@@ -363,6 +377,14 @@ func _window_variant(kit: String, piece: String, lit: bool) -> Mesh:
 
 ## Queues one kit piece, placed exactly as _piece() places it (left edge at x, bottom at y, face on FACE_Z).
 func _piece_b(front: Node3D, kit: String, piece: String, x: float, y: float, sx := 1.0, inset := 0.0, lit := false) -> void:
+	if Engine.has_meta("no_batch"):
+		# (The probe's A/B: every piece its own MeshInstance3D, as before.)
+		var w := _piece(front, kit, piece, x, y, sx, inset)
+		if lit:
+			for k in w.mesh.get_surface_count():
+				if w.get_surface_override_material(k) == _glass():
+					w.set_surface_override_material(k, _lit_glass())
+		return
 	var mesh := _mesh(kit, piece)
 	var b: AABB = mesh.get_aabb()
 	var xf := Transform3D(Basis.from_scale(Vector3(sx, 1.0, 1.0)), Vector3(x - b.position.x * sx, y - b.position.y, FACE_Z - b.end.z - inset))

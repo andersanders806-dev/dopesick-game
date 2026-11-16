@@ -357,6 +357,10 @@ var _later: Array = []
 ## The left hand working the pump after a shotgun shot: seconds left.
 var _pump_t := 0.0
 const PUMP_TIME := 0.5
+## A revolver keeps its brass: opening the cylinder lets the spent cases fall out, one after another.
+const CASING_DUMP := {"port": Vector3(0.8, 0.45, 0.5), "lo": Vector3(0.1, -0.6, 0.0), "hi": Vector3(0.8, -0.2, 0.5), "spin": 14.0, "size": Vector2(0.006, 0.03), "kind": 0}
+var _dump_n := 0
+var _dump_t := 0.0
 
 func _fire_family(d: WD) -> String:
 	var fam := d.handling_family()
@@ -385,6 +389,9 @@ func _on_reload_started() -> void:
 	var fam := _fire_family(d) if d != null else "ar"
 	_reload_def = GH.reload_plan(fam, reload_empty, missing)
 	_reload_events = _reload_events_for(d, _reload_def.get("ev", []), reload_empty)
+	if fam == "magnum" and d != null:
+		_dump_n = clampi(d.mag_size - (int(m) if m != null else 0), 0, 6)
+		_dump_t = _reload_total * 0.22
 	raising = false
 	var v := _vm()
 	if v != null and v.mag_prop != null:
@@ -465,6 +472,7 @@ func _on_traced(from: Vector3, to: Vector3) -> void:
 func reset_state() -> void:
 	ads = 0.0
 	_pump_t = 0.0
+	_dump_n = 0
 	recoil = Vector2.ZERO
 	trauma = 0.0
 	sliding = false
@@ -637,6 +645,12 @@ func advance(delta: float) -> void:
 			if is_instance_valid(_light):
 				_light.visible = false
 	_pump_t = maxf(_pump_t - delta, 0.0)
+	if _dump_n > 0:
+		_dump_t -= delta
+		if _dump_t <= 0.0:
+			_dump_n -= 1
+			_dump_t = 0.05
+			_eject_shell(_data(), CASING_DUMP)
 	for i in range(_later.size() - 1, -1, -1):
 		_later[i][0] -= delta
 		if _later[i][0] <= 0.0:
@@ -1040,12 +1054,12 @@ func unwarm() -> void:
 		s["on"] = false
 		(s["node"] as Node3D).visible = false
 
-func _eject_shell(d: WD) -> void:
+func _eject_shell(d: WD, profile := {}) -> void:
 	var vm := _vm()
 	if vm == null or camera == null:
 		return
 	var fam := _fire_family(d) if d != null else "ar"
-	var ej: Dictionary = GH.EJECT.get(fam, GH.EJECT["ar"])
+	var ej: Dictionary = profile if not profile.is_empty() else GH.EJECT.get(fam, GH.EJECT["ar"])
 	if (ej["hi"] as Vector3).length() < 0.01:
 		return
 	# The port as the gun has it: a spot on the gun's box, and the case leaves to the right, up and back.
@@ -1099,7 +1113,7 @@ func _eject_shell(d: WD) -> void:
 	m.top_level = true
 	add_child(m)
 	_shell_pool.append({"node": m, "on": false, "v": Vector3.ZERO, "spin": Vector3.ZERO, "age": 0.0, "bounced": false})
-	_eject_shell(d)
+	_eject_shell(d, profile)
 
 # --- A magazine dropped to the floor ---------------------------------------------------------------------
 

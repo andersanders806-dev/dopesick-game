@@ -185,6 +185,8 @@ Guns (Poly Haven, CC0; Sketchfab, CC BY 4.0, creativecommons.org/licenses/by/4.0
 AK -- Mossberg500 Shotgun low-poly (sketchfab.com/skaf13); Michael Makivic -- FPS Red Dot Sight (sketchfab.com/makivic); Derek Flanagan -- HK 416 Low Poly (sketchfab.com/derek_flanagan);
 austincford -- Low Poly Magnum Revolver (sketchfab.com/austincford); MaX3Dd -- DP28 Low-poly PBR (sketchfab.com/MaX3Dd).
 Model links: assets/guns/LICENSE.md.
+Gun sounds (OpenGameArt): The Free Firearm Sound Library by Still North Media (CC0); KuraiWolf -- Light Machine Gun (CC BY 4.0); Michel Baradari, Mike Koenig (CC BY 3.0);
+SpringySpringo, BMacZero, zer0_sol, LFA, kurt (CC0), layered and level-matched for this game. Lists: assets/sfx/CREDITS/guns-recorded.md.
 Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.
 Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model License) through kimodo.cpp (Apache-2.0); built with Meta Llama 3.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.

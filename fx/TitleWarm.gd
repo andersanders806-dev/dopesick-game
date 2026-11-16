@@ -30,6 +30,15 @@ const PER_FRAME := 2
 const HOLD := 3
 ## Seconds after the title appears before it starts (the backdrop is fading in; nothing is competing for frames).
 const DELAY := 1.2
+## The guns' recorded sounds (weapons/GunSounds.gd): every gun the player can hold has its set and its foley
+## (assets/sfx/guns/<set>/ and common/) read on worker threads while the shaders compile, a few files in flight
+## at a time, then handed to GunSounds.warm() a gun a frame. GunSounds keeps them for the whole process, so the
+## first shot, reload or tail of any gun in a run plays from memory instead of loading on the trigger frame.
+const GUN_DIR := "res://weapons/"
+const GUN_SFX := "res://assets/sfx/guns/"
+const GunSounds := preload("res://weapons/GunSounds.gd")
+const WD := preload("res://weapons/WeaponData.gd")
+const SOUNDS_IN_FLIGHT := 4
 
 static var started := false
 ## True once the last shader has been drawn (the title's opening card waits for it).
@@ -41,6 +50,7 @@ var _delay := DELAY
 var _vp: SubViewport
 var _cam: Camera3D
 var _live: Array = []
+var _gun_paths: Array = []
 
 static func skipped() -> bool:
 	return Engine.has_meta("no_prewarm") or DisplayServer.get_name() == "headless"
@@ -69,6 +79,7 @@ func _run() -> void:
 	for p in SPATIAL + CANVAS:
 		if ResourceLoader.exists(p):
 			ResourceLoader.load_threaded_request(p)
+	_request_guns()
 	await get_tree().create_timer(_delay, true, false, true).timeout
 	var t0 := Time.get_ticks_msec()
 	for p in SPATIAL + CANVAS:
@@ -108,9 +119,71 @@ func _run() -> void:
 		await get_tree().process_frame
 		_expire(false)
 	_expire(true)
+	await _warm_guns()
 	took_ms = Time.get_ticks_msec() - t0
 	finished = true
 	queue_free()
+
+## The guns' data, on worker threads (the sounds they name are read once it is in).
+func _request_guns() -> void:
+	for f in ResourceLoader.list_directory(GUN_DIR):
+		var n := String(f).trim_suffix(".remap")
+		if n.ends_with(".tres") and not _gun_paths.has(GUN_DIR + n):
+			_gun_paths.append(GUN_DIR + n)
+			ResourceLoader.load_threaded_request(GUN_DIR + n)
+
+## Every file GunSounds.warm(d) loads for `d`: its recorded set, its foley, and the synthesised fallback of a gun
+## with no set (the wonder weapon).
+func _gun_files(d: WD) -> PackedStringArray:
+	var out := PackedStringArray()
+	if d.sound_set != "":
+		var dir := GUN_SFX + d.sound_set + "/"
+		for f in ResourceLoader.list_directory(dir):
+			var n := String(f).trim_suffix(".import").trim_suffix(".remap")
+			if n.ends_with(".wav"):
+				out.append(dir + n)
+	else:
+		for v in ["a", "b"]:
+			out.append(GUN_SFX + "fire_%s_%s.wav" % [d.handling_family(), v])
+	out.append(GUN_SFX + "dry_click.wav")
+	for cue in d.foley:
+		for stem in d.foley[cue]:
+			out.append(GUN_SFX + String(stem) + ".wav")
+	return out
+
+func _warm_guns() -> void:
+	var guns: Array = []
+	var files := PackedStringArray()
+	for p in _gun_paths:
+		while ResourceLoader.load_threaded_get_status(p) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+		var d := ResourceLoader.load_threaded_get(p) as WD
+		if d == null or d.melee:
+			continue
+		guns.append(d)
+		for f in _gun_files(d):
+			if not files.has(f) and ResourceLoader.exists(f):
+				files.append(f)
+	# Read a few at a time and kept here until GunSounds has them (its load() then finds them in the cache).
+	var hold: Array = []
+	var flight: Array = []
+	var i := 0
+	while i < files.size() or not flight.is_empty():
+		while i < files.size() and flight.size() < SOUNDS_IN_FLIGHT:
+			if ResourceLoader.load_threaded_request(files[i]) == OK:
+				flight.append(files[i])
+			i += 1
+		await get_tree().process_frame
+		for f in flight.duplicate():
+			if ResourceLoader.load_threaded_get_status(f) != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				var r := ResourceLoader.load_threaded_get(f)
+				if r != null:
+					hold.append(r)
+				flight.erase(f)
+	for d in guns:
+		GunSounds.warm(d)
+		await get_tree().process_frame
+	hold.clear()
 
 func _build() -> void:
 	var main := get_tree().root

@@ -21,6 +21,8 @@ extends SceneTree
 ## in .pilot/ship4/results.txt. Every frame over 25 ms prints a SLOW line with what changed in it (pipelines
 ## compiled, resources and nodes made, process and physics ms) and a guess at the cause.
 const SLOW_MS := 25.0
+const _GUN_SOUNDS := preload("res://weapons/GunSounds.gd")
+const _TITLE_WARM := preload("res://fx/TitleWarm.gd")
 
 var scenario := "street"
 var tag := "run"
@@ -42,6 +44,8 @@ var last_us := 0
 var t0_us := 0
 var slow_n := 0
 var slow_visible := 0
+## The longest frame while the screen was not black (the gate's max; frames behind black do not count).
+var vis_max := 0.0
 var hitches: Array = []
 var _prev := {}
 var _added := {}
@@ -195,6 +199,8 @@ func _tick() -> float:
 	var cur := _snapshot()
 	var fa_before := _prev_fa
 	_prev_fa = fa
+	if fa_before < 0.5:
+		vis_max = maxf(vis_max, dt)
 	if dt > SLOW_MS:
 		slow_n += 1
 		# What was on the screen while the frame stalled is what the previous frame left there.
@@ -232,8 +238,14 @@ func _tick() -> float:
 		var vj := 0
 		if voice != null and voice.get("_jobs") != null:
 			vj = (voice.get("_jobs") as Array).size()
-		var line := "  SLOW %.1f ms (scripts+physics %.1f, draw %.1f, tail %.1f) t=%.1f s [%s] black %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s" % [
-			dt, seg_script, seg_draw, seg_tail, (now - t0_us) / 1e6, phase, fa_before, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause]
+		# What the scene loader has on its worker threads (a threaded load landing is a draw-segment stall).
+		var ld := ""
+		var sl := root.get_node_or_null("SceneLoader")
+		if sl != null and sl.get("_loading") != null:
+			for k in (sl.get("_loading") as Dictionary).keys():
+				ld += String(k).get_file() + " "
+		var line := "  SLOW %.1f ms (scripts+physics %.1f, draw %.1f, tail %.1f) t=%.1f s [%s] black %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s | loading: %s" % [
+			dt, seg_script, seg_draw, seg_tail, (now - t0_us) / 1e6, phase, fa_before, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause, ld]
 		print(line)
 		hitches.append(line)
 	_added.clear()
@@ -256,8 +268,8 @@ func _finish() -> void:
 		fsum += d
 	var gs2 := Array(gpus)
 	gs2.sort()
-	var line := "RESULT %s [%s] frames %d (%.1f s) | gpu mean %.2f p95 %.2f | frame mean %.2f p50 %.2f p95 %.2f p99 %.2f max %.1f | >25ms %d (visible %d) | scale %.2f" % [
-		scenario, tag, n, fsum / 1000.0, gsum / n, gs2[int(n * 0.95)], fsum / n, sorted[n / 2], sorted[int(n * 0.95)], sorted[int(n * 0.99)], sorted[-1], slow_n, slow_visible, scales / n]
+	var line := "RESULT %s [%s] frames %d (%.1f s) | gpu mean %.2f p95 %.2f | frame mean %.2f p50 %.2f p95 %.2f p99 %.2f max %.1f | >25ms %d (visible %d) | scale %.2f | vmax %.1f" % [
+		scenario, tag, n, fsum / 1000.0, gsum / n, gs2[int(n * 0.95)], fsum / n, sorted[n / 2], sorted[int(n * 0.95)], sorted[int(n * 0.99)], sorted[-1], slow_n, slow_visible, scales / n, vis_max]
 	print(line)
 	var t0i := int(n * 0.4)
 	var tg := 0.0
@@ -271,6 +283,7 @@ func _finish() -> void:
 		td += seg_draws[i]
 	var m := float(n - t0i)
 	_ab_print()
+	print("GUNWARM gun sound files cached %d, sets %d, title warm-up %d ms" % [_GUN_SOUNDS._files.size(), _GUN_SOUNDS._sets.size(), _TITLE_WARM.took_ms])
 	print("COUNTERS per frame: primitives %.0f draw calls %.0f objects %.0f" % [cnt_prims / n, cnt_calls / n, cnt_objs / n])
 	print("TAIL gpu mean %.2f frame mean %.2f scripts+physics %.2f draw %.2f (the last 60%% of the run)" % [tg / m, tf / m, ts / m, td / m])
 	var path := out_dir + "/results.txt"

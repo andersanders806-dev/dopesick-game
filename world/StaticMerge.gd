@@ -22,6 +22,9 @@ static func merge_anonymous(parent: Node3D, max_tris := MAX_TRIS) -> int:
 			continue
 		if mi.visibility_range_end > 0.0 or mi.visibility_range_begin > 0.0 or mi.skin != null:
 			continue
+		# (A mirrored piece would come out inside-out, and the merged mesh draws on layer 1 only.)
+		if mi.transform.basis.determinant() < 0.0 or mi.layers != 1:
+			continue
 		if not _plain_groups(mi) or not mi.get_meta_list().is_empty():
 			continue
 		if not _mergeable(mi, max_tris):

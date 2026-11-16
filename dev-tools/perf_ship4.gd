@@ -330,6 +330,8 @@ func _setup_story(hour: int) -> void:
 	gs.clock = hour * 60
 	if via_title:
 		change_scene_to_file("res://ui/TitleScreen.tscn")
+		await _frames(3)
+		await _wait_card()
 		var w0 := Time.get_ticks_usec()
 		while Time.get_ticks_usec() - w0 < 8e6:
 			await process_frame
@@ -662,6 +664,15 @@ func _wait_prefetch(limit_s := 60.0) -> void:
 	while (not sl._queue.is_empty() or not sl._loading.is_empty()) and Time.get_ticks_usec() - w0 < limit_s * 1e6:
 		await process_frame
 
+## The title's loading card (first time in the process): waits until it has lifted, and prints how long it held.
+func _wait_card() -> void:
+	var w0 := Time.get_ticks_usec()
+	while _TITLE_WARM.card_up and Time.get_ticks_usec() - w0 < 40e6:
+		await process_frame
+	if _TITLE_WARM.card_ms > 0:
+		print("CARD loading card held %d ms (cap 25000), disk %s" % [_TITLE_WARM.card_ms, OS.get_environment("PERF_DISK") if OS.get_environment("PERF_DISK") != "" else "?"])
+	await _frames(40)  # (its fade, and the menu taking focus)
+
 func _run() -> void:
 	match scenario:
 		"street":
@@ -958,6 +969,7 @@ func _title_idle(warmed := false) -> void:
 	gfx.set_laptop_mode(true)
 	change_scene_to_file("res://ui/TitleScreen.tscn")
 	await _frames(2)
+	await _wait_card()
 	if warmed:
 		# The noise floor: the title after its warm-up and the prefetch are done, no input, nothing happening.
 		var w0 := Time.get_ticks_usec()
@@ -978,6 +990,7 @@ func _go(which: String) -> void:
 		change_scene_to_file("res://ui/TitleScreen.tscn")
 		# The title's seconds: the prefetch and any prewarm run here, unrecorded, like a player reading the menu.
 		await _frames(60)
+		await _wait_card()
 		var w0 := Time.get_ticks_usec()
 		while Time.get_ticks_usec() - w0 < 8e6:
 			await process_frame

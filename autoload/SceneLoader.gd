@@ -47,7 +47,9 @@ var _scan := 0.0
 ## Seconds the last frame took (the frame the fade-hold judges), and whether loads may run whatever the player
 ## is doing (behind black: nothing shows).
 var _last_delta := 0.016
-var _forced := false
+## How many drains are running (a scene change's, the title card's): loads run whatever the player is doing
+## while any is.
+var _forced := 0
 var _layer: CanvasLayer
 var _black: ColorRect
 var _card: Label
@@ -176,11 +178,11 @@ const STILL_BEFORE_LOAD := 0.75
 var _still := 0.0
 
 func may_start() -> bool:
-	return _forced or _still >= STILL_BEFORE_LOAD
+	return _forced > 0 or _still >= STILL_BEFORE_LOAD
 
 ## Taking a finished load off the loader waits only until you're not walking.
 func may_finish() -> bool:
-	return _forced or not _player_walking()
+	return _forced > 0 or not _player_walking()
 
 func _player_walking() -> bool:
 	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D if is_inside_tree() else null
@@ -340,10 +342,10 @@ func _drain(max_msec: int) -> void:
 	if _queue.is_empty() and _loading.is_empty():
 		return
 	var t0 := Time.get_ticks_msec()
-	_forced = true
+	_forced += 1
 	while (not _queue.is_empty() or not _loading.is_empty()) and Time.get_ticks_msec() - t0 < max_msec:
 		await get_tree().process_frame
-	_forced = false
+	_forced -= 1
 
 ## Holds the black until SETTLE_FRAMES frames in a row took under SETTLE_FRAME_MSEC (at most SETTLE_MAX_MSEC).
 func _settle() -> void:
@@ -358,6 +360,27 @@ func _settle() -> void:
 
 ## How long the last room change held the black for the frames to settle (the probe prints it).
 var settled_ms := 0
+
+## Background loads not finished yet (queued plus in flight).
+func pending_count() -> int:
+	return _queue.size() + _loading.size()
+
+var _peak := 0
+
+## How far the queued loads are, 0..1: finished of all that were queued at once, plus the fraction of the one in
+## flight (the loader's own progress for it). 1 when nothing is waiting.
+func load_progress() -> float:
+	var remaining := pending_count()
+	_peak = maxi(_peak, remaining)
+	if remaining == 0 or _peak == 0:
+		return 1.0
+	var part := 0.0
+	for path in _loading:
+		var p := []
+		ResourceLoader.load_threaded_get_status(path, p)
+		if not p.is_empty():
+			part = maxf(part, float(p[0]))
+	return clampf((float(_peak - remaining) + part) / float(_peak), 0.0, 1.0)
 
 ## The title's opening card: the same drain, awaited from outside.
 func drain_in_black(max_msec: int) -> void:

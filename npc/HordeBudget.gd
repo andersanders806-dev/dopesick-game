@@ -10,15 +10,20 @@ extends RefCounted
 
 ## Seconds of frames per verdict.
 const WINDOW := 3.0
-## Judged on the window's mean frame time and the share of frames over 25 ms (the perf gate: 60 fps, no frame
-## over 25 ms; a vsynced 60 Hz frame is 16.7 ms, so the mean is judged close to it).
-## Below GOOD_MS (about 58 fps) it can climb; above BAD_MS (about 54 fps) it must drop; in
-## between it holds.
-const GOOD_MS := 17.3
-const BAD_MS := 18.6
-const SLOW_MS := 25.0
+## Judged on the window's mean RENDER COST (the work a frame took, not the vsync wait: a healthy 60 Hz frame is
+## 16.7 ms on the clock whatever it cost) and the share of frames over SLOW_MS on the clock.
+## Below good_ms it can climb; above bad_ms it must drop; in between it holds.
+## Laptop graphics (lean) use the tight numbers (the perf gate: 60 fps, no frame over 25 ms); every other GPU
+## keeps the trunk numbers.
+const GOOD_MS_LEAN := 17.3
+const BAD_MS_LEAN := 18.6
+const SLOW_MS_LEAN := 25.0
 const GOOD_SLOW_SHARE := 0.01
-const BAD_SLOW_SHARE := 0.04
+const BAD_SLOW_SHARE_LEAN := 0.04
+const GOOD_MS_DESKTOP := 18.5
+const BAD_MS_DESKTOP := 22.0
+const SLOW_MS_DESKTOP := 33.0
+const BAD_SLOW_SHARE_DESKTOP := 0.06
 ## Steps: down fast, up slow.
 const STEP_DOWN := 4
 const STEP_UP := 2
@@ -32,6 +37,10 @@ var cap := 32
 var min_cap := 24
 var max_cap := 48
 var enabled := true
+var good_ms := GOOD_MS_DESKTOP
+var bad_ms := BAD_MS_DESKTOP
+var slow_ms := SLOW_MS_DESKTOP
+var bad_slow_share := BAD_SLOW_SHARE_DESKTOP
 ## How many verdicts went each way (the tests read them).
 var raised := 0
 var lowered := 0
@@ -45,22 +54,40 @@ var _clock := 0.0
 var _good_run := 0
 var _hold := 0.0
 
-func _init(start := 32, lo := 24, hi := 48) -> void:
+func _init(start := 32, lo := 24, hi := 48, lean := false) -> void:
 	min_cap = lo
 	max_cap = hi
 	cap = clampi(start, lo, hi)
+	if lean:
+		good_ms = GOOD_MS_LEAN
+		bad_ms = BAD_MS_LEAN
+		slow_ms = SLOW_MS_LEAN
+		bad_slow_share = BAD_SLOW_SHARE_LEAN
 
-## One drawn frame took `ms`; `alive` of the dead are out; `delta_s` is the time it covers.
-## Returns true on the frame the cap changed.
-func feed(ms: float, alive: int, delta_s: float) -> bool:
+## What the last frame cost to make, in ms, without the vsync wait: the larger of the GPU's render time and the
+## CPU's (scripts + physics + the render thread's submit). -1 when the renderer does not measure (headless).
+static func render_cost_ms() -> float:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return -1.0
+	var rid := tree.root.get_viewport_rid()
+	var gpu := RenderingServer.viewport_get_measured_render_time_gpu(rid)
+	var cpu := RenderingServer.viewport_get_measured_render_time_cpu(rid) \
+		+ (Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)) * 1000.0
+	var cost := maxf(gpu, cpu)
+	return cost if gpu > 0.0 else -1.0
+
+## One drawn frame took `ms` on the clock (render_cost_ms of it, when known: the mean is judged on that);
+## `alive` of the dead are out; `delta_s` is the time it covers. Returns true on the frame the cap changed.
+func feed(ms: float, alive: int, delta_s: float, cost_ms := -1.0) -> bool:
 	if not enabled:
 		return false
 	_hold = maxf(_hold - delta_s, 0.0)
 	_clock += delta_s
 	if ms < IGNORE_MS:
-		_sum += ms
+		_sum += cost_ms if cost_ms >= 0.0 else ms
 		_n += 1
-		if ms > SLOW_MS:
+		if ms > slow_ms:
 			_slow += 1
 	if _clock < WINDOW:
 		return false
@@ -76,7 +103,7 @@ func _judge(alive: int) -> bool:
 		return false
 	last_mean = _sum / float(_n)
 	last_slow_share = float(_slow) / float(_n)
-	if last_mean > BAD_MS or last_slow_share > BAD_SLOW_SHARE:
+	if last_mean > bad_ms or last_slow_share > bad_slow_share:
 		_good_run = 0
 		_hold = HOLD_AFTER_DROP
 		var was := cap
@@ -85,7 +112,7 @@ func _judge(alive: int) -> bool:
 			lowered += 1
 			return true
 		return false
-	if last_mean < GOOD_MS and last_slow_share <= GOOD_SLOW_SHARE:
+	if last_mean < good_ms and last_slow_share <= GOOD_SLOW_SHARE:
 		# Only a window with the horde near the cap says anything about room for more.
 		if alive >= cap - 3 and _hold <= 0.0:
 			_good_run += 1

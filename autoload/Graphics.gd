@@ -35,6 +35,7 @@ enum Preset { LOW, MEDIUM, HIGH, PS5 }
 const PRESET_NAMES := ["Low", "Medium", "High", "PS5"]
 const SETTINGS_PATH := "user://settings.cfg"
 const Sandbox := preload("res://autoload/Sandbox.gd")
+const TitleWarm := preload("res://fx/TitleWarm.gd")
 const LUT_SIZE := 32
 
 ## Grade, applied at every preset.
@@ -177,6 +178,10 @@ func _process(delta: float) -> void:
 	if show_fps:
 		_fps_label.text = "%d FPS  (%s, %d%%)" % [Engine.get_frames_per_second(), PRESET_NAMES[preset], roundi(render_scale * 100.0)]
 	if _toast_timer > 0.0:
+		# Not over the title's loading card (it waits until the menu is up, in the subtitle area at the bottom).
+		if TitleWarm.card_up:
+			_toast.modulate.a = 0.0
+			return
 		_toast_timer -= delta
 		_toast.modulate.a = clampf(_toast_timer, 0.0, 1.0)
 
@@ -786,6 +791,9 @@ func _draw_graph() -> void:
 	g.draw_string(ThemeDB.fallback_font, Vector2(6, 14), "worst %.0f ms" % worst, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.85))
 
 func _show_toast(text: String, time := 2.0) -> void:
+	# On the title it sits in the subtitle area at the bottom, never across the logo.
+	var scene := get_tree().current_scene if is_inside_tree() else null
+	_toast.position.y = 610.0 if scene != null and scene.name == "TitleScreen" else 140.0
 	_toast.text = text
 	_toast_timer = time
 

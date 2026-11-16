@@ -38,7 +38,7 @@ const MIN_SPAWN_DISTANCE := 22.0
 ## ZombieMode.max_alive themselves).
 var adaptive := true
 ## (An integrated GPU starts lower: it was at 45 FPS or worse with 32 of the dead out on this machine's UHD 620.)
-var budget := HordeBudget.new(24 if Graphics.lean() else 32, ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX)
+var budget := HordeBudget.new(24 if Graphics.lean() else 32, ZombieMode.MAX_ALIVE_MIN_LEAN if Graphics.lean() else ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX, Graphics.lean())
 ## The entrances (built by the block: setup_entrances()); empty means the old spawn points.
 var entrances := Entrances.new()
 var _entrances_ready := false
@@ -119,7 +119,7 @@ func _process(delta: float) -> void:
 	if not enabled or not ZombieMode.active or ZombieMode.over or round_no == 0:
 		return
 	if adaptive and budget.enabled:
-		budget.feed(delta * 1000.0, alive(), delta)
+		budget.feed(delta * 1000.0, alive(), delta, HordeBudget.render_cost_ms())
 		ZombieMode.max_alive = budget.cap
 	# The surge is the horde while it lasts: the round's own wait.
 	if ZombieMode.surge_busy:

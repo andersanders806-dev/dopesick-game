@@ -145,9 +145,8 @@ func _begin_quake() -> void:
 	ZombieMode.surge_active = true
 	ZombieMode.surge_started.emit()
 
-## The surge may add SURGE_EXTRA to the alive cap the frame times have settled on, up to the hard cap: on a machine
-## that holds 48 it is the full 64, on one that has been taken down to 16 it is 32 (a surge of 62 on a UHD 620 ran
-## the block at 45 FPS and under).
+## On a desktop GPU the surge lets out everyone up to the hard cap (64), whatever the frame-time cap says.
+## (Kept for the tests: the old "cap + SURGE_EXTRA" rule of fix round 1 is gone, it cut a desktop's surge to 48.)
 const SURGE_EXTRA := 16
 ## On laptop graphics at Low/Medium (Graphics.lean()) the surge adds this many instead: 38 alive round the
 ## player at round 15 drew 17-21 ms frames on a UHD 620 for as long as they lived (the city at night is
@@ -159,6 +158,8 @@ var _skipped := 0
 var _headless := DisplayServer.get_name() == "headless"
 
 func surge_limit() -> int:
+	if surge_extra() == SURGE_EXTRA:
+		return ZombieMode.SURGE_HARD_CAP
 	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + surge_extra())
 
 func surge_extra() -> int:

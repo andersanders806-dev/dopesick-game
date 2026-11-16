@@ -45,6 +45,11 @@ static var started := false
 static var finished := false
 ## Seconds the whole warm-up took (the probe prints it), 0 until done.
 static var took_ms := 0
+## How far the shader pass is, 0..1 (the loading card's bar counts it as one of its loads).
+static var progress := 0.0
+## True while the title's loading card is up, and how long the last one held (ms, the probe prints it).
+static var card_up := false
+static var card_ms := 0
 
 var _delay := DELAY
 var _vp: SubViewport
@@ -101,6 +106,7 @@ func _run() -> void:
 				m.shader = ResourceLoader.load_threaded_get(paths[i]) as Shader
 				_show(m, i)
 				i += 1
+		progress = float(i) / float(maxi(paths.size(), 1)) * 0.9
 		await get_tree().process_frame
 		_expire(false)
 	# The sick grade and the plain one: full-screen canvas shaders over the hidden viewport.
@@ -119,8 +125,10 @@ func _run() -> void:
 		await get_tree().process_frame
 		_expire(false)
 	_expire(true)
+	progress = 0.95
 	await _warm_guns()
 	took_ms = Time.get_ticks_msec() - t0
+	progress = 1.0
 	finished = true
 	queue_free()
 

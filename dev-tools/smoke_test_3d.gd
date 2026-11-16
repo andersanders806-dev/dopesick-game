@@ -9661,8 +9661,9 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var EntrancesScript := preload("res://npc/Entrances.gd")
 
 	# --- The adaptive cap (pure logic, made-up frame times) ---
-	var b = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
-	_check(zm.MAX_ALIVE_MIN == 16 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 16..48")
+	# (laptop graphics: 16..48 and the tight thresholds; every other GPU 24..48 and the trunk thresholds, below)
+	var b = Budget.new(32, zm.MAX_ALIVE_MIN_LEAN, zm.MAX_ALIVE_MAX, true)
+	_check(zm.MAX_ALIVE_MIN_LEAN == 16 and zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 16..48 (laptop) and 24..48 elsewhere")
 	var lo := 99
 	var hi := 0
 	for i in 60 * 90:
@@ -9676,7 +9677,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 		floor_seen = mini(floor_seen, b.cap)
 	_check(b.cap == 16 and floor_seen == 16, "  25 fps (40 ms): drops to 16 and never below (cap %d)" % b.cap)
 	# Hysteresis: after a drop it holds, then needs two good windows in a row.
-	var b2 = Budget.new(40, 16, 48)
+	var b2 = Budget.new(40, 16, 48, true)
 	for i in 60 * 3 + 5:
 		b2.feed(40.0, 40, 1.0 / 60.0)
 	var after_drop: int = b2.cap
@@ -9685,22 +9686,41 @@ func _zombie_horde_checks(gs: Node) -> void:
 		if b2.feed(15.0, b2.cap, 1.0 / 60.0) and climbed_at < 0.0:
 			climbed_at = i / 60.0
 	_check(after_drop == 36 and climbed_at >= 8.9, "  after a drop it holds, then climbs only after two good windows (cap %d, first climb at %.1f s)" % [after_drop, climbed_at])
-	var b3 = Budget.new(32, 16, 48)
+	var b3 = Budget.new(32, 16, 48, true)
 	for i in 60 * 60:
 		b3.feed(17.9, b3.cap, 1.0 / 60.0)
 	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (17.9 ms) does not move it (cap %d)" % b3.cap)
-	var b4 = Budget.new(32, 16, 48)
+	var b4 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b4.feed(16.0, 10, 1.0 / 60.0)
 	_check(b4.cap == 32, "  it does not climb while the horde is nowhere near the cap (cap %d)" % b4.cap)
-	var b5 = Budget.new(32, 16, 48)
+	var b5 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b5.feed(900.0 if i % 90 == 0 else 16.0, b5.cap, 1.0 / 60.0)
 	_check(b5.lowered == 0 and b5.cap >= 32, "  a load hitch (900 ms) is not the horde's doing (cap %d)" % b5.cap)
-	var b6 = Budget.new(32, 16, 48)
+	var b6 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b6.feed(50.0 if i % 8 == 0 else 14.0, b6.cap, 1.0 / 60.0)
 	_check(b6.cap < 32, "  a steady stutter (1 frame in 8 over 33 ms) lowers it (cap %d)" % b6.cap)
+
+	# Desktop GPUs: trunk thresholds (18.5 / 22 ms, 33 ms slow frames) and a floor of 24; a healthy 60 Hz frame
+	# (16.7 on the clock, 9 ms of render cost) never lowers it, and a vsync-bound 17.9 ms mean does not either.
+	var d1 = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	for i in 60 * 30:
+		d1.feed(40.0, d1.cap, 1.0 / 60.0)
+	_check(d1.cap == 24, "  desktop: 25 fps drops to 24 and never below (cap %d)" % d1.cap)
+	var d2 = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	for i in 60 * 30:
+		d2.feed(18.2 if i % 2 == 0 else 17.0, 10, 1.0 / 60.0)
+	_check(d2.cap == 32 and d2.lowered == 0, "  desktop: a 60 Hz frame with some jitter (17.6 ms mean) does not lower it (cap %d)" % d2.cap)
+	var d3 = Budget.new(32, 16, zm.MAX_ALIVE_MAX, true)
+	for i in 60 * 30:
+		d3.feed(16.9, d3.cap, 1.0 / 60.0, 9.0)
+	_check(d3.lowered == 0 and d3.cap > 32, "  laptop: a vsync-bound frame that cost 9 ms is healthy (cap %d)" % d3.cap)
+	var d4 = Budget.new(32, 16, zm.MAX_ALIVE_MAX, true)
+	for i in 60 * 30:
+		d4.feed(16.9, d4.cap, 1.0 / 60.0, 21.0)
+	_check(d4.cap == 16, "  laptop: a frame that cost 21 ms lowers it (cap %d)" % d4.cap)
 
 	# --- Round sizes: 2.5x ---
 	var old := [6, 8, 13, 18, 24]
@@ -9904,7 +9924,8 @@ func _zombie_horde_checks(gs: Node) -> void:
 	sgfx.preset = sgfx.Preset.HIGH
 	_check(surge.surge_extra() == surge.SURGE_EXTRA and lean_extra == (surge.SURGE_EXTRA_LEAN if sgfx._integrated else surge.SURGE_EXTRA),
 		"  the surge adds %d over the cap on a desktop GPU, %d at Low here (integrated %s)" % [surge.surge_extra(), lean_extra, sgfx._integrated])
-	# (the 32 below is the desktop rule: the full SURGE_EXTRA over the cap)
+	_check(surge.surge_limit() == zm.SURGE_HARD_CAP, "  on a desktop GPU the surge goes up to the hard cap (%d) whatever the frame-time cap says" % surge.surge_limit())
+	# (the 32 below is the desktop rule)
 	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
 	_check(not surge.trigger(10), "  ...and not another while one is on")
 	var pay_warn: int = zm.points

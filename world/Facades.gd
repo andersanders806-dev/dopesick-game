@@ -242,9 +242,7 @@ func _ready() -> void:
 	_build_roof_units()
 	# First person only: the cutaway's radius is always 0, and its `discard` shaders cost the street's walls
 	# their early depth test for nothing. (_apply_cutaway() stays for a camera that hangs outside.)
-	if not Engine.has_meta("keep_cutaway"):
-		pass
-	else:
+	if Engine.has_meta("keep_cutaway"):
 		_apply_cutaway()
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)

@@ -838,6 +838,35 @@ func _room(room: String) -> void:
 		_maybe_shot()
 
 ## Dead Block (gangs=false) or Ghetto Wars (gangs=true): the real rounds, the player walking a route and shooting.
+## exp=cachedump: which files the resource cache gained in a frame that gained 15 or more (the first men's frame).
+var _cache_paths: PackedStringArray = PackedStringArray()
+var _cache_before := {}
+
+func _cache_scan(dir: String, out: PackedStringArray) -> void:
+	for f in DirAccess.get_files_at(dir):
+		var n := f.trim_suffix(".remap").trim_suffix(".import")
+		if n.get_extension() in ["tres", "res", "wav", "ogg", "png", "jpg", "glb", "tscn", "gdshader", "mp3", "webp"]:
+			out.append(dir.path_join(n))
+	for d in DirAccess.get_directories_at(dir):
+		if not d.begins_with("."):
+			_cache_scan(dir.path_join(d), out)
+
+func _cache_diff() -> void:
+	if _cache_paths.is_empty():
+		for top in ["res://assets", "res://weapons", "res://npc", "res://fx", "res://world", "res://player"]:
+			_cache_scan(top, _cache_paths)
+		for p in _cache_paths:
+			_cache_before[p] = ResourceLoader.has_cached(p)
+		return
+	var gained: PackedStringArray = PackedStringArray()
+	for p in _cache_paths:
+		var now := ResourceLoader.has_cached(p)
+		if now and not _cache_before[p]:
+			gained.append(p)
+		_cache_before[p] = now
+	if gained.size() >= 5:
+		print("CACHEDUMP %d new files: %s" % [gained.size(), ", ".join(gained.slice(0, 60))])
+
 func _fight(gangs: bool, crowd := false) -> void:
 	await _setup_story(23)
 	zm = root.get_node("ZombieMode")
@@ -895,6 +924,8 @@ func _fight(gangs: bool, crowd := false) -> void:
 	while (Time.get_ticks_usec() - t0_us) < secs * 1e6:
 		await process_frame
 		var dt := _tick()
+		if "cachedump" in exps:
+			_cache_diff()
 		zm.health = zm.MAX_HEALTH
 		var t := (Time.get_ticks_usec() - t0_us) / 1e6
 		var u := fposmod(t * 2.0, 60.0)

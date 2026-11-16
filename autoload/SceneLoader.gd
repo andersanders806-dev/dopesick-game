@@ -20,6 +20,10 @@ const DRAIN_MSEC := 800
 ## The same when the rooms behind the doors next to the arrival point are among them (a one-off per room: loaded
 ## rooms are kept for the session).
 const DOOR_DRAIN_MSEC := 2500
+## The first time in a session (KartCenter3D, the biggest room beside the corner shop, outlasted 2.5 s and landed as
+## one 54 ms frame after the fade): up to this long, once.
+const DOOR_DRAIN_FIRST_MSEC := 4500
+var _door_drains := 0
 ## How close (m) the player gets to a door before its room starts loading.
 const PREFETCH_RANGE := 4.0
 const NAMES := {
@@ -320,7 +324,11 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 		# stand still (Apartment3D and KartCenter3D landed as 7 seen 25-65 ms frames in the first 5 s after the
 		# corner shop): queued now and drained in this black, with a longer budget when they are among the loads.
 		var door_loads := _prefetch_near_doors() > 0
-		await _drain(DOOR_DRAIN_MSEC if door_loads else DRAIN_MSEC)
+		var budget := DRAIN_MSEC
+		if door_loads:
+			budget = DOOR_DRAIN_FIRST_MSEC if _door_drains == 0 else DOOR_DRAIN_MSEC
+			_door_drains += 1
+		await _drain(budget)
 		await _settle()
 	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
 	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]

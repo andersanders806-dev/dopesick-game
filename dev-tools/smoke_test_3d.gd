@@ -7194,7 +7194,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	holder.advance(holder.current.reload_time - 0.3)
 	_check(holder.reloading and holder.mag == 27, "  still reloading just before the time is up")
 	holder.advance(0.4)
-	_check(not holder.reloading and holder.mag == 30 and holder.reserve == 147, "  done: a full mag, the three rounds out of reserve (%d + %d)" % [holder.mag, holder.reserve])
+	_check(not holder.reloading and holder.mag == 31 and holder.reserve == 146, "  done: a full mag and the one chambered, the four rounds out of reserve (%d + %d)" % [holder.mag, holder.reserve])
 	_check(not holder.reload(), "  a full mag doesn't reload")
 	holder.mag = 0
 	holder.reserve = 2
@@ -8874,13 +8874,21 @@ func _zombie_fp_checks(gs: Node) -> void:
 
 	# --- Sound for every action.
 	var missing := []
-	var names := ["fire_pistol_a", "fire_pistol_b", "fire_smg_a", "fire_ar_a", "fire_shotgun_a", "fire_sniper_a", "fire_magnum_a", "fire_lmg_a", "fire_wonder_a",
+	var names := ["fire_wonder_a", "fire_wonder_b",
 		"dry_click", "mag_out", "mag_in", "rack", "pump", "bolt", "shell_in", "brass_a", "brass_b", "brass_c", "ads_in", "ads_out", "draw", "inspect",
 		"slide", "whoosh", "hit_body", "hit_head", "hit_kill"]
 	for n in names:
 		var st: AudioStream = FPFeel.stream(n)
 		if st == null or st.get_length() < 0.01:
 			missing.append(n)
+	# Each gun's own recordings (weapons/GunSounds.gd): shots, tails, far shots, action, dry fire.
+	var GS := load("res://weapons/GunSounds.gd")
+	for id in ["pistol", "magnum", "smg", "ar", "shotgun", "sniper", "lmg", "wonder"]:
+		var wd: Resource = load("res://weapons/%s.tres" % id)
+		if GS.shot(wd, 0) == null or GS.dry(wd) == null:
+			missing.append("fire/dry of " + id)
+		if id != "wonder" and not (GS.missing(wd) as PackedStringArray).is_empty():
+			missing.append("set of %s: %s" % [id, GS.missing(wd)])
 	_check(missing.is_empty(), "  every action's sound loads: fire per gun, dry click, mag out/in, rack, pump, bolt, shell, brass, ADS cloth, draw, inspect, slide, whoosh, hit ticks (%s missing)" % [missing])
 	holder.give(load("res://weapons/smg.tres"))
 	feel.reset_state()
@@ -8998,7 +9006,7 @@ func _zombie_fp_checks(gs: Node) -> void:
 	var still_reloading: bool = holder.reloading
 	for i in int(holder.reload_left() * 120.0) + 10:
 		holder.advance(1.0 / 120.0)
-	_check(still_reloading and not holder.reloading and holder.mag == 30, "  the reload still finishes: the gun is loaded, not stuck (%d)" % holder.mag)
+	_check(still_reloading and not holder.reloading and holder.mag == 31, "  the reload still finishes: the gun is loaded (and one chambered), not stuck (%d)" % holder.mag)
 
 	# --- The viewmodel: depth shader on every surface, real arms, hands on the gun.
 	var all_shader := true

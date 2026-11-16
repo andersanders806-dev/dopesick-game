@@ -6,11 +6,14 @@ extends Node3D
 
 const GrenadeScript := preload("res://fx/GangGrenade.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
+const GunSounds := preload("res://weapons/GunSounds.gd")
 const SFX_DIR := "res://assets/sfx/guns/"
 const TRACERS := 28
 const FLASHES := 12
 const LIGHTS := 3
 const VOICES := 12
+## A shot this far from the camera (m) is heard as the recording made far away (distant_N), nearer as the close one.
+const DISTANT_FROM := 40.0
 ## Tracer speed (m/s) and length (m).
 const TRACER_SPEED := 240.0
 const TRACER_LEN := 7.0
@@ -189,6 +192,9 @@ func _play_at(pos: Vector3, n: String, volume_db := 0.0, pitch := 1.0) -> void:
 	var s := _stream(n)
 	if s == null:
 		return
+	_play_stream_at(pos, s, n, volume_db, pitch)
+
+func _play_stream_at(pos: Vector3, s: AudioStream, n: String, volume_db: float, pitch: float) -> void:
 	var p := _voices[_vo_next]
 	_vo_next = (_vo_next + 1) % VOICES
 	p.stream = s
@@ -198,14 +204,26 @@ func _play_at(pos: Vector3, n: String, volume_db := 0.0, pitch := 1.0) -> void:
 	p.play()
 	last_sound = n
 
-## The shot of `gun` where `pos` is: the gun's own sound, a little different each time, darker with distance.
+var _gun_data := {}
+var _shot_n := 0
+
+## The shot of `gun` where `pos` is: the gun's own recording near the camera, the one made far away beyond
+## DISTANT_FROM, a little different each time (the 3D player dulls it further with distance).
 func shot_sound(pos: Vector3, gun: String) -> void:
 	shot_sounds += 1
-	var fam := gun
-	var n := "fire_%s_%s" % [fam, "ab"[randi() % 2]]
-	if _stream(n) == null:
-		n = "fire_%s_body_%s" % [fam, "ab"[randi() % 2]]
-	_play_at(pos, n, -3.0, randf_range(0.93, 1.06))
+	if not _gun_data.has(gun):
+		var path := "res://weapons/%s.tres" % gun
+		_gun_data[gun] = load(path) if ResourceLoader.exists(path) else null
+	var d = _gun_data[gun]
+	if d == null:
+		return
+	var cam := get_viewport().get_camera_3d()
+	var far: bool = cam != null and cam.global_position.distance_to(pos) > DISTANT_FROM
+	_shot_n += 1 + randi() % 2
+	var st := GunSounds.distant(d, _shot_n) if far else GunSounds.shot(d, _shot_n)
+	if st == null:
+		return
+	_play_stream_at(pos, st, ("distant_" if far else "fire_") + gun, -4.0 if far else -3.0, randf_range(0.95, 1.06))
 
 ## A round has gone by: `closest` is its nearest point to the head. Cracks, whizzes, shakes, blurs.
 func snap(origin: Vector3, closest: Vector3) -> void:

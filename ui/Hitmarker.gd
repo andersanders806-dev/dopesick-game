@@ -79,7 +79,7 @@ func _follow(delta: float) -> void:
 ## Whether a sniper rifle's sights are up: the picture is the scope's circle.
 func _scoped() -> bool:
 	var d = _holder.get("current") if is_instance_valid(_holder) else null
-	return d != null and d.family() == "sniper" and aim_amount > 0.85
+	return d != null and d.optic == "scope" and aim_amount > 0.85
 
 ## A black frame round a round view, hairlines through the middle, and the
 ## breath: the sight swings in a slow figure-8 (the camera does too, in FPFeel).

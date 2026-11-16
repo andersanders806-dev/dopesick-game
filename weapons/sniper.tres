@@ -20,12 +20,35 @@ rpm = 52.0
 auto = false
 mag_size = 5
 reserve_max = 30
-reload_time = 3.2
+reload_time = 2.72
+reload_time_empty = 3.9
+chambers = false
 spread_hip = 6.0
 spread_ads = 0.02
 recoil = 5.0
 ads_zoom = 3.5
 swap_time = 0.6
+ads_time = 0.4
+sprint_fire_delay = 0.3
+recoil_pattern = PackedVector2Array(-0.7809, 2.25, 0.2012, 2.25, 0.7291, 2.25, -0.3891, 2.25, -0.6288, 2.25, 0.5512, 2.25, 0.4868, 2.25, -0.6766, 2.25, -0.3124, 2.25, 0.7571, 2.25, 0.1173, 2.25, -0.7873, 2.25, 0.0856, 2.25, 0.7653, 2.25, -0.2828, 2.25, -0.6924, 2.25, 0.4612, 2.25, 0.5736, 2.25, -0.609, 2.25, -0.4167, 2.25, 0.7164, 2.25, 0.2321, 2.25, -0.7762, 2.25, -0.032, 2.25)
+recoil_recover = 17.0
+recoil_hold = 3.0
+recoil_first = 1.0
+recoil_ads = 0.75
+recoil_random = 0.1
+kick_back = 0.05
+kick_up = 6.0
+kick_roll = 0.06
+optic = "scope"
+sound_set = "sniper"
+foley = {
+"bolt": ["common/bolt_open"],
+"bolt_open": ["common/bolt_open"],
+"bolt_close": ["common/bolt_close"],
+"shell_in": ["common/shell_insert_3", "common/shell_insert_2"]
+}
+reload_cues_tactical = [[0.26, "bolt_open"], [0.66, "bolt_close"]]
+reload_cues_empty = [[0.26, "bolt_open"], [0.66, "bolt_close"]]
 price = 1500
 ammo_price = 750
 in_box = true

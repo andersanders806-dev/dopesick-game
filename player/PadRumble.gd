@@ -30,6 +30,9 @@ const RELOAD_END := [0.2, 0.55, 0.07]
 const DRY := [0.1, 0.0, 0.03]
 ## Aimed down the sights the shot is this much gentler.
 const ADS_SOFTEN := 0.8
+## A round of a burst is a quick tap: this much of the gun's pulse, for this share of its length.
+const BURST_TAP := 0.85
+const BURST_LENGTH := 0.7
 ## A claw: the damage taken scales it between these.
 const DAMAGE_MIN := 0.45
 const DAMAGE_REF := 45.0
@@ -91,8 +94,10 @@ static func vibrate(weak: float, strong: float, duration: float, why := "") -> v
 
 ## The pulse for one shot of `data`.
 static func shot_pulse(data: Resource, aiming: bool) -> Array:
-	var base: Array = SHOT.get(data.family(), SHOT_DEFAULT)
+	var base: Array = SHOT.get(data.handling_family(), SHOT_DEFAULT)
 	var k := ADS_SOFTEN if aiming else 1.0
+	if data.has_method("fire_mode") and data.fire_mode() == "burst":
+		return [base[0] * k * BURST_TAP, base[1] * k * BURST_TAP, base[2] * BURST_LENGTH]
 	return [base[0] * k, base[1] * k, base[2]]
 
 func _on_fired() -> void:

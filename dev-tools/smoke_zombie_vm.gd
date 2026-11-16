@@ -115,25 +115,18 @@ func _auto_fire_sound(host: Node) -> void:
 		for i in 60:
 			feel.advance(step)
 		var counts: Dictionary = feel.sound_counts
-		var bodies := 0
-		var whole := 0
-		for k in counts:
-			if String(k).contains("_body_"):
-				bodies += int(counts[k])
-			elif String(k).begins_with("fire_") and not String(k).ends_with("_tail"):
-				whole += int(counts[k])
+		# Every round plays one of the gun's recorded takes; the answer of the place (the tail) comes when the rounds stop.
+		var whole := int(counts.get("fire_%s" % id, 0))
 		var tails := int(counts.get("fire_%s_tail" % id, 0))
-		if id == "pistol":
-			_check(whole == rounds and bodies == 0 and tails == 0, "pistol: %d rounds play %d whole shots, no body, no tail" % [rounds, whole])
+		_check(whole == rounds, "%s: %d rounds play %d recorded shots" % [id, rounds, whole])
+		if d.auto:
+			_check(rounds >= 10 and tails == 1, "%s: a 2 s burst of %d rounds ends in exactly one tail (%d)" % [id, rounds, tails])
 		else:
-			_check(rounds >= 10 and bodies == rounds and whole == 0, "%s: a 2 s burst of %d rounds plays %d short bodies and no whole shot" % [id, rounds, bodies])
-			_check(tails == 1, "%s: and exactly one echo tail (%d)" % [id, tails])
+			_check(tails >= 1 and tails <= rounds, "%s: single shots are answered by a tail (%d for %d)" % [id, tails, rounds])
 		_check(most <= FPFeel.SHOT_VOICES, "%s: never more than %d shot voices at once (%d)" % [id, FPFeel.SHOT_VOICES, most])
 		holder.queue_free()
 		await process_frame
-	for id in ["smg", "ar", "lmg"]:
-		for part in ["body_a", "body_b", "tail"]:
-			var st: AudioStream = FPFeel.stream("fire_%s_%s" % [id, part])
-			_check(st != null, "fire_%s_%s.wav is there" % [id, part])
-			if st != null and part != "tail":
-				_check(st.get_length() < 0.25, "%s %s is short (%.0f ms)" % [id, part, st.get_length() * 1000.0])
+	var GS := load("res://weapons/GunSounds.gd")
+	for id in ["pistol", "magnum", "smg", "ar", "shotgun", "sniper", "lmg"]:
+		var gone: PackedStringArray = GS.missing(load("res://weapons/%s.tres" % id))
+		_check(gone.is_empty(), "%s: the recorded set is complete (%s missing)" % [id, gone])

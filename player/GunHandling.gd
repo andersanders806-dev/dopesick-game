@@ -65,7 +65,7 @@ const EJECT := {
 }
 
 static func family_of(vm) -> String:
-	var f: String = vm.data.family() if vm != null and vm.data != null else "ar"
+	var f: String = vm.data.handling_family() if vm != null and vm.data != null else "ar"
 	return f if HIP.has(f) else "ar"
 
 static func hip(f: String) -> Array:
@@ -325,7 +325,7 @@ static func _sniper(empty: bool) -> Dictionary:
 	var strokes := 2 if empty else 1
 	var hand := [[0.0, "grip_l", 0, 0, 0], [0.12, "grip_l", 0, 0, 0]]
 	var mag := [[0.0, 0, "magwell", 0, 0, 0, 0, 0, 0]]
-	var ev := [[0.26, "bolt", ""]]
+	var ev := [[0.26, "bolt_open", ""]]
 	var t := 0.3
 	for i in strokes:
 		var seg := 0.3 / float(strokes)
@@ -340,7 +340,7 @@ static func _sniper(empty: bool) -> Dictionary:
 		t += seg
 	hand.append([0.7, "grip_l", 0, 0, 0])
 	hand.append([1.0, "grip_l", 0, 0, 0])
-	ev.append([0.66, "bolt", ""])
+	ev.append([0.66, "bolt_close", ""])
 	d["hand"] = hand
 	d["mag"] = mag
 	d["open"] = [[0.0, 0.0], [0.3, 0.0], [0.34, 0.7], [0.4, 0.0], [0.58, 0.0], [0.62, 0.7], [0.7, 0.0]]

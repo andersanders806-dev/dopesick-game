@@ -9,7 +9,7 @@ const AMB := "res://assets/sfx/ghetto/amb/"
 const GW := "res://assets/sfx/ghetto/gw/"
 ## Far-off shots: the zombie mode's reviewed gun sounds, played a long way off (the 3D player dulls them with distance).
 const GUNS := "res://assets/sfx/guns/"
-const DISTANT := ["fire_pistol_a", "fire_pistol_b", "fire_ar_tail", "fire_smg_tail", "fire_ar_b", "fire_lmg_tail"]
+const DISTANT := ["pistol/distant_1", "pistol/distant_2", "ar/distant_1", "smg/distant_1", "ar/distant_2", "lmg/distant_1", "smg/distant_2", "lmg/distant_2"]
 ## Loudness of each bed (dB) by chapter id: [night street, burning block].
 const BEDS := {
 	"corner": [-15.0, -80.0], "stash": [-15.0, -80.0], "snitch": [-16.0, -24.0],

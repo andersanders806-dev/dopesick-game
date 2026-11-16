@@ -265,9 +265,9 @@ func _convert(node: Node, cut := 0.05, is_arms := false) -> void:
 			if is_arms:
 				mat.set_shader_parameter("arms", true)
 			elif data != null and src is BaseMaterial3D and (src as BaseMaterial3D).albedo_texture == null:
-				var kind: int = PLAIN_KIT.get(data.family(), {}).get(src.resource_name, 0)
-				if kind == 0 and PLAIN_KIT.has(data.family()):
-					kind = PLAIN_KIT[data.family()].get("*", 0)
+				var kind: int = PLAIN_KIT.get(data.handling_family(), {}).get(src.resource_name, 0)
+				if kind == 0 and PLAIN_KIT.has(data.handling_family()):
+					kind = PLAIN_KIT[data.handling_family()].get("*", 0)
 				if kind != 0:
 					mat.set_shader_parameter("procedural", kind)
 			if data != null and data.tint.a > 0.0:
@@ -289,7 +289,7 @@ func materials() -> Array:
 # --- Where things are on the gun -----------------------------------------------------
 
 func _measure() -> void:
-	var f: String = data.family() if data != null else "pistol"
+	var f: String = data.handling_family() if data != null else "pistol"
 	var b := box
 	if b.size.length() < 0.001:
 		b = AABB(Vector3(-0.03, -0.05, -0.3), Vector3(0.06, 0.12, 0.45))
@@ -758,7 +758,7 @@ func set_cut(on: bool) -> void:
 
 func _find_parts() -> void:
 	parts.clear()
-	var f: String = data.family() if data != null else "pistol"
+	var f: String = data.handling_family() if data != null else "pistol"
 	var spec: Dictionary = PARTS.get(f, {})
 	for pname in spec:
 		var nodes: Array = []

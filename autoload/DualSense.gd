@@ -81,6 +81,10 @@ const AUTO := {
 }
 const AUTO_DEFAULT := [4, 2, 3, 4]
 ## L2: [position, strength] of the scope's weight.
+## A burst gun's trigger: a crisp resistance and break for the pull ([start zone, end zone, strength]) per
+## gun family; each round is a tap of the motors (player/PadRumble.gd), the pull is one click.
+const BURST := {"pistol": [4, 6, 6], "smg": [4, 6, 6], "ar": [4, 7, 6], "lmg": [3, 7, 7]}
+const BURST_DEFAULT := [4, 6, 6]
 const ADS := {"sniper": [2, 4]}
 const ADS_DEFAULT := [3, 2]
 
@@ -280,8 +284,12 @@ static func scaled(s: int, k: float) -> int:
 static func right_for(data: Resource, firing: bool, k: float) -> PackedByteArray:
 	if data == null or data.get("melee") == true:
 		return eff_off()
-	var fam: String = data.call("family")
-	if data.get("auto") == true:
+	var fam: String = data.call("handling_family") if data.has_method("handling_family") else data.call("family")
+	var mode: String = data.call("fire_mode") if data.has_method("fire_mode") else ("auto" if data.get("auto") == true else "semi")
+	if mode == "burst":
+		var b: Array = BURST.get(fam, BURST_DEFAULT)
+		return eff_weapon(b[0], b[1], scaled(b[2], k))
+	if mode == "auto":
 		var p: Array = AUTO.get(fam, AUTO_DEFAULT)
 		if firing:
 			var hz := clampi(roundi(float(data.get("rpm")) / 60.0), 1, 255)
@@ -294,7 +302,7 @@ static func right_for(data: Resource, firing: bool, k: float) -> PackedByteArray
 static func left_for(data: Resource, k: float) -> PackedByteArray:
 	if data == null or data.get("melee") == true:
 		return eff_off()
-	var p: Array = ADS.get(data.call("family"), ADS_DEFAULT)
+	var p: Array = ADS.get(data.call("handling_family") if data.has_method("handling_family") else data.call("family"), ADS_DEFAULT)
 	return eff_feedback(p[0], scaled(p[1], k))
 
 ## A short buzz on both triggers.

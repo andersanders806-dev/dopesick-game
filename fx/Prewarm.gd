@@ -122,6 +122,11 @@ func _run() -> void:
 	_body_tables()
 	_end_step("gore tables of the bodies")
 	_begin_step()
+	await _body_limbs()
+	_end_step("gore limbs of the bodies")
+	if not _alive():
+		return
+	_begin_step()
 	_load_everything()
 	_end_step("load sounds, textures, guns")
 	await _slice()
@@ -196,6 +201,30 @@ func _body_tables() -> void:
 	for z in bay.get_children():
 		if z.get("_skeleton") != null:
 			GoreRigScript.table(z)
+	# (the bay stays until the limbs below are cut: world/ZombieBlock.gd waits for this)
+	bay.set_meta("busy", true)
+
+## Every body's severed-limb meshes (GoreRig.limb), a couple of bodies a frame behind the black: built on the
+## spawn of the first zombie of each body they were 40-60 ms of main-thread work spread over its first nine
+## frames, the spawn frames of the horde (0.6 s in the first 12 s of round 15).
+const LIMB_BODIES_PER_FRAME := 2
+
+func _body_limbs() -> void:
+	var bay := city.get_node_or_null("ZombiePrewarm")
+	if bay == null:
+		return
+	var n := 0
+	for z in bay.get_children():
+		if not is_instance_valid(z) or z.get("_skeleton") == null:
+			continue
+		for name_ in GoreRigScript.LIMBS:
+			GoreRigScript.limb(z, name_)
+		n += 1
+		if n % LIMB_BODIES_PER_FRAME == 0:
+			await _frames(1)
+			if not _alive() or not is_instance_valid(bay):
+				return
+	bay.set_meta("busy", false)
 
 ## Sounds, decal pictures, the guns' data and models: requested on worker threads now and kept (the
 ## first fight would otherwise load them one by one on the main thread, 40 to 500 ms for a gun model).

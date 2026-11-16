@@ -91,6 +91,16 @@ static var _helmet_material: ShaderMaterial
 static var _eye_material: StandardMaterial3D
 static var _mouth_material: StandardMaterial3D
 static var _plate_material: StandardMaterial3D
+## The gear's meshes, made once and shared (each drowned built its own: eyes, mouth, helmet, 120 shell plates,
+## the puddle's gradient and the drips' quad were a 33 ms spawn frame on a UHD 620; shared, the gear is nodes only).
+## The shell plates come in PLATE_VARIANTS patterns, picked by the body's seed.
+static var _eye_mesh: SphereMesh
+static var _mouth_mesh: SphereMesh
+static var _helmet_mesh: SphereMesh
+static var _plate_variants: Array[MultiMesh] = []
+const PLATE_VARIANTS := 6
+static var _puddle_mesh: QuadMesh
+static var _drip_mesh: QuadMesh
 
 ## Sets it up before it is added to the tree (the Tsunami does this).
 func setup_drowned(round_no: int, rng: RandomNumberGenerator = null) -> void:
@@ -216,12 +226,13 @@ func _build_gear() -> void:
 		if e == eyes:
 			continue
 		var ball := MeshInstance3D.new()
-		var bm := SphereMesh.new()
-		bm.radius = 0.0085
-		bm.height = 0.017
-		bm.radial_segments = 8
-		bm.rings = 4
-		ball.mesh = bm
+		if _eye_mesh == null:
+			_eye_mesh = SphereMesh.new()
+			_eye_mesh.radius = 0.0085
+			_eye_mesh.height = 0.017
+			_eye_mesh.radial_segments = 8
+			_eye_mesh.rings = 4
+		ball.mesh = _eye_mesh
 		ball.material_override = _eye_material
 		ball.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_attach("Bip01 Head", Transform3D(Basis(), e + Vector3(0, 0, 0.022)), ball)
@@ -238,12 +249,13 @@ func _build_gear() -> void:
 		_mouth_material.albedo_color = Color(0.015, 0.005, 0.008)
 		_mouth_material.roughness = 0.35
 	var mouth := MeshInstance3D.new()
-	var mm := SphereMesh.new()
-	mm.radius = 0.5
-	mm.height = 1.0
-	mm.radial_segments = 12
-	mm.rings = 6
-	mouth.mesh = mm
+	if _mouth_mesh == null:
+		_mouth_mesh = SphereMesh.new()
+		_mouth_mesh.radius = 0.5
+		_mouth_mesh.height = 1.0
+		_mouth_mesh.radial_segments = 12
+		_mouth_mesh.rings = 6
+	mouth.mesh = _mouth_mesh
 	mouth.material_override = _mouth_material
 	mouth.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mb := Basis().scaled(Vector3(0.05, 0.062, 0.03))
@@ -291,17 +303,35 @@ func _build_helmet(eyes: Vector3) -> void:
 		_plate_material.emission_energy_multiplier = 0.5
 	_helmet_node = Node3D.new()
 	_helmet_node.name = "BarnacleHelmet"
-	var sph := SphereMesh.new()
-	sph.radius = HELMET_RADIUS
-	sph.height = HELMET_RADIUS
-	sph.is_hemisphere = true
-	sph.radial_segments = 24
-	sph.rings = 12
+	if _helmet_mesh == null:
+		_helmet_mesh = SphereMesh.new()
+		_helmet_mesh.radius = HELMET_RADIUS
+		_helmet_mesh.height = HELMET_RADIUS
+		_helmet_mesh.is_hemisphere = true
+		_helmet_mesh.radial_segments = 24
+		_helmet_mesh.rings = 12
 	var cap := MeshInstance3D.new()
-	cap.mesh = sph
+	cap.mesh = _helmet_mesh
 	cap.material_override = _helmet_material
 	cap.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_helmet_node.add_child(cap)
+	var plates := MultiMeshInstance3D.new()
+	plates.multimesh = _plates(int(get_meta("seed", 0.5) * 100000.0) + 5)
+	plates.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_helmet_node.add_child(plates)
+	var hat := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-10.0)), eyes + Vector3(0, 0.004, -0.014))
+	_attach("Bip01 Head", hat, _helmet_node)
+
+## One of the PLATE_VARIANTS shell patterns (made the first time it is asked for).
+static func _plates(seed_: int) -> MultiMesh:
+	if _plate_variants.is_empty():
+		_plate_variants.resize(PLATE_VARIANTS)
+	var v := posmod(seed_, PLATE_VARIANTS)
+	if _plate_variants[v] == null:
+		_plate_variants[v] = _make_plates(seed_)
+	return _plate_variants[v]
+
+static func _make_plates(seed_: int) -> MultiMesh:
 	# plates: cones of shell on the dome, outwards, big ones overlapping small
 	var cone := CylinderMesh.new()
 	cone.top_radius = 0.18
@@ -317,7 +347,7 @@ func _build_helmet(eyes: Vector3) -> void:
 	var n := 120
 	mm.instance_count = n
 	var rng := RandomNumberGenerator.new()
-	rng.seed = int(get_meta("seed", 0.5) * 100000.0) + 5
+	rng.seed = seed_
 	for i in n:
 		var big := i < 28
 		# a point on the dome (not below the rim)
@@ -335,12 +365,7 @@ func _build_helmet(eyes: Vector3) -> void:
 		if rng.randf() < 0.14:
 			tint = Color(0.05, 0.06, 0.09)
 		mm.set_instance_color(i, tint)
-	var plates := MultiMeshInstance3D.new()
-	plates.multimesh = mm
-	plates.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_helmet_node.add_child(plates)
-	var hat := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-10.0)), eyes + Vector3(0, 0.004, -0.014))
-	_attach("Bip01 Head", hat, _helmet_node)
+	return mm
 
 static func _make_helmet_material() -> ShaderMaterial:
 	var sh := Shader.new()
@@ -464,6 +489,16 @@ void fragment() {
 
 ## A dark pool of water under it.
 func _build_puddle() -> void:
+	if _puddle_mesh == null:
+		_puddle_mesh = _make_puddle_mesh()
+	_puddle = MeshInstance3D.new()
+	_puddle.name = "Puddle"
+	_puddle.mesh = _puddle_mesh
+	_puddle.position = Vector3(0, 0.035, 0)
+	_puddle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_puddle)
+
+static func _make_puddle_mesh() -> QuadMesh:
 	var quad := QuadMesh.new()
 	quad.size = Vector2(2.6, 2.6)
 	quad.orientation = PlaneMesh.FACE_Y
@@ -486,12 +521,7 @@ func _build_puddle() -> void:
 	m.metallic_specular = 1.0
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	quad.material = m
-	_puddle = MeshInstance3D.new()
-	_puddle.name = "Puddle"
-	_puddle.mesh = quad
-	_puddle.position = Vector3(0, 0.035, 0)
-	_puddle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_puddle)
+	return quad
 
 ## Water off the body: a steady fall of drops and streaks.
 func _build_drips() -> void:
@@ -510,6 +540,12 @@ func _build_drips() -> void:
 	_drips.initial_velocity_max = 0.7
 	_drips.scale_amount_min = 0.6
 	_drips.scale_amount_max = 1.3
+	if _drip_mesh == null:
+		_drip_mesh = _make_drip_mesh()
+	_drips.mesh = _drip_mesh
+	add_child(_drips)
+
+static func _make_drip_mesh() -> QuadMesh:
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.03, 0.11)
 	var dm := StandardMaterial3D.new()
@@ -520,8 +556,7 @@ func _build_drips() -> void:
 	dm.albedo_color = Color(0.7, 0.85, 0.88, 0.8)
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	quad.material = dm
-	_drips.mesh = quad
-	add_child(_drips)
+	return quad
 
 # --- Sound ----------------------------------------------------------------------------------
 

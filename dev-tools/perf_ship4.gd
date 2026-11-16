@@ -46,6 +46,8 @@ var slow_n := 0
 var slow_visible := 0
 ## The longest frame while the screen was not black (the gate's max; frames behind black do not count).
 var vis_max := 0.0
+var fired_ok := 0
+var fired_try := 0
 var hitches: Array = []
 var _prev := {}
 var _added := {}
@@ -433,6 +435,12 @@ func _census() -> void:
 			continue
 		if n is Light3D:
 			var l := n as Light3D
+			if not (l is DirectionalLight3D) and cam != null:
+				var ld := cam.global_position.distance_to(l.global_position)
+				var reach := (l.distance_fade_begin + l.distance_fade_length) if l.distance_fade_enabled else 1e9
+				if ld < reach:
+					var rng := (l as OmniLight3D).omni_range if l is OmniLight3D else (l as SpotLight3D).spot_range
+					print("  CENSUS LIGHT %-60s d %5.1f range %4.1f energy %4.1f" % [str(current_scene.get_path_to(l)).right(60), ld, rng, l.light_energy])
 			if l is OmniLight3D:
 				lights["omni"] += 1
 				lights["omni_shadow"] += 1 if l.shadow_enabled else 0
@@ -832,7 +840,7 @@ func _fight(gangs: bool, crowd := false) -> void:
 			sp0.spawn_one("walker", Vector3(px + side * randf_range(12.0, 40.0), 0.0, randf_range(-3.0, 1.0)))
 		if Engine.get_process_frames() % 300 == 0:
 			var sp = city.get_node("ZombieBlock").spawner
-			print("  STAT t=%.0f s alive(group) %d spawner.alive %d max_alive %d round %d released %d/%d surge %s scale %.2f" % [t, get_nodes_in_group(group).size(), sp.alive(), zm.max_alive, zm.round, sp.released, sp.total, zm.surge_busy, root.scaling_3d_scale])
+			print("  STAT t=%.0f s alive(group) %d spawner.alive %d max_alive %d round %d released %d/%d surge %s scale %.2f fired %d/%d" % [t, get_nodes_in_group(group).size(), sp.alive(), zm.max_alive, zm.round, sp.released, sp.total, zm.surge_busy, root.scaling_3d_scale, fired_ok, fired_try])
 		if exps.size() > (1 if "census" in exps else 0) and Engine.get_process_frames() % 30 == 0:
 			_apply_exps()
 		if "census" in exps and not _censused and t > 20.0:
@@ -863,7 +871,9 @@ func _fight(gangs: bool, crowd := false) -> void:
 				if best != null:
 					var bp := (best as Node3D).global_position
 					player.set_look(atan2(-(bp.x - player.global_position.x), -(bp.z - player.global_position.z)), 0.0)
-					holder.fire()
+					fired_try += 1
+					if holder.fire():
+						fired_ok += 1
 		_maybe_shot()
 	zm.leave()
 

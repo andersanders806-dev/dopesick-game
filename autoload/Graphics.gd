@@ -582,7 +582,7 @@ func _apply_light(light: Light3D) -> void:
 		light.omni_range = float(light.get_meta("built_range")) * k
 	if preset == Preset.LOW:
 		light.distance_fade_enabled = true
-		light.distance_fade_begin = LOW_LIGHT_FADE
+		light.distance_fade_begin = low_light_fade(light)
 		light.distance_fade_length = 4.0
 	else:
 		light.distance_fade_enabled = light.get_meta("built_fade")
@@ -590,6 +590,25 @@ func _apply_light(light: Light3D) -> void:
 		light.distance_fade_length = light.get_meta("built_fade_length")
 
 const LOW_LIGHT_FADE := 14.0
+## Low: how far a light reaches decides how far off it still shows. A street lamp's pool (7 m) reads from
+## LOW_LIGHT_FADE; a shop's ceiling lamp seen through its window (3-5 m) from LOW_LIGHT_FADE_MID; a sign glow
+## or a cooler's light (under 3 m: a tint on the wall) from LOW_LIGHT_FADE_SMALL. At the horde's peak on
+## the Dead Block 31 lights were inside the 18 m, 2.2 ms on a UHD 620; the small ones are most of them and
+## past 9 m each is a few pixels of tint.
+const LOW_LIGHT_FADE_MID := 11.0
+const LOW_LIGHT_FADE_SMALL := 8.0
+
+func low_light_fade(light: Light3D) -> float:
+	var reach := 0.0
+	if light is OmniLight3D:
+		reach = (light as OmniLight3D).omni_range
+	elif light is SpotLight3D:
+		reach = (light as SpotLight3D).spot_range
+	if reach < 3.0:
+		return LOW_LIGHT_FADE_SMALL
+	if reach < 5.0:
+		return LOW_LIGHT_FADE_MID
+	return LOW_LIGHT_FADE
 
 ## The sun (the City's "Moon" by day): four cascades out to 100 m cost
 ## 5.8 ms on a UHD 620 for a camera that sees ~30 m. Lean: two out to 35 m

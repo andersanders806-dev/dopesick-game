@@ -149,12 +149,22 @@ func _begin_quake() -> void:
 ## that holds 48 it is the full 64, on one that has been taken down to 16 it is 32 (a surge of 62 on a UHD 620 ran
 ## the block at 45 FPS and under).
 const SURGE_EXTRA := 16
+## On laptop graphics at Low/Medium (Graphics.lean()) the surge adds this many instead: 38 alive round the
+## player at round 15 drew 17-21 ms frames on a UHD 620 for as long as they lived (the city at night is
+## already 14 ms there); 8 more than the frame-time cap keeps it a flood without a stutter.
+const SURGE_EXTRA_LEAN := 8
 ## A frame this long (s) or longer holds the next spawn back a frame.
 const SLOW_FRAME := 0.028
 var _skipped := 0
 
 func surge_limit() -> int:
-	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + SURGE_EXTRA)
+	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + surge_extra())
+
+func surge_extra() -> int:
+	var gfx := get_node_or_null("/root/Graphics") if is_inside_tree() else null
+	if gfx != null and gfx.has_method("lean") and bool(gfx.call("lean")):
+		return SURGE_EXTRA_LEAN
+	return SURGE_EXTRA
 
 ## Lets out everyone whose time has come, as far as the hard cap allows.
 func _release_due(delta := 0.0) -> void:

@@ -32,9 +32,12 @@ const HOLD := 3
 const DELAY := 1.2
 
 static var started := false
+## True once the last shader has been drawn (the title's opening card waits for it).
+static var finished := false
 ## Seconds the whole warm-up took (the probe prints it), 0 until done.
 static var took_ms := 0
 
+var _delay := DELAY
 var _vp: SubViewport
 var _cam: Camera3D
 var _live: Array = []
@@ -42,13 +45,19 @@ var _live: Array = []
 static func skipped() -> bool:
 	return Engine.has_meta("no_prewarm") or DisplayServer.get_name() == "headless"
 
-## Called by the title screen; once per process.
-static func start(host: Node) -> void:
+## Whether the warm-up is still to come this process (the title then opens on its card).
+static func pending() -> bool:
+	return not started and not skipped()
+
+## Called by the title screen; once per process. `delay`: seconds before the first shader (the card is already up
+## when the title asks for 0.2; otherwise the menu fades in first).
+static func start(host: Node, delay := DELAY) -> void:
 	if started or skipped():
 		return
 	started = true
 	var w := new()
 	w.name = "TitleWarm"
+	w._delay = delay
 	host.get_tree().root.add_child.call_deferred(w)
 
 func _ready() -> void:
@@ -60,7 +69,7 @@ func _run() -> void:
 	for p in SPATIAL + CANVAS:
 		if ResourceLoader.exists(p):
 			ResourceLoader.load_threaded_request(p)
-	await get_tree().create_timer(DELAY, true, false, true).timeout
+	await get_tree().create_timer(_delay, true, false, true).timeout
 	var t0 := Time.get_ticks_msec()
 	for p in SPATIAL + CANVAS:
 		while ResourceLoader.exists(p) and ResourceLoader.load_threaded_get_status(p) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
@@ -100,6 +109,7 @@ func _run() -> void:
 		_expire(false)
 	_expire(true)
 	took_ms = Time.get_ticks_msec() - t0
+	finished = true
 	queue_free()
 
 func _build() -> void:

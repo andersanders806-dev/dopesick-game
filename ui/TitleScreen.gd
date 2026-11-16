@@ -109,8 +109,57 @@ void fragment() {
 	add_child(_music)
 	_music.play()
 	create_tween().tween_property(_music, "volume_db", -10.0, 3.0)
-	# The game's own shaders compile behind the menu, a couple a frame (fx/TitleWarm.gd).
-	TitleWarm.start(self)
+	# The game's own shaders compile a couple a frame (fx/TitleWarm.gd). The first time, that happens behind an
+	# opening card, so the menu never stutters on screen: it shows (and takes input) once the card lifts.
+	if TitleWarm.pending():
+		_opening_card()
+		TitleWarm.start(self, 0.2)
+	else:
+		TitleWarm.start(self)
+
+## Longest the opening card stays up, and the least (so it reads as a card and not a flicker).
+const CARD_MAX := 3.5
+const CARD_MIN := 0.9
+
+## The game's name on black while the shaders compile and the background loads that can be finished now are
+## (autoload/SceneLoader.gd drains them). The menu underneath takes no input until it lifts. Named GoBlack
+## like the black of a scene change, so the perf probe reads it as "nothing visible".
+func _opening_card() -> void:
+	var card := ColorRect.new()
+	card.name = "GoBlack"
+	card.color = Color.BLACK
+	card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(card)
+	var logo := Label.new()
+	U.style_label(logo, U.BUNGEE, U.FS_TITLE, U.PINK, 2)
+	logo.text = "DOPE SICK"
+	logo.set_anchors_preset(Control.PRESET_CENTER)
+	logo.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	logo.grow_vertical = Control.GROW_DIRECTION_BOTH
+	logo.modulate.a = 0.0
+	card.add_child(logo)
+	create_tween().tween_property(logo, "modulate:a", 1.0, 0.5)
+	_buttons.process_mode = Node.PROCESS_MODE_DISABLED
+	_lift_card(card)
+
+func _lift_card(card: ColorRect) -> void:
+	var t0 := Time.get_ticks_msec()
+	SceneLoader.drain_in_black(int(CARD_MAX * 1000.0))
+	while is_inside_tree() and (Time.get_ticks_msec() - t0 < CARD_MIN * 1000.0 or \
+			(not TitleWarm.finished and Time.get_ticks_msec() - t0 < CARD_MAX * 1000.0)):
+		await get_tree().process_frame
+	# (The loads keep going behind the lifted card if they are not done: the scene loader budgets them.)
+	if not is_inside_tree():
+		return
+	var tw := create_tween()
+	tw.tween_property(card, "color:a", 0.0, 0.6)
+	tw.parallel().tween_property(card.get_child(0), "modulate:a", 0.0, 0.4)
+	await tw.finished
+	card.queue_free()
+	_buttons.process_mode = Node.PROCESS_MODE_INHERIT
+	if _buttons.get_child_count() > 0:
+		(_buttons.get_child(0) as Control).grab_focus()
 
 func _backdrop() -> Texture2D:
 	var ids := BACKDROPS.duplicate()

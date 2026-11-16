@@ -221,7 +221,20 @@ func prewarm_render() -> void:
 		z.set_meta("prewarm", true)
 		bay.add_child(z)
 		z.global_position = at + Vector3(-5.0 + i * 0.5, -4.0, 0.0)
+		_in_front_of_camera(z, i, ZombieScript.BODIES.size())
 	_free_prewarm(bay)
+
+## Behind the loading black nothing shows: the bodies stand 3 m in front of the camera so every one is drawn
+## (under the street the occluders hide them and their pipelines compile on the first real zombie).
+func _in_front_of_camera(body: Node3D, i: int, n: int) -> void:
+	var cam := city.get_viewport().get_camera_3d()
+	if cam == null or not cam.is_inside_tree():
+		return
+	var f := -cam.global_transform.basis.z
+	f.y = 0.0
+	f = f.normalized() if f.length() > 0.01 else Vector3.FORWARD
+	var side := f.cross(Vector3.UP)
+	body.global_position = Vector3(cam.global_position.x, cam.global_position.y - 1.6, cam.global_position.z) + f * 3.0 + side * (float(i) - float(n) * 0.5) * 0.35
 
 func _free_prewarm(bay: Node3D) -> void:
 	for i in 3:

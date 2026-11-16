@@ -16,6 +16,7 @@ extends SceneTree
 ##   go:title_story    title screen's "New run"
 ##   go:title_zombies  title screen's "Zombies"
 ##   title             the title screen standing still (prewarm / music / backdrop)
+##   floor             the title after its warm-up and prefetch are done, no input: the machine's noise floor
 ## Output: .pilot/ship4/<scenario>_<tag>.csv (frame ms, gpu ms, fade alpha) and .png, one RESULT line on stdout and
 ## in .pilot/ship4/results.txt. Every frame over 25 ms prints a SLOW line with what changed in it (pipelines
 ## compiled, resources and nodes made, process and physics ms) and a guess at the cause.
@@ -62,6 +63,7 @@ var _prev_fa := 0.0
 var exps: PackedStringArray = PackedStringArray()
 var shot_at_s := -1.0
 var shot_done := false
+var _censused := false
 
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
@@ -329,6 +331,77 @@ func _apply_exps() -> void:
 		for z in get_nodes_in_group("zombies"):
 			z.queue_free()
 
+## exp=census: what the frame is made of, from the renderer's own counters (draw calls, objects, primitives) and from the
+## tree (visible meshes and surfaces per group of nodes). Printed once, 20 s into a fight; the groups are the scene's
+## top-level children, with the zombies, lights, decals and particles counted on their own.
+func _census() -> void:
+	var ri := RenderingServer
+	print("  CENSUS render: objects %d primitives %d draw calls %d" % [_info(ri.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME), _info(ri.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME), _info(ri.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+	var cam := root.get_camera_3d()
+	var groups := {}
+	var lights := {"omni": 0, "omni_shadow": 0, "spot": 0, "spot_shadow": 0, "sun_shadow": 0}
+	var counts := {"decal": 0, "gpu_particles": 0, "cpu_particles": 0, "skinned": 0, "skinned_prims": 0}
+	for n in current_scene.find_children("*", "", true, false):
+		if not (n is Node3D) or not (n as Node3D).is_visible_in_tree():
+			continue
+		if n is Light3D:
+			var l := n as Light3D
+			if l is OmniLight3D:
+				lights["omni"] += 1
+				lights["omni_shadow"] += 1 if l.shadow_enabled else 0
+			elif l is SpotLight3D:
+				lights["spot"] += 1
+				lights["spot_shadow"] += 1 if l.shadow_enabled else 0
+			elif l.shadow_enabled:
+				lights["sun_shadow"] += 1
+		elif n is Decal:
+			counts["decal"] += 1
+		elif n is GPUParticles3D:
+			counts["gpu_particles"] += 1
+		elif n is CPUParticles3D:
+			counts["cpu_particles"] += 1
+		elif n is MeshInstance3D:
+			var mi := n as MeshInstance3D
+			if mi.mesh == null:
+				continue
+			var d := 1e9
+			if cam != null:
+				d = cam.global_position.distance_to(mi.global_position)
+			var end := mi.visibility_range_end
+			if end > 0.0 and d > end:
+				continue
+			var path := str(current_scene.get_path_to(n)).split("/")
+			var key := path[0]
+			if path.size() > 2:
+				key += "/" + path[1]
+			if mi.skin != null or mi.get_parent() is Skeleton3D:
+				key = "SKINNED " + key
+			var surfs := mi.mesh.get_surface_count()
+			var prims := 0
+			for si in surfs:
+				var il := mi.mesh.surface_get_array_index_len(si)
+				prims += (il if il > 0 else mi.mesh.surface_get_array_len(si)) / 3
+			var g: Dictionary = groups.get(key, {"n": 0, "surf": 0, "prims": 0, "shadow": 0, "multi": 0})
+			g["n"] += 1
+			g["surf"] += surfs
+			g["prims"] += prims
+			g["shadow"] += 1 if mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF else 0
+			groups[key] = g
+		elif n is MultiMeshInstance3D:
+			var mm := (n as MultiMeshInstance3D).multimesh
+			if mm != null and mm.mesh != null:
+				var key := "MULTIMESH " + str(current_scene.get_path_to(n)).get_slice("/", 0)
+				var g: Dictionary = groups.get(key, {"n": 0, "surf": 0, "prims": 0, "shadow": 0, "multi": 0})
+				g["n"] += 1
+				g["surf"] += mm.mesh.get_surface_count()
+				g["multi"] += mm.visible_instance_count if mm.visible_instance_count >= 0 else mm.instance_count
+				groups[key] = g
+	print("  CENSUS lights ", lights, " counts ", counts)
+	var keys := groups.keys()
+	keys.sort_custom(func(a, b): return groups[a]["surf"] > groups[b]["surf"])
+	for k in keys.slice(0, 30):
+		print("  CENSUS %-48s meshes %4d surfaces %4d prims(1x) %8d shadow-casters %4d multi-instances %d" % [k, groups[k]["n"], groups[k]["surf"], groups[k]["prims"], groups[k]["shadow"], groups[k]["multi"]])
+
 func _frames(n: int) -> void:
 	for i in n:
 		await process_frame
@@ -357,6 +430,8 @@ func _run() -> void:
 			await _kart()
 		"title":
 			await _title_idle()
+		"floor":
+			await _title_idle(true)
 		_:
 			if scenario.begins_with("room:"):
 				await _room(scenario.substr(5))
@@ -542,6 +617,9 @@ func _fight(gangs: bool) -> void:
 			print("  STAT t=%.0f s alive(group) %d spawner.alive %d max_alive %d round %d released %d/%d surge %s scale %.2f" % [t, get_nodes_in_group(group).size(), sp.alive(), zm.max_alive, zm.round, sp.released, sp.total, zm.surge_busy, root.scaling_3d_scale])
 		if not exps.is_empty() and Engine.get_process_frames() % 30 == 0:
 			_apply_exps()
+		if "census" in exps and not _censused and t > 20.0:
+			_censused = true
+			_census()
 		if gangs and get_nodes_in_group(group).size() < 5:
 			# The street is held by a crew of 5 to 8 at all times (the story's waves are 6 and 8 strong): the
 			# set's own call for a crowd.
@@ -603,13 +681,20 @@ func _kart() -> void:
 	if is_instance_valid(race):
 		race.queue_free()
 
-func _title_idle() -> void:
+func _title_idle(warmed := false) -> void:
 	await process_frame
 	gfx = root.get_node("Graphics")
 	gfx.set_preset(0)
 	gfx.set_laptop_mode(true)
 	change_scene_to_file("res://ui/TitleScreen.tscn")
 	await _frames(2)
+	if warmed:
+		# The noise floor: the title after its warm-up and the prefetch are done, no input, nothing happening.
+		var w0 := Time.get_ticks_usec()
+		while Time.get_ticks_usec() - w0 < 6e6 or root.get_node_or_null("TitleWarm") != null:
+			await process_frame
+		await _wait_prefetch()
+		await _frames(120)
 	phase = "title"
 	_begin_recording()
 	while (Time.get_ticks_usec() - t0_us) < secs * 1e6:

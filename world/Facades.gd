@@ -240,7 +240,12 @@ func _ready() -> void:
 	for m in masses():
 		_build_mass(m)
 	_build_roof_units()
-	_apply_cutaway()
+	# First person only: the cutaway's radius is always 0, and its `discard` shaders cost the street's walls
+	# their early depth test for nothing. (_apply_cutaway() stays for a camera that hangs outside.)
+	if not Engine.has_meta("keep_cutaway"):
+		pass
+	else:
+		_apply_cutaway()
 	set_detail(not Graphics.lean())
 	GameState.clock_changed.connect(_on_clock)
 	refresh()

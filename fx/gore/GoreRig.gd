@@ -106,7 +106,7 @@ static func prepare(z: Node) -> void:
 		a[Mesh.ARRAY_COLOR] = colors
 		for c in [Mesh.ARRAY_CUSTOM0, Mesh.ARRAY_CUSTOM1, Mesh.ARRAY_CUSTOM2, Mesh.ARRAY_CUSTOM3]:
 			a[c] = null
-		fresh.add_surface_from_arrays(old.surface_get_primitive_type(s), a, [], {}, Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS if stride == 8 else 0)
+		fresh.add_surface_from_arrays(old.surface_get_primitive_type(s), a, [], lods_of(old, s), Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS if stride == 8 else 0)
 		fresh.surface_set_material(s, old.surface_get_material(s))
 		fresh.surface_set_name(s, old.surface_get_name(s))
 	if fresh.get_surface_count() != old.get_surface_count():
@@ -115,6 +115,28 @@ static func prepare(z: Node) -> void:
 	fresh.custom_aabb = old.get_aabb()
 	_clipped[body] = fresh
 	inst.mesh = fresh
+
+## The import's coarser versions of a surface (edge length -> indices), read back off the renderer. A mesh
+## rebuilt from surface_get_arrays() has only the finest one: every zombie then cost its full 7,400
+## triangles at any distance, and 32 of them were as many triangles as the whole street.
+static func lods_of(mesh: ArrayMesh, surface: int) -> Dictionary:
+	var out := {}
+	var d := RenderingServer.mesh_get_surface(mesh.get_rid(), surface)
+	var verts: int = int(d.get("vertex_count", 0))
+	for lod in d.get("lods", []):
+		var bytes: PackedByteArray = lod["index_data"]
+		var idx := PackedInt32Array()
+		if verts <= 65535:
+			idx.resize(bytes.size() / 2)
+			for i in idx.size():
+				idx[i] = bytes.decode_u16(i * 2)
+		else:
+			idx.resize(bytes.size() / 4)
+			for i in idx.size():
+				idx[i] = bytes.decode_u32(i * 4)
+		if idx.size() >= 3:
+			out[float(lod["edge_length"])] = idx
+	return out
 
 ## Mesh bone index (in the skin's list) -> skeleton bone.
 static func bind_map(inst: MeshInstance3D, sk: Skeleton3D) -> PackedInt32Array:

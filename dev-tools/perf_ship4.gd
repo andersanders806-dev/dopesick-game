@@ -64,6 +64,11 @@ var exps: PackedStringArray = PackedStringArray()
 var shot_at_s := -1.0
 var shot_done := false
 var _censused := false
+var seg_scripts: PackedFloat32Array = PackedFloat32Array()
+var seg_draws: PackedFloat32Array = PackedFloat32Array()
+var cnt_prims := 0.0
+var cnt_calls := 0.0
+var cnt_objs := 0.0
 
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
@@ -159,6 +164,11 @@ func _tick() -> float:
 		g += RenderingServer.viewport_get_measured_render_time_gpu(extra_vp)
 	var fa := _fade_alpha()
 	dts.append(dt)
+	seg_scripts.append(seg_script)
+	seg_draws.append(seg_draw)
+	cnt_prims += _info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
+	cnt_calls += _info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
+	cnt_objs += _info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)
 	gpus.append(g)
 	fades.append(fa)
 	scales += root.scaling_3d_scale
@@ -229,6 +239,19 @@ func _finish() -> void:
 	var line := "RESULT %s [%s] frames %d (%.1f s) | gpu mean %.2f p95 %.2f | frame mean %.2f p50 %.2f p95 %.2f p99 %.2f max %.1f | >25ms %d (visible %d) | scale %.2f" % [
 		scenario, tag, n, fsum / 1000.0, gsum / n, gs2[int(n * 0.95)], fsum / n, sorted[n / 2], sorted[int(n * 0.95)], sorted[int(n * 0.99)], sorted[-1], slow_n, slow_visible, scales / n]
 	print(line)
+	var t0i := int(n * 0.4)
+	var tg := 0.0
+	var tf := 0.0
+	var ts := 0.0
+	var td := 0.0
+	for i in range(t0i, n):
+		tg += gpus[i]
+		tf += dts[i]
+		ts += seg_scripts[i]
+		td += seg_draws[i]
+	var m := float(n - t0i)
+	print("COUNTERS per frame: primitives %.0f draw calls %.0f objects %.0f" % [cnt_prims / n, cnt_calls / n, cnt_objs / n])
+	print("TAIL gpu mean %.2f frame mean %.2f scripts+physics %.2f draw %.2f (the last 60%% of the run)" % [tg / m, tf / m, ts / m, td / m])
 	var path := out_dir + "/results.txt"
 	var f := FileAccess.open(path, FileAccess.READ_WRITE if FileAccess.file_exists(path) else FileAccess.WRITE)
 	f.seek_end()
@@ -322,11 +345,41 @@ func _apply_exps() -> void:
 			n.shadow_enabled = false
 		elif "noshadowz" in exps and n is MeshInstance3D and (n.is_in_group("zombies") or n.get_parent() != null and (n.get_parent().is_in_group("zombies") or n.get_parent().is_in_group("gangsters"))):
 			n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for hide in ["facades", "mm", "cellprops"]:
+		if ("no" + hide) in exps:
+			for n in current_scene.get_children():
+				var nm := String(n.name)
+				if hide == "facades" and nm == "Facades":
+					(n as Node3D).visible = false
+				elif hide == "cellprops" and nm.begins_with("Cell_"):
+					for c in n.get_children():
+						if c is Node3D and not c is StaticBody3D and not c is MultiMeshInstance3D and not c is OccluderInstance3D:
+							(c as Node3D).visible = false
+				elif hide == "mm":
+					for c in n.find_children("*", "MultiMeshInstance3D", true, false):
+						(c as Node3D).visible = false
+	for e in exps:
+		if e.begins_with("lod"):
+			root.mesh_lod_threshold = float(e.substr(3))
+		if e.begins_with("far") and root.get_camera_3d() != null:
+			root.get_camera_3d().far = float(e.substr(3))
 	if "nofog" in exps:
 		var we := current_scene.find_children("*", "WorldEnvironment", true, false)
 		for w in we:
 			(w as WorldEnvironment).environment.fog_enabled = false
 			(w as WorldEnvironment).environment.volumetric_fog_enabled = false
+	if "zfreeze" in exps or "zhide" in exps or "zanim" in exps or "zshape" in exps:
+		for z in get_nodes_in_group("zombies"):
+			if "zfreeze" in exps:
+				z.set_physics_process(false)
+				z.set_process(false)
+			if "zhide" in exps:
+				(z.get("_model_root") as Node3D).visible = false
+			if "zanim" in exps and z.get("_anim_player") != null:
+				(z.get("_anim_player") as AnimationPlayer).active = false
+			if "zshape" in exps:
+				for m in z.find_children("*", "MeshInstance3D", true, false):
+					(m as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if "nozombies" in exps:
 		for z in get_nodes_in_group("zombies"):
 			z.queue_free()
@@ -372,15 +425,18 @@ func _census() -> void:
 				continue
 			var path := str(current_scene.get_path_to(n)).split("/")
 			var key := path[0]
-			if path.size() > 2:
+			if path.size() > 2 and not (path[0] in ["Facades", "Cell_Main"]):
 				key += "/" + path[1]
 			if mi.skin != null or mi.get_parent() is Skeleton3D:
 				key = "SKINNED " + key
 			var surfs := mi.mesh.get_surface_count()
 			var prims := 0
-			for si in surfs:
-				var il := mi.mesh.surface_get_array_index_len(si)
-				prims += (il if il > 0 else mi.mesh.surface_get_array_len(si)) / 3
+			if mi.mesh is ArrayMesh:
+				for si in surfs:
+					var il: int = (mi.mesh as ArrayMesh).surface_get_array_index_len(si)
+					prims += (il if il > 0 else (mi.mesh as ArrayMesh).surface_get_array_len(si)) / 3
+			else:
+				prims += mi.mesh.get_faces().size() / 9
 			var g: Dictionary = groups.get(key, {"n": 0, "surf": 0, "prims": 0, "shadow": 0, "multi": 0})
 			g["n"] += 1
 			g["surf"] += surfs
@@ -426,6 +482,8 @@ func _run() -> void:
 			await _fight(false)
 		"ghetto":
 			await _fight(true)
+		"crowd":
+			await _fight(false, true)
 		"kart":
 			await _kart()
 		"title":
@@ -562,7 +620,7 @@ func _room(room: String) -> void:
 		_maybe_shot()
 
 ## Dead Block (gangs=false) or Ghetto Wars (gangs=true): the real rounds, the player walking a route and shooting.
-func _fight(gangs: bool) -> void:
+func _fight(gangs: bool, crowd := false) -> void:
 	await _setup_story(23)
 	zm = root.get_node("ZombieMode")
 	if gangs:
@@ -601,6 +659,12 @@ func _fight(gangs: bool) -> void:
 	phase = "round start"
 	_begin_recording()
 	zm.start_round()
+	var sp0 = city.get_node("ZombieBlock").spawner
+	if crowd:
+		# A steady crowd for A/B runs: the spawner and the surge are off, 28 walkers are kept alive 12-40 m
+		# round the player, nobody shoots (no gore, no deaths), so every run draws and thinks the same.
+		sp0.enabled = false
+		city.get_node("ZombieBlock").surge.set_process(false)
 	var shoot_in := 0.0
 	var group := "gangsters" if gangs else "zombies"
 	while (Time.get_ticks_usec() - t0_us) < secs * 1e6:
@@ -612,10 +676,16 @@ func _fight(gangs: bool) -> void:
 		player.global_position = Vector3(-10.0 + (u if u < 30.0 else 60.0 - u), 0.0, -1.0)
 		player.velocity = Vector3.ZERO
 		phase = "alive %d" % get_nodes_in_group(group).size()
+		if crowd:
+			player.set_look(-PI / 2 + 0.7 * sin(t * 0.5), -0.05)
+		if crowd and get_nodes_in_group(group).size() < 28 and Engine.get_process_frames() % 4 == 0:
+			var px := player.global_position.x
+			var side := 1.0 if randf() < 0.5 else -1.0
+			sp0.spawn_one("walker", Vector3(px + side * randf_range(12.0, 40.0), 0.0, randf_range(-3.0, 1.0)))
 		if Engine.get_process_frames() % 300 == 0:
 			var sp = city.get_node("ZombieBlock").spawner
 			print("  STAT t=%.0f s alive(group) %d spawner.alive %d max_alive %d round %d released %d/%d surge %s scale %.2f" % [t, get_nodes_in_group(group).size(), sp.alive(), zm.max_alive, zm.round, sp.released, sp.total, zm.surge_busy, root.scaling_3d_scale])
-		if not exps.is_empty() and Engine.get_process_frames() % 30 == 0:
+		if exps.size() > (1 if "census" in exps else 0) and Engine.get_process_frames() % 30 == 0:
 			_apply_exps()
 		if "census" in exps and not _censused and t > 20.0:
 			_censused = true
@@ -628,7 +698,7 @@ func _fight(gangs: bool) -> void:
 			for k in 4:
 				pts.append(Vector3(pp.x + (14.0 + k * 2.0) * (1.0 if k % 2 == 0 else -1.0), 0.0, -1.0 + (k % 3) * 1.2))
 			root.get_node("GhettoMode").spawn_wave({"count": 4, "weapons": ["ar", "smg", "shotgun", "pistol", "lmg"], "from_points": pts})
-		if holder != null:
+		if holder != null and not crowd:
 			shoot_in -= dt / 1000.0
 			if shoot_in <= 0.0:
 				shoot_in = 0.12

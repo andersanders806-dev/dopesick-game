@@ -58,6 +58,8 @@ func _ready() -> void:
 	_black = ColorRect.new()
 	_black.name = "Fade"
 	_black.color = Color(0, 0, 0, 0)
+	# Hidden while clear: a full-screen rect is a full-screen pass on the GPU even at alpha 0.
+	_black.visible = false
 	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_black.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_layer.add_child(_black)
@@ -286,6 +288,7 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 	if packed == null:
 		push_error("SceneLoader: can't load %s" % path)
 		_black.color.a = 0.0
+		_black.visible = false
 		tree.paused = paused
 		_busy = false
 		_go_next()
@@ -357,9 +360,11 @@ func _go_next() -> void:
 	go(next[0], next[1])
 
 func _fade(to: float, time: float) -> void:
+	_black.visible = true
 	var tw := create_tween()
 	tw.tween_property(_black, "color:a", to, time)
 	await tw.finished
+	_black.visible = _black.color.a > 0.0
 
 func _show_card() -> void:
 	if _card.text.strip_edges() == "":

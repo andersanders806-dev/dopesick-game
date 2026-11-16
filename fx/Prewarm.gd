@@ -194,15 +194,19 @@ func _run() -> void:
 ## The skin table of every body for the gore (reading the mesh back from the renderer: 17 to 75 ms the
 ## first time a wound or a limb of that body is wanted), from the dummies world/ZombieBlock.gd draws for
 ## the same reason (they are freed three frames after setup; this runs in the first).
+## The bays of bodies the blocks draw behind the black: the dead (world/ZombieBlock.gd), the crews (world/GangBlock.gd).
+const BAYS := ["ZombiePrewarm", "GangPrewarm"]
+
 func _body_tables() -> void:
-	var bay := city.get_node_or_null("ZombiePrewarm")
-	if bay == null:
-		return
-	for z in bay.get_children():
-		if z.get("_skeleton") != null:
-			GoreRigScript.table(z)
-	# (the bay stays until the limbs below are cut: world/ZombieBlock.gd waits for this)
-	bay.set_meta("busy", true)
+	for bay_name in BAYS:
+		var bay := city.get_node_or_null(bay_name)
+		if bay == null:
+			continue
+		for z in bay.get_children():
+			if z.get("_skeleton") != null:
+				GoreRigScript.table(z)
+		# (the bay stays until the limbs below are cut: the block waits for this)
+		bay.set_meta("busy", true)
 
 ## Every body's severed-limb meshes (GoreRig.limb), a couple of bodies a frame behind the black: built on the
 ## spawn of the first zombie of each body they were 40-60 ms of main-thread work spread over its first nine
@@ -210,21 +214,25 @@ func _body_tables() -> void:
 const LIMB_BODIES_PER_FRAME := 2
 
 func _body_limbs() -> void:
-	var bay := city.get_node_or_null("ZombiePrewarm")
-	if bay == null:
-		return
-	var n := 0
-	for z in bay.get_children():
-		if not is_instance_valid(z) or z.get("_skeleton") == null:
+	for bay_name in BAYS:
+		var bay := city.get_node_or_null(bay_name)
+		if bay == null:
 			continue
-		for name_ in GoreRigScript.LIMBS:
-			GoreRigScript.limb(z, name_)
-		n += 1
-		if n % LIMB_BODIES_PER_FRAME == 0:
-			await _frames(1)
-			if not _alive() or not is_instance_valid(bay):
-				return
-	bay.set_meta("busy", false)
+		var n := 0
+		for z in bay.get_children():
+			if not is_instance_valid(z) or z.get("_skeleton") == null:
+				continue
+			for name_ in GoreRigScript.LIMBS:
+				GoreRigScript.limb(z, name_)
+			n += 1
+			if n % LIMB_BODIES_PER_FRAME == 0:
+				await _frames(1)
+				if not _alive():
+					return
+				if not is_instance_valid(bay):
+					break
+		if is_instance_valid(bay):
+			bay.set_meta("busy", false)
 
 ## Sounds, decal pictures, the guns' data and models: requested on worker threads now and kept (the
 ## first fight would otherwise load them one by one on the main thread, 40 to 500 ms for a gun model).

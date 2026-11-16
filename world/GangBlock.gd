@@ -185,6 +185,11 @@ func _free_prewarm(bay: Node3D) -> void:
 		if not is_inside_tree():
 			break
 		await get_tree().process_frame
+	# fx/Prewarm.gd cuts every body's limbs from these, a couple a frame, behind the same black.
+	var w := 0
+	while is_inside_tree() and is_instance_valid(bay) and bay.get_meta("busy", false) and w < 120:
+		await get_tree().process_frame
+		w += 1
 	if is_instance_valid(bay):
 		bay.queue_free()
 

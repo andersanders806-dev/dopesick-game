@@ -1178,6 +1178,8 @@ func _build_pickup_pools() -> void:
 		l.light_energy = 0.0
 		l.omni_range = 5.0
 		l.shadow_enabled = false
+		# (hidden while dark: a light at zero energy is still one the renderer shades with)
+		l.visible = false
 		add_child(l)
 		_flash.append(l)
 
@@ -1192,6 +1194,7 @@ func _burst(at: Vector3, col: Color, kind: String) -> void:
 	f.global_position = at
 	f.light_color = col
 	f.light_energy = 3.0
+	f.visible = true
 	_sound("pickup_pill" if kind == "pills" else "pickup_cash", at, -2.0, randf_range(0.95, 1.08), 30.0)
 
 # --- Signals from the core and the story ----------------------------------------------------
@@ -1556,6 +1559,8 @@ func _process(delta: float) -> void:
 		var red := ph < 0.5
 		l.light_color = Color(1.0, 0.1, 0.08) if red else Color(0.1, 0.25, 1.0)
 		l.light_energy = (0.0 if _siren_level == 0 else (2.0 if _siren_level == 1 else 4.0)) * (0.35 + 0.65 * absf(sin(ph * PI * 2.0)))
+		# (off, the 27 m light is hidden: at zero energy it was still shaded over everything in its reach)
+		l.visible = _siren_level > 0
 	for f in _fires:
 		f[1] -= delta
 		if f[1] <= 0.0:
@@ -1567,6 +1572,7 @@ func _process(delta: float) -> void:
 	for f in _flash:
 		if f.light_energy > 0.0:
 			f.light_energy = maxf(0.0, f.light_energy - delta * 14.0)
+			f.visible = f.light_energy > 0.0
 	for p in _pickups:
 		if is_instance_valid(p):
 			var ph: float = p.get_meta("phase")

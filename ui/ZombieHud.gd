@@ -44,6 +44,8 @@ void fragment() {
 func _on_health(hp: float) -> void:
 	var a := clampf(1.0 - hp / ZombieMode.MAX_HEALTH, 0.0, 1.0)
 	(hurt.material as ShaderMaterial).set_shader_parameter("amount", a)
+	# (at full health the overlay draws nothing: hidden, it is not a full-screen pass every frame)
+	hurt.visible = a > 0.0
 
 func _ready() -> void:
 	add_to_group("zombie_hud")

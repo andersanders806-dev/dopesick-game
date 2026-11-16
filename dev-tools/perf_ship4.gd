@@ -425,6 +425,48 @@ func _apply_exps() -> void:
 ## top-level children, with the zombies, lights, decals and particles counted on their own.
 func _census() -> void:
 	var ri := RenderingServer
+	# The 2D on top: per canvas layer, its visible items, the text in them and the area they cover.
+	var vsz := root.get_visible_rect().size
+	for lay in root.find_children("*", "CanvasLayer", true, false):
+		var cl := lay as CanvasLayer
+		if not cl.visible:
+			continue
+		var items := 0
+		var chars := 0
+		var area := 0.0
+		var shaded := 0
+		for c in cl.find_children("*", "CanvasItem", true, false):
+			var ci := c as CanvasItem
+			if not ci.is_visible_in_tree() or ci.modulate.a < 0.01:
+				continue
+			items += 1
+			if ci is Label:
+				chars += (ci as Label).text.length()
+			elif ci is RichTextLabel:
+				chars += (ci as RichTextLabel).get_parsed_text().length()
+			if ci is Control:
+				var rr := (ci as Control).get_global_rect()
+				area += rr.size.x * rr.size.y
+			if ci.material != null:
+				shaded += 1
+		if items > 0:
+			print("  CENSUS LAYER %-60s layer %3d items %4d chars %5d shaded %3d area %.2f screens" % [str(cl.get_path()).right(60), cl.layer, items, chars, shaded, area / (vsz.x * vsz.y)])
+	for c in root.find_children("*", "Control", true, false):
+		var ctl := c as Control
+		if not ctl.is_visible_in_tree():
+			continue
+		var r := ctl.get_global_rect()
+		if r.size.x * r.size.y < vsz.x * vsz.y * 0.5:
+			continue
+		var col_a := -1.0
+		if ctl is ColorRect:
+			col_a = (ctl as ColorRect).color.a
+		var shader := ""
+		if ctl.material is ShaderMaterial and (ctl.material as ShaderMaterial).shader != null:
+			shader = (ctl.material as ShaderMaterial).shader.resource_path.get_file()
+			if shader == "":
+				shader = "inline"
+		print("  CENSUS 2D %-70s %-14s mod %.2f self %.2f color_a %.2f shader %s" % [str(c.get_path()).right(70), ctl.get_class(), ctl.modulate.a, ctl.self_modulate.a, col_a, shader])
 	print("  CENSUS render: objects %d primitives %d draw calls %d" % [_info(ri.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME), _info(ri.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME), _info(ri.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
 	var cam := root.get_camera_3d()
 	var groups := {}

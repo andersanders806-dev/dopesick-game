@@ -25,11 +25,13 @@ const VIEW := {
 	"glock": {
 		"sight_pts": [Vector3(0.001, 0.0705, -0.124), Vector3(0.001, 0.0705, 0.024)],
 		"parts": {"slide": ["glockslide"], "mag": ["glockmag"]},
+		"muzzle": Vector3(0.002, 0.057, -0.137),
 		"slide_back": 0.024,
 	},
 	"deagle": {
 		"sight_pts": [Vector3(0.0, 0.0795, -0.173), Vector3(0.0, 0.079, 0.03)],
 		"parts": {"slide": ["group001/"], "mag": ["_magazine_0"]},
+		"muzzle": Vector3(0.0, 0.051, -0.185),
 		"slide_back": 0.03,
 		"hands": [Vector3(0.5, 0.3, 0.24), Vector3(-0.9, 0.1, 0.26), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pistol_l", 0.86],
 	},
@@ -62,6 +64,7 @@ const VIEW := {
 		"sight_pts": [Vector3(-0.009, 0.129, -0.579), Vector3(-0.009, 0.128, -0.215)],
 		"relief": 0.34,
 		"parts": {"mag": ["magazine_low"], "carrier": ["slide_low"]},
+		"muzzle": Vector3(-0.009, 0.078, -0.6),
 		# (Hands measured on the model: the pistol grip at 0.33 from the back, the C-grip on the wooden handguard.)
 		"hands": [Vector3(0.5, 0.42, 0.33), Vector3(-0.35, 0.66, 0.7), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 		"carrier_back": 0.07,
@@ -70,6 +73,7 @@ const VIEW := {
 		"sight_pts": [Vector3(-0.001, 0.1235, -0.482), Vector3(-0.001, 0.115, -0.004)],
 		"relief": 0.11,
 		"parts": {"mag": ["magazine_3"], "charge": ["charging_handle_16"]},
+		"muzzle": Vector3(-0.001, 0.056, -0.674),
 		"hands": [Vector3(0.5, 0.36, 0.29), Vector3(-0.35, 0.68, 0.72), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
 	},
 	"sawnoff": {
@@ -78,7 +82,8 @@ const VIEW := {
 		"sight_pts": [Vector3(0.0, 0.044, -0.268), Vector3(0.0, 0.044, -0.045)],
 		"parts": {"barrels": ["cube_009"], "shells": ["bullet1", "bullet2"]},
 		"hinge": [Vector3(0.0, -0.004, -0.045), Vector3(1.0, 0.0, 0.0)],
-		"hands": [Vector3(0.5, 0.22, 0.13), Vector3(0.5, 0.45, 0.65), 0.0, 0.0, 1.0, 1.0, "rifle_r", "pump_l", 1.0],
+		# (Held out at arm's length when aimed, the hand low on the grip with the thumb along the frame, the rib clear.)
+		"hands": [Vector3(0.5, 0.1, 0.09), Vector3(0.5, 0.42, 0.65), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pump_l", 0.95],
 	},
 	"aa12": {
 		"sights": [0.0, 0.12, 0.62, 0.76, 0.2, false, 0.0],
@@ -94,6 +99,7 @@ const VIEW := {
 	"amr": {
 		"sights": [0.3, 0.4, 0.72, 0.8, 0.2, false, 0.0],
 		"parts": {"mag": ["empty mag_2"], "carrier": ["bolt carrier_4", "barrel_5"]},
+		"muzzle": Vector3(-0.018, 0.033, -0.987),
 		"carrier_back": 0.03,
 		"eject": {"port": Vector3(1.0, 0.75, 0.62), "lo": Vector3(1.4, 1.4, 0.3), "hi": Vector3(2.2, 2.2, 1.0), "spin": 20.0, "size": Vector2(0.0075, 0.1), "kind": 0},
 		"weight": 1.7,
@@ -107,7 +113,7 @@ const VIEW := {
 	"saw": {
 		"sights": [0.45, 0.62, 0.55, 0.0, 0.17, true, 0.0],
 		"hands": [Vector3(0.5, 0.37, 0.3), Vector3(0.45, 0.5, 0.64), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
-		"bones": {"mag": "Magazine_06", "cover": "Cover_Feed_Mechanism_04", "charge": "Cocking_Handle_07"},
+		"bones": {"mag": "Magazine_06", "charge": "Cocking_Handle_07"},
 	},
 	"rpg": {
 		# The RPG-7's sights stand on the left of the tube: the tube rides low and right of the picture. Its rocket is the

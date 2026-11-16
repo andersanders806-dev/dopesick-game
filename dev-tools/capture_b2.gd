@@ -86,28 +86,46 @@ func _gang() -> void:
 	h.set_process(true)
 	feel.auto = true
 	h.no_spread = false
+	var zm := root.get_node("ZombieMode")
 	var sp: Node = block.spawner
 	sp.crew_name = "Eastside Kings"
 	p.global_position = Vector3(-20, 0, -3)
 	p.set_look(-PI / 2.0, 0.0)
-	var g: Node3D = sp.spawn_one("grunt", Vector3(-13.0, 0.0, -2.6), "", "ak")
-	await _run_real(150)
-	if is_instance_valid(g):
-		g.look_at(Vector3(p.global_position.x, g.global_position.y, p.global_position.z), Vector3.UP, true)
-	await _run_real(20)
-	await _snap("gang_ak")
-	# The fight: two crews' worth of men with the new guns, the player with the AK.
 	_give("ak")
+	var g: Node3D = sp.spawn_one("grunt", Vector3(-16.2, 0.0, -2.4), "", "ak")
+	for i in 12:
+		await process_frame
+	# Held still, standing at the ready and facing you, for the picture.
+	g.set_physics_process(false)
+	g.look_at(Vector3(p.global_position.x, g.global_position.y, p.global_position.z), Vector3.UP, true)
+	# (The gun in your hands is put down for the picture: it is of the man and his.)
+	if h.viewmodel != null:
+		h.viewmodel.visible = false
+	feel.auto = false
+	for i in 40:
+		g.anim.play("ga_stand", 1.0)
+		zm.health = 100.0
+		await process_frame
+	await _snap("gang_ak")
+	feel.auto = true
+	g.set_physics_process(true)
+	# The fight: both crews' men with the new guns up the street, the player with the AK firing back (and kept alive).
 	var guns := ["glock", "tec9", "uzi", "ak", "sawnoff", "uzi", "tec9", "glock"]
 	for k in guns.size():
 		sp.crew_name = "Dock Boys" if k % 2 == 0 else "Eastside Kings"
-		sp.spawn_one("grunt", Vector3(-4.0 + (k % 4) * 3.0, 0.0, -1.0 - (k / 4) * 5.0), "", guns[k])
+		sp.spawn_one("grunt", Vector3(2.0 + (k % 4) * 3.0, 0.0, -1.0 - (k / 4) * 4.0), "", guns[k])
 	var fx: Node = get_first_node_in_group("gang_fx")
 	var shots0: int = fx.shot_sounds if fx != null else 0
+	Input.action_press("fire")
 	for shot in 3:
-		await _run_real(200)
+		for i in 200:
+			zm.health = 100.0
+			if h.mag < 5:
+				h.refill_all()
+			await process_frame
 		await _snap("gang_fight_%d" % (shot + 1))
-	print("GANG guns %s, %d shots heard, player health %.0f" % [sp.gun_counts, (fx.shot_sounds if fx != null else 0) - shots0, root.get_node("ZombieMode").health])
+	Input.action_release("fire")
+	print("GANG guns %s, %d shots heard, %d men still up" % [sp.gun_counts, (fx.shot_sounds if fx != null else 0) - shots0, get_nodes_in_group("gangsters").size()])
 
 func _run_real(frames: int) -> void:
 	for i in frames:
@@ -176,7 +194,7 @@ func _fires(ids: Array) -> void:
 	_zombies(3, Vector3(-9.0, 0.0, -3.4), Vector3(0.0, 0.0, 0.8))
 	for id in ids:
 		_give(id)
-		await _run(30)
+		await _run(int(h.current.swap_time * 60.0) + 24)
 		var before: int = h.mag
 		h._cooldown = 0.0
 		h.fire()
@@ -189,54 +207,63 @@ func _fires(ids: Array) -> void:
 		h.fire()
 		await _run(1)
 		await _snap("%s_shot_ads" % id)
+		await _run(30)
 		print("FIRED %s %d rounds hip+ads, %d left" % [id, before - h.mag, h.mag])
 		h.aiming = false
 		await _run(60)
 
 func _rpg() -> void:
-	var crowd := _zombies(5, Vector3(-11.0, 0.0, -4.4), Vector3(0.0, 0.0, 0.7))
+	var crowd := _zombies(5, Vector3(-9.0, 0.0, -4.4), Vector3(0.0, 0.0, 0.7))
 	for z in crowd:
-		z.set_physics_process(true)
+		print("RPG target zombie at ", z.global_position)
 	_give("rpg")
-	await _run(40)
-	h.aiming = true
-	await _run(30)
+	await _run(int(h.current.swap_time * 60.0) + 24)
 	h.fire()
-	await _run(5)
+	var r: Node = null
+	for x in h._rockets:
+		if x.flying:
+			r = x
+	print("RPG fired from %s, rocket at %s" % [p.get("camera").global_position, r.global_position if r != null else Vector3.INF])
+	await _run(3)
 	await _snap("rpg_flight")
-	var r: Node = h._rockets[0] if not h._rockets.is_empty() else null
 	var t := 0
 	while r != null and r.flying and t < 120:
 		await _run(1)
 		t += 1
-	await _run(4)
-	await _snap("rpg_blast")
-	await _run(10)
-	await _snap("rpg_blast_b")
+	for k in [1, 4, 9, 18, 40]:
+		await _run(k if k == 1 else 3 + k / 3)
+		await _snap("rpg_blast_%02d" % k)
 	var alive := 0
 	for z in crowd:
 		if is_instance_valid(z) and z.is_alive():
 			alive += 1
-	print("RPG blast at %s, %d of %d still standing" % [r.last_blast if r != null else Vector3.INF, alive, crowd.size()])
-	h.aiming = false
+	print("RPG blast at %s on %s after %d frames, %d of %d still standing" % [r.last_blast if r != null else Vector3.INF, r.last_struck if r != null else "-", t, alive, crowd.size()])
 	await _run(60)
 
 func _melee(ids: Array) -> void:
 	for id in ids:
-		var z: Node3D = _zombies(1, Vector3(-21.6, 0.0, -3.0), Vector3.ZERO)[0]
+		var z: Node3D = _zombies(1, Vector3(-18.4, 0.0, -3.0), Vector3.ZERO)[0]
+		z._model_root.rotation.y = -PI / 2.0
 		h.give_melee(load("res://weapons/%s.tres" % id))
 		await _run(20)
 		h._melee_cd = 0.0
 		h.melee(false)
 		var n := 0
+		var hit_snapped := false
+		var d: Resource = h.melee_data
 		while h.swing_time() >= 0.0:
-			if n % 4 == 0:
-				await _snap("%s_swing_%02d" % [id, n])
 			await _run(1)
 			n += 1
+			if n % 4 == 0:
+				await _snap("%s_swing_%02d" % [id, n])
+			if not hit_snapped and h.swing_time() >= h.swing_length() * d.swing_hit + 0.02:
+				hit_snapped = true
+				await _snap("melee_hit" if id == "bat" else "%s_hit" % id)
 		await _run(30)
 		print("MELEE %s light: zombie alive %s" % [id, is_instance_valid(z) and z.is_alive()])
-		await _run(60)
+		if is_instance_valid(z):
+			z.free()
+		await _run(30)
 
 func _buys(ids: Array) -> void:
 	var cam: Camera3D = p.get("camera")

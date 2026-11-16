@@ -682,6 +682,10 @@ func _b2_system_checks(holder: Node, feel: Node, player: Node, block: Node) -> v
 	holder.fire()
 	_fp_step(feel, holder, 60)
 	_check(shots[0] == 1 and not holder.is_auto(), "  on semi: one (%d)" % shots[0])
+	var DS := load("res://autoload/DualSense.gd")
+	var PR := load("res://player/PadRumble.gd")
+	_check(DS.right_for(mp5, false, 1.0, "burst") != DS.right_for(mp5, false, 1.0, "auto") and PR.shot_pulse(mp5, false, "burst")[1] < PR.shot_pulse(mp5, false, "auto")[1],
+		"  the pad's trigger and rumble follow the selector (burst feels like a burst gun)")
 	_ready_gun(holder, feel, _wd("rpg"))
 	_check(_wd("ak").fire_modes.size() > 1 and not holder.toggle_mode(), "  a gun with one mode (the RPG) has no selector; the AK has auto and semi")
 	# M5: a burst once begun is finished even if a sprint comes in the middle of it.

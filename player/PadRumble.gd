@@ -93,17 +93,19 @@ static func vibrate(weak: float, strong: float, duration: float, why := "") -> v
 		Input.start_joy_vibration(d, clampf(weak, 0.0, 1.0), clampf(strong, 0.0, 1.0), duration)
 
 ## The pulse for one shot of `data`.
-static func shot_pulse(data: Resource, aiming: bool) -> Array:
+static func shot_pulse(data: Resource, aiming: bool, mode := "") -> Array:
 	var base: Array = SHOT.get(data.handling_family(), SHOT_DEFAULT)
 	var k := ADS_SOFTEN if aiming else 1.0
-	if data.has_method("fire_mode") and data.fire_mode() == "burst":
+	if mode == "" and data.has_method("fire_mode"):
+		mode = data.fire_mode()
+	if mode == "burst":
 		return [base[0] * k * BURST_TAP, base[1] * k * BURST_TAP, base[2] * BURST_LENGTH]
 	return [base[0] * k, base[1] * k, base[2]]
 
 func _on_fired() -> void:
 	var d = holder.get("current")
 	if d != null:
-		ask(shot_pulse(d, holder.get("aiming") == true), "shot")
+		ask(shot_pulse(d, holder.get("aiming") == true, String(holder.call("fire_mode")) if holder.has_method("fire_mode") else ""), "shot")
 
 func _on_hit(part: String, killed: bool) -> void:
 	ask(KILL if killed else (HEADSHOT if part == "head" else HIT), "kill" if killed else "hit")

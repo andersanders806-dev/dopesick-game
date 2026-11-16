@@ -74,9 +74,9 @@ const WALL_BUYS := [
 	["sniper", Vector3(-72, 1.3, -36), Vector3(-1, 0, 0)],
 	# SHIP 16 B2: the sixteen's wall guns and the two melee weapons, on the shop fronts of Main Street and the
 	# block's east and west edges (probed: flat building walls clear of the box's and the machine's places).
-	["glock", Vector3(-30, 1.3, -3), Vector3(0, 0, -1)],
+	["glock", Vector3(-40, 1.3, -3), Vector3(0, 0, -1)],
 	["tec9", Vector3(16, 1.3, -3), Vector3(0, 0, -1)],
-	["uzi", Vector3(-50, 1.3, -3), Vector3(0, 0, -1)],
+	["uzi", Vector3(-48, 1.3, -3), Vector3(0, 0, -1)],
 	["sawnoff", Vector3(44, 1.3, -3), Vector3(0, 0, -1)],
 	["mp5", Vector3(54, 1.3, -3), Vector3(0, 0, -1)],
 	["bat", Vector3(-60, 1.3, -3), Vector3(0, 0, -1)],

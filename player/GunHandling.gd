@@ -536,16 +536,17 @@ static func _launcher() -> Dictionary:
 	d["ev"] = [[0.62, "rocket_in", ""], [0.86, "bolt", ""]]
 	return d
 
-## The belt-fed M249: the support hand lifts the feed cover, pulls the spent box off the side, fetches a new one,
-## seats it, lays the belt and slams the cover; an empty gun also has its charging handle hauled back.
+## The belt-fed M249: the support hand slaps the feed cover's latch, pulls the spent box off, fetches a new one, seats it
+## and slaps the latch shut; an empty gun also has its charging handle hauled back.
 static func _belt(empty: bool) -> Dictionary:
 	var d := {}
 	d["gun"] = [_g(0.0, "belt", 0.0), _g(0.1, "belt"), _g(0.86, "belt"), _g(0.95, "belt", 0.0), _g(1.0, "belt", 0.0)]
-	d["cover"] = [[0.0, 0.0], [0.08, 0.0], [0.14, -42.0], [0.78, -42.0], [0.83, 0.0], [1.0, 0.0]]
-	d["hand"] = [[0.0, "grip_l", 0, 0, 0], [0.06, "cover", 0, 0.02, 0.0], [0.14, "cover", 0, 0.06, 0.03], [0.2, "magwell", 0, -0.06, 0.0],
+	# (The model's feed cover is skinned with the receiver's top: turning its bone tears a sheet out of the gun, so the cover
+	# stays shut and the hand slaps its latch; the box swap is the reload.)
+	d["hand"] = [[0.0, "grip_l", 0, 0, 0], [0.06, "magwell", 0, 0.1, 0.02], [0.14, "magwell", 0, 0.12, 0.03], [0.2, "magwell", 0, -0.06, 0.0],
 		[0.26, "magwell", 0, -0.06, 0.0], [0.32, "magwell", -0.04, -0.12, 0.03], [0.4, "belt", 0, 0, 0], [0.48, "belt", 0, 0, 0],
-		[0.56, "magwell", -0.04, -0.12, 0.03], [0.6, "magwell", 0, -0.06, 0.0], [0.66, "magwell", 0, -0.04, 0.0], [0.74, "cover", 0, 0.06, 0.03],
-		[0.8, "cover", 0, 0.03, 0.0], [0.88, "grip_l", 0, 0, 0], [1.0, "grip_l", 0, 0, 0]]
+		[0.56, "magwell", -0.04, -0.12, 0.03], [0.6, "magwell", 0, -0.06, 0.0], [0.66, "magwell", 0, -0.04, 0.0], [0.74, "magwell", 0, 0.12, 0.03],
+		[0.8, "magwell", 0, 0.1, 0.0], [0.88, "grip_l", 0, 0, 0], [1.0, "grip_l", 0, 0, 0]]
 	d["open"] = [[0.0, 0.0], [0.04, 0.7], [0.08, 0.2], [0.16, 0.7], [0.2, 0.0], [0.38, 0.0], [0.41, 0.8], [0.47, 0.6], [0.5, 0.0],
 		[0.66, 0.0], [0.7, 0.7], [0.78, 0.3], [0.86, 0.0]]
 	d["mag"] = [[0.0, 1, "magwell", 0, 0, 0, 0, 0, 0], [0.26, 1, "magwell", 0, 0, 0, 0, 0, 0], [0.38, 1, "hand", 0.0, 0.06, 0.0, 0, 0, 0],

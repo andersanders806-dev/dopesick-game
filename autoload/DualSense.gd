@@ -281,11 +281,13 @@ static func scaled(s: int, k: float) -> int:
 	return clampi(roundi(float(s) * k), 1, 8)
 
 ## R2 for `data` as `{effect}`: the effect for the gun, `firing` for an automatic one mid-burst.
-static func right_for(data: Resource, firing: bool, k: float) -> PackedByteArray:
+## `mode`: the selector's setting when the gun has one (WeaponHolder.fire_mode()); "" is the gun's own.
+static func right_for(data: Resource, firing: bool, k: float, mode := "") -> PackedByteArray:
 	if data == null or data.get("melee") == true:
 		return eff_off()
 	var fam: String = data.call("handling_family") if data.has_method("handling_family") else data.call("family")
-	var mode: String = data.call("fire_mode") if data.has_method("fire_mode") else ("auto" if data.get("auto") == true else "semi")
+	if mode == "":
+		mode = data.call("fire_mode") if data.has_method("fire_mode") else ("auto" if data.get("auto") == true else "semi")
 	if mode == "burst":
 		var b: Array = BURST.get(fam, BURST_DEFAULT)
 		return eff_weapon(b[0], b[1], scaled(b[2], k))
@@ -560,7 +562,8 @@ func desired_triggers() -> Dictionary:
 	if holder.get("reloading") == true:
 		return {"r": off, "l": off}
 	var empty: bool = int(holder.get("mag")) <= 0
-	var r := off if empty else right_for(data, _fire_t > 0.0, k)
+	var sel: String = String(holder.call("fire_mode")) if holder.has_method("fire_mode") else ""
+	var r := off if empty else right_for(data, _fire_t > 0.0, k, sel)
 	return {"r": r, "l": left_for(data, k)}
 
 ## The lightbar now (0..1 per channel).

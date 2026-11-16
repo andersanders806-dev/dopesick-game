@@ -13,7 +13,7 @@ const ACCEL := 90.0
 const DROP := 1.6
 const REACH := 160.0
 ## Seconds the fireball, the flash and the smoke stay after the blast.
-const AFTER := 2.6
+const AFTER := 3.2
 
 var holder: Node
 var flying := false
@@ -76,7 +76,9 @@ func _build() -> void:
 	_body.add_child(_flame)
 	var smoke_mat := ImpactFX._particle_material(Color(0.62, 0.6, 0.57, 0.55), false, false)
 	var fire_mat := ImpactFX._particle_material(Color(1.0, 0.65, 0.3, 1.0), true, true)
-	var grit_mat := ImpactFX._particle_material(Color(0.25, 0.22, 0.2, 1.0), false, false)
+	var grit_mat := ImpactFX._particle_material(Color(1.0, 1.0, 1.0, 1.0), false, false)
+	# The blast's smoke takes its colour from the ramp alone (a grey you can see against the night).
+	var cloud_mat := ImpactFX._particle_material(Color(1.0, 1.0, 1.0, 1.0), false, false)
 	# The motor's trail: a steady stream of puffs left hanging in the air.
 	_trail = CPUParticles3D.new()
 	_trail.emitting = false
@@ -104,9 +106,9 @@ func _build() -> void:
 	_trail.position = Vector3(0, 0, 0.45)
 	_body.add_child(_trail)
 	# The blast: a fireball, a column of smoke, grit thrown out.
-	_fire = _burst(fire_mat, 26, 0.55, 0.9, 1.9, 2.0, 6.5, 180.0, Vector3(0, 1.5, 0), Color(1.0, 0.85, 0.5, 1.0), Color(0.6, 0.2, 0.05, 0.0), 1.6)
-	_smoke = _burst(smoke_mat, 22, AFTER, 1.4, 2.6, 1.0, 3.5, 70.0, Vector3(0, 0.9, 0), Color(0.2, 0.19, 0.18, 0.85), Color(0.35, 0.34, 0.33, 0.0), 2.2)
-	_grit = _burst(grit_mat, 40, 1.1, 0.05, 0.12, 6.0, 14.0, 75.0, Vector3(0, -12.0, 0), Color(0.3, 0.27, 0.24, 1.0), Color(0.2, 0.18, 0.16, 0.0), 0.0)
+	_fire = _burst(fire_mat, 40, 0.8, 1.6, 3.4, 2.0, 7.0, 180.0, Vector3(0, 2.5, 0), Color(1.0, 0.9, 0.62, 1.0), Color(0.7, 0.22, 0.04, 0.0), 1.6)
+	_smoke = _burst(cloud_mat, 30, AFTER, 2.0, 3.8, 1.2, 3.6, 65.0, Vector3(0, 1.3, 0), Color(0.46, 0.43, 0.4, 0.8), Color(0.32, 0.31, 0.3, 0.0), 2.2)
+	_grit = _burst(grit_mat, 50, 1.2, 0.07, 0.17, 6.0, 15.0, 75.0, Vector3(0, -12.0, 0), Color(0.42, 0.37, 0.32, 1.0), Color(0.3, 0.27, 0.24, 0.0), 0.0)
 	_flash = OmniLight3D.new()
 	_flash.light_color = Color(1.0, 0.7, 0.4)
 	_flash.light_energy = 0.0

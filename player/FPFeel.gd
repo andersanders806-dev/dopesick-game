@@ -324,7 +324,8 @@ func _on_fired() -> void:
 	kick_rot_v += Vector3(up * room_rot, rng.randf_range(-0.012, 0.012), rng.randf_range(-roll, roll)) * 38.0
 	add_trauma(0.05 + d.recoil * 0.018)
 	_muzzle_flash(d)
-	if fam in ["pistol", "smg", "ar", "lmg", "belt"]:
+	# (Looking through a scope the brass is not seen: it would cross the glass at the eye.)
+	if fam in ["pistol", "smg", "ar", "lmg", "belt"] and not _scoped():
 		_eject_shell(d)
 	elif fam == "shotgun":
 		_later.append([maxf(d.interval() * 0.45, 0.2), "pump"])
@@ -538,18 +539,19 @@ func _on_swing_landed(hits: int, killed: bool, wall: bool) -> void:
 ## The swing's pose: a light swing sweeps right to left across the view; a heavy one winds back first. Each key is
 ## [u, pos, rot degrees] in camera space. True while a swing is on (the gun is out of sight).
 const SWING_BAT := [
-	[0.0, Vector3(0.32, -0.42, -0.2), Vector3(40.0, -70.0, -40.0)],
-	[0.18, Vector3(0.3, -0.02, -0.26), Vector3(62.0, -62.0, -34.0)],
-	[0.42, Vector3(0.02, -0.12, -0.42), Vector3(4.0, -6.0, -14.0)],
-	[0.62, Vector3(-0.22, -0.2, -0.32), Vector3(-10.0, 62.0, 4.0)],
-	[1.0, Vector3(-0.3, -0.55, -0.15), Vector3(-30.0, 90.0, 20.0)],
+	[0.0, Vector3(0.3, -0.34, -0.24), Vector3(40.0, -70.0, -40.0)],
+	[0.18, Vector3(0.28, 0.04, -0.3), Vector3(62.0, -62.0, -34.0)],
+	[0.42, Vector3(0.02, -0.06, -0.44), Vector3(6.0, -4.0, -16.0)],
+	[0.62, Vector3(-0.22, -0.14, -0.34), Vector3(-8.0, 64.0, 2.0)],
+	[1.0, Vector3(-0.3, -0.5, -0.18), Vector3(-30.0, 90.0, 20.0)],
 ]
+## The machete: a forehand slash from high on the right down across to the left, the blade's flat to the eye.
 const SWING_BLADE := [
-	[0.0, Vector3(0.3, -0.4, -0.2), Vector3(50.0, -40.0, -60.0)],
-	[0.16, Vector3(0.26, 0.04, -0.28), Vector3(78.0, -30.0, -52.0)],
-	[0.4, Vector3(0.02, -0.1, -0.42), Vector3(-6.0, 4.0, -40.0)],
-	[0.62, Vector3(-0.2, -0.28, -0.3), Vector3(-52.0, 40.0, -30.0)],
-	[1.0, Vector3(-0.26, -0.6, -0.15), Vector3(-70.0, 56.0, -20.0)],
+	[0.0, Vector3(0.32, -0.34, -0.26), Vector3(30.0, -80.0, -50.0)],
+	[0.16, Vector3(0.28, 0.0, -0.32), Vector3(42.0, -72.0, -62.0)],
+	[0.4, Vector3(0.02, -0.1, -0.42), Vector3(-12.0, 28.0, -62.0)],
+	[0.62, Vector3(-0.2, -0.22, -0.34), Vector3(-30.0, 70.0, -40.0)],
+	[1.0, Vector3(-0.3, -0.52, -0.16), Vector3(-50.0, 90.0, -20.0)],
 ]
 
 func _pose_swing() -> bool:

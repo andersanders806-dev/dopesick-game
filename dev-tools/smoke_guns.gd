@@ -106,9 +106,11 @@ func _scene_checks() -> void:
 	await _burst_checks(holder, feel)
 	await _reload_checks(holder, feel)
 	await _sprint_checks(holder, feel, player)
+	await _input_checks(holder, feel, player)
 	await _recoil_checks(holder, feel)
 	await _sound_checks(holder, feel, city)
 	await _alloc_checks(holder, feel)
+	Input.action_release("fire")
 	player.set("_sprinting", false)
 	GunSounds.force_indoors = -1
 	zm.leave()
@@ -121,6 +123,8 @@ func _ready_gun(holder: Node, feel: Node, d: Resource) -> void:
 	holder._cooldown = 0.0
 	holder._sprint_hold = 0.0
 	holder._burst_left = 0
+	holder._fire_queued = false
+	holder._reload_resume = false
 	holder.aiming = false
 	holder.reload_mult = 1.0
 
@@ -386,3 +390,122 @@ func _alloc_checks(holder: Node, feel: Node) -> void:
 	_check(players1 == players0 and players0 == feel._audio.size() + feel._shot_audio.size() + feel._tail_audio.size(), "  the audio voices are the same %d after 300 rounds" % players1)
 	_check(nodes1 - nodes0 <= 1 and objs1 - objs0 <= 24, "  and nothing is made by firing (%+d nodes, %+d objects over %d rounds)" % [nodes1 - nodes0, objs1 - objs0, fired])
 	print("  info  %.3f ms per LMG round in the test loop (shot, feel, effects)" % ms)
+
+## The real input path: holder._process reads the fire action (held with Input.action_press), as the game does each frame.
+func _input_checks(holder: Node, feel: Node, player: Node) -> void:
+	_section("The trigger on the run: sprint_blocked, a buffered semi shot, fire over a resumed reload, a late cut")
+	var dt := 0.01
+	Input.action_release("fire")
+	holder._process(dt)
+	# Pulling the trigger while sprinting ends the sprint; letting go gives it back.
+	var pistol: Resource = _wd("pistol")
+	_ready_gun(holder, feel, pistol)
+	player.set("_sprinting", true)
+	Input.action_press("fire")
+	holder._process(dt)
+	_check(player.get("sprint_blocked") == true, "  fire on the run holds the sprint back (sprint_blocked)")
+	Input.action_release("fire")
+	holder._process(dt)
+	_check(player.get("sprint_blocked") == false, "  and the trigger up gives it back")
+	player.set("_sprinting", false)
+	# I1: a semi shot pulled while still sprinting is kept and fires when the delay is over.
+	for id in ["pistol", "shotgun", "sniper"]:
+		var g: Resource = _wd(id)
+		_ready_gun(holder, feel, g)
+		holder.refill_current()
+		var shots := [0]
+		var on_fired := func(): shots[0] += 1
+		holder.fired.connect(on_fired)
+		var mag0: int = holder.mag
+		player.set("_sprinting", true)
+		holder._process(dt)
+		Input.action_press("fire")
+		holder._process(dt)
+		_check(shots[0] == 0 and holder._fire_queued, "  %s: the press on the run is kept, not fired, not lost" % id)
+		player.set("_sprinting", false)
+		var t := 0.0
+		while shots[0] == 0 and t < 1.0:
+			holder._process(dt)
+			t += dt
+		_check(shots[0] == 1 and holder.mag == mag0 - 1 and absf(t - g.sprint_fire_delay) <= 0.04, "  %s: and fires %.2f s after the sprint ends (%.2f s, %d round)" % [id, g.sprint_fire_delay, t, shots[0]])
+		for i in 60:
+			holder._process(dt)
+		_check(shots[0] == 1, "  %s: holding on does not fire a second one" % id)
+		Input.action_release("fire")
+		holder._process(dt)
+		_check(not holder._fire_queued, "  %s: nothing is left queued" % id)
+		holder.fired.disconnect(on_fired)
+	# I3: a reload a sprint cut short gives way to the trigger when there are rounds to fire.
+	var ar: Resource = _wd("ar")
+	_ready_gun(holder, feel, ar)
+	holder.mag = 5
+	holder.reserve = 90
+	holder.reload()
+	holder.advance(0.3)
+	player.set("_sprinting", true)
+	holder.advance(dt)
+	_check(not holder.reloading and holder._reload_resume, "  the sprint cuts the reload and marks it to resume")
+	Input.action_press("fire")
+	player.set("_sprinting", false)
+	for i in int((ar.sprint_fire_delay + 0.1) / dt):
+		holder._process(dt)
+	_check(not holder.reloading and not holder._reload_resume and holder.mag < 5, "  fire held after the sprint: the gun shoots, it does not reload (mag %d, reloading %s)" % [holder.mag, holder.reloading])
+	Input.action_release("fire")
+	holder._process(dt)
+	# Without the trigger the same cut reload does resume.
+	_ready_gun(holder, feel, ar)
+	holder.mag = 5
+	holder.reserve = 90
+	holder.reload()
+	holder.advance(0.3)
+	player.set("_sprinting", true)
+	holder.advance(dt)
+	player.set("_sprinting", false)
+	for i in int((ar.sprint_fire_delay + 0.1) / dt):
+		holder._process(dt)
+	_check(holder.reloading, "  and with the trigger up it resumes")
+	# A reload cut after the new magazine is in counts as done; before that it does not.
+	for late in [true, false]:
+		_ready_gun(holder, feel, ar)
+		holder.mag = 5
+		holder.reserve = 90
+		holder.reload()
+		holder.advance(holder.reload_left() * (0.75 if late else 0.4))
+		player.set("_sprinting", true)
+		holder.advance(dt)
+		player.set("_sprinting", false)
+		if late:
+			_check(not holder.reloading and not holder._reload_resume and holder.mag == ar.mag_cap(true) and holder.reserve == 90 - (ar.mag_cap(true) - 5), "  a sprint after the mag-in cue leaves the gun loaded (%d + %d), nothing to redo" % [holder.mag, holder.reserve])
+		else:
+			_check(not holder.reloading and holder._reload_resume and holder.mag == 5 and holder.reserve == 90, "  a sprint before it leaves the old magazine and a reload to resume (%d + %d)" % [holder.mag, holder.reserve])
+	# A swap after the mag-in cue is the same.
+	holder.slots = [null, null]
+	holder.give(_wd("pistol"))
+	holder.give(ar)
+	holder._swap_left = 0.0
+	holder.mag = 5
+	holder.reserve = 90
+	holder.reload()
+	holder.advance(holder.reload_left() * 0.75)
+	holder.swap()
+	holder.advance(1.0)
+	holder.swap()
+	holder.advance(1.0)
+	_check(holder.current.id == "ar" and not holder.reloading and holder.mag == ar.mag_cap(true), "  a late swap away leaves it loaded too (%d)" % holder.mag)
+	# A refill keeps the chambered round.
+	holder.mag = ar.mag_cap(true)
+	holder.refill_current()
+	_check(holder.mag == ar.mag_cap(true), "  a refill does not take the chambered round off a full gun (%d)" % holder.mag)
+	holder.slots = [null, null]
+	holder.give(_wd("pistol"))
+	# The Ghetto Wars drive-by plays the recorded SMG, near and far.
+	var Vehicles := load("res://world/ghetto/GhettoVehicles.gd")
+	var veh: Node = Vehicles.new()
+	root.add_child(veh)
+	var cam := root.get_camera_3d()
+	if cam != null:
+		var near: String = veh._drive_by_shot(cam.global_position + Vector3(6, 0, 0))
+		var far: String = veh._drive_by_shot(cam.global_position + Vector3(0, 0, 130))
+		_check(near.contains("/smg/fire_") and far.contains("/smg/distant_") and ResourceLoader.exists(near) and ResourceLoader.exists(far), "  the drive-by's shots are the recorded SMG: %s near, %s far" % [near.get_file(), far.get_file()])
+	veh.queue_free()
+	player.set("_sprinting", false)

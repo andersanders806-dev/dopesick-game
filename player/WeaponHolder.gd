@@ -89,6 +89,10 @@ var _burst_left := 0
 var _sprint_hold := 0.0
 ## A reload that a sprint or a swap cut short, to begin again when the way is clear.
 var _reload_resume := false
+## A press of the trigger that came while the sprint-out was still going: it fires when the delay is over.
+var _fire_queued := false
+## The seconds of the reload under way (the fraction of it that is done decides what a cut leaves).
+var _reload_total := 0.0
 ## The reload under way began on an empty gun.
 var reload_empty := false
 ## This shot's zombies hurt but not killed (instance id -> true), paid 10 each when it's over.
@@ -168,7 +172,8 @@ func give(data: WD) -> void:
 
 func _switch_to(i: int) -> void:
 	# A reload that a swap cuts short is remembered by its gun, and begins again when you are back on it.
-	if reloading and slots[active] != null:
+	var cut_short := reloading and not _cut_reload()
+	if cut_short and slots[active] != null:
 		slots[active]["resume"] = true
 	active = i
 	_cancel_reload()
@@ -188,7 +193,7 @@ func _switch_to(i: int) -> void:
 func refill_current() -> void:
 	if slots[active] == null:
 		return
-	slots[active].mag = current.mag_size
+	slots[active].mag = maxi(int(slots[active].mag), current.mag_size)
 	slots[active].reserve = current.reserve_max
 	ammo_changed.emit()
 
@@ -196,7 +201,7 @@ func refill_current() -> void:
 func refill_all() -> void:
 	for s in slots:
 		if s != null:
-			s.mag = s.data.mag_size
+			s.mag = maxi(int(s.mag), s.data.mag_size)
 			s.reserve = s.data.reserve_max
 	ammo_changed.emit()
 
@@ -230,8 +235,13 @@ func _process(delta: float) -> void:
 		_trigger_down = false
 		_release_sprint()
 		return
-	advance(delta)
 	var down := Input.is_action_pressed("fire")
+	# The trigger wins over a reload that a sprint cut short, when there are rounds in the gun to fire.
+	if down and mag > 0:
+		_reload_resume = false
+	if not down:
+		_fire_queued = false
+	advance(delta)
 	# Pulling the trigger on the run ends the sprint (Call of Duty's sprint-out); the gun answers a moment later.
 	if player != null and player.get("sprint_blocked") != null:
 		if down and _sprinting():
@@ -240,7 +250,9 @@ func _process(delta: float) -> void:
 		elif not down:
 			player.set("sprint_blocked", false)
 	if down and current != null and (current.auto or not _trigger_down):
-		fire()
+		# A press on the run is kept until the sprint-to-fire delay is over (a semi gun would lose it).
+		if not fire() and mag > 0 and not reloading and (_sprint_hold > 0.0 or _sprinting()):
+			_fire_queued = true
 	_trigger_down = down
 	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting()
 
@@ -299,10 +311,12 @@ func advance(delta: float) -> void:
 		_sprint_hold = current.sprint_fire_delay if current != null else 0.2
 		_burst_left = 0
 		if reloading:
-			_cancel_reload()
-			_reload_resume = true
+			_reload_resume = not _cut_reload()
 	else:
 		_sprint_hold = maxf(_sprint_hold - delta, 0.0)
+	if _fire_queued and _sprint_hold <= 0.0 and not _sprinting():
+		_fire_queued = false
+		fire()
 	if _reload_resume and not reloading and _swap_left <= 0.0 and _sprint_hold <= 0.0:
 		_reload_resume = false
 		reload()
@@ -345,6 +359,7 @@ func reload() -> bool:
 	_reload_resume = false
 	reload_empty = mag <= 0
 	_reload_left = d.reload_for(reload_empty) * reload_mult
+	_reload_total = _reload_left
 	reload_started.emit()
 	return true
 
@@ -358,6 +373,25 @@ func _finish_reload() -> void:
 		reserve -= take
 	reload_finished.emit()
 	ammo_changed.emit()
+
+## A reload cut short (a sprint, a swap): once the new magazine is in (its cue has played) it counts as done, as in
+## Call of Duty; before that nothing is loaded and it starts again later. True if it counted as done.
+func _cut_reload() -> bool:
+	if not reloading:
+		return false
+	var d := current
+	var done := false
+	if d != null and _reload_total > 0.0:
+		var progress := 1.0 - _reload_left / _reload_total
+		var cues: Array = d.reload_cues_empty if reload_empty else d.reload_cues_tactical
+		for c in cues:
+			if String(c[1]) == "mag_in" and progress >= float(c[0]):
+				done = true
+	if done:
+		_finish_reload()
+	else:
+		_cancel_reload()
+	return done
 
 func _cancel_reload() -> void:
 	reloading = false

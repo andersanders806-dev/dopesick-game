@@ -13,6 +13,7 @@ extends Node
 
 const CarPaint := preload("res://world/CarPaint.gd")
 const Mat := preload("res://world/ghetto/GhettoMat.gd")
+const GunSounds := preload("res://weapons/GunSounds.gd")
 const TEX := "res://assets/ghetto/"
 
 ## id -> the car's route: points in the world, y 0. A car faces +X in its model.
@@ -253,7 +254,9 @@ func _drive(delta: float) -> void:
 				var s := faces[randi() % faces.size()]
 				flash_slot(drive_slots.find(s))
 				if set_node:
-					set_node.call("_sound", "res://assets/sfx/guns/fire_smg_a.wav", s.global_position, -10.0, randf_range(0.9, 1.15), 90.0)
+					var shot := _drive_by_shot(s.global_position)
+					if shot != "":
+						set_node.call("_sound", shot, s.global_position, -10.0, randf_range(0.9, 1.15), 90.0)
 			_burst_left -= 1
 			_burst_gap = randf_range(0.06, 0.12) if _burst_left > 0 else randf_range(0.6, 1.4)
 	if _offset >= len + 6.0:
@@ -263,6 +266,20 @@ func _drive(delta: float) -> void:
 		drive_slots.clear()
 		drives_finished += 1
 		set_node.emit_signal("drive_by_finished", id)
+
+var _smg: Resource
+var _shot_n := 0
+
+## The path of one recorded SMG shot for a window at `pos`: the close take near the camera, the one made far away beyond 40 m
+## (the same sets the gangsters use, weapons/GunSounds.gd). "" if there is none.
+func _drive_by_shot(pos: Vector3) -> String:
+	if _smg == null:
+		_smg = load("res://weapons/smg.tres")
+	var cam := get_viewport().get_camera_3d()
+	var far: bool = cam != null and cam.global_position.distance_to(pos) > 40.0
+	_shot_n += 1 + randi() % 2
+	var st: AudioStream = GunSounds.distant(_smg, _shot_n) if far else GunSounds.shot(_smg, _shot_n)
+	return st.resource_path if st != null else ""
 
 # --- THE BUST -----------------------------------------------------------------------------
 

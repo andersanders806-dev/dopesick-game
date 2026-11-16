@@ -11,6 +11,13 @@ var traces := {}
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
 	out = ProjectSettings.globalize_path("res://.pilot/ship16b1")
+	# `-- lmg --out=ship16b1_fix1`: only those guns (hip, ADS, first shot), into .pilot/<out>/.
+	var only: Array = []
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--out="):
+			out = ProjectSettings.globalize_path("res://.pilot/" + a.substr(6))
+		elif not a.begins_with("--"):
+			only.append(a)
 	DirAccess.make_dir_recursive_absolute(out)
 	await process_frame
 	var gfx := root.get_node("Graphics")
@@ -41,7 +48,7 @@ func _initialize() -> void:
 		z.set_physics_process(false)
 		z._anim_player.pause()
 		z._model_root.rotation.y = PI / 2.0
-	for id in GUNS:
+	for id in (only if not only.is_empty() else GUNS):
 		h.give(load("res://weapons/%s.tres" % id))
 		h.refill_all()
 		await _run(h, feel, 40)
@@ -54,7 +61,11 @@ func _initialize() -> void:
 		await _snap("%s_fire" % id)
 		h.aiming = false
 		await _run(h, feel, 60)
-		await _trace(h, feel, id)
+		if only.is_empty():
+			await _trace(h, feel, id)
+	if not only.is_empty():
+		quit()
+		return
 	# A burst gun: the AR set to three rounds.
 	var b: Resource = load("res://weapons/ar.tres").duplicate()
 	b.auto = false

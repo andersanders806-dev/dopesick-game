@@ -17,6 +17,9 @@ const SETTLE_FRAME_MSEC := 20.0
 const SETTLE_MAX_MSEC := 2000
 ## Behind the black, the background loads that are still queued get this long to finish (_drain).
 const DRAIN_MSEC := 800
+## The same when the rooms behind the doors next to the arrival point are among them (a one-off per room: loaded
+## rooms are kept for the session).
+const DOOR_DRAIN_MSEC := 2500
 ## How close (m) the player gets to a door before its room starts loading.
 const PREFETCH_RANGE := 4.0
 const NAMES := {
@@ -223,7 +226,8 @@ func _process(delta: float) -> void:
 		_scan = 0.25
 		_prefetch_near_doors()
 
-func _prefetch_near_doors() -> void:
+## Returns how many rooms behind the doors in reach are not loaded yet (they are queued, at the front).
+func _prefetch_near_doors() -> int:
 	# The street is where every door leads: start on it, and on the facade
 	# kits it builds itself from, as soon as the game is up -- the title
 	# screen's time is enough for the whole block to be in before "Continue"
@@ -247,10 +251,14 @@ func _prefetch_near_doors() -> void:
 			prefetch(path)
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:
-		return
+		return 0
+	var pending := 0
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene, true)
+			if _queue.has(door.target_scene) or _loading.has(door.target_scene):
+				pending += 1
+	return pending
 
 ## The scene at `path`, waiting for (or doing) the load if it isn't in yet;
 ## null if it won't load.
@@ -306,7 +314,11 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 		while not room.finish_arrival() and Time.get_ticks_msec() - t_hold < hold:
 			await tree.process_frame
 	if not hidden:
-		await _drain(DRAIN_MSEC)
+		# The rooms behind the doors round where you arrive are what the loader would start next, the moment you
+		# stand still (Apartment3D and KartCenter3D landed as 7 seen 25-65 ms frames in the first 5 s after the
+		# corner shop): queued now and drained in this black, with a longer budget when they are among the loads.
+		var door_loads := _prefetch_near_doors() > 0
+		await _drain(DOOR_DRAIN_MSEC if door_loads else DRAIN_MSEC)
 		await _settle()
 	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
 	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]

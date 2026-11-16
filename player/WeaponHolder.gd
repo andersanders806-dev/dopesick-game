@@ -387,6 +387,7 @@ func advance(delta: float) -> void:
 	for r in _rockets:
 		if r.flying:
 			r.advance(delta)
+	_blast_step()
 	if _hold >= 0.0:
 		_hold += delta
 		if _hold >= HOLD_TIME:
@@ -932,8 +933,8 @@ func unwarm_rockets() -> void:
 ## A rocket's blast at `at` (fx/Rocket.gd calls it): full damage at the middle down to a quarter at the edge for every
 ## zombie in the radius not behind a wall, the one it struck taking it whole; the shooter takes up to self_damage.
 func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
-	_wounded.clear()
 	var radius := maxf(d.splash_radius, 0.5)
+	var hits: Array = []
 	for z in get_tree().get_nodes_in_group("zombies"):
 		if not (z is Node3D) or not z.has_method("take_hit"):
 			continue
@@ -943,10 +944,12 @@ func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
 			continue
 		var k := 1.0 if z == struck else clampf(1.0 - dist / (radius + 0.6), 0.25, 1.0)
 		var dir := (c - at).normalized() if dist > 0.05 else Vector3.UP
-		_hurt(z, "torso", d.damage * k, dir, d, false, c)
-		if is_instance_valid(z) and z.has_method("knock"):
-			z.knock(Vector3(dir.x, 0.6, dir.z).normalized() * 9.0 * k)
-	_pay_hits()
+		hits.append({"z": z, "dmg": d.damage * k, "dir": dir, "at": c, "k": k, "d": d, "dist": -1.0 if z == struck else dist})
+	# The shock goes out from the middle: the nearest first, a couple a frame (a crowd dying in one frame, their gore and
+	# their bodies all at once, was the launcher's worst frame).
+	hits.sort_custom(func(a, b): return a.dist < b.dist)
+	_blast_queue.append_array(hits)
+	_blast_step()
 	# Too close to your own rocket hurts.
 	if player != null and d.self_damage > 0.0:
 		var pd := (player.global_position + Vector3(0.0, 0.9, 0.0)).distance_to(at)
@@ -956,6 +959,34 @@ func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
 		var pd2 := player.global_position.distance_to(at) if player != null else 30.0
 		feel.add_trauma(clampf(1.0 - pd2 / 28.0, 0.15, 0.9))
 	exploded.emit(at, radius)
+
+## Viewmodels of the guns in your slots not in your hands (WD -> Viewmodel), kept out of sight for the swap back.
+var _vm_kept := {}
+
+func _in_slots(d: WD) -> bool:
+	for sl in slots:
+		if sl != null and sl.data == d:
+			return true
+	return false
+
+## Blast hits still to land (rocket_blast), and how many land a frame.
+var _blast_queue: Array = []
+const BLAST_PER_FRAME := 2
+
+func _blast_step() -> void:
+	if _blast_queue.is_empty():
+		return
+	_wounded.clear()
+	for i in mini(BLAST_PER_FRAME, _blast_queue.size()):
+		var h: Dictionary = _blast_queue.pop_front()
+		var z: Node = h.z
+		if not is_instance_valid(z):
+			continue
+		var dir: Vector3 = h.dir
+		_hurt(z, "torso", h.dmg, dir, h.d, false, h.at)
+		if is_instance_valid(z) and z.has_method("knock"):
+			z.knock(Vector3(dir.x, 0.6, dir.z).normalized() * 9.0 * float(h.k))
+	_pay_hits()
 
 # --- Aim ----------------------------------------------------------------------------
 
@@ -1004,14 +1035,33 @@ func _facing() -> Vector3:
 ## The gun in your hands and the arms holding it (player/Viewmodel.gd), on the
 ## camera; player/FPFeel.gd moves it. Nothing in third person.
 func _rebuild_viewmodel() -> void:
+	var cam := player.get("camera") as Camera3D if player != null else null
+	# The gun put away is kept, out of sight, while it is still in a slot: a swap back shows it again instead of
+	# building it anew (a model, arms and materials: a 25 to 60 ms frame on a laptop each swap).
 	if is_instance_valid(viewmodel):
-		viewmodel.queue_free()
+		if Graphics.first_person and cam != null and viewmodel.get_parent() == cam and _in_slots(viewmodel.data):
+			viewmodel.visible = false
+			_vm_kept[viewmodel.data] = viewmodel
+		else:
+			viewmodel.queue_free()
 		viewmodel = null
+	for k in _vm_kept.keys():
+		if not is_instance_valid(_vm_kept[k]):
+			_vm_kept.erase(k)
+		elif not Graphics.first_person or not _in_slots(k) or k == current:
+			if k != current:
+				(_vm_kept[k] as Node).queue_free()
+				_vm_kept.erase(k)
 	var d := current
 	if d == null or player == null or not Graphics.first_person:
 		return
-	var cam := player.get("camera") as Camera3D
 	if cam == null:
+		return
+	if _vm_kept.has(d) and is_instance_valid(_vm_kept[d]) and (_vm_kept[d] as Node).get_parent() == cam:
+		viewmodel = _vm_kept[d]
+		_vm_kept.erase(d)
+		viewmodel.position = FPFeel.HIP_POS
+		viewmodel.visible = true
 		return
 	viewmodel = Viewmodel.new().setup(d)
 	viewmodel.position = FPFeel.HIP_POS

@@ -13,7 +13,7 @@ const ACCEL := 90.0
 const DROP := 1.6
 const REACH := 160.0
 ## Seconds the fireball, the flash and the smoke stay after the blast.
-const AFTER := 3.2
+const AFTER := 2.8
 
 var holder: Node
 var flying := false
@@ -106,13 +106,14 @@ func _build() -> void:
 	_trail.position = Vector3(0, 0, 0.45)
 	_body.add_child(_trail)
 	# The blast: a fireball, a column of smoke, grit thrown out.
-	_fire = _burst(fire_mat, 40, 0.8, 1.6, 3.4, 2.0, 7.0, 180.0, Vector3(0, 2.5, 0), Color(1.0, 0.9, 0.62, 1.0), Color(0.7, 0.22, 0.04, 0.0), 1.6)
-	_smoke = _burst(cloud_mat, 30, AFTER, 2.0, 3.8, 1.2, 3.6, 65.0, Vector3(0, 1.3, 0), Color(0.46, 0.43, 0.4, 0.8), Color(0.32, 0.31, 0.3, 0.0), 2.2)
-	_grit = _burst(grit_mat, 50, 1.2, 0.07, 0.17, 6.0, 15.0, 75.0, Vector3(0, -12.0, 0), Color(0.42, 0.37, 0.32, 1.0), Color(0.3, 0.27, 0.24, 0.0), 0.0)
+	# (Counts and sizes kept down for the floor: a screenful of big alpha quads is what costs on a laptop GPU.)
+	_fire = _burst(fire_mat, 18, 0.7, 1.8, 3.2, 2.0, 7.0, 180.0, Vector3(0, 2.5, 0), Color(1.0, 0.9, 0.62, 1.0), Color(0.7, 0.22, 0.04, 0.0), 1.6)
+	_smoke = _burst(cloud_mat, 12, AFTER, 1.9, 3.2, 1.2, 3.6, 60.0, Vector3(0, 1.3, 0), Color(0.46, 0.43, 0.4, 0.8), Color(0.32, 0.31, 0.3, 0.0), 2.0)
+	_grit = _burst(grit_mat, 36, 1.2, 0.07, 0.17, 6.0, 15.0, 75.0, Vector3(0, -12.0, 0), Color(0.42, 0.37, 0.32, 1.0), Color(0.3, 0.27, 0.24, 0.0), 0.0)
 	_flash = OmniLight3D.new()
 	_flash.light_color = Color(1.0, 0.7, 0.4)
 	_flash.light_energy = 0.0
-	_flash.omni_range = 16.0
+	_flash.omni_range = 11.0
 	_flash.shadow_enabled = false
 	_flash.visible = false
 	add_child(_flash)
@@ -284,7 +285,8 @@ func _brushed(a: Vector3, b: Vector3) -> Node:
 func _process(delta: float) -> void:
 	if _after > 0.0:
 		_after -= delta
-		_flash.light_energy = maxf(_flash.light_energy - delta * 40.0, 0.0)
+		# (Short: a big light over the whole street is a cost on every lit surface for as long as it burns.)
+		_flash.light_energy = maxf(_flash.light_energy - delta * 60.0, 0.0)
 		if _flash.light_energy <= 0.0:
 			_flash.visible = false
 		if _after <= 0.0:

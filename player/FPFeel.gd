@@ -443,6 +443,11 @@ func _clear_reload_parts(v: Viewmodel) -> void:
 func _on_weapon_changed(d: WD) -> void:
 	GunSounds.warm(d)
 	swap_blend = 1.0
+	# A gun kept from before (WeaponHolder keeps the other slot's) comes back with its parts at rest and no flash.
+	var v := _vm()
+	if v != null:
+		_clear_reload_parts(v)
+		v.hide_flash()
 	_reload_events = []
 	_reload_def = {}
 	_reload_state = {}

@@ -123,7 +123,7 @@ NEW = {
                 model="m16/scene.gltf", yaw=0, length=0.99, hide=["m855"]),
     "sawnoff": dict(name="Back Porch", cls="shotgun", handling="break", damage=26, head=2.0, neck=1.5, limb=0.75, rpm=180, auto=False, mag=2, reserve=36,
                     reload=2.2, bump=0.0, chambers=False, hip=7.5, ads=6.5, recoil=4.5, zoom=1.1, price=900, in_box=False, pellets=10,
-                    falloff_start=3, falloff_end=18, floor=0.2, pattern_kind="shotgun", ads_time=0.2, sprint=0.18, optic_height=0.004, relief=0.62,
+                    falloff_start=3, falloff_end=18, floor=0.2, pattern_kind="shotgun", ads_time=0.2, sprint=0.18, optic_height=0.024, relief=0.62,
                     model="sawnoff/scene.gltf", yaw=90, length=0.4, hide=[]),
     "deagle": dict(name="Sledge", cls="pistol", damage=150, head=3.5, neck=2.0, limb=0.8, falloff_start=22, falloff_end=65, floor=0.7, rpm=200, auto=False,
                    mag=7, reserve=49, reload=2.3, hip=2.6, ads=0.25, recoil=3.8, zoom=1.35, price=0, pattern_kind="cannon", ads_time=0.24, sprint=0.2,

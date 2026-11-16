@@ -7341,7 +7341,8 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	await _frames(10)
 
 	# Wall-buys.
-	_check(block.wall_buys.size() == 5, "  five wall guns on the block (%d)" % block.wall_buys.size())
+	# (SHIP 16 B2: the five of before, eight of the new guns and the two melee weapons.)
+	_check(block.wall_buys.size() == 15, "  fifteen wall boards on the block (%d)" % block.wall_buys.size())
 	var wall_ok := true
 	for buy in block.wall_buys:
 		var o: Vector3 = buy.global_position
@@ -7356,7 +7357,8 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	_check(wall_ok, "  every board hangs against a wall")
 	var buy_ids: Array = block.wall_buys.map(func(b): return b.data.id)
 	buy_ids.sort()
-	_check(buy_ids == ["ar", "magnum", "shotgun", "smg", "sniper"], "  they sell the AR, magnum, shotgun, SMG and sniper (%s)" % [buy_ids])
+	_check(buy_ids == ["ak", "ar", "bat", "dmr", "glock", "m16", "machete", "magnum", "mp5", "sawnoff", "shotgun", "smg", "sniper", "tec9", "uzi"],
+		"  they sell the AR, magnum, shotgun, SMG, sniper and the new wall guns and melee weapons (%s)" % [buy_ids])
 	holder.give(load("res://weapons/pistol.tres"))
 	var smg_buy: Node = block.wall_buys.filter(func(b): return b.data.id == "smg")[0]
 	zm.points = 999
@@ -7417,7 +7419,8 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	holder.give(load("res://weapons/smg.tres"))
 	var pool_ids: Array = box.pool().map(func(d): return d.id)
 	pool_ids.sort()
-	_check(pool_ids == ["ar", "lmg", "magnum", "shotgun", "smg", "sniper", "wonder"], "  the box's pool is every gun but the pistol, with the LMG and the wonder weapon (%s)" % [pool_ids])
+	_check(pool_ids == ["aa12", "ak", "amr", "ar", "deagle", "dmr", "lmg", "m16", "magnum", "mp5", "rpg", "saw", "shotgun", "smg", "sniper", "vector", "wonder"],
+		"  the box's pool: every gun but the pistol, with the LMG, the wonder weapon and the new box guns (%s)" % [pool_ids])
 	zm.points = 949
 	_check(box.try_open(holder) == "poor" and zm.points == 949 and box.state == box.State.IDLE, "  one short of 950: the box stays shut and takes nothing")
 	zm.points = 950

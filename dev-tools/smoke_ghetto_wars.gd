@@ -112,8 +112,9 @@ func _ghetto_checks(gs: Node) -> void:
 		peak = maxi(peak, get_nodes_in_group("gangsters").size())
 	var crew := get_nodes_in_group("gangsters")
 	_check(crew.size() >= 4 and peak <= zm.GANG_MAX_ALIVE, "  wave 1 puts a crew on the block (%d alive, peak %d, never over %d)" % [crew.size(), peak, zm.GANG_MAX_ALIVE])
-	_check(crew.all(func(g): return g.is_in_group("zombies") and g.is_armed() and g.gun_id == "pistol" and g.crew == "Dock Boys"),
-		"  all armed Dock Boys with pistols in wave 1, and the weapons see them as targets")
+	# (SHIP 16 B2: a crew carries its own version of the wave's gun: the Dock Boys' handgun is the pistol or their Glock.)
+	_check(crew.all(func(g): return g.is_in_group("zombies") and g.is_armed() and g.gun_id in ["pistol", "glock"] and g.crew == "Dock Boys"),
+		"  all armed Dock Boys with handguns (pistol or Glock) in wave 1, and the weapons see them as targets")
 	_check(crew.all(func(g): return g.get_node_or_null("HitZones") != null and g.hitboxes.size() == 11), "  each has hit zones on its bones")
 	var paired := crew.filter(func(g): return is_instance_valid(g.buddy)).size()
 	_check(paired >= 2 and sp.squads >= 1, "  they come in pairs (%d squads)" % sp.squads)

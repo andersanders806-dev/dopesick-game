@@ -762,6 +762,9 @@ func _b2_system_checks(holder: Node, feel: Node, player: Node, block: Node) -> v
 	while r != null and r.flying and tt < 300:
 		holder.advance(1.0 / 60.0)
 		tt += 1
+	# (The blast's hits land nearest first, two a frame.)
+	for i in 4:
+		holder.advance(1.0 / 60.0)
 	var dead := 0
 	for z in crowd:
 		if not is_instance_valid(z) or not z.is_alive():
@@ -773,6 +776,7 @@ func _b2_system_checks(holder: Node, feel: Node, player: Node, block: Node) -> v
 	_check(holder.mag == 0 and holder.reserve == 8, "  one rocket in the tube, eight to carry: one fired (%d + %d)" % [holder.mag, holder.reserve])
 	var hp_before: float = zm.health
 	holder.rocket_blast(player.global_position + Vector3(1.5, 0.9, 0.0), rpg, null)
+	holder.advance(0.05)
 	_check(zm.health < hp_before, "  a rocket going off 1.5 m away hurts you (%.0f -> %.0f)" % [hp_before, zm.health])
 	zm.health = hp_before
 	for z in crowd:

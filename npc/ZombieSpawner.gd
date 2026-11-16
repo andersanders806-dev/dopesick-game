@@ -128,7 +128,7 @@ func _process(delta: float) -> void:
 		_timer -= delta
 		if _timer <= 0.0 and alive() < ZombieMode.max_alive:
 			# Not on the frame after a slow one (a spawn is 5-8 ms; up to 4 frames of patience).
-			if delta > 0.028 and _patience < 4:
+			if delta > 0.028 and _patience < 4 and DisplayServer.get_name() != "headless":
 				_patience += 1
 			else:
 				_patience = 0

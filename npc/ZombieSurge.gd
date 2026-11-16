@@ -156,6 +156,7 @@ const SURGE_EXTRA_LEAN := 8
 ## A frame this long (s) or longer holds the next spawn back a frame.
 const SLOW_FRAME := 0.028
 var _skipped := 0
+var _headless := DisplayServer.get_name() == "headless"
 
 func surge_limit() -> int:
 	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + surge_extra())
@@ -170,7 +171,8 @@ func surge_extra() -> int:
 func _release_due(delta := 0.0) -> void:
 	# One a frame, and none on the frame after a slow one (up to 4 in a row): a spawn costs 5-8 ms, and a surge
 	# that caught up on a late frame by spawning four made the late frame later (the spiral of 40-80 ms frames).
-	if delta > SLOW_FRAME and _skipped < 4:
+	# (only where frames are seen: headless, a slow machine's frames would just make the surge's window close early)
+	if delta > SLOW_FRAME and _skipped < 4 and not _headless:
 		_skipped += 1
 		return
 	_skipped = 0

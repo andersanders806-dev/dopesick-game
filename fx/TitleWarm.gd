@@ -66,19 +66,20 @@ func _run() -> void:
 		while ResourceLoader.exists(p) and ResourceLoader.load_threaded_get_status(p) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
 	await get_tree().process_frame
-	_build()
-	await get_tree().process_frame
-	var mats: Array = []
+	# Built a piece a frame (the hidden viewport, its camera, the sun, the floor) and the materials as they are
+	# shown, so no single frame of the title carries more than a piece of it.
+	await _build()
+	var paths: Array = []
 	for p in SPATIAL:
 		if ResourceLoader.exists(p):
-			var m := ShaderMaterial.new()
-			m.shader = ResourceLoader.load_threaded_get(p) as Shader
-			mats.append(m)
+			paths.append(p)
 	var i := 0
-	while i < mats.size():
+	while i < paths.size():
 		for k in PER_FRAME:
-			if i < mats.size():
-				_show(mats[i], i)
+			if i < paths.size():
+				var m := ShaderMaterial.new()
+				m.shader = ResourceLoader.load_threaded_get(paths[i]) as Shader
+				_show(m, i)
 				i += 1
 		await get_tree().process_frame
 		_expire(false)
@@ -114,13 +115,16 @@ func _build() -> void:
 	_vp.handle_input_locally = false
 	_vp.audio_listener_enable_3d = false
 	add_child(_vp)
+	await get_tree().process_frame
 	_cam = Camera3D.new()
 	_cam.current = true
 	_vp.add_child(_cam)
+	await get_tree().process_frame
 	var sun := DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	sun.rotation_degrees = Vector3(-50.0, 30.0, 0.0)
 	_vp.add_child(sun)
+	await get_tree().process_frame
 	# A floor for the shadows to fall on.
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()

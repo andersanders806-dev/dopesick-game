@@ -51,6 +51,7 @@ var fired_try := 0
 var hitches: Array = []
 var _prev := {}
 var _added := {}
+var _added_nodes: Array = []
 ## When the last frame's drawing began and ended (RenderingServer signals): the frame splits into scripts and
 ## physics (process_frame -> pre_draw), the draw (pre_draw -> post_draw), and the tail (vsync wait, present).
 var _t_pre := 0
@@ -153,7 +154,13 @@ func _snapshot() -> Dictionary:
 		"mem": int(Performance.get_monitor(Performance.MEMORY_STATIC)),
 	}
 
+var _roots: PackedStringArray = PackedStringArray()
+
 func _on_node_added(n: Node) -> void:
+	# The new nodes that are roots of something (their parent was already there): a man, a car, a banner.
+	if _roots.size() < 12 and n.get_parent() != null and not (n.get_parent() in _added_nodes):
+		_roots.append("%s(%s)" % [n.name, n.get_class()])
+	_added_nodes.append(n)
 	var k := n.get_class()
 	_added[k] = int(_added.get(k, 0)) + 1
 
@@ -246,11 +253,13 @@ func _tick() -> float:
 		if sl != null and sl.get("_loading") != null:
 			for k in (sl.get("_loading") as Dictionary).keys():
 				ld += String(k).get_file() + " "
-		var line := "  SLOW %.1f ms (scripts+physics %.1f, draw %.1f, tail %.1f) t=%.1f s [%s] black %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s | loading: %s" % [
-			dt, seg_script, seg_draw, seg_tail, (now - t0_us) / 1e6, phase, fa_before, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause, ld]
+		var line := "  SLOW %.1f ms (scripts+physics %.1f, draw %.1f, tail %.1f) t=%.1f s [%s] black %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s | roots: %s | loading: %s" % [
+			dt, seg_script, seg_draw, seg_tail, (now - t0_us) / 1e6, phase, fa_before, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause, ", ".join(_roots), ld]
 		print(line)
 		hitches.append(line)
 	_added.clear()
+	_added_nodes.clear()
+	_roots.clear()
 	_prev = cur
 	return dt
 
@@ -836,38 +845,45 @@ func _fight(gangs: bool, crowd := false) -> void:
 		zm.begin_gangs()
 	else:
 		zm.begin()
-	change_scene_to_file("res://world/City3D.tscn")
-	await _frames(60)
-	var city := current_scene
-	# The fade is the game's own: the prewarm holds it until the critical part is done.
-	var warm := city.get_node_or_null("ZombieBlock/Prewarm")
-	var w := 0
-	while warm != null and not warm.critical_done and w < 1200:
-		await process_frame
-		w += 1
-	await _frames(60)
-	await _wait_prefetch()
-	var player := get_first_node_in_group("player") as Node3D
-	player.dialogue_active = false
-	var holder: Node = player.get_node_or_null("WeaponHolder")
-	var aim_at := [null]
-	if holder != null:
-		holder.give(load("res://weapons/ar.tres"))
-		holder.refill_all()
-		holder.aim_source = func():
-			var t = aim_at[0]
-			var eye: Vector3 = player.global_position + Vector3(0, 1.6, 0)
-			if t == null or not is_instance_valid(t):
-				return [eye, Vector3.RIGHT]
-			var c: Vector3 = (t as Node3D).global_position + Vector3(0, 1.3, 0)
-			return [eye, c - eye]
-	player.global_position = Vector3(-8.0, 0.0, -1.0)
-	player.reset_physics_interpolation()
-	zm.health = zm.MAX_HEALTH
+	# The way the game starts it (ZombieMode.start / start_gangs): through the scene loader, so the arrival hold, the
+	# door drain and the settle behind the black are the game's own, and the block's own first round (the round
+	# before the one wanted is set here, GangBlock/ZombieBlock call start_round() themselves). Recorded from the call:
+	# the black does not count (it is read from the loader's fade), everything after it does.
 	zm.round = 14 if not gangs else 5
 	phase = "round start"
 	_begin_recording()
-	zm.start_round()
+	root.get_node("SceneLoader").go("res://world/City3D.tscn")
+	await process_frame
+	_tick()
+	# The player is put where the probe wants him as soon as the block is in, still behind the black (what is built
+	# round him, the walk-in shops' rooms among it, is then built in the black, as for a player who spawns there).
+	var player: Node3D = null
+	var holder: Node = null
+	var aim_at := [null]
+	var w := 0
+	while (root.get_node("SceneLoader").busy() or player == null) and w < 3000:
+		await process_frame
+		_tick()
+		w += 1
+		if player == null and current_scene != null and current_scene.name == "City3D":
+			player = get_first_node_in_group("player") as Node3D
+			if player != null:
+				player.dialogue_active = false
+				holder = player.get_node_or_null("WeaponHolder")
+				if holder != null:
+					holder.give(load("res://weapons/ar.tres"))
+					holder.refill_all()
+					holder.aim_source = func():
+						var t = aim_at[0]
+						var eye: Vector3 = player.global_position + Vector3(0, 1.6, 0)
+						if t == null or not is_instance_valid(t):
+							return [eye, Vector3.RIGHT]
+						var c: Vector3 = (t as Node3D).global_position + Vector3(0, 1.3, 0)
+						return [eye, c - eye]
+				player.global_position = Vector3(-8.0, 0.0, -1.0)
+				player.reset_physics_interpolation()
+				zm.health = zm.MAX_HEALTH
+	var city := current_scene
 	var sp0 = city.get_node("ZombieBlock").spawner
 	if crowd:
 		# A steady crowd for A/B runs: the spawner and the surge are off, 28 walkers are kept alive 12-40 m

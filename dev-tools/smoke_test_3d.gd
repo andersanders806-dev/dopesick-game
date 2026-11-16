@@ -9896,6 +9896,15 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var made := []
 	var on_surge := func(zz): made.append(zz)
 	surge.spawned.connect(on_surge)
+	# On laptop graphics at Low/Medium the surge adds SURGE_EXTRA_LEAN over the frame-time cap, elsewhere SURGE_EXTRA.
+	var sgfx := root.get_node("Graphics")
+	var spreset_was: int = sgfx.preset
+	sgfx.preset = sgfx.Preset.LOW
+	var lean_extra: int = surge.surge_extra()
+	sgfx.preset = sgfx.Preset.HIGH
+	_check(surge.surge_extra() == surge.SURGE_EXTRA and lean_extra == (surge.SURGE_EXTRA_LEAN if sgfx._integrated else surge.SURGE_EXTRA),
+		"  the surge adds %d over the cap on a desktop GPU, %d at Low here (integrated %s)" % [surge.surge_extra(), lean_extra, sgfx._integrated])
+	# (the 32 below is the desktop rule: the full SURGE_EXTRA over the cap)
 	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
 	_check(not surge.trigger(10), "  ...and not another while one is on")
 	var pay_warn: int = zm.points
@@ -9926,6 +9935,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var from_ground_air := int(types.get("rise", 0)) + int(types.get("drop", 0)) + int(types.get("smash", 0))
 	_check(from_ground_air >= 26 and types.size() >= 3, "  from the ground, the fire escapes and the shop fronts (%s)" % [types])
 	_check(surge.entrance_counts.size() >= 3 and max_alive_seen <= zm.SURGE_HARD_CAP, "  hard cap respected (peak %d of %d)" % [max_alive_seen, zm.SURGE_HARD_CAP])
+	sgfx.preset = spreset_was
 	_check(zm.surge_active and not zm.surge_busy, "  after the last one is out the round may end, double points linger")
 	var f3 := 0
 	while zm.surge_active and f3 < 2000:

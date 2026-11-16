@@ -222,6 +222,9 @@ func _body_limbs() -> void:
 		for z in bay.get_children():
 			if not is_instance_valid(z) or z.get("_skeleton") == null:
 				continue
+			# (gore off in the settings: the bodies were never prepared, there is nothing to cut)
+			if not ZombieMode.gore_enabled or GoreRigScript.body_mesh(z.get("_skeleton")) == null:
+				continue
 			for name_ in GoreRigScript.LIMBS:
 				GoreRigScript.limb(z, name_)
 			n += 1

@@ -62,6 +62,35 @@ extends Resource
 @export var burst_count := 0
 ## The pause after a burst before the trigger answers again.
 @export var burst_delay := 0.18
+## The modes the selector steps through, the first is the one it comes with ("auto", "burst", "semi").
+## Empty: the gun has one mode, its own (auto / burst_count).
+@export var fire_modes := PackedStringArray()
+## Rounds of the selector's "burst" setting.
+@export var mode_burst := 3
+
+@export_group("Special")
+## Zombies a bullet goes on through after the first (the anti-materiel rifle).
+@export var pierce := 0
+## "rocket": the trigger sends a rocket (fx/Rocket.gd) instead of a bullet; splash_radius is its blast.
+@export var projectile := ""
+## The most the gun's own blast does to the one who fired it, standing in the middle of it.
+@export var self_damage := 0.0
+
+@export_group("Melee")
+## Metres a swing reaches, the arc it sweeps (degrees, 0: a stab at one thing) and how many it can hit.
+@export var melee_range := 1.9
+@export var melee_arc := 0.0
+@export var melee_targets := 1
+## Seconds of the swing, and when in it the blow lands (0..1).
+@export var swing_time := 0.34
+@export var swing_hit := 0.3
+## The heavy hit (the button held through a swing): multiples of the damage and of the swing's time.
+@export var heavy_mult := 0.0
+@export var heavy_time := 1.5
+## A target this far away is lunged at (0: no lunge).
+@export var lunge_range := 0.0
+## Metres a second a blow throws what it hits.
+@export var knockback := 0.0
 
 @export_group("Recoil")
 ## One entry per shot of a burst: x degrees to the right, y degrees up. After the last
@@ -82,10 +111,16 @@ extends Resource
 @export var kick_roll := 0.0
 
 @export_group("Optic")
-## "none" (iron sights), "red_dot" or "scope".
-@export_enum("none", "red_dot", "scope") var optic := "none"
+## "none" (iron sights), "red_dot" (the sight model on the rail), "built_in" (the model has its own reflex sight: only
+## the dot is added) or "scope".
+@export_enum("none", "red_dot", "scope", "built_in") var optic := "none"
 ## The zoom through the optic (0: ads_zoom).
 @export var optic_zoom := 0.0
+## Metres the optic stands over the rail on a riser (a red dot or a scope), or the eye over the top of a gun
+## with no sights to measure. -1: what the handling family's table says.
+@export var optic_height := -1.0
+## Metres from the eye to the rear sight or the dot (0: the handling family's).
+@export var eye_relief := 0.0
 
 @export_group("Sound")
 ## The folder in assets/sfx/guns/ with this gun's recordings (fire_N, fire_up_N, distant_N,
@@ -112,10 +147,16 @@ extends Resource
 @export_file("*.gltf", "*.glb") var model := ""
 ## Turn that points the model's barrel down -Z (degrees about Y).
 @export var model_yaw := 0.0
+## A model lying on its side or its back: turned by this (degrees, x then z) before the yaw.
+@export var model_turn := Vector3.ZERO
 ## Metres from the back of the gun to the muzzle in the hand.
 @export var model_length := 0.6
 ## Parts of the model to leave out (a loose spare magazine, a bullet).
 @export var model_hide := PackedStringArray()
+## Parts of the model put elsewhere: name fragment -> metres in the gun's space (the RPG's rocket into the tube).
+@export var model_moves := {}
+## Bones of a rigged model turned from rest: bone name -> degrees (x, y, z), or a size (the M249's bipod off: 0.001).
+@export var model_bones := {}
 ## The upgraded look: a glow over the whole gun.
 @export var tint := Color(0, 0, 0, 0)
 
@@ -148,11 +189,23 @@ func family() -> String:
 func handling_family() -> String:
 	return handling if handling != "" else family()
 
-## "semi", "auto" or "burst".
+## "semi", "auto" or "burst": the mode the gun comes with.
 func fire_mode() -> String:
+	if not fire_modes.is_empty():
+		return fire_modes[0]
 	if burst_count > 1:
 		return "burst"
 	return "auto" if auto else "semi"
+
+## Rounds one pull fires in `mode` (1: one, or as long as it is held for "auto").
+func burst_of(mode: String) -> int:
+	if mode != "burst":
+		return 1
+	return burst_count if burst_count > 1 else maxi(mode_burst, 2)
+
+## Seconds between two melee swings.
+func swing_interval() -> float:
+	return maxf(60.0 / maxf(rpm, 1.0), swing_time)
 
 ## Seconds of the reload for a gun that is `empty` or not.
 func reload_for(empty: bool) -> float:

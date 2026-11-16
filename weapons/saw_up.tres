@@ -1,0 +1,66 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "saw_up"
+display_name = "Hog Wild"
+base_id = "saw"
+upgraded = true
+damage = 84.0
+head_mult = 3.0
+neck_mult = 1.8
+limb_mult = 0.75
+pellets = 1
+falloff_start = 32.0
+falloff_end = 85.0
+falloff_floor = 0.7
+splash_radius = 0.0
+rpm = 750.0
+auto = true
+mag_size = 180
+reserve_max = 540
+reload_time = 3.9
+reload_time_empty = 5.27
+chambers = false
+spread_hip = 3.8
+spread_ads = 0.8800000000000001
+recoil = 1.4
+ads_zoom = 1.5
+swap_time = 0.75
+ads_time = 0.4
+sprint_fire_delay = 0.3
+handling = "belt"
+recoil_pattern = PackedVector2Array(0.0922, 0.63, 0.1572, 0.63, 0.1758, 0.63, 0.1426, 0.63, 0.0673, 0.63, -0.0278, 0.63, -0.1148, 0.315, -0.1679, 0.315, -0.1714, 0.315, -0.1245, 0.315, -0.0408, 0.315, 0.055, 0.315, 0.1345, 0.315, 0.1743, 0.315, 0.1627, 0.315, 0.1032, 0.315, 0.0132, 0.315, -0.0807, 0.315, -0.1508, 0.315, -0.1764, 0.315, -0.15, 0.315, -0.0793, 0.315, 0.0147, 0.315, 0.1044, 0.315)
+recoil_recover = 13.0
+recoil_hold = 2.4
+recoil_first = 1.3
+recoil_ads = 0.62
+recoil_random = 0.12
+kick_back = 0.0305
+kick_up = 3.4
+kick_roll = 0.0405
+optic = "red_dot"
+optic_height = 0.022
+sound_set = "saw"
+foley = {
+"cover_open": ["common/lmg_cover_open"],
+"mag_out": ["common/mag_out_b"],
+"mag_in": ["common/mag_in_b"],
+"cover_close": ["common/lmg_cover_close"],
+"bolt": ["common/charge_rifle"],
+"rack": ["common/charge_rifle"]
+}
+reload_cues_tactical = [[0.1, "cover_open"], [0.24, "mag_out"], [0.6, "mag_in"], [0.82, "cover_close"]]
+reload_cues_empty = [[0.1, "cover_open"], [0.24, "mag_out"], [0.6, "mag_in"], [0.82, "cover_close"], [0.92, "bolt"]]
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/saw/scene.gltf"
+model_yaw = 90.0
+model_length = 1.04
+model_bones = {
+"Bipod_01": 0.001
+}
+tint = Color(0.4, 1.0, 0.3, 1)

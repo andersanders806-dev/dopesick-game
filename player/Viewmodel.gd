@@ -14,6 +14,7 @@ extends Node3D
 
 const WD := preload("res://weapons/WeaponData.gd")
 const GunModel := preload("res://weapons/GunModel.gd")
+const GunViews := preload("res://player/GunViews.gd")
 const SHADER := preload("res://player/viewmodel.gdshader")
 const FX_SHADER := preload("res://player/viewmodel_fx.gdshader")
 const DOT_SHADER := preload("res://player/viewmodel_dot.gdshader")
@@ -154,6 +155,7 @@ func setup(d: WD) -> Node3D:
 	box = GunModel.bounds(gun.get_child(0) as Node3D, gun)
 	_convert(gun)
 	_collect_cut_mats()
+	_apply_hole()
 	_find_parts()
 	_measure()
 	_build_flash()
@@ -290,27 +292,41 @@ func materials() -> Array:
 
 func _measure() -> void:
 	var f: String = data.handling_family() if data != null else "pistol"
+	var view := GunViews.of(data)
 	var b := box
 	if b.size.length() < 0.001:
 		b = AABB(Vector3(-0.03, -0.05, -0.3), Vector3(0.06, 0.12, 0.45))
 		box = b
 	muzzle = Vector3(b.position.x + b.size.x * 0.5, b.position.y + b.size.y * 0.72, b.position.z - 0.005)
 	eject_port = Vector3(b.position.x + b.size.x * 0.9, b.position.y + b.size.y * 0.7, b.position.z + b.size.z * 0.5)
-	var hands: Array = HANDS.get(f, HANDS["ar"])
+	var hands: Array = view.get("hands", HANDS.get(f, HANDS["ar"]))
 	grip_r = _in_box(hands[0])
 	grip_l = _in_box(hands[1])
 	_hand_roll = {"R": hands[2], "L": hands[3]}
 	_hand_curl = {"R": hands[4], "L": hands[5]}
 	_hand_shape = {"R": hands[6], "L": hands[7]}
 	_hand_scale = float(hands[8])
-	var an: Array = ANCHORS.get(f, ANCHORS["ar"])
+	var an: Array = view.get("anchors", ANCHORS.get(f, ANCHORS["ar"]))
 	magwell = _at(an[0])
-	anchors = {"magwell": magwell, "charge": _at(an[1]), "bolt": _at(an[2]), "grip_l": grip_l, "grip_r": grip_r}
 	mag_kind = an[3]
 	mag_height = an[4]
 	mag_tilt = an[5]
+	# A model with its own magazine: the well is where that magazine sits, the hand takes it from there.
+	if parts.has("mag"):
+		magwell = parts["mag"]["centre"]
+		mag_height = (parts["mag"]["size"] as Vector3).y
+	var charge := _at(an[1])
+	if parts.has("charge"):
+		charge = parts["charge"]["centre"]
+	elif parts.has("carrier"):
+		charge = parts["carrier"]["centre"]
+	anchors = {"magwell": magwell, "charge": charge, "bolt": _at(an[2]), "grip_l": grip_l, "grip_r": grip_r}
+	if parts.has("cover"):
+		anchors["cover"] = parts["cover"]["centre"]
 	belt = magwell + Vector3(-0.2, -0.28, 0.12)
 	_measure_sights(f)
+	if view.has("muzzle"):
+		muzzle = view["muzzle"]
 
 ## Where the sight picture sits on each gun: the zones (fractions of the gun's length from
 ## the muzzle) of the front sight and the rear sight to measure the sight line from, the eye
@@ -337,8 +353,18 @@ var optic: Node3D
 var has_optic := false
 static var _sight_cache := {}
 
+## Iron sights on a gun of a family whose own table is a red dot (an SMG or a rifle that has none).
+const IRONS := [0.0, 0.1, 0.55, 0.72, 0.25, false, 0.0]
+
 func _measure_sights(f: String) -> void:
-	var cfg: Array = SIGHTS.get(f, SIGHTS["ar"])
+	var view := GunViews.of(data)
+	var cfg: Array = view.get("sights", SIGHTS.get(f, SIGHTS["ar"]))
+	# The gun's own optic decides (a family's red dot is not on a gun that has none).
+	var dot: bool = cfg[5]
+	if data != null and data.get("optic") != null:
+		dot = data.optic == "red_dot"
+		if not dot and bool(cfg[5]):
+			cfg = IRONS
 	var b := box
 	var len := b.size.z
 	var z0 := b.position.z
@@ -348,7 +374,15 @@ func _measure_sights(f: String) -> void:
 	var measured := false
 	# The answer, found or fallen back to, is kept for the gun (the AR's rail has no vertex on its centreline
 	# and was measured again, 300 to 400 ms, on every swap to it).
-	if _sight_cache.has(key):
+	if view.has("sight_pts") and not dot:
+		front = view["sight_pts"][0]
+		rear = view["sight_pts"][1]
+		measured = true
+	elif view.has("rail") and dot:
+		front = view["rail"]
+		rear = front
+		measured = true
+	elif _sight_cache.has(key):
 		var c: Array = _sight_cache[key]
 		front = c[0]
 		rear = c[1]
@@ -358,7 +392,7 @@ func _measure_sights(f: String) -> void:
 		if verts.size() > 0:
 			var cfg_f: Array = [z0 + len * cfg[0], z0 + len * cfg[1]]
 			var cfg_r: Array = [z0 + len * cfg[2], z0 + len * cfg[3]]
-			if cfg[5]:
+			if dot:
 				# A red dot goes on the rail: the top of the receiver there.
 				var r := _top_in(verts, cfg_f[0], cfg_f[1])
 				r.z = z0 + len * cfg[2]
@@ -374,10 +408,15 @@ func _measure_sights(f: String) -> void:
 		front = Vector3(0.0, b.end.y - 0.004, z0)
 		rear = Vector3(0.0, b.end.y - 0.004, b.end.z - len * 0.25)
 		_sight_cache[key] = [front, rear]
-	has_optic = cfg[5]
-	var relief: float = cfg[4]
+	has_optic = dot
+	var relief: float = float(view.get("relief", cfg[4]))
+	if data != null and float(data.get("eye_relief")) > 0.0:
+		relief = data.eye_relief
+	var lift: float = cfg[6]
+	if data != null and float(data.get("optic_height")) >= 0.0:
+		lift = data.optic_height
 	if has_optic:
-		var riser: float = cfg[6]
+		var riser: float = lift
 		_build_optic(Vector3(0.0, rear.y + riser, rear.z))
 		if riser > 0.0:
 			_build_riser(rear.y, riser, rear.z)
@@ -387,10 +426,34 @@ func _measure_sights(f: String) -> void:
 	else:
 		var d := front - rear
 		ads_pitch = atan(d.y / d.z) if absf(d.z) > 0.01 else 0.0
-		sight_point = Vector3(0.0, rear.y + float(cfg[6]), rear.z)
+		sight_point = Vector3(rear.x if view.has("sight_pts") else 0.0, rear.y + lift, rear.z)
+		# A reflex sight built into the model (the MP5's): its glass is cut away (_apply_hole) and the dot floats in it.
+		if data != null and data.optic == "built_in" and view.has("dot"):
+			optic = Node3D.new()
+			optic.name = "BuiltInDot"
+			optic.position = view["dot"]
+			add_child(optic)
+			optic_dot = Vector3.ZERO
+			_add_dot()
+			has_optic = true
 	var rot := Basis(Vector3.RIGHT, ads_pitch)
 	ads_position = Vector3(0.0, 0.0, -relief) - rot * sight_point
 	muzzle = Vector3(0.0, muzzle.y, muzzle.z)
+
+## The glass of a sight built into the model is not drawn (player/viewmodel.gdshader's hole), so you see through it.
+func _apply_hole() -> void:
+	var view := GunViews.of(data)
+	if not view.has("hole"):
+		return
+	var lo: Vector3 = view["hole"][0]
+	var hi: Vector3 = view["hole"][1]
+	var vm_box := AABB(lo, hi - lo)
+	for e in _cut_mats:
+		var sm: ShaderMaterial = e[0]
+		var local: AABB = (e[1] as Transform3D).affine_inverse() * vm_box
+		sm.set_shader_parameter("hole_lo", local.position)
+		sm.set_shader_parameter("hole_hi", local.end)
+		sm.set_shader_parameter("hole_on", true)
 
 ## Every vertex of the gun's visible meshes in this node's space (empty when the renderer
 ## keeps no mesh data, as a headless run).
@@ -544,31 +607,92 @@ func _build_optic_kit() -> void:
 	glass.position = Vector3(0.0, OPTIC_CENTRE_Y - 0.002, OPTIC_L * 0.2)
 	optic.add_child(glass)
 
-## The mount under a raised red dot: a low picatinny rail, not a post. A flat plate with cross slots
-## lies on the pan magazine's top under the sight, clamped at the sides, and (where the sight needs
-## to stand higher) rides on two short narrow legs.
+## The mount under a raised red dot: a picatinny riser as made (an ADM / Larue style one-piece riser). A clamp base
+## grips the gun's own rail (or the pan) with two cross-bolts and a throw lever, a tapered body with a lightening
+## window carries a slotted rail on top, and the sight clamps to that rail.
 func _build_riser(from_y: float, height: float, z: float) -> void:
 	var steel := ShaderMaterial.new()
 	steel.shader = SHADER
 	steel.set_shader_parameter("viewmodel_fov", VM_FOV)
-	steel.set_shader_parameter("albedo", Color(0.02, 0.02, 0.022))
-	steel.set_shader_parameter("metallic", 0.3)
-	steel.set_shader_parameter("roughness", 0.55)
+	steel.set_shader_parameter("albedo", Color(0.03, 0.03, 0.032))
+	steel.set_shader_parameter("metallic", 0.45)
+	steel.set_shader_parameter("roughness", 0.5)
 	steel.set_shader_parameter("near_cut", 0.05)
+	var bright := ShaderMaterial.new()
+	bright.shader = SHADER
+	bright.set_shader_parameter("viewmodel_fov", VM_FOV)
+	bright.set_shader_parameter("albedo", Color(0.16, 0.16, 0.17))
+	bright.set_shader_parameter("metallic", 0.85)
+	bright.set_shader_parameter("roughness", 0.3)
+	bright.set_shader_parameter("near_cut", 0.05)
 	var root := Node3D.new()
 	root.name = "Riser"
 	root.position = Vector3(0.0, from_y, z)
 	add_child(root)
-	var plate_h := minf(0.008, height * 0.6)
-	var len := 0.11
-	_riser_box(root, steel, Vector3(0.034, plate_h, len), Vector3(0.0, height - plate_h * 0.5, 0.0))
-	for i in 8:
-		var zz := -len * 0.5 + len * (float(i) + 0.5) / 8.0
-		_riser_box(root, steel, Vector3(0.037, plate_h * 0.45, 0.004), Vector3(0.0, height - plate_h * 0.7, zz))
-	# Clamp blocks at the foot, sloped so the rail sits down on the pan.
-	for zz in [-len * 0.38, len * 0.38]:
-		_riser_box(root, steel, Vector3(0.03, maxf(height - plate_h, 0.003), 0.016), Vector3(0.0, (height - plate_h) * 0.5, zz))
-		_riser_box(root, steel, Vector3(0.044, 0.004, 0.022), Vector3(0.0, 0.002, zz))
+	var len := 0.1
+	var base_h := minf(0.007, height * 0.3)
+	var rail_h := minf(0.006, height * 0.3)
+	var body_h := maxf(height - base_h - rail_h, 0.0)
+	# The clamp base: wider than the rest, its jaw on the right, the bolts through it.
+	_riser_mesh(root, steel, _prism(0.03, 0.034, base_h, len), Vector3(0.0, base_h * 0.5, 0.0))
+	for zz in [-len * 0.3, len * 0.3]:
+		var bolt := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0035
+		cm.bottom_radius = 0.0035
+		cm.height = 0.04
+		cm.radial_segments = 10
+		bolt.mesh = cm
+		bolt.material_override = bright
+		bolt.rotation_degrees = Vector3(0, 0, 90)
+		bolt.position = Vector3(0.0, base_h * 0.5, zz)
+		bolt.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(bolt)
+	# The throw lever lying along the right side.
+	_riser_box(root, bright, Vector3(0.004, 0.006, len * 0.55), Vector3(0.02, base_h * 0.5, 0.0))
+	if body_h > 0.002:
+		# The tapered body: two cheeks either side of the lightening window, a web through the middle.
+		for zz in [-len * 0.36, len * 0.36]:
+			_riser_mesh(root, steel, _prism(0.018, 0.026, body_h, len * 0.24), Vector3(0.0, base_h + body_h * 0.5, zz))
+		_riser_mesh(root, steel, _prism(0.012, 0.016, body_h, len * 0.52), Vector3(0.0, base_h + body_h * 0.5, 0.0))
+	# The rail on top: a plate with the cross-slots a sight's clamp keys into.
+	var top_y := base_h + body_h
+	_riser_box(root, steel, Vector3(0.022, rail_h * 0.55, len), Vector3(0.0, top_y + rail_h * 0.275, 0.0))
+	for i in 10:
+		var zz2 := -len * 0.5 + len * (float(i) + 0.5) / 10.0
+		_riser_box(root, steel, Vector3(0.022, rail_h * 0.45, len * 0.05), Vector3(0.0, top_y + rail_h * 0.775, zz2))
+
+## A box whose top is narrower than its bottom (a riser's taper), centred on its own middle.
+static func _prism(top_w: float, bot_w: float, h: float, l: float) -> ArrayMesh:
+	var pts := [Vector3(-bot_w * 0.5, -h * 0.5, 0), Vector3(bot_w * 0.5, -h * 0.5, 0), Vector3(top_w * 0.5, h * 0.5, 0), Vector3(-top_w * 0.5, h * 0.5, 0)]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var zf := -l * 0.5
+	var zb := l * 0.5
+	var quad := func(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3) -> void:
+		# Both windings: drawn from either side whatever the culling.
+		var n := (p1 - p0).cross(p2 - p0).normalized()
+		for v in [p0, p1, p2, p0, p2, p3]:
+			st.set_normal(n)
+			st.add_vertex(v)
+		for v in [p0, p2, p1, p0, p3, p2]:
+			st.set_normal(-n)
+			st.add_vertex(v)
+	for i in 4:
+		var q0: Vector3 = pts[i]
+		var q1: Vector3 = pts[(i + 1) % 4]
+		quad.call(Vector3(q0.x, q0.y, zf), Vector3(q1.x, q1.y, zf), Vector3(q1.x, q1.y, zb), Vector3(q0.x, q0.y, zb))
+	quad.call(Vector3(pts[0].x, pts[0].y, zb), Vector3(pts[1].x, pts[1].y, zb), Vector3(pts[2].x, pts[2].y, zb), Vector3(pts[3].x, pts[3].y, zb))
+	quad.call(Vector3(pts[3].x, pts[3].y, zf), Vector3(pts[2].x, pts[2].y, zf), Vector3(pts[1].x, pts[1].y, zf), Vector3(pts[0].x, pts[0].y, zf))
+	return st.commit()
+
+func _riser_mesh(root: Node3D, mat: Material, mesh: Mesh, at: Vector3) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = at
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
 
 func _riser_box(root: Node3D, mat: Material, size: Vector3, at: Vector3) -> void:
 	var mi := MeshInstance3D.new()
@@ -718,7 +842,7 @@ func _build_props() -> void:
 ## Places the carried magazine (or shell, or round): `at` in this node's space, rotation in degrees.
 ## For a gun whose magazine is part of its model (the LMG's pan) it moves that instead.
 func set_mag(show: bool, at: Vector3, rot_deg: Vector3) -> void:
-	if parts.has("pan") or mag_prop == null:
+	if parts.has("pan") or parts.has("mag") or mag_prop == null:
 		return
 	mag_prop.visible = show
 	mag_prop.position = at
@@ -759,41 +883,100 @@ func set_cut(on: bool) -> void:
 func _find_parts() -> void:
 	parts.clear()
 	var f: String = data.handling_family() if data != null else "pistol"
-	var spec: Dictionary = PARTS.get(f, {})
+	var view := GunViews.of(data)
+	var spec: Dictionary = view.get("parts", PARTS.get(f, {}))
+	var model: Node = gun.get_child(0).get_child(0) if gun.get_child_count() > 0 and gun.get_child(0).get_child_count() > 0 else gun
 	for pname in spec:
 		var nodes: Array = []
 		var rest: Array = []
+		var rest_xf: Array = []
+		var to_vm: Array = []
 		var basis_in := Basis.IDENTITY
+		var span := AABB()
 		for mi in gun.find_children("*", "MeshInstance3D", true, false):
-			var low := String(mi.name).to_lower()
+			var m := mi as MeshInstance3D
+			if not m.visible or m.mesh == null:
+				continue
+			var low := GunModel.part_path(m, model)
 			for frag in spec[pname]:
-				if low.contains(frag) and (mi as MeshInstance3D).visible:
-					nodes.append(mi)
-					rest.append((mi as Node3D).position)
+				if low.contains(String(frag)):
+					nodes.append(m)
+					rest.append(m.position)
+					rest_xf.append(m.transform)
 					# The part's parent turns and scales the model: a step in this space is a different step there.
-					var xf := Basis.IDENTITY
-					var c: Node = mi.get_parent()
+					var xf := Transform3D()
+					var c: Node = m.get_parent()
 					while c != null and c != gun:
-						xf = (c as Node3D).transform.basis * xf
+						xf = (c as Node3D).transform * xf
 						c = c.get_parent()
-					basis_in = xf
+					to_vm.append(xf)
+					basis_in = xf.basis
+					var a := xf * m.transform * m.mesh.get_aabb()
+					span = a if nodes.size() == 1 else span.merge(a)
 					break
 		if not nodes.is_empty():
-			parts[pname] = {"nodes": nodes, "rest": rest, "to_local": basis_in.inverse(), "amount": Vector3.ZERO}
+			var pivot: Vector3 = span.get_center()
+			var hinged: bool = pname in ["barrels", "shells"] and view.has("hinge")
+			if hinged:
+				pivot = view["hinge"][0]
+			parts[pname] = {"nodes": nodes, "rest": rest, "rest_xf": rest_xf, "to_vm": to_vm, "to_local": basis_in.inverse(),
+				"amount": Vector3.ZERO, "centre": span.get_center(), "size": span.size, "pivot": pivot, "hinged": hinged}
+	# A rigged model's moving parts are bones.
+	var bones: Dictionary = view.get("bones", {})
+	if not bones.is_empty():
+		var sk := gun.find_children("*", "Skeleton3D", true, false)
+		if not sk.is_empty():
+			var skel := sk[0] as Skeleton3D
+			var xf := Transform3D()
+			var c: Node = skel
+			while c != null and c != gun:
+				xf = (c as Node3D).transform * xf
+				c = c.get_parent()
+			for pname in bones:
+				var idx := skel.find_bone(String(bones[pname]))
+				if idx < 0:
+					continue
+				var g := skel.get_bone_global_rest(idx)
+				var at := xf * g.origin
+				parts[pname] = {"bone": idx, "skeleton": skel, "sk_xf": xf, "rest_global": g, "amount": Vector3.ZERO,
+					"centre": at, "size": Vector3(0.04, 0.1, 0.06), "pivot": at}
 
-## Moves a part of the model by `offset` (this node's space) from where it rests.
-func set_part(pname: String, offset: Vector3, show := true) -> void:
+## Moves a part of the model by `offset` (this node's space) from where it rests, turned by `turn` (degrees, this
+## node's axes) about its own middle (a break-action's barrels: about the hinge).
+func set_part(pname: String, offset: Vector3, show := true, turn := Vector3.ZERO) -> void:
 	if not parts.has(pname):
 		return
 	var pt: Dictionary = parts[pname]
+	pt["amount"] = offset
+	if pt.has("bone"):
+		var skel := pt["skeleton"] as Skeleton3D
+		var sk_xf: Transform3D = pt["sk_xf"]
+		var piv: Vector3 = pt["pivot"]
+		var about := Transform3D(Basis.from_euler(turn * (PI / 180.0)), piv + offset) * Transform3D(Basis.IDENTITY, -piv)
+		var g: Transform3D = sk_xf.affine_inverse() * about * sk_xf * (pt["rest_global"] as Transform3D)
+		if not show:
+			g = g.scaled_local(Vector3.ONE * 0.001)
+		skel.set_bone_global_pose(int(pt["bone"]), g)
+		return
 	var nodes: Array = pt["nodes"]
 	var rest: Array = pt["rest"]
-	var d: Vector3 = (pt["to_local"] as Basis) * offset
-	for i in nodes.size():
-		var n := nodes[i] as Node3D
-		n.position = (rest[i] as Vector3) + d
-		n.visible = show
-	pt["amount"] = offset
+	if turn == Vector3.ZERO:
+		for i in nodes.size():
+			var n := nodes[i] as Node3D
+			n.transform = pt["rest_xf"][i]
+			n.position = (rest[i] as Vector3) + (pt["to_vm"][i] as Transform3D).basis.inverse() * offset
+			n.visible = show
+	else:
+		var piv2: Vector3 = pt["pivot"]
+		var about2 := Transform3D(Basis.from_euler(turn * (PI / 180.0)), piv2 + offset) * Transform3D(Basis.IDENTITY, -piv2)
+		if bool(pt.get("hinged", false)):
+			# On a hinge the part moves along its own rest axes (the shells out of the breech), then turns with it.
+			about2 = Transform3D(Basis.from_euler(turn * (PI / 180.0)), piv2) * Transform3D(Basis.IDENTITY, offset - piv2)
+		for i in nodes.size():
+			var n := nodes[i] as Node3D
+			var a: Transform3D = pt["to_vm"][i]
+			n.transform = a.affine_inverse() * about2 * a * (pt["rest_xf"][i] as Transform3D)
+			n.visible = show
 	# The LMG's red dot is clamped to the pan: it goes where the pan goes.
 	if pname == "pan":
 		for extra in [optic, get_node_or_null("Riser")]:
@@ -802,6 +985,23 @@ func set_part(pname: String, offset: Vector3, show := true) -> void:
 				_extra_rest[extra] = rest_at
 				(extra as Node3D).position = rest_at + offset
 				(extra as Node3D).visible = show
+
+## Copies of the model's own magazine for the floor (world materials, not the viewmodel's), the middle at the origin.
+func mag_copy() -> Node3D:
+	if not parts.has("mag") or parts["mag"].has("bone"):
+		return null
+	var pt: Dictionary = parts["mag"]
+	var root := Node3D.new()
+	root.name = "DroppedMag_" + (data.id if data != null else "")
+	var centre: Vector3 = pt["centre"]
+	for i in (pt["nodes"] as Array).size():
+		var src := pt["nodes"][i] as MeshInstance3D
+		var mi := MeshInstance3D.new()
+		mi.mesh = src.mesh
+		mi.transform = Transform3D(Basis.IDENTITY, -centre) * (pt["to_vm"][i] as Transform3D) * (pt["rest_xf"][i] as Transform3D)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(mi)
+	return root
 
 # --- The arms ------------------------------------------------------------------------
 

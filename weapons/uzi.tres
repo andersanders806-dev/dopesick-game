@@ -1,0 +1,62 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/uzi_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "uzi"
+display_name = "Corner Store"
+damage = 25.0
+head_mult = 3.0
+neck_mult = 1.7
+limb_mult = 0.75
+pellets = 1
+falloff_start = 10.0
+falloff_end = 36.0
+falloff_floor = 0.5
+splash_radius = 0.0
+rpm = 720.0
+auto = true
+mag_size = 32
+reserve_max = 160
+reload_time = 1.61
+reload_time_empty = 2.6
+chambers = true
+spread_hip = 3.2
+spread_ads = 1.0
+recoil = 0.8
+ads_zoom = 1.4
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.18
+handling = "smg"
+fire_modes = PackedStringArray("auto", "semi")
+mode_burst = 3
+recoil_pattern = PackedVector2Array(0.0846, 0.36, 0.1052, 0.36, 0.0462, 0.36, -0.0478, 0.36, -0.1056, 0.36, -0.0835, 0.36, 0.0018, 0.36, 0.0857, 0.36, 0.1047, 0.162, 0.0445, 0.162, -0.0494, 0.162, -0.1059, 0.162, -0.0823, 0.162, 0.0036, 0.162, 0.0868, 0.162, 0.1043, 0.162, 0.0428, 0.162, -0.051, 0.162, -0.1063, 0.162, -0.0811, 0.162, 0.0054, 0.162, 0.0879, 0.162, 0.1038, 0.162, 0.0412, 0.162)
+recoil_recover = 18.0
+recoil_hold = 3.2
+recoil_first = 1.1
+recoil_ads = 0.7
+recoil_random = 0.12
+kick_back = 0.026
+kick_up = 2.8
+kick_roll = 0.036
+optic = "none"
+sound_set = "uzi"
+foley = {
+"mag_out": ["common/mag_out_pistol"],
+"mag_in": ["common/mag_in_pistol"],
+"rack": ["common/slide_rack"],
+"bolt": ["common/clip_tick"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 800
+ammo_price = 400
+in_box = false
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/uzi/scene.gltf"
+model_yaw = 0.0
+model_length = 0.45

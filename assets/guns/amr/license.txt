@@ -1,0 +1,11 @@
+Model Information:
+* title:	low-poly Barrett M82 A1
+* source:	https://sketchfab.com/3d-models/low-poly-barrett-m82-a1-bb0831f237494699b6651da9177d36e4
+* author:	D_U (https://sketchfab.com/DU1701)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "low-poly Barrett M82 A1" (https://sketchfab.com/3d-models/low-poly-barrett-m82-a1-bb0831f237494699b6651da9177d36e4) by D_U (https://sketchfab.com/DU1701) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

@@ -41,6 +41,7 @@ kick_back = 0.0268
 kick_up = 2.9
 kick_roll = 0.0367
 optic = "red_dot"
+optic_height = 0.045
 sound_set = "lmg"
 foley = {
 "mag_out": ["common/lmg_cover_open"],

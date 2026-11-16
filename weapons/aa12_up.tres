@@ -1,0 +1,61 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "aa12_up"
+display_name = "Clean Sweep"
+base_id = "aa12"
+upgraded = true
+damage = 32.0
+head_mult = 2.0
+neck_mult = 1.5
+limb_mult = 0.75
+pellets = 8
+falloff_start = 4.0
+falloff_end = 16.0
+falloff_floor = 0.25
+splash_radius = 0.0
+rpm = 240.0
+auto = true
+mag_size = 30
+reserve_max = 150
+reload_time = 2.89
+reload_time_empty = 4.0
+chambers = false
+spread_hip = 5.0
+spread_ads = 3.2
+recoil = 3.0
+ads_zoom = 1.2
+swap_time = 0.55
+ads_time = 0.3
+sprint_fire_delay = 0.26
+handling = "ar"
+recoil_pattern = PackedVector2Array(0.135, 1.215, 0.135, 1.215, 0.135, 1.215, 0.135, 1.215, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425, -0.3375, 0.7425)
+recoil_recover = 12.0
+recoil_hold = 2.5
+recoil_first = 1.15
+recoil_ads = 0.85
+recoil_random = 0.14
+kick_back = 0.0425
+kick_up = 5.0
+kick_roll = 0.0525
+optic = "none"
+sound_set = "aa12"
+foley = {
+"mag_out": ["common/mag_out_rifle"],
+"mag_in": ["common/mag_in_rifle"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/aa12/scene.gltf"
+model_yaw = 90.0
+model_length = 0.95
+model_hide = PackedStringArray("12x70", "1270n1", "8rnd", "drum mag_11")
+tint = Color(0.3, 1.0, 0.5, 1)

@@ -45,11 +45,13 @@ static func _load(d: WD) -> Node3D:
 	var model := ps.instantiate() as Node3D
 	holder.add_child(model)
 	for mi in model.find_children("*", "MeshInstance3D", true, false):
-		var low := String(mi.name).to_lower()
+		var low := part_path(mi, model)
 		for h in d.model_hide:
 			if low.contains(h):
 				(mi as MeshInstance3D).visible = false
-	model.rotation.y = deg_to_rad(d.model_yaw)
+	# A model that lies on its side is stood up first, then turned to point down -Z.
+	var turn := d.model_turn * (PI / 180.0)
+	model.basis = Basis(Vector3.UP, deg_to_rad(d.model_yaw)) * Basis.from_euler(turn)
 	var box := bounds(model, holder)
 	if box.size.z > 0.0001:
 		var s := d.model_length / box.size.z
@@ -57,7 +59,55 @@ static func _load(d: WD) -> Node3D:
 		var pivot := Vector3(box.position.x + box.size.x * 0.5, box.position.y + box.size.y * 0.5,
 			box.position.z + box.size.z * (1.0 - GRIP_AT))
 		model.position = -pivot * s
+	_pose_bones(model, d.model_bones)
+	_move_parts(model, holder, d.model_moves)
 	return holder
+
+## A rigged model (the M249's bipod): bones turned from their rest (degrees, x y z), or shrunk (a number).
+static func _pose_bones(model: Node, bones: Dictionary) -> void:
+	if bones.is_empty():
+		return
+	for sk in model.find_children("*", "Skeleton3D", true, false):
+		var s := sk as Skeleton3D
+		for bn in bones:
+			var i := s.find_bone(String(bn))
+			if i < 0:
+				continue
+			var v = bones[bn]
+			if v is Vector3:
+				var e: Vector3 = (v as Vector3) * (PI / 180.0)
+				s.set_bone_pose_rotation(i, (s.get_bone_rest(i).basis * Basis.from_euler(e)).get_rotation_quaternion())
+			else:
+				# A number: the bone (and what hangs on it) shrunk to that size; 0.001 takes it out of the picture.
+				s.set_bone_pose_scale(i, Vector3.ONE * float(v))
+
+## Parts of a model put somewhere else (metres in the gun's space): the RPG's spare rocket, which the model has lying
+## along the tube, goes into the muzzle.
+static func _move_parts(model: Node, holder: Node3D, moves: Dictionary) -> void:
+	if moves.is_empty():
+		return
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var low := part_path(mi, model)
+		for frag in moves:
+			if not low.contains(String(frag)):
+				continue
+			var xf := Basis.IDENTITY
+			var c: Node = mi.get_parent()
+			while c != null and c != holder:
+				xf = (c as Node3D).transform.basis * xf
+				c = c.get_parent()
+			(mi as Node3D).position += xf.inverse() * (moves[frag] as Vector3)
+			break
+
+## What a mesh is called for the hide and moving-part lists: its own name and those of the nodes over it inside the model,
+## in lower case ("magazine_low/magazine_low_magazine_0"): a Sketchfab export names the part on the parent, not the mesh.
+static func part_path(mi: Node, model: Node) -> String:
+	var out := String(mi.name)
+	var c := mi.get_parent()
+	while c != null and c != model:
+		out = String(c.name) + "/" + out
+		c = c.get_parent()
+	return out.to_lower()
 
 ## The box of the visible meshes under `node`, in `top`'s space (node is a child of top).
 static func bounds(node: Node3D, top: Node3D) -> AABB:

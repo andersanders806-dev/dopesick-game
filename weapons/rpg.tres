@@ -1,0 +1,64 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/rpg_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "rpg"
+display_name = "Landlord"
+damage = 900.0
+head_mult = 1.0
+neck_mult = 1.0
+limb_mult = 1.0
+pellets = 1
+falloff_start = 200.0
+falloff_end = 300.0
+falloff_floor = 1.0
+splash_radius = 4.0
+rpm = 30.0
+auto = false
+mag_size = 1
+reserve_max = 8
+reload_time = 3.8
+reload_time_empty = 3.8
+chambers = false
+spread_hip = 1.5
+spread_ads = 0.3
+recoil = 5.0
+ads_zoom = 1.2
+swap_time = 0.8
+ads_time = 0.4
+sprint_fire_delay = 0.32
+handling = "launcher"
+projectile = "rocket"
+self_damage = 60.0
+recoil_pattern = PackedVector2Array(0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625, 0.495, 2.3625)
+recoil_recover = 11.0
+recoil_hold = 2.0
+recoil_first = 1.0
+recoil_ads = 0.85
+recoil_random = 0.08
+kick_back = 0.05
+kick_up = 6.0
+kick_roll = 0.06
+optic = "none"
+optic_height = 0.0
+eye_relief = 0.22
+sound_set = "rpg"
+foley = {
+"rocket_in": ["common/rocket_load"],
+"bolt": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.62, "rocket_in"], [0.86, "bolt"]]
+reload_cues_empty = [[0.62, "rocket_in"], [0.86, "bolt"]]
+price = 0
+ammo_price = 0
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/rpg/scene.gltf"
+model_yaw = 0.0
+model_length = 0.95
+model_moves = {
+"pcylinder8": Vector3(-0.06, -0.116, -0.33)
+}

@@ -531,6 +531,12 @@ func _physics_process(delta: float) -> void:
 		velocity = feel.slide_velocity(delta)
 		move_and_slide()
 		return
+	# A melee weapon's lunge at a zombie: thrown at it for a moment (player/WeaponHolder.gd).
+	var wh := get_node_or_null("WeaponHolder")
+	if wh != null and wh.get("lunging") == true:
+		velocity = wh.lunge_velocity(delta)
+		move_and_slide()
+		return
 
 	var dir := Vector3(
 		Input.get_action_strength("move_right") - Input.get_action_strength("move_left"),

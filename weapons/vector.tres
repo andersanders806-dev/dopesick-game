@@ -1,0 +1,64 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/vector_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "vector"
+display_name = "Needle"
+damage = 22.0
+head_mult = 3.0
+neck_mult = 1.7
+limb_mult = 0.75
+pellets = 1
+falloff_start = 8.0
+falloff_end = 28.0
+falloff_floor = 0.45
+splash_radius = 0.0
+rpm = 1200.0
+auto = true
+mag_size = 25
+reserve_max = 150
+reload_time = 1.44
+reload_time_empty = 2.4
+chambers = true
+spread_hip = 2.8
+spread_ads = 0.7
+recoil = 0.5
+ads_zoom = 1.4
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.18
+handling = "smg"
+fire_modes = PackedStringArray("auto", "burst")
+mode_burst = 2
+recoil_pattern = PackedVector2Array(-0.0083, 0.2025, -0.0165, 0.2025, -0.0248, 0.2025, -0.033, 0.2025, -0.0413, 0.2025, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788, -0.0495, 0.0788)
+recoil_recover = 20.0
+recoil_hold = 3.6
+recoil_first = 1.0
+recoil_ads = 0.65
+recoil_random = 0.1
+kick_back = 0.0238
+kick_up = 2.5
+kick_roll = 0.0338
+optic = "red_dot"
+optic_height = 0.0
+sound_set = "vector"
+foley = {
+"mag_out": ["common/mag_out_b"],
+"mag_in": ["common/mag_in_b"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 0
+ammo_price = 0
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/vector/scene.gltf"
+model_yaw = 180.0
+model_length = 0.6
+model_hide = PackedStringArray("backsight", "backscrew", "backaim", "frontsight", "frontclamp", "backclamp")

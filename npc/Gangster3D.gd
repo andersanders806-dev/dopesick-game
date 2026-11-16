@@ -40,7 +40,31 @@ const GUNS := {
 	"ar": {"dmg": 7.5, "rate": 8.0, "burst": [3, 6], "mag": 30, "pellets": 1, "reach": 100.0, "reload": 2.3},
 	"shotgun": {"dmg": 4.5, "rate": 0.9, "burst": [1, 1], "mag": 6, "pellets": 7, "reach": 24.0, "reload": 2.6},
 	"lmg": {"dmg": 6.5, "rate": 9.0, "burst": [8, 16], "mag": 100, "pellets": 1, "reach": 90.0, "reload": 4.0},
+	# SHIP 16 B2: the street's own guns (the crews pick theirs, crew_gun()).
+	"glock": {"dmg": 6.5, "rate": 3.6, "burst": [1, 3], "mag": 17, "pellets": 1, "reach": 70.0, "reload": 1.6},
+	"tec9": {"dmg": 3.8, "rate": 12.0, "burst": [5, 12], "mag": 32, "pellets": 1, "reach": 40.0, "reload": 1.9},
+	"uzi": {"dmg": 4.2, "rate": 10.5, "burst": [4, 10], "mag": 32, "pellets": 1, "reach": 45.0, "reload": 1.9},
+	"ak": {"dmg": 8.5, "rate": 7.0, "burst": [3, 7], "mag": 30, "pellets": 1, "reach": 100.0, "reload": 2.5},
+	"sawnoff": {"dmg": 4.8, "rate": 0.8, "burst": [1, 2], "mag": 2, "pellets": 7, "reach": 18.0, "reload": 2.2},
+	"deagle": {"dmg": 14.0, "rate": 1.6, "burst": [1, 2], "mag": 7, "pellets": 1, "reach": 80.0, "reload": 2.3},
 }
+## What each crew carries for the kind of gun the wave hands out (ZombieMode.gang_gun): [its own gun, the share
+## of the men who carry it instead]. The Dock Boys are cheap street iron; the Eastside Kings run Kalashnikovs.
+## The warrant team keeps its service guns.
+const CREW_GUNS := {
+	"Dock Boys": {"pistol": ["glock", 0.7], "smg": ["uzi", 0.75], "shotgun": ["sawnoff", 0.8], "ar": ["ak", 0.35]},
+	"Eastside Kings": {"pistol": ["glock", 0.4], "smg": ["tec9", 0.8], "shotgun": ["sawnoff", 0.35], "ar": ["ak", 0.75]},
+}
+
+## The crew's version of the gun the wave gave a man (`roll` 0..1: whether he is one who carries it).
+static func crew_gun(crew_name: String, base: String, roll: float, is_boss := false) -> String:
+	if is_boss:
+		# The Kings' enforcer with a scattergun brings the hand cannon instead.
+		return "deagle" if crew_name == "Eastside Kings" and base == "shotgun" else base
+	var t: Dictionary = CREW_GUNS.get(crew_name, {})
+	if t.has(base) and roll < float(t[base][1]):
+		return String(t[base][0])
+	return base
 ## How fast it goes (m/s): a walk, a jog, a rush.
 const PACE_WALK := 1.5
 const PACE_JOG := 3.0
@@ -130,7 +154,7 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 	boss = zkind == "heavy"
 	max_health = float(ZombieMode.gang_health(wave))
 	vest_hp = float(ZombieMode.gang_vest(wave))
-	gun_id = ZombieMode.gang_gun(wave, rng.randf())
+	gun_id = crew_gun(crew, ZombieMode.gang_gun(wave, rng.randf()), rng.randf())
 	skill = clampf(rng.randf_range(0.26, 0.4) + wave * 0.01, 0.25, 0.52)
 	aggression = rng.randf_range(0.25, 0.9)
 	_pace = PACE_JOG * rng.randf_range(0.92, 1.08)
@@ -140,6 +164,7 @@ func configure(zkind: String, round_no: int, rng: RandomNumberGenerator = null) 
 		max_health = 520.0 + 60.0 * float(wave / ZombieMode.BOSS_EVERY)
 		vest_hp = 400.0 + 80.0 * float(wave / ZombieMode.BOSS_EVERY)
 		gun_id = "lmg" if wave >= 10 or rng.randf() < 0.5 else "shotgun"
+		gun_id = crew_gun(crew, gun_id, 0.0, true)
 		skill = 0.5
 		_pace = PACE_WALK * 1.35
 		body_scale = 1.62
@@ -233,7 +258,10 @@ func _attach_gear(look: Dictionary) -> void:
 	_grip.unit = unit
 	_grip.gun_pos = GUN_POS
 	_grip.gun_quat = GUN_QUAT
-	_grip.fore_m = Vector3(0, -0.045, -0.04) if gun_id == "pistol" else Vector3(0, -0.04, -length * (0.30 if gun_id != "lmg" else 0.34))
+	# (Handguns: the left hand cups the right under the grip; the TEC-9 and the Uzi are held out by the front.)
+	var handgun: bool = gun_id in ["pistol", "glock", "deagle"]
+	var fore_k := 0.34 if gun_id == "lmg" else (0.42 if gun_id in ["tec9", "uzi"] else 0.30)
+	_grip.fore_m = Vector3(0, -0.045, -0.04) if handgun else Vector3(0, -0.04, -length * fore_k)
 	_skeleton.add_child(_grip)
 	if look.get("police", false):
 		_attach_police_gear(unit)

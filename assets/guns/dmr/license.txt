@@ -1,0 +1,11 @@
+Model Information:
+* title:	M14 RIFLE
+* source:	https://sketchfab.com/3d-models/m14-rifle-94920332fc7a4d63939b88a8a54baead
+* author:	Ecler (https://sketchfab.com/ecler)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "M14 RIFLE" (https://sketchfab.com/3d-models/m14-rifle-94920332fc7a4d63939b88a8a54baead) by Ecler (https://sketchfab.com/ecler) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

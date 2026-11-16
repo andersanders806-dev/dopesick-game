@@ -162,7 +162,11 @@ func _update_gun() -> void:
 	var low: bool = _holder.mag <= maxi(d.mag_size / 4, 1)
 	ammo_label.text = "%d / %d" % [_holder.mag, _holder.reserve]
 	ammo_label.add_theme_color_override("font_color", BLOOD if low else PAPER)
-	gun_label.text = String(d.display_name).to_upper() + ("  RELOADING" if _holder.reloading else "")
+	# A gun with a selector says which mode it is on.
+	var mode := ""
+	if d.fire_modes.size() > 1 and _holder.has_method("fire_mode"):
+		mode = "  " + String(_holder.fire_mode()).to_upper()
+	gun_label.text = String(d.display_name).to_upper() + mode + ("  RELOADING" if _holder.reloading else "")
 
 func _update_prompt() -> void:
 	var player := get_tree().get_first_node_in_group("player")

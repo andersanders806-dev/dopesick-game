@@ -1,0 +1,62 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/mp5_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "mp5"
+display_name = "Night Shift"
+damage = 30.0
+head_mult = 3.5
+neck_mult = 1.8
+limb_mult = 0.75
+pellets = 1
+falloff_start = 14.0
+falloff_end = 45.0
+falloff_floor = 0.55
+splash_radius = 0.0
+rpm = 800.0
+auto = true
+mag_size = 30
+reserve_max = 150
+reload_time = 1.7
+reload_time_empty = 2.7
+chambers = true
+spread_hip = 2.6
+spread_ads = 0.6
+recoil = 0.6
+ads_zoom = 1.5
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.18
+handling = "smg"
+fire_modes = PackedStringArray("auto", "burst", "semi")
+mode_burst = 3
+recoil_pattern = PackedVector2Array(0.0634, 0.27, 0.0789, 0.27, 0.0346, 0.27, -0.0358, 0.27, -0.0792, 0.27, -0.0626, 0.27, 0.0014, 0.27, 0.0643, 0.27, 0.0786, 0.1215, 0.0334, 0.1215, -0.0371, 0.1215, -0.0795, 0.1215, -0.0617, 0.1215, 0.0027, 0.1215, 0.0651, 0.1215, 0.0782, 0.1215, 0.0321, 0.1215, -0.0383, 0.1215, -0.0797, 0.1215, -0.0608, 0.1215, 0.0041, 0.1215, 0.0659, 0.1215, 0.0779, 0.1215, 0.0309, 0.1215)
+recoil_recover = 18.0
+recoil_hold = 3.2
+recoil_first = 1.1
+recoil_ads = 0.7
+recoil_random = 0.12
+kick_back = 0.0245
+kick_up = 2.6
+kick_roll = 0.0345
+optic = "built_in"
+sound_set = "mp5"
+foley = {
+"mag_out": ["common/mag_out_b"],
+"mag_in": ["common/mag_in_b"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 1100
+ammo_price = 550
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/mp5/scene.gltf"
+model_yaw = -90.0
+model_length = 0.7

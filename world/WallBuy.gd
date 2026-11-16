@@ -28,7 +28,9 @@ func setup(weapon: WD) -> void:
 	add_child(board)
 	var gun := GunModel.build(weapon)
 	gun.name = "Chalk"
-	var k := 1.25 / maxf(weapon.model_length, 0.1)
+	# Drawn as big as the board takes: 1.25 m long, or 0.78 m high for a stubby one (a pistol).
+	var b := GunModel.bounds(gun, gun)
+	var k := minf(1.25 / maxf(weapon.model_length, 0.1), 0.78 / maxf(b.size.y, 0.05))
 	gun.scale = Vector3(0.03, 1.0, 1.0) * k
 	gun.rotation_degrees = Vector3(0, -90, 0)
 	gun.position = Vector3(0.1, 1.45, 0.07)
@@ -54,6 +56,10 @@ func setup(weapon: WD) -> void:
 ## What E would do now (the prompt).
 func prompt_text() -> String:
 	var h := holder_of(get_tree().get_first_node_in_group("player"))
+	if data.melee:
+		if h != null and h.has_method("has_melee") and h.has_melee(data.family()):
+			return "You carry the %s" % h.melee_data.display_name
+		return "Buy the %s  [%d]" % [data.display_name, data.price]
 	if h != null and h.has_weapon(data.family()):
 		var held: WD = h.slot_data(h.slot_of(data.family()))
 		return "Refill the %s  [%d]" % [held.display_name, held.ammo_price]
@@ -67,6 +73,14 @@ func interact(player: Node) -> void:
 func try_buy(holder: Node) -> String:
 	if holder == null:
 		return _result("none")
+	# A melee weapon takes the knife's place (there is no ammo to refill).
+	if data.melee:
+		if holder.has_melee(data.family()):
+			return _result("full", "You carry it")
+		if not _pay(data.price):
+			return _result("poor")
+		holder.give_melee(data)
+		return _result("bought")
 	var i: int = holder.slot_of(data.family())
 	if i >= 0:
 		var held: WD = holder.slot_data(i)
@@ -75,7 +89,8 @@ func try_buy(holder: Node) -> String:
 			return _result("full", "Ammo full")
 		if not _pay(held.ammo_price):
 			return _result("poor")
-		s.mag = held.mag_size
+		# (A round in the chamber stays where it is.)
+		s.mag = maxi(int(s.mag), held.mag_size)
 		s.reserve = held.reserve_max
 		holder.ammo_changed.emit()
 		return _result("ammo")

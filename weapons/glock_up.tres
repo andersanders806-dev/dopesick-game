@@ -1,0 +1,64 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "glock_up"
+display_name = "Switch"
+base_id = "glock"
+upgraded = true
+damage = 84.0
+head_mult = 4.0
+neck_mult = 2.0
+limb_mult = 0.75
+pellets = 1
+falloff_start = 15.0
+falloff_end = 50.0
+falloff_floor = 0.65
+splash_radius = 0.0
+rpm = 1000.0
+auto = true
+mag_size = 25
+reserve_max = 204
+reload_time = 1.16
+reload_time_empty = 1.87
+chambers = true
+spread_hip = 2.3
+spread_ads = 0.24
+recoil = 0.9
+ads_zoom = 1.3
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.15
+handling = "pistol"
+fire_modes = PackedStringArray("auto", "semi")
+mode_burst = 3
+recoil_pattern = PackedVector2Array(0.0349, 0.3888, -0.1288, 0.3888, 0.3419, 0.3888, -0.1336, 0.3888, -0.1639, 0.3888, 0.352, 0.3888, -0.3051, 0.1944, 0.0546, 0.1944, 0.2323, 0.1944, -0.3642, 0.1944, 0.253, 0.1944, 0.0271, 0.1944, -0.2891, 0.1944, 0.3582, 0.1944, -0.1882, 0.1944, -0.1074, 0.1944, 0.3313, 0.1944, -0.3341, 0.1944, 0.1139, 0.1944, 0.1823, 0.1944, -0.3568, 0.1944, 0.2932, 0.1944, -0.0338, 0.1944, -0.2481, 0.1944)
+recoil_recover = 16.0
+recoil_hold = 2.6
+recoil_first = 1.2
+recoil_ads = 0.8
+recoil_random = 0.22
+kick_back = 0.0268
+kick_up = 2.9
+kick_roll = 0.0367
+optic = "none"
+sound_set = "glock"
+foley = {
+"mag_out": ["common/mag_out_pistol"],
+"mag_in": ["common/mag_in_pistol"],
+"rack": ["common/slide_rack"],
+"bolt": ["common/slide_rack"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.22, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.19, "mag_out"], [0.49, "mag_in"], [0.69, "rack"]]
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/glock/scene.gltf"
+model_yaw = -90.0
+model_length = 0.2
+model_hide = PackedStringArray("shell_bullet", "bullet_bullet")
+tint = Color(1.0, 0.5, 0.1, 1)

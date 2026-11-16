@@ -1,0 +1,60 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "dmr_up"
+display_name = "Repo Man"
+base_id = "dmr"
+upgraded = true
+damage = 260.0
+head_mult = 4.0
+neck_mult = 2.2
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 140.0
+falloff_floor = 0.8
+splash_radius = 0.0
+rpm = 240.0
+auto = false
+mag_size = 23
+reserve_max = 135
+reload_time = 2.02
+reload_time_empty = 2.98
+chambers = true
+spread_hip = 3.4
+spread_ads = 0.096
+recoil = 2.4
+ads_zoom = 2.4
+swap_time = 0.5
+ads_time = 0.36
+sprint_fire_delay = 0.26
+handling = "ar"
+recoil_pattern = PackedVector2Array(0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08, 0.162, 1.08, -0.162, 1.08)
+recoil_recover = 13.0
+recoil_hold = 2.4
+recoil_first = 1.0
+recoil_ads = 0.7
+recoil_random = 0.08
+kick_back = 0.038
+kick_up = 4.4
+kick_roll = 0.048
+optic = "none"
+sound_set = "dmr"
+foley = {
+"mag_out": ["common/mag_out_rifle"],
+"mag_in": ["common/mag_in_rifle"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 0
+ammo_price = 4500
+in_box = false
+model = "res://assets/guns/dmr/scene.gltf"
+model_yaw = 180.0
+model_length = 1.12
+tint = Color(0.7, 0.3, 1.0, 1)

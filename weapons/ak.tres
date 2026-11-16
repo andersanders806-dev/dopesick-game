@@ -1,0 +1,62 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/ak_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "ak"
+display_name = "Rust Bucket"
+damage = 55.0
+head_mult = 3.5
+neck_mult = 1.9
+limb_mult = 0.75
+pellets = 1
+falloff_start = 28.0
+falloff_end = 80.0
+falloff_floor = 0.7
+splash_radius = 0.0
+rpm = 600.0
+auto = true
+mag_size = 30
+reserve_max = 150
+reload_time = 2.12
+reload_time_empty = 3.2
+chambers = true
+spread_hip = 3.2
+spread_ads = 0.7
+recoil = 1.6
+ads_zoom = 1.8
+swap_time = 0.4
+ads_time = 0.32
+sprint_fire_delay = 0.22
+handling = "ar"
+fire_modes = PackedStringArray("auto", "semi")
+mode_burst = 3
+recoil_pattern = PackedVector2Array(0.072, 0.828, 0.072, 0.828, 0.072, 0.828, 0.072, 0.828, 0.072, 0.828, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, 0.3024, 0.432, -0.324, 0.324, -0.324, 0.324, -0.324, 0.324, -0.324, 0.324, -0.324, 0.324, -0.324, 0.324, 0.2592, 0.324, 0.2592, 0.324, 0.2592, 0.324, 0.2592, 0.324, -0.324, 0.324)
+recoil_recover = 14.0
+recoil_hold = 2.6
+recoil_first = 1.25
+recoil_ads = 0.72
+recoil_random = 0.1
+kick_back = 0.032
+kick_up = 3.6
+kick_roll = 0.042
+optic = "none"
+sound_set = "ak"
+foley = {
+"mag_out": ["common/mag_out_rifle"],
+"mag_in": ["common/mag_in_rifle"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 1500
+ammo_price = 750
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/ak/scene.gltf"
+model_yaw = 90.0
+model_length = 0.88

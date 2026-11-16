@@ -53,9 +53,25 @@ func _process(delta: float) -> void:
 	_flash = maxf(_flash - delta, 0.0)
 	_light.light_energy = 1.2 + _flash * 6.0 + 0.2 * sin(Time.get_ticks_msec() * 0.004)
 
+## The melee weapon (a bat or a machete in the knife's place) the machine would take when the gun in your hands
+## can't be upgraded (or is already), or null.
+func _melee_up(h: Node) -> WD:
+	if h == null or h.get("melee_data") == null:
+		return null
+	var md: WD = h.melee_data
+	var cur: WD = h.current
+	if md.melee_arc <= 0.0 or md.upgraded or md.upgrade == null:
+		return null
+	if cur != null and not cur.upgraded and cur.upgrade != null:
+		return null
+	return md
+
 func prompt_text() -> String:
 	var h := holder_of(get_tree().get_first_node_in_group("player"))
 	var cur: WD = h.current if h != null else null
+	var md := _melee_up(h)
+	if md != null:
+		return "Upgrade the %s  [%d]" % [md.display_name, PRICE]
 	if cur == null:
 		return "Nothing to upgrade"
 	if cur.upgraded:
@@ -69,6 +85,13 @@ func interact(player: Node) -> void:
 
 ## "upgraded", "poor", "already" (it is one already), "none" (nothing to upgrade).
 func try_upgrade(holder: Node) -> String:
+	var md := _melee_up(holder)
+	if md != null:
+		if not _pay(PRICE):
+			return _result("poor")
+		holder.give_melee(md.upgrade)
+		_flash = 1.0
+		return _result("upgraded", "Upgraded")
 	if holder == null or holder.current == null:
 		return _result("none", "Nothing to upgrade")
 	if holder.current.upgraded:

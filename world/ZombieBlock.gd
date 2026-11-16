@@ -72,6 +72,18 @@ const WALL_BUYS := [
 	["shotgun", Vector3(8, 1.3, -3), Vector3(0, 0, -1)],
 	["ar", Vector3(25, 1.3, -3), Vector3(0, 0, -1)],
 	["sniper", Vector3(-72, 1.3, -36), Vector3(-1, 0, 0)],
+	# SHIP 16 B2: the sixteen's wall guns and the two melee weapons, on the shop fronts of Main Street and the
+	# block's east and west edges (probed: flat building walls clear of the box's and the machine's places).
+	["glock", Vector3(-30, 1.3, -3), Vector3(0, 0, -1)],
+	["tec9", Vector3(16, 1.3, -3), Vector3(0, 0, -1)],
+	["uzi", Vector3(-50, 1.3, -3), Vector3(0, 0, -1)],
+	["sawnoff", Vector3(44, 1.3, -3), Vector3(0, 0, -1)],
+	["mp5", Vector3(54, 1.3, -3), Vector3(0, 0, -1)],
+	["bat", Vector3(-60, 1.3, -3), Vector3(0, 0, -1)],
+	["m16", Vector3(72, 1.3, -44), Vector3(1, 0, 0)],
+	["ak", Vector3(-72, 1.3, -52), Vector3(-1, 0, 0)],
+	["dmr", Vector3(72, 1.3, -84), Vector3(1, 0, 0)],
+	["machete", Vector3(-72, 1.3, -84), Vector3(-1, 0, 0)],
 ]
 ## The mystery box's places, one at a time: it moves between them.
 const BOX_SPOTS := [

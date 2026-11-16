@@ -2,10 +2,10 @@ extends RefCounted
 ## Dead Block's controls, Call of Duty's layout with no button doing two jobs:
 ##
 ##   keyboard: LMB fire, RMB aim, R reload, E use, 1 / 2 / mouse wheel swap, V knife,
-##             C or Ctrl crouch (a slide, from a sprint), T inspect
+##             C or Ctrl crouch (a slide, from a sprint), T inspect, B fire mode
 ##   pad:      R2 fire, L2 aim, Square reload (hold it at a board, the box or
 ##             the machine to buy), Triangle swap, R3 knife, Circle crouch / slide,
-##             D-pad down inspect
+##             D-pad down inspect, D-pad left fire mode
 ##
 ## apply() is called when the mode begins (autoload/ZombieMode.gd) and again by
 ## the WeaponHolder (idempotent); restore() when the mode is left. It saves the
@@ -24,6 +24,8 @@ const BINDINGS := {
 	"weapon_slot_1": [["key", KEY_1]],
 	"weapon_slot_2": [["key", KEY_2]],
 	"melee": [["key", KEY_V], ["button", JOY_BUTTON_RIGHT_STICK]],
+	# The fire-mode selector: B (Call of Duty's key; V is the melee) and D-pad left.
+	"fire_mode": [["key", KEY_B], ["button", JOY_BUTTON_DPAD_LEFT]],
 	"crouch": [["key", KEY_C], ["key", KEY_CTRL], ["button", JOY_BUTTON_B]],
 	"inspect": [["key", KEY_T], ["button", JOY_BUTTON_DPAD_DOWN]],
 }

@@ -1,0 +1,11 @@
+Model Information:
+* title:	OWK 19 Pistol 9mm (G19)
+* source:	https://sketchfab.com/3d-models/owk-19-pistol-9mm-g19-3a773b0f46f246dc855742ef413bf4a6
+* author:	OKgamedev (https://sketchfab.com/OKgamedev)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "OWK 19 Pistol 9mm (G19)" (https://sketchfab.com/3d-models/owk-19-pistol-9mm-g19-3a773b0f46f246dc855742ef413bf4a6) by OKgamedev (https://sketchfab.com/OKgamedev) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

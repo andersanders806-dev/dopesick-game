@@ -1,0 +1,11 @@
+Model Information:
+* title:	Tec-9
+* source:	https://sketchfab.com/3d-models/tec-9-fed8b9bad25242b8ba7c81d675ff050f
+* author:	wallon (https://sketchfab.com/realwallon)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Tec-9" (https://sketchfab.com/3d-models/tec-9-fed8b9bad25242b8ba7c81d675ff050f) by wallon (https://sketchfab.com/realwallon) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

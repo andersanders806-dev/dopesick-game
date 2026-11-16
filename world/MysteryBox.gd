@@ -10,6 +10,7 @@ extends "res://world/Purchase.gd"
 signal moved(spot: int)
 
 const GunModel := preload("res://weapons/GunModel.gd")
+const WeaponHolderScript := preload("res://player/WeaponHolder.gd")
 const CRATE := "res://assets/polyhaven/wooden_crate_01/wooden_crate_01.gltf"
 const PRICE := 950
 const SPIN_TIME := 3.0
@@ -105,7 +106,7 @@ func _put_at(i: int) -> void:
 func pool() -> Array:
 	var out: Array = []
 	# (Ghetto Wars is a street fight: no sci-fi wonder weapon in its box.)
-	for id in ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]:
+	for id in WeaponHolderScript.POOL_IDS:
 		if id == "wonder" and ZombieMode.gangs:
 			continue
 		var d := load("res://weapons/%s.tres" % id) as WD

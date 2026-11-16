@@ -1,0 +1,11 @@
+Model Information:
+* title:	HK MP5 (9mm submachine gun)
+* source:	https://sketchfab.com/3d-models/hk-mp5-9mm-submachine-gun-c503d96157614fb78b5953d49e643b78
+* author:	quick_loop (https://sketchfab.com/so_O)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "HK MP5 (9mm submachine gun)" (https://sketchfab.com/3d-models/hk-mp5-9mm-submachine-gun-c503d96157614fb78b5953d49e643b78) by quick_loop (https://sketchfab.com/so_O) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

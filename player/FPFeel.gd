@@ -16,6 +16,7 @@ const Viewmodel := preload("res://player/Viewmodel.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
 const GH := preload("res://player/GunHandling.gd")
 const GunSounds := preload("res://weapons/GunSounds.gd")
+const GunViews := preload("res://player/GunViews.gd")
 
 # --- The numbers (research §2) -------------------------------------------------------
 const HIP_FOV := 70.0
@@ -205,6 +206,11 @@ func _ready() -> void:
 		holder.connect("dry_fired", _on_dry)
 	if holder.has_signal("melee_swung"):
 		holder.connect("melee_swung", _on_melee)
+	if holder.has_signal("mode_changed"):
+		holder.connect("mode_changed", _on_mode_changed)
+		holder.connect("swing_started", _on_swing_started)
+		holder.connect("swing_landed", _on_swing_landed)
+		holder.connect("melee_changed", _on_melee_changed)
 	Graphics.view_changed.connect(_on_view_changed)
 
 func _exit_tree() -> void:
@@ -318,7 +324,7 @@ func _on_fired() -> void:
 	kick_rot_v += Vector3(up * room_rot, rng.randf_range(-0.012, 0.012), rng.randf_range(-roll, roll)) * 38.0
 	add_trauma(0.05 + d.recoil * 0.018)
 	_muzzle_flash(d)
-	if fam in ["pistol", "smg", "ar", "lmg"]:
+	if fam in ["pistol", "smg", "ar", "lmg", "belt"]:
 		_eject_shell(d)
 	elif fam == "shotgun":
 		_later.append([maxf(d.interval() * 0.45, 0.2), "pump"])
@@ -364,7 +370,7 @@ var _dump_t := 0.0
 
 func _fire_family(d: WD) -> String:
 	var fam := d.handling_family()
-	if not (fam in ["pistol", "smg", "ar", "shotgun", "sniper", "magnum", "lmg", "wonder"]):
+	if not (fam in ["pistol", "smg", "ar", "shotgun", "sniper", "magnum", "lmg", "wonder", "break", "launcher", "belt", "melee"]):
 		fam = "pistol"
 	return fam
 
@@ -387,7 +393,7 @@ func _on_reload_started() -> void:
 	if m != null and d != null:
 		missing = maxi(d.mag_size - int(m), 1)
 	var fam := _fire_family(d) if d != null else "ar"
-	_reload_def = GH.reload_plan(fam, reload_empty, missing)
+	_reload_def = GH.reload_plan(fam, reload_empty, missing, GunViews.pick(d, "cant", []) if d != null else [])
 	_reload_events = _reload_events_for(d, _reload_def.get("ev", []), reload_empty)
 	if fam == "magnum" and d != null:
 		_dump_n = clampi(d.mag_size - (int(m) if m != null else 0), 0, 6)
@@ -456,8 +462,136 @@ func _on_view_changed(_on: bool) -> void:
 	reset_state()
 
 func _on_melee(_hit: bool) -> void:
+	# (A melee weapon's swing is its own: _on_swing_started.)
+	var md = holder.get("melee_data")
+	if md != null and float(md.melee_arc) > 0.0:
+		return
 	_melee_t = 0.0
 	_sound("whoosh", -4.0, rng.randf_range(0.95, 1.05))
+
+# --- The selector, the melee weapon in hand, the launcher ------------------------------------
+
+## The selector's click.
+func _on_mode_changed(_mode: String) -> void:
+	var st := GunSounds.foley(_data(), "mode") if _data() != null else null
+	if st != null:
+		_play_voice(_audio, "_audio_next", st, "mode", -4.0, rng.randf_range(1.05, 1.15))
+	trigger = 0.0
+
+## The bat or the machete in hand while it swings: its own viewmodel (arms and all) on the camera, the gun out of sight.
+var _melee_vm: Viewmodel
+var _melee_vm_of: Resource
+var _swing_n := 0
+
+func _on_melee_changed(d: WD) -> void:
+	_build_melee_vm(d)
+
+func _build_melee_vm(d: WD) -> void:
+	if is_instance_valid(_melee_vm):
+		_melee_vm.queue_free()
+	_melee_vm = null
+	_melee_vm_of = d
+	if d == null or d.model == "" or camera == null or not _fp():
+		return
+	_melee_vm = Viewmodel.new().setup(d)
+	_melee_vm.name = "MeleeViewmodel"
+	_melee_vm.visible = false
+	camera.add_child(_melee_vm)
+
+func _on_swing_started(heavy: bool, lunged: bool) -> void:
+	var d = holder.get("melee_data")
+	if d == null:
+		return
+	if _melee_vm_of != d or not is_instance_valid(_melee_vm):
+		_build_melee_vm(d)
+	_swing_n += 1
+	var st := GunSounds.foley(d, "swing_heavy" if heavy else "swing", _swing_n)
+	if st != null:
+		# The heavy hit's whoosh comes with the swing, after the wind-up.
+		if heavy:
+			_later.append([float(d.swing_time) * float(d.heavy_time) * 0.3, "swing_heavy"])
+		else:
+			_play_voice(_audio, "_audio_next", st, "swing", -3.0, rng.randf_range(0.95, 1.06))
+	add_trauma(0.05 if not lunged else 0.12)
+	holder.set("aiming", false)
+
+func _on_swing_landed(hits: int, killed: bool, wall: bool) -> void:
+	var d = holder.get("melee_data")
+	if d == null:
+		return
+	if hits > 0:
+		var st := GunSounds.foley(d, "hit", _swing_n)
+		if st != null:
+			_play_voice(_audio, "_audio_next", st, "melee_hit", -1.0, rng.randf_range(0.94, 1.04))
+		if killed:
+			var ks := GunSounds.foley(d, "kill", _swing_n + 1)
+			if ks != null:
+				_play_voice(_audio, "_audio_next", ks, "melee_kill", -2.0, rng.randf_range(0.95, 1.05))
+		add_trauma(0.16 + 0.05 * hits)
+		kick_rot_v += Vector3(deg_to_rad(-30.0), deg_to_rad(18.0), 0.0)
+	elif wall:
+		var ws := GunSounds.foley(d, "hit_wall", 0)
+		if ws != null:
+			_play_voice(_audio, "_audio_next", ws, "melee_wall", -3.0, rng.randf_range(0.95, 1.05))
+		add_trauma(0.12)
+
+## The swing's pose: a light swing sweeps right to left across the view; a heavy one winds back first. Each key is
+## [u, pos, rot degrees] in camera space. True while a swing is on (the gun is out of sight).
+const SWING_BAT := [
+	[0.0, Vector3(0.32, -0.42, -0.2), Vector3(40.0, -70.0, -40.0)],
+	[0.18, Vector3(0.3, -0.02, -0.26), Vector3(62.0, -62.0, -34.0)],
+	[0.42, Vector3(0.02, -0.12, -0.42), Vector3(4.0, -6.0, -14.0)],
+	[0.62, Vector3(-0.22, -0.2, -0.32), Vector3(-10.0, 62.0, 4.0)],
+	[1.0, Vector3(-0.3, -0.55, -0.15), Vector3(-30.0, 90.0, 20.0)],
+]
+const SWING_BLADE := [
+	[0.0, Vector3(0.3, -0.4, -0.2), Vector3(50.0, -40.0, -60.0)],
+	[0.16, Vector3(0.26, 0.04, -0.28), Vector3(78.0, -30.0, -52.0)],
+	[0.4, Vector3(0.02, -0.1, -0.42), Vector3(-6.0, 4.0, -40.0)],
+	[0.62, Vector3(-0.2, -0.28, -0.3), Vector3(-52.0, 40.0, -30.0)],
+	[1.0, Vector3(-0.26, -0.6, -0.15), Vector3(-70.0, 56.0, -20.0)],
+]
+
+func _pose_swing() -> bool:
+	if not is_instance_valid(_melee_vm):
+		return false
+	var t := float(holder.call("swing_time")) if holder.has_method("swing_time") else -1.0
+	if t < 0.0:
+		_melee_vm.visible = false
+		return false
+	var len := maxf(float(holder.call("swing_length")), 0.05)
+	var d = holder.get("melee_data")
+	var hit: float = float(d.swing_hit) if d != null else 0.4
+	var heavy := bool(holder.call("swing_heavy"))
+	var u := clampf(t / len, 0.0, 1.0)
+	# Map the swing so the key at 0.42 (the blow) lands when the holder's blow does; a heavy swing holds the wind-up.
+	var k := u * 0.42 / maxf(hit, 0.05) if u <= hit else 0.42 + (u - hit) / maxf(1.0 - hit, 0.05) * 0.58
+	if heavy and u < hit:
+		k = _curve([[0.0, 0.0], [0.6, 0.2], [1.0, 0.42]], u / maxf(hit, 0.05))
+	var keys: Array = SWING_BAT if String(d.family()) == "bat" else SWING_BLADE
+	var pos := Vector3.ZERO
+	var rot := Vector3.ZERO
+	for i in range(1, keys.size()):
+		if k <= float(keys[i][0]) or i == keys.size() - 1:
+			var a: Array = keys[i - 1]
+			var b: Array = keys[i]
+			var w := smoothstep(0.0, 1.0, clampf((k - float(a[0])) / maxf(float(b[0]) - float(a[0]), 0.001), 0.0, 1.0))
+			pos = (a[1] as Vector3).lerp(b[1], w)
+			rot = (a[2] as Vector3).lerp(b[2], w)
+			break
+	if heavy and u < hit:
+		# Wound back further and lower for the heavy hit.
+		pos += Vector3(0.05, -0.03, 0.08) * (u / maxf(hit, 0.05))
+		rot += Vector3(14.0, -12.0, 0.0) * (u / maxf(hit, 0.05))
+	_melee_vm.visible = true
+	_melee_vm.position = pos + kick_pos * 0.5
+	_melee_vm.rotation = Vector3(deg_to_rad(rot.x), deg_to_rad(rot.y), deg_to_rad(rot.z))
+	# The bat takes both hands; the machete's free hand stays down out of the picture.
+	var left: Vector3 = _melee_vm.grip_l
+	if String(d.family()) != "bat":
+		left = _melee_vm.transform.affine_inverse() * Vector3(-0.3, -0.62, 0.05)
+	_melee_vm.aim_hands(left, {"trig": 0.0})
+	return true
 
 func _on_traced(from: Vector3, to: Vector3) -> void:
 	var d := _data()
@@ -655,10 +789,14 @@ func advance(delta: float) -> void:
 		_later[i][0] -= delta
 		if _later[i][0] <= 0.0:
 			if _later[i][1] == "mech":
-				var ms := GunSounds.mech(_data(), _shot_n)
+				var ms := GunSounds.mech(_data(), _shot_n) if _data() != null else null
 				if ms != null:
 					_play_voice(_audio, "_audio_next", ms, "mech", -8.0, rng.randf_range(0.97, 1.03))
-			else:
+			elif _later[i][1] == "swing_heavy":
+				var hs := GunSounds.foley(holder.get("melee_data"), "swing_heavy", _swing_n) if holder.get("melee_data") != null else null
+				if hs != null:
+					_play_voice(_audio, "_audio_next", hs, "swing_heavy", -1.0, rng.randf_range(0.95, 1.04))
+			elif _later[i][1] != "swing_heavy":
 				_cue(_later[i][1], -4.0, rng.randf_range(0.97, 1.03))
 			if _later[i][1] == "pump":
 				_pump_t = PUMP_TIME
@@ -735,9 +873,9 @@ func _pose(_delta: float) -> void:
 	if vm == null:
 		return
 	var fam := GH.family_of(vm)
-	var weight: float = GH.WEIGHT.get(fam, 1.0)
+	var weight: float = GH.weight_for(vm.data)
 	var ease := smoothstep(0.0, 1.0, ads)
-	var hip: Array = GH.hip(fam)
+	var hip: Array = GH.hip_for(vm)
 	var hip_rot: Vector3 = hip[1]
 	var pos: Vector3 = (hip[0] as Vector3).lerp(vm.ads_position, ease)
 	var rot := Vector3(vm.ads_pitch * ease, 0.0, 0.0) + Vector3(deg_to_rad(hip_rot.x), deg_to_rad(hip_rot.y), deg_to_rad(hip_rot.z)) * (1.0 - ease)
@@ -772,7 +910,7 @@ func _pose(_delta: float) -> void:
 	rot.x += (-lag.z * deg_to_rad(0.18) - clampf(_strafe.y, -8.0, 8.0) * deg_to_rad(0.25)) * lean_k
 	# Sprint and slide poses (each kind of gun is carried its own way).
 	var sb := smoothstep(0.0, 1.0, sprint_blend)
-	var sp: Array = GH.SPRINT.get(fam, GH.SPRINT["ar"])
+	var sp: Array = GH.sprint_for(vm)
 	pos += (sp[0] as Vector3) * sb
 	rot += Vector3(deg_to_rad(sp[1].x), deg_to_rad(sp[1].y), deg_to_rad(sp[1].z)) * sb
 	var lb := smoothstep(0.0, 1.0, _slide_blend)
@@ -834,31 +972,65 @@ func _handling_state(vm: Viewmodel, base: Transform3D) -> Dictionary:
 
 ## Props of a reload / raise: the carried magazine, the gun's own magazine cut, the moving parts.
 func _apply_parts(vm: Viewmodel, st: Dictionary) -> void:
+	var d := _data()
+	var view := GunViews.of(d)
+	# A model with its own magazine (or a launcher's rocket) moves that, not a prop, and nothing is cut away.
+	var real_mag := vm.parts.has("mag")
 	if st.is_empty():
 		vm.set_cut(false)
 		if vm.mag_prop != null:
 			vm.mag_prop.visible = false
 		if vm.parts.has("pan"):
 			vm.set_part("pan", Vector3.ZERO, true)
+		if real_mag:
+			vm.set_part("mag", Vector3.ZERO, _mag_seated(d))
 	else:
-		vm.set_cut(bool(st["cut"]))
+		vm.set_cut(bool(st["cut"]) and not real_mag)
 		vm.set_mag(bool(st["mag_shown"]), st["mag_pos"], st["mag_rot"])
 		if vm.parts.has("pan"):
 			vm.set_part("pan", (st["mag_pos"] as Vector3) - vm.magwell, bool(st["mag_shown"]))
+		if real_mag:
+			if bool(st["mag_shown"]):
+				vm.set_part("mag", (st["mag_pos"] as Vector3) - vm.magwell, true, st["mag_rot"])
+			else:
+				vm.set_part("mag", Vector3.ZERO, not bool(st["cut"]) and _mag_seated(d))
 	# The pistol's slide: back with each shot, locked back on an empty gun, as the reload says.
 	var parts: Dictionary = st.get("parts", {}) if not st.is_empty() else {}
+	var m = holder.get("mag")
+	var empty: bool = m != null and int(m) <= 0 and not bool(holder.get("reloading"))
 	if vm.parts.has("slide"):
 		var back := 0.0
+		var travel: float = float(view.get("slide_back", 0.022))
 		if parts.has("slide"):
 			back = (parts["slide"] as Vector3).z
 		else:
-			var m = holder.get("mag")
-			var empty: bool = m != null and int(m) <= 0 and not bool(holder.get("reloading"))
-			back = 0.026 if empty and _since_shot > 0.05 else 0.022 * _slide_kick()
+			back = travel * 1.15 if empty and _since_shot > 0.05 else travel * _slide_kick()
 		vm.set_part("slide", Vector3(0.0, 0.0, back))
+	# A rifle's bolt carrier (the AK's handle rides it) slams back with each round; the empty reload racks it.
+	var rack := (parts["charge"] as Vector3).z if parts.has("charge") else 0.0
+	if vm.parts.has("carrier"):
+		var cb: float = float(view.get("carrier_back", 0.05)) * _slide_kick()
+		vm.set_part("carrier", Vector3(0.0, 0.0, maxf(cb, rack)))
+	if vm.parts.has("charge"):
+		vm.set_part("charge", Vector3(0.0, 0.0, rack))
 	if vm.parts.has("bolt"):
 		var b := (parts["bolt"] as Vector3).z if parts.has("bolt") else _bolt_amount()
 		vm.set_part("bolt", Vector3(0.0, 0.0, b))
+	# A break-action: the barrels on the hinge, the shells in the breech riding the extractor out.
+	if vm.parts.has("barrels"):
+		vm.set_part("barrels", Vector3.ZERO, true, Vector3(float(parts.get("hinge", 0.0)), 0.0, 0.0))
+	if vm.parts.has("shells"):
+		var out := (parts["shells"] as Vector3).z if parts.has("shells") else 0.0
+		vm.set_part("shells", Vector3(0.0, 0.0, out), bool(parts.get("shells_shown", true)), Vector3(float(parts.get("hinge", 0.0)), 0.0, 0.0))
+	if vm.parts.has("cover"):
+		vm.set_part("cover", Vector3.ZERO, true, Vector3(float(parts.get("cover", 0.0)), 0.0, 0.0))
+
+## Whether the gun's own magazine is in it at rest: a launcher's rocket is gone once it is fired.
+func _mag_seated(d: WD) -> bool:
+	if d == null or d.projectile == "":
+		return true
+	var m = holder.get("mag")
+	return m == null or int(m) > 0 or bool(holder.get("reloading"))
 
 ## 0..1: the slide thrown back by a shot and returning.
 func _slide_kick() -> float:
@@ -933,6 +1105,13 @@ func _update_reload(_delta: float) -> void:
 				_cue(ev[1], -3.0, rng.randf_range(0.97, 1.03))
 			if String(ev[2]) == "drop":
 				_drop_mag()
+			elif String(ev[2]) == "eject":
+				# A break-action's empties out of the opened breech.
+				var d := _data()
+				var m = holder.get("mag")
+				var spent: int = (d.mag_size - (int(m) if m != null else 0)) if d != null else 1
+				for i in maxi(spent, 1):
+					_eject_shell(d)
 	_reload_prev = p
 
 # --- Writing to the nodes ---------------------------------------------------------------
@@ -957,8 +1136,9 @@ func apply() -> void:
 		return
 	vm.position = vm_position
 	vm.rotation = vm_rotation
-	vm.visible = not (_scoped())
-	if vm.has_method("aim_hands"):
+	var swinging := _pose_swing()
+	vm.visible = not (_scoped()) and not swinging
+	if vm.has_method("aim_hands") and vm.visible:
 		vm.aim_hands(_left_hand, _hand_opt)
 
 ## A sniper rifle with the sights up shows the scope's circle instead of the gun.
@@ -1058,8 +1238,7 @@ func _eject_shell(d: WD, profile := {}) -> void:
 	var vm := _vm()
 	if vm == null or camera == null:
 		return
-	var fam := _fire_family(d) if d != null else "ar"
-	var ej: Dictionary = profile if not profile.is_empty() else GH.EJECT.get(fam, GH.EJECT["ar"])
+	var ej: Dictionary = profile if not profile.is_empty() else (GH.eject_for(d) if d != null else GH.EJECT["ar"])
 	if (ej["hi"] as Vector3).length() < 0.01:
 		return
 	# The port as the gun has it: a spot on the gun's box, and the case leaves to the right, up and back.

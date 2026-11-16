@@ -1,0 +1,61 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/sawnoff_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "sawnoff"
+display_name = "Back Porch"
+damage = 26.0
+head_mult = 2.0
+neck_mult = 1.5
+limb_mult = 0.75
+pellets = 10
+falloff_start = 3.0
+falloff_end = 18.0
+falloff_floor = 0.2
+splash_radius = 0.0
+rpm = 180.0
+auto = false
+mag_size = 2
+reserve_max = 36
+reload_time = 1.87
+reload_time_empty = 2.2
+chambers = false
+spread_hip = 7.5
+spread_ads = 6.5
+recoil = 4.5
+ads_zoom = 1.1
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.18
+handling = "break"
+recoil_pattern = PackedVector2Array(0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025, 0.243, 2.025, -0.243, 2.025)
+recoil_recover = 12.0
+recoil_hold = 2.5
+recoil_first = 1.0
+recoil_ads = 0.9
+recoil_random = 0.12
+kick_back = 0.05
+kick_up = 6.0
+kick_roll = 0.06
+optic = "none"
+optic_height = 0.012
+eye_relief = 0.3
+sound_set = "sawnoff"
+foley = {
+"break_open": ["common/break_open"],
+"shell_in": ["common/shell_insert_1", "common/shell_insert_2", "common/shell_insert_3"],
+"break_close": ["common/break_close"]
+}
+reload_cues_tactical = [[0.14, "break_open"], [0.5, "shell_in"], [0.82, "break_close"]]
+reload_cues_empty = [[0.12, "break_open"], [0.4, "shell_in"], [0.62, "shell_in"], [0.84, "break_close"]]
+price = 900
+ammo_price = 450
+in_box = false
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/sawnoff/scene.gltf"
+model_yaw = 180.0
+model_length = 0.4
+model_hide = PackedStringArray("polysurface2")

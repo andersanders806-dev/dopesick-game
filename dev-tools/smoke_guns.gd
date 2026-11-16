@@ -5,10 +5,16 @@ extends "res://dev-tools/smoke_test_3d.gd"
 ## return to centre, the room's tail or the street's, a far shot for the gangsters, and no per-shot allocation.
 ##   flatpak run org.godotengine.Godot --headless --path . -s res://dev-tools/smoke_guns.gd
 const GunSounds := preload("res://weapons/GunSounds.gd")
+const GunModel := preload("res://weapons/GunModel.gd")
+const GunViews := preload("res://player/GunViews.gd")
 const GUN_IDS := ["pistol", "magnum", "smg", "ar", "shotgun", "sniper", "lmg"]
+## SHIP 16 B2: the sixteen new ones (two of them melee weapons).
+const NEW_IDS := ["glock", "tec9", "uzi", "mp5", "vector", "ak", "m16", "sawnoff", "deagle", "aa12", "dmr", "amr", "saw", "rpg"]
+const MELEE_IDS := ["bat", "machete"]
 
 func _run() -> void:
 	_data_checks()
+	_b2_data_checks()
 	await _scene_checks()
 
 func _wd(id: String) -> Resource:
@@ -110,6 +116,9 @@ func _scene_checks() -> void:
 	await _recoil_checks(holder, feel)
 	await _sound_checks(holder, feel, city)
 	await _alloc_checks(holder, feel)
+	await _b2_view_checks(holder, feel, player)
+	await _b2_system_checks(holder, feel, player, block)
+	await _b2_venue_checks(holder, block)
 	Input.action_release("fire")
 	player.set("_sprinting", false)
 	GunSounds.force_indoors = -1
@@ -507,5 +516,366 @@ func _input_checks(holder: Node, feel: Node, player: Node) -> void:
 		var near: String = veh._drive_by_shot(cam.global_position + Vector3(6, 0, 0))
 		var far: String = veh._drive_by_shot(cam.global_position + Vector3(0, 0, 130))
 		_check(near.contains("/smg/fire_") and far.contains("/smg/distant_") and ResourceLoader.exists(near) and ResourceLoader.exists(far), "  the drive-by's shots are the recorded SMG: %s near, %s far" % [near.get_file(), far.get_file()])
+	else:
+		# (Not skipped in silence: without a camera there is no near or far to tell.)
+		_check(false, "  there is a camera for the drive-by's near and far shots")
 	veh.queue_free()
 	player.set("_sprinting", false)
+
+# --- SHIP 16 B2: the sixteen new guns -----------------------------------------------------------------
+
+const PRICES := {"glock": 500, "tec9": 750, "uzi": 800, "mp5": 1100, "ak": 1500, "m16": 1300, "sawnoff": 900, "dmr": 1800, "bat": 600, "machete": 600,
+	"vector": 0, "deagle": 0, "aa12": 0, "amr": 0, "saw": 0, "rpg": 0}
+const IN_BOX := ["mp5", "vector", "ak", "m16", "deagle", "aa12", "dmr", "amr", "saw", "rpg"]
+
+func _b2_data_checks() -> void:
+	_section("B2 data: the sixteen new guns and their upgrades -- model, sound set, foley, handling, modes, prices")
+	for id in NEW_IDS + MELEE_IDS:
+		for suffix in ["", "_up"]:
+			var tag: String = id + suffix
+			var d: Resource = _wd(tag)
+			_check(d != null and d.display_name != "", "%s loads, named %s" % [tag, d.display_name if d != null else "-"])
+			if d == null:
+				continue
+			if suffix == "":
+				_check(d.upgrade != null and d.upgrade.id == id + "_up" and d.upgrade.base_id == id and d.upgrade.upgraded, "%s: the upgrade machine makes it the %s" % [tag, d.upgrade.display_name if d.upgrade != null else "-"])
+				_check(d.price == int(PRICES[id]) and d.in_box == IN_BOX.has(id), "%s: wall price %d, in the box %s (as the 16A roster says)" % [tag, d.price, d.in_box])
+			var gun := GunModel.build(d)
+			var box := GunModel.bounds(gun.get_child(0) as Node3D, gun)
+			_check(box.size.z > d.model_length * 0.95, "%s: the model loads, %.2f m long" % [tag, box.size.z])
+			gun.free()
+			if d.melee:
+				var cues_ok := true
+				for cue in ["swing", "swing_heavy", "hit", "hit_wall", "kill"]:
+					cues_ok = cues_ok and d.foley.has(cue) and GunSounds.foley(d, cue) != null
+				_check(cues_ok, "%s: swing, heavy swing, flesh hit, wall hit and kill sounds" % tag)
+				_check(d.melee_range > 1.5 and d.melee_arc > 30.0 and d.melee_targets >= 2 and d.heavy_mult > 1.0 and d.lunge_range > d.melee_range and d.swing_time > 0.2,
+					"%s: a %.0f deg swing reaching %.1f m, %d at most, heavy x%.1f, lunge from %.1f m" % [tag, d.melee_arc, d.melee_range, d.melee_targets, d.heavy_mult, d.lunge_range])
+				continue
+			var gone: PackedStringArray = GunSounds.missing(d)
+			_check(gone.is_empty() and d.sound_set == id, "%s: its own recorded set in sfx/guns/%s (%s missing)" % [tag, d.sound_set, gone])
+			var foley_ok := true
+			for cue in d.foley:
+				for stem in d.foley[cue]:
+					foley_ok = foley_ok and GunSounds.file(String(stem)) != null
+			var cues_ok2 := true
+			for list in [d.reload_cues_tactical, d.reload_cues_empty]:
+				var last := 0.0
+				for c in list:
+					cues_ok2 = cues_ok2 and float(c[0]) > last and float(c[0]) < 1.0 and GunSounds.foley(d, String(c[1])) != null
+					last = float(c[0])
+			_check(foley_ok and cues_ok2 and not d.reload_cues_empty.is_empty(), "%s: every foley file is there, the reload cues ascend and sound" % tag)
+			_check(d.ads_time >= 0.15 and d.ads_time <= 0.55 and d.sprint_fire_delay >= 0.15 and d.sprint_fire_delay <= 0.36 and d.reload_for(false) <= d.reload_for(true),
+				"%s: ADS %.2f s, sprint-to-fire %.2f s, tactical %.2f / empty %.2f s" % [tag, d.ads_time, d.sprint_fire_delay, d.reload_for(false), d.reload_for(true)])
+			var modes_ok := true
+			for m in d.fire_modes:
+				modes_ok = modes_ok and m in ["auto", "burst", "semi"]
+			_check(modes_ok and d.recoil_pattern.size() >= 8 and d.optic in ["none", "red_dot", "scope", "built_in"],
+				"%s: modes %s (comes in %s), recoil %d shots, optic %s" % [tag, d.fire_modes, d.fire_mode(), d.recoil_pattern.size(), d.optic])
+	_check(_wd("m16").fire_mode() == "burst" and _wd("m16").burst_of("burst") == 3 and _wd("m16").burst_of("semi") == 1, "the M16 is a three-round burst gun with a semi setting")
+	_check(_wd("mp5").fire_modes.size() == 3 and _wd("vector").burst_of("burst") == 2, "the MP5 has auto, burst and semi; the Vector's burst is two")
+	_check(_wd("glock").fire_mode() == "semi" and _wd("glock_up").fire_mode() == "auto" and _wd("glock_up").mag_size == 25, "the Switch (glock_up) is full auto with 25 rounds")
+	_check(_wd("amr").pierce == 2 and _wd("rpg").projectile == "rocket" and _wd("rpg").splash_radius == 4.0 and _wd("rpg").self_damage > 0.0 and _wd("rpg").mag_size == 1 and _wd("rpg").reserve_max == 8,
+		"the AMR pierces two; the RPG fires a rocket, 4 m splash, hurts its shooter, 1 + 8 rockets")
+	_check(_wd("sawnoff").handling_family() == "break" and _wd("rpg").handling_family() == "launcher" and _wd("saw").handling_family() == "belt", "the sawn-off breaks open, the RPG loads at the muzzle, the M249 has its belt reload")
+	var G: Script = load("res://npc/Gangster3D.gd")
+	var guns: Dictionary = G.get_script_constant_map()["GUNS"]
+	var have := true
+	for g in ["glock", "tec9", "uzi", "ak", "sawnoff", "deagle"]:
+		have = have and guns.has(g) and ResourceLoader.exists("res://weapons/%s.tres" % g)
+	_check(have, "Ghetto Wars: the crews carry the glock, TEC-9, Uzi, AK, sawn-off and Desert Eagle")
+	_check(G.crew_gun("Dock Boys", "smg", 0.1) == "uzi" and G.crew_gun("Eastside Kings", "smg", 0.1) == "tec9" and G.crew_gun("Eastside Kings", "ar", 0.2) == "ak"
+		and G.crew_gun("Police", "ar", 0.0) == "ar" and G.crew_gun("Eastside Kings", "shotgun", 0.0, true) == "deagle",
+		"each crew has its own guns (Dock Boys Uzis, Kings TEC-9s and AKs, the Kings' enforcer a Desert Eagle, the police their own)")
+
+func _b2_view_checks(holder: Node, feel: Node, player: Node) -> void:
+	_section("B2 in hand: the sight on centre at ADS, the gun's own magazine moving in the reload, the break-action, the rocket")
+	var cam: Camera3D = player.get("camera")
+	holder.aim_source = Callable()
+	for id in NEW_IDS:
+		var d: Resource = _wd(id)
+		_ready_gun(holder, feel, d)
+		feel._raise_seen[id] = true
+		feel.raising = false
+		var vm: Node3D = holder.viewmodel
+		_check(vm != null and vm.box.size.z > 0.15, "%s: the gun in hand is built (%.2f m)" % [id, vm.box.size.z if vm != null else 0.0])
+		if vm == null or cam == null:
+			continue
+		holder.aiming = true
+		feel.ads = 1.0
+		_fp_step(feel, holder, 2)
+		feel.apply()
+		var local: Vector3 = cam.global_transform.affine_inverse() * (vm.global_transform * vm.sight_point)
+		var off := rad_to_deg(atan2(Vector2(local.x, local.y).length(), -local.z))
+		_check(local.z < -0.05 and off < 0.6, "%s: aimed, the sight sits on the view's centre (%.2f deg off, %.2f m from the eye)" % [id, off, -local.z])
+		holder.aiming = false
+		feel.reset_state()
+		feel.raising = false
+		# An empty reload: the gun's own magazine (the RPG's rocket, the M249's box) leaves with the hand and is back at the end.
+		holder.mag = 0
+		holder.reserve = d.mag_size * 2
+		holder.reload()
+		var total: float = holder.reload_left()
+		var t := 0.0
+		var peak := 0.0
+		var turned := 0.0
+		var prop := false
+		while holder.reloading and t < total + 0.5:
+			_fp_step(feel, holder, 1, 1.0 / 60.0)
+			feel.apply()
+			t += 1.0 / 60.0
+			if vm.parts.has("mag"):
+				peak = maxf(peak, (vm.parts["mag"]["amount"] as Vector3).length())
+			if vm.parts.has("barrels"):
+				var n0 := vm.parts["barrels"]["nodes"][0] as Node3D
+				turned = maxf(turned, rad_to_deg((vm.parts["barrels"]["rest_xf"][0] as Transform3D).basis.get_rotation_quaternion().angle_to(n0.transform.basis.get_rotation_quaternion())))
+			prop = prop or (vm.mag_prop != null and vm.mag_prop.visible)
+		_fp_step(feel, holder, 2, 1.0 / 60.0)
+		feel.apply()
+		if vm.parts.has("mag"):
+			var back: float = (vm.parts["mag"]["amount"] as Vector3).length()
+			_check(peak > 0.04 and back < 0.005 and holder.mag == d.mag_size, "%s: the gun's own magazine comes out with the hand (%.2f m) and is seated at the end (%.3f m, %d rounds)" % [id, peak, back, holder.mag])
+		elif vm.parts.has("barrels"):
+			_check(turned > 30.0 and holder.mag == d.mag_size, "%s: it breaks open (the barrels drop %.0f deg) and takes %d shells" % [id, turned, holder.mag])
+		else:
+			_check(prop and holder.mag == d.mag_size, "%s: a magazine comes in the hand (the model's own is one with the gun) and the gun is loaded (%d)" % [id, holder.mag])
+	# The RPG's rocket is gone from the muzzle once fired and back after the reload.
+	var rpg: Resource = _wd("rpg")
+	_ready_gun(holder, feel, rpg)
+	var rvm: Node3D = holder.viewmodel
+	holder.aim_source = func(): return [Vector3(-30, 1.6, -3), Vector3(0, 0, -1)]
+	var shown0: bool = (rvm.parts["mag"]["nodes"][0] as Node3D).visible
+	holder.fire()
+	_fp_step(feel, holder, 2)
+	feel.apply()
+	var gone: bool = not (rvm.parts["mag"]["nodes"][0] as Node3D).visible
+	_check(shown0 and gone, "rpg: the rocket shows in the muzzle, and is gone once it is fired")
+	holder.aim_source = func(): return [Vector3(-20, 5, -3), Vector3.RIGHT]
+	for r in holder._rockets:
+		r.flying = false
+
+func _b2_system_checks(holder: Node, feel: Node, player: Node, block: Node) -> void:
+	_section("B2 systems: the selector, a burst finished through a sprint, a kept press, pierce, the RPG's blast, melee")
+	var zm := root.get_node("ZombieMode")
+	# The selector: B / D-pad left steps through the gun's modes with a click; the mode decides what a pull does.
+	var mp5: Resource = _wd("mp5")
+	_ready_gun(holder, feel, mp5)
+	holder.refill_current()
+	var seen: Array = [holder.fire_mode()]
+	var clicks0 := int(feel.sound_counts.get("mode", 0))
+	for i in 3:
+		holder.toggle_mode()
+		seen.append(holder.fire_mode())
+	_check(seen == ["auto", "burst", "semi", "auto"] and int(feel.sound_counts.get("mode", 0)) >= clicks0 + 3, "  mp5: the selector goes auto, burst, semi, back to auto, with a click each (%s)" % [seen])
+	_check(InputMap.has_action("fire_mode") and InputMap.action_get_events("fire_mode").size() == 2, "  the selector is bound to B and D-pad left")
+	holder.toggle_mode()
+	var shots := [0]
+	var on_fired := func(): shots[0] += 1
+	holder.fired.connect(on_fired)
+	holder._cooldown = 0.0
+	holder.fire()
+	_fp_step(feel, holder, 60)
+	_check(shots[0] == 3, "  mp5 on burst: one pull is three rounds (%d)" % shots[0])
+	holder.toggle_mode()
+	shots[0] = 0
+	holder.advance(1.0)
+	holder.fire()
+	_fp_step(feel, holder, 60)
+	_check(shots[0] == 1 and not holder.is_auto(), "  on semi: one (%d)" % shots[0])
+	_ready_gun(holder, feel, _wd("rpg"))
+	_check(_wd("ak").fire_modes.size() > 1 and not holder.toggle_mode(), "  a gun with one mode (the RPG) has no selector; the AK has auto and semi")
+	# M5: a burst once begun is finished even if a sprint comes in the middle of it.
+	var m16: Resource = _wd("m16")
+	_ready_gun(holder, feel, m16)
+	holder.refill_current()
+	shots[0] = 0
+	holder.fire()
+	player.set("_sprinting", true)
+	_fp_step(feel, holder, 40)
+	player.set("_sprinting", false)
+	_check(shots[0] == 3, "  m16: a sprint in the middle of a burst does not cut it (%d rounds)" % shots[0])
+	# A press while the gun can't answer (a swap, the cooldown) is kept while the trigger is held, not lost.
+	var pistol: Resource = _wd("pistol")
+	_ready_gun(holder, feel, pistol)
+	holder.refill_current()
+	shots[0] = 0
+	holder._swap_left = 0.2
+	Input.action_press("fire")
+	holder._process(0.01)
+	_check(shots[0] == 0 and holder._fire_queued, "  a press during the raise is kept")
+	for i in 30:
+		holder._process(0.01)
+	_check(shots[0] == 1 and not holder._fire_queued, "  and fires when the gun is up (%d)" % shots[0])
+	Input.action_release("fire")
+	holder._process(0.01)
+	holder.fired.disconnect(on_fired)
+	# Zombies to hit.
+	var spawner: Node = block.spawner
+	spawner.round_no = 3
+	var line: Array = []
+	for k in 3:
+		var z = spawner.spawn_one("walker", Vector3(-24.0 - k * 1.6, 0.0, -3.0))
+		z.set_physics_process(false)
+		line.append(z)
+	await _frames(3)
+	# The AMR's round goes on through: all three in a line are hit.
+	var amr: Resource = _wd("amr")
+	_ready_gun(holder, feel, amr)
+	holder.aim_source = func(): return [Vector3(-21.0, 1.2, -3.0), Vector3(-1, 0, 0)]
+	var hp0: Array = []
+	for z in line:
+		hp0.append(z.health)
+	holder.fire()
+	var hurt := 0
+	for i in line.size():
+		if not is_instance_valid(line[i]) or not line[i].is_alive() or line[i].health < hp0[i]:
+			hurt += 1
+	_check(hurt == 3, "  amr: one round through three zombies in a line (%d hit)" % hurt)
+	for z in line:
+		if is_instance_valid(z):
+			z.free()
+	# The RPG: a rocket flies, and its blast takes a crowd; its shooter, too close, is hurt.
+	var crowd: Array = []
+	for at in [Vector3(-8.0, 0.0, -3.0), Vector3(-7.0, 0.0, -3.9), Vector3(-7.0, 0.0, -2.1), Vector3(-6.0, 0.0, -3.0)]:
+		var z2 = spawner.spawn_one("walker", at)
+		z2.set_physics_process(false)
+		crowd.append(z2)
+	await _frames(3)
+	var rpg: Resource = _wd("rpg")
+	_ready_gun(holder, feel, rpg)
+	player.global_position = Vector3(-20, 0, -3)
+	holder.aim_source = func(): return [Vector3(-20.0, 1.5, -3.0), Vector3(1, 0, 0)]
+	var pts0: int = zm.points
+	var blasts0 := 0
+	for x in holder._rockets:
+		blasts0 += int(x.blasts)
+	holder.fire()
+	var r: Node = null
+	for x in holder._rockets:
+		if x.flying:
+			r = x
+	var tt := 0
+	while r != null and r.flying and tt < 300:
+		holder.advance(1.0 / 60.0)
+		tt += 1
+	var dead := 0
+	for z in crowd:
+		if not is_instance_valid(z) or not z.is_alive():
+			dead += 1
+	var blasts1 := 0
+	for x in holder._rockets:
+		blasts1 += int(x.blasts)
+	_check(r != null and blasts1 == blasts0 + 1 and dead == crowd.size() and zm.points > pts0, "  rpg: the rocket flies %.1f s, goes off on %s at %s and its blast kills all %d (%d dead, +%d points)" % [tt / 60.0, r.last_struck if r != null else "-", r.last_blast if r != null else Vector3.INF, crowd.size(), dead, zm.points - pts0])
+	_check(holder.mag == 0 and holder.reserve == 8, "  one rocket in the tube, eight to carry: one fired (%d + %d)" % [holder.mag, holder.reserve])
+	var hp_before: float = zm.health
+	holder.rocket_blast(player.global_position + Vector3(1.5, 0.9, 0.0), rpg, null)
+	_check(zm.health < hp_before, "  a rocket going off 1.5 m away hurts you (%.0f -> %.0f)" % [hp_before, zm.health])
+	zm.health = hp_before
+	for z in crowd:
+		if is_instance_valid(z):
+			z.free()
+	holder.aim_source = Callable()
+	# Melee: the bat's swing lands a moment in and takes a zombie in front; the machete's arc takes two side by side;
+	# a zombie a few metres off is lunged at; a heavy hit does more.
+	player.global_position = Vector3(-20, 0, -3)
+	player.set_look(-PI / 2.0, 0.0)
+	await _frames(2)
+	for id in MELEE_IDS:
+		var md: Resource = _wd(id)
+		holder.give_melee(md)
+		var pair: Array = []
+		for k in 2:
+			var z3 = spawner.spawn_one("walker", Vector3(-18.6, 0.0, -3.0 + (k - 0.5) * 0.9))
+			z3.set_physics_process(false)
+			z3.max_health = 5000.0
+			z3.health = 5000.0
+			pair.append(z3)
+		await _frames(2)
+		var landed := [-1, false]
+		var on_land := func(hits: int, killed: bool, _wall: bool): landed[0] = hits; landed[1] = killed
+		holder.swing_landed.connect(on_land)
+		holder._melee_cd = 0.0
+		var hp_a: float = pair[0].health
+		holder.melee(false)
+		holder.advance(md.swing_time * md.swing_hit * 0.5)
+		var early: int = landed[0]
+		holder.advance(md.swing_time)
+		var dmg_light: float = hp_a - pair[0].health
+		_check(early == -1 and int(landed[0]) >= 1, "  %s: the blow lands %.2f s into the swing, not at once (%d hit)" % [id, md.swing_time * md.swing_hit, landed[0]])
+		if id == "machete":
+			_check(int(landed[0]) == 2, "  machete: its wide arc takes both zombies side by side (%d)" % landed[0])
+		holder.advance(1.0)
+		holder._melee_cd = 0.0
+		var hp_b: float = pair[0].health
+		holder.melee(true)
+		holder.advance(md.swing_time * md.heavy_time + 0.1)
+		var dmg_heavy: float = hp_b - pair[0].health
+		_check(dmg_light > 0.0 and dmg_heavy > dmg_light * 1.4, "  %s: a heavy hit does more (%.0f against %.0f)" % [id, dmg_heavy, dmg_light])
+		holder.swing_landed.disconnect(on_land)
+		for z in pair:
+			if is_instance_valid(z):
+				z.free()
+		# A lunge at a zombie out of reach.
+		var far = spawner.spawn_one("walker", Vector3(-20.0 + md.lunge_range * 0.9, 0.0, -3.0))
+		far.set_physics_process(false)
+		await _frames(2)
+		holder.advance(1.0)
+		holder._melee_cd = 0.0
+		holder.melee(false)
+		_check(holder.lunging and holder.lunge_velocity(0.01).length() > 5.0, "  %s: a zombie %.1f m off is lunged at" % [id, md.lunge_range * 0.9])
+		holder.advance(2.0)
+		if is_instance_valid(far):
+			far.free()
+	holder.melee_data = load(holder.KNIFE)
+	_check(not holder.lunging, "  the lunge ends")
+
+func _b2_venue_checks(holder: Node, block: Node) -> void:
+	_section("B2 venues: the new wall boards, the box, the upgrade machine and the melee weapons")
+	var ids: Array = []
+	for b in block.wall_buys:
+		ids.append(b.data.id)
+	var want := ["glock", "tec9", "uzi", "mp5", "ak", "m16", "sawnoff", "dmr", "bat", "machete"]
+	var all_there := true
+	for w in want:
+		all_there = all_there and ids.has(w)
+	_check(all_there, "  Dead Block has a board for each new wall gun and the two melee weapons (%d boards)" % ids.size())
+	var spaced := true
+	for a in block.wall_buys:
+		for b in block.wall_buys:
+			if a != b and a.global_position.distance_to(b.global_position) < 2.0:
+				spaced = false
+		spaced = spaced and a.global_position.distance_to(block.upgrade_machine.global_position) > 2.0
+	_check(spaced, "  no two boards (or a board and the machine) on top of each other")
+	var pool: Array = []
+	for d in block.mystery_box.pool():
+		pool.append(d.id)
+	var box_ok := true
+	for id in IN_BOX:
+		box_ok = box_ok and pool.has(id)
+	_check(box_ok and not pool.has("glock") and not pool.has("bat"), "  the box holds the new box guns (%d in all)" % pool.size())
+	# Buying the bat puts it in the knife's place; the machine upgrades it when the gun in hand can't be.
+	var zm := root.get_node("ZombieMode")
+	var bat_buy: Node = null
+	for b in block.wall_buys:
+		if b.data.id == "bat":
+			bat_buy = b
+	zm.points = 20000
+	_check(bat_buy != null and bat_buy.try_buy(holder) == "bought" and holder.melee_data.id == "bat", "  the bat off the wall takes the knife's place")
+	_check(bat_buy.try_buy(holder) == "full", "  and is not sold twice")
+	holder.slots = [null, null]
+	holder.give(_wd("pistol_up"))
+	_check(block.upgrade_machine.try_upgrade(holder) == "upgraded" and holder.melee_data.id == "bat_up", "  the machine upgrades the bat (the gun in hand already is)")
+	# A wall refill keeps the chambered round (WallBuy.gd).
+	holder.slots = [null, null]
+	holder.give(_wd("ak"))
+	var ak_buy: Node = null
+	for b in block.wall_buys:
+		if b.data.id == "ak":
+			ak_buy = b
+	holder.mag = _wd("ak").mag_cap(true)
+	holder.reserve = 10
+	_check(ak_buy.try_buy(holder) == "ammo" and holder.mag == _wd("ak").mag_cap(true) and holder.reserve == _wd("ak").reserve_max, "  ammo off the wall keeps the round in the chamber (%d + %d)" % [holder.mag, holder.reserve])
+	holder.melee_data = load(holder.KNIFE)
+	holder.slots = [null, null]
+	holder.give(_wd("pistol"))
+	zm.points = 500

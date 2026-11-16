@@ -1,0 +1,65 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/m16_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "m16"
+display_name = "Beat Cop"
+damage = 50.0
+head_mult = 4.5
+neck_mult = 2.2
+limb_mult = 0.75
+pellets = 1
+falloff_start = 40.0
+falloff_end = 100.0
+falloff_floor = 0.75
+splash_radius = 0.0
+rpm = 800.0
+auto = false
+mag_size = 30
+reserve_max = 150
+reload_time = 1.95
+reload_time_empty = 3.0
+chambers = true
+spread_hip = 2.6
+spread_ads = 0.35
+recoil = 1.0
+ads_zoom = 2.0
+swap_time = 0.4
+ads_time = 0.3
+sprint_fire_delay = 0.22
+handling = "ar"
+burst_count = 3
+burst_delay = 0.18
+fire_modes = PackedStringArray("burst", "semi")
+mode_burst = 3
+recoil_pattern = PackedVector2Array(0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625, 0.0, 0.315, 0.054, 0.45, -0.027, 0.5625)
+recoil_recover = 20.0
+recoil_hold = 5.0
+recoil_first = 1.0
+recoil_ads = 0.65
+recoil_random = 0.06
+kick_back = 0.0275
+kick_up = 3.0
+kick_roll = 0.0375
+optic = "none"
+sound_set = "m16"
+foley = {
+"mag_out": ["common/mag_out_rifle"],
+"mag_in": ["common/mag_in_rifle"],
+"rack": ["common/charge_rifle"],
+"bolt": ["common/clip_tick"],
+"mode": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 1300
+ammo_price = 650
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/m16/scene.gltf"
+model_yaw = 0.0
+model_length = 0.99
+model_hide = PackedStringArray("m855")

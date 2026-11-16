@@ -1,0 +1,11 @@
+Model Information:
+* title:	low-poly AA-12
+* source:	https://sketchfab.com/3d-models/low-poly-aa-12-6b26f9d65d8c4838a12918d8e232510a
+* author:	D_U (https://sketchfab.com/DU1701)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "low-poly AA-12" (https://sketchfab.com/3d-models/low-poly-aa-12-6b26f9d65d8c4838a12918d8e232510a) by D_U (https://sketchfab.com/DU1701) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

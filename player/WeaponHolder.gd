@@ -24,6 +24,8 @@ const FPFeel := preload("res://player/FPFeel.gd")
 const ImpactFX := preload("res://fx/ImpactFX.gd")
 const AimAssist := preload("res://player/AimAssist.gd")
 const PadRumble := preload("res://player/PadRumble.gd")
+const GunSounds := preload("res://weapons/GunSounds.gd")
+const RocketScript := preload("res://fx/Rocket.gd")
 ## A shotgun this close throws a zombie back.
 const KNOCK_RANGE := 4.5
 
@@ -40,11 +42,22 @@ signal dry_fired
 signal melee_swung(found: bool)
 ## A shot ended on world or air (for tracers and sparks): [from, to].
 signal traced(from: Vector3, to: Vector3)
+## The selector went to another mode ("auto", "burst", "semi").
+signal mode_changed(mode: String)
+## A melee weapon's swing began: heavy (the button held), and whether it lunged at someone.
+signal swing_started(heavy: bool, lunged: bool)
+## A melee weapon's blow landed: how many it hit, whether one died, and whether it met a wall instead.
+signal swing_landed(hits: int, killed: bool, wall: bool)
+## The melee weapon in the knife's place changed (a bat or a machete bought off the wall, or upgraded).
+signal melee_changed(data: WD)
+## A rocket went off: where, and its blast radius.
+signal exploded(at: Vector3, radius: float)
 
 const MAX_SLOTS := 2
 const START_WEAPON := "res://weapons/pistol.tres"
 const KNIFE := "res://weapons/knife.tres"
-const POOL_IDS := ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder"]
+const POOL_IDS := ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder", "mp5", "vector", "ak", "m16", "deagle", "aa12", "dmr",
+	"amr", "saw", "rpg"]
 ## The zombies' hit zones sit on this physics layer (npc/ZombieHitboxes.gd).
 const HITBOX_LAYER := 64
 const MELEE_RANGE := 1.9
@@ -57,6 +70,13 @@ const TP_MUZZLE_HEIGHT := 1.25
 const PAD_CROSSHAIR := 6.0
 ## How long the pad's reload button is held at a board, the box or the machine to buy.
 const HOLD_TIME := 0.4
+## The melee button held this long swings a melee weapon's heavy hit.
+const HEAVY_HOLD := 0.22
+## A pierced zombie keeps this much of the round for the next.
+const PIERCE_KEEP := 0.8
+## Metres a second of a lunge at a zombie, and the most it lasts.
+const LUNGE_SPEED := 11.0
+const LUNGE_MAX := 0.32
 
 ## [{data, mag, reserve}] with a null for an empty slot.
 var slots: Array = [null, null]
@@ -100,6 +120,19 @@ var _wounded: Dictionary = {}
 var _in_melee := false
 ## Seconds the pad's reload button has been down at something to buy (-1: not held, -2: bought).
 var _hold := -1.0
+## A melee weapon's swing: seconds into it (-1: none), its length, heavy or not, whether the blow has landed.
+var _swing_t := -1.0
+var _swing_len := 0.0
+var _swing_heavy := false
+var _swing_done := false
+## Seconds the melee button has been held for a heavy hit (-1: not held).
+var _melee_hold := -1.0
+## A lunge at a zombie under way: the velocity, and seconds left (Player3D asks for lunge_velocity()).
+var lunging := false
+var _lunge_v := Vector3.ZERO
+var _lunge_left := 0.0
+## Rockets in flight and at rest (pooled: a launcher's shot makes none).
+var _rockets: Array = []
 
 var current: WD:
 	get: return slots[active].data if slots[active] != null else null
@@ -167,7 +200,7 @@ func give(data: WD) -> void:
 		i = slots.find(null)
 		if i < 0:
 			i = active
-	slots[i] = {"data": data, "mag": data.mag_size, "reserve": data.reserve_max}
+	slots[i] = {"data": data, "mag": data.mag_size, "reserve": data.reserve_max, "mode": 0}
 	_switch_to(i)
 
 func _switch_to(i: int) -> void:
@@ -214,7 +247,7 @@ func upgrade_current() -> bool:
 	var d: WD = current
 	if d == null or d.upgrade == null or d.upgraded:
 		return false
-	slots[active] = {"data": d.upgrade, "mag": d.upgrade.mag_size, "reserve": d.upgrade.reserve_max}
+	slots[active] = {"data": d.upgrade, "mag": d.upgrade.mag_size, "reserve": d.upgrade.reserve_max, "mode": int(slots[active].get("mode", 0))}
 	_cancel_reload()
 	_rebuild_viewmodel()
 	weapon_changed.emit(current)
@@ -236,6 +269,10 @@ func _process(delta: float) -> void:
 		_release_sprint()
 		return
 	var down := Input.is_action_pressed("fire")
+	if InputMap.has_action("melee") and _melee_hold >= 0.0 and not Input.is_action_pressed("melee"):
+		# Let go before the heavy hit: the light swing.
+		_melee_hold = -1.0
+		melee(false)
 	# The trigger wins over a reload that a sprint cut short, when there are rounds in the gun to fire.
 	if down and mag > 0:
 		_reload_resume = false
@@ -243,15 +280,17 @@ func _process(delta: float) -> void:
 		_fire_queued = false
 	advance(delta)
 	# Pulling the trigger on the run ends the sprint (Call of Duty's sprint-out); the gun answers a moment later.
+	# (A burst once begun is finished before a sprint takes the gun down, as in Call of Duty.)
 	if player != null and player.get("sprint_blocked") != null:
-		if down and _sprinting():
+		if (down or _burst_left > 0) and _sprinting():
 			player.set("sprint_blocked", true)
 			player.set("_sprint_latched", false)
-		elif not down:
+		elif not down and _burst_left <= 0:
 			player.set("sprint_blocked", false)
-	if down and current != null and (current.auto or not _trigger_down):
-		# A press on the run is kept until the sprint-to-fire delay is over (a semi gun would lose it).
-		if not fire() and mag > 0 and not reloading and (_sprint_hold > 0.0 or _sprinting()):
+	if down and current != null and (is_auto() or not _trigger_down):
+		# A press that comes while the gun can't answer yet (the sprint-out, the cooldown, a swap) is kept until it
+		# can, as long as the trigger stays down (a semi gun would lose it).
+		if not fire() and mag > 0 and not reloading:
 			_fire_queued = true
 	_trigger_down = down
 	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting()
@@ -281,7 +320,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("weapon_slot_2"):
 		select(1)
 	elif event.is_action_pressed("melee"):
-		melee()
+		# A melee weapon with a heavy hit waits to see whether the button is held; the knife goes at once.
+		if melee_data != null and melee_data.heavy_mult > 0.0 and melee_data.melee_arc > 0.0:
+			if _swing_t < 0.0 and _melee_cd <= 0.0:
+				_melee_hold = 0.0
+		else:
+			melee()
+	elif InputMap.has_action("fire_mode") and event.is_action_pressed("fire_mode"):
+		toggle_mode()
 
 func _purchase_in_reach() -> bool:
 	return player != null and player.has_method("_nearest_interactable") and player._nearest_interactable() != null
@@ -309,14 +355,16 @@ func advance(delta: float) -> void:
 	# The sprint: the trigger waits for it to end (and a moment more), and a reload on the run is cut short.
 	if _sprinting():
 		_sprint_hold = current.sprint_fire_delay if current != null else 0.2
-		_burst_left = 0
 		if reloading:
 			_reload_resume = not _cut_reload()
 	else:
 		_sprint_hold = maxf(_sprint_hold - delta, 0.0)
+	# The kept press fires the moment the gun can; an empty gun or a reload drops it.
 	if _fire_queued and _sprint_hold <= 0.0 and not _sprinting():
-		_fire_queued = false
-		fire()
+		if current == null or mag <= 0 or reloading:
+			_fire_queued = false
+		elif fire():
+			_fire_queued = false
 	if _reload_resume and not reloading and _swap_left <= 0.0 and _sprint_hold <= 0.0:
 		_reload_resume = false
 		reload()
@@ -335,6 +383,10 @@ func advance(delta: float) -> void:
 		_cooldown -= used
 		carry -= used
 	_melee_cd = maxf(_melee_cd - delta, 0.0)
+	_advance_melee(delta)
+	for r in _rockets:
+		if r.flying:
+			r.advance(delta)
 	if _hold >= 0.0:
 		_hold += delta
 		if _hold >= HOLD_TIME:
@@ -431,11 +483,35 @@ func fire() -> bool:
 		return false
 	_reload_resume = false
 	_fire_round()
-	# A burst gun: the rest of the rounds follow at its rate (advance), then the trigger waits.
-	if d.burst_count > 1:
-		_burst_left = mini(d.burst_count - 1, mag)
+	# A burst (the gun's own, or the selector's): the rest of the rounds follow at its rate (advance), then the trigger waits.
+	var n := d.burst_of(fire_mode())
+	if n > 1:
+		_burst_left = mini(n - 1, mag)
 		if _burst_left == 0:
 			_cooldown += d.burst_delay
+	return true
+
+## The mode the selector of the gun in your hands is on ("auto", "burst" or "semi").
+func fire_mode() -> String:
+	var d := current
+	if d == null:
+		return "semi"
+	if d.fire_modes.is_empty():
+		return d.fire_mode()
+	var i := int(slots[active].get("mode", 0)) if slots[active] != null else 0
+	return d.fire_modes[clampi(i, 0, d.fire_modes.size() - 1)]
+
+## Whether holding the trigger keeps it firing.
+func is_auto() -> bool:
+	return fire_mode() == "auto"
+
+## The selector to its next mode (B / D-pad left). False on a gun with one mode.
+func toggle_mode() -> bool:
+	var d := current
+	if d == null or d.fire_modes.size() < 2 or slots[active] == null or _burst_left > 0:
+		return false
+	slots[active]["mode"] = (int(slots[active].get("mode", 0)) + 1) % d.fire_modes.size()
+	mode_changed.emit(fire_mode())
 	return true
 
 ## One round: ammo, the shot, the signals. No checks (fire() and the burst do those).
@@ -444,7 +520,10 @@ func _fire_round() -> void:
 	mag -= 1
 	_cooldown = d.interval() / maxf(rate_mult, 0.1)
 	var aim := _aim()
-	_shoot(aim[0], aim[1])
+	if d.projectile == "rocket":
+		_launch(aim[0], aim[1], d)
+	else:
+		_shoot(aim[0], aim[1])
 	fired.emit()
 	ammo_changed.emit()
 	if player != null and player.has_method("kick"):
@@ -467,14 +546,32 @@ func _shoot(origin: Vector3, dir: Vector3) -> void:
 			traced.emit(origin, origin + v * RANGE)
 			continue
 		var z: Node = r.get("zombie")
-		traced.emit(origin, r.position)
 		if z == null:
+			traced.emit(origin, r.position)
 			var fx := ImpactFX.of(self)
 			if fx != null:
 				fx.bullet_hit(r.position, r.get("normal", Vector3.UP), r.get("collider"))
 			continue
 		var dist := origin.distance_to(r.position)
 		_hurt(z, r.part, d.damage_at(r.part, dist), v, d, false, r.position)
+		# The anti-materiel round goes on through: the next zombies on the line take most of it.
+		var end: Vector3 = r.position
+		if d.pierce > 0:
+			var through: Array = [z]
+			var keep := 1.0
+			for k in d.pierce:
+				var r2 := _cast(origin, v, RANGE, through)
+				if r2.is_empty():
+					end = origin + v * RANGE
+					break
+				end = r2.position
+				var z2: Node = r2.get("zombie")
+				if z2 == null:
+					break
+				keep *= PIERCE_KEEP
+				through.append(z2)
+				_hurt(z2, r2.part, d.damage_at(r2.part, origin.distance_to(r2.position)) * keep, v, d, false, r2.position)
+		traced.emit(origin, end)
 		if d.pellets > 1 and dist < KNOCK_RANGE and z.has_method("knock"):
 			shoved[z] = (shoved.get(z, 0.0) as float) + 1.0
 		if d.splash_radius > 0.0:
@@ -500,7 +597,7 @@ func _scatter(dir: Vector3, cone_deg: float) -> Vector3:
 ## The first thing a ray from `origin` along `dir` stops at, looking through
 ## zombies' own capsules and through every trigger zone: {position, collider,
 ## zombie, part} (zombie is null for a wall or the ground), or {} for air.
-func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
+func _cast(origin: Vector3, dir: Vector3, length: float, through: Array = []) -> Dictionary:
 	if player == null:
 		return {}
 	_sync_zones(origin, dir, length)
@@ -521,7 +618,7 @@ func _cast(origin: Vector3, dir: Vector3, length: float) -> Dictionary:
 			var part := _part_of(c)
 			if part != "" and (c.collision_layer & HITBOX_LAYER) != 0:
 				var z := _owner_of(c)
-				if z != null:
+				if z != null and not through.has(z):
 					return {"position": r.position, "collider": c, "zombie": z, "part": part}
 			skip.append(c.get_rid())
 			continue
@@ -621,12 +718,38 @@ static func kill_points(part: String, melee_kill: bool) -> int:
 		return ZombieMode.POINTS_KILL_NECK
 	return ZombieMode.POINTS_KILL_BODY
 
-# --- The knife ----------------------------------------------------------------------
+# --- The knife, and the melee weapons that take its place -----------------------------
 
-## A quick stab at whatever is right in front of you.
-func melee() -> bool:
-	if _melee_cd > 0.0 or melee_data == null:
+## Puts a melee weapon (the bat, the machete, or their upgrades) in the knife's place.
+func give_melee(d: WD) -> void:
+	if d == null:
+		return
+	melee_data = d
+	_swing_t = -1.0
+	_melee_hold = -1.0
+	melee_changed.emit(d)
+
+## Whether this melee weapon (base id: "bat") is the one you carry in either version.
+func has_melee(base: String) -> bool:
+	return melee_data != null and melee_data.family() == base
+
+## A melee weapon swings (`heavy`: the slower hit that does heavy_mult); the knife stabs at whatever is right in front
+## of you at once. A swing's blow lands a moment in (advance()), on up to melee_targets zombies in its arc; a zombie
+## out of reach but within lunge_range is lunged at first.
+func melee(heavy := false) -> bool:
+	if _melee_cd > 0.0 or melee_data == null or _swing_t >= 0.0:
 		return false
+	var d := melee_data
+	if d.melee_arc > 0.0:
+		_swing_heavy = heavy and d.heavy_mult > 0.0
+		_swing_len = d.swing_time * (d.heavy_time if _swing_heavy else 1.0)
+		_swing_t = 0.0
+		_swing_done = false
+		_melee_cd = maxf(_swing_len, d.swing_interval())
+		var lunged := _try_lunge(d)
+		swing_started.emit(_swing_heavy, lunged)
+		melee_swung.emit(false)
+		return true
 	_melee_cd = MELEE_COOLDOWN
 	var aim := _aim()
 	var r := _cast(aim[0], aim[1], MELEE_RANGE)
@@ -644,6 +767,179 @@ func melee() -> bool:
 		gore.screen_blood(0.6)
 	_pay_hits()
 	return true
+
+## The swing's clock: the heavy hit's charge, the blow landing, the lunge running out.
+func _advance_melee(delta: float) -> void:
+	if _melee_hold >= 0.0:
+		_melee_hold += delta
+		if _melee_hold >= HEAVY_HOLD:
+			_melee_hold = -1.0
+			melee(true)
+	if lunging:
+		_lunge_left -= delta
+		if _lunge_left <= 0.0:
+			lunging = false
+	if _swing_t < 0.0:
+		return
+	_swing_t += delta
+	var d := melee_data
+	if not _swing_done and d != null and _swing_t >= _swing_len * d.swing_hit:
+		_swing_done = true
+		lunging = false
+		_strike(d)
+	if _swing_t >= _swing_len:
+		_swing_t = -1.0
+
+## Seconds into the swing under way (-1: none), and its whole length.
+func swing_time() -> float:
+	return _swing_t
+
+func swing_length() -> float:
+	return _swing_len
+
+func swing_heavy() -> bool:
+	return _swing_heavy
+
+## The zombies a swing from here would reach: [{z, dist, dir}] nearest first, in the arc and the reach, none behind a wall.
+func swing_targets(d: WD, reach: float) -> Array:
+	var out: Array = []
+	if player == null:
+		return out
+	var aim := _aim()
+	var origin: Vector3 = aim[0]
+	var fwd: Vector3 = aim[1]
+	var flat := Vector3(fwd.x, 0.0, fwd.z).normalized()
+	var half := deg_to_rad(maxf(d.melee_arc, 10.0) * 0.5)
+	var space := player.get_world_3d().direct_space_state
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not (z is Node3D) or not z.has_method("take_hit") or (z.has_method("is_alive") and not z.is_alive()):
+			continue
+		var chest: Vector3 = (z as Node3D).global_position + Vector3(0.0, 1.1, 0.0)
+		var to := chest - origin
+		var flat_to := Vector3(to.x, 0.0, to.z)
+		var dist := flat_to.length()
+		if dist > reach + 0.35 or absf(to.y) > 1.6:
+			continue
+		if dist > 0.3 and flat.angle_to(flat_to.normalized()) > half:
+			continue
+		# Not through a wall (zombies and trigger zones don't count).
+		var q := PhysicsRayQueryParameters3D.create(origin, chest)
+		q.collision_mask = 1
+		q.exclude = [(player as CollisionObject3D).get_rid()]
+		var hit := space.intersect_ray(q)
+		if not hit.is_empty() and hit.collider != z and not (hit.collider as Node).is_in_group("zombies"):
+			continue
+		out.append({"z": z, "dist": dist, "dir": to.normalized()})
+	out.sort_custom(func(a, b): return a.dist < b.dist)
+	return out
+
+## A zombie out of reach but close enough: the player is thrown at it (COD's lunge). True if so.
+func _try_lunge(d: WD) -> bool:
+	if d.lunge_range <= d.melee_range:
+		return false
+	var near := swing_targets(d, d.lunge_range)
+	if near.is_empty() or float(near[0].dist) <= d.melee_range:
+		return false
+	var gap := float(near[0].dist) - d.melee_range * 0.7
+	var dir: Vector3 = near[0].dir
+	_lunge_v = Vector3(dir.x, 0.0, dir.z).normalized() * LUNGE_SPEED
+	_lunge_left = minf(gap / LUNGE_SPEED, LUNGE_MAX)
+	lunging = _lunge_left > 0.0
+	return lunging
+
+## The velocity of the lunge this physics tick (Player3D asks while `lunging`).
+func lunge_velocity(_delta: float) -> Vector3:
+	return _lunge_v if lunging else Vector3.ZERO
+
+## The blow: every zombie in the arc (up to the weapon's count) takes it, thrown back; nothing there and a wall in reach
+## answers with the wall's sound.
+func _strike(d: WD) -> void:
+	var targets := swing_targets(d, d.melee_range)
+	var hits := 0
+	var killed := false
+	_wounded.clear()
+	_in_melee = true
+	var aim := _aim()
+	for t in targets:
+		if hits >= d.melee_targets:
+			break
+		var z: Node = t.z
+		# The part the blade meets: what the view's ray finds on this zombie, else the body.
+		var part := "torso"
+		var r := _cast(aim[0], (((z as Node3D).global_position + Vector3(0.0, 1.35, 0.0)) - aim[0]).normalized(), d.melee_range + 0.6)
+		if not r.is_empty() and r.get("zombie") == z:
+			part = r.part
+		var dmg := d.damage_at(part) * (d.heavy_mult if _swing_heavy else 1.0)
+		var was_alive: bool = not z.has_method("is_alive") or z.is_alive()
+		_hurt(z, part, dmg, t.dir, d, true, (z as Node3D).global_position + Vector3(0.0, 1.2, 0.0))
+		if is_instance_valid(z) and z.has_method("knock") and d.knockback > 0.0:
+			var k := d.knockback * (1.5 if _swing_heavy else 1.0)
+			z.knock(Vector3(t.dir.x, 0.15, t.dir.z).normalized() * k)
+		if was_alive and is_instance_valid(z) and z.has_method("is_alive") and not z.is_alive():
+			killed = true
+		hits += 1
+	_in_melee = false
+	_pay_hits()
+	var wall := false
+	if hits == 0:
+		var r2 := _cast(aim[0], aim[1], d.melee_range)
+		wall = not r2.is_empty() and r2.get("zombie") == null
+		if wall:
+			var fx := ImpactFX.of(self)
+			if fx != null:
+				fx.bullet_hit(r2.position, r2.get("normal", Vector3.UP), r2.get("collider"))
+	if hits > 0:
+		var gore := get_tree().get_first_node_in_group("gore")
+		if gore != null:
+			gore.screen_blood(0.35 + 0.15 * hits + (0.2 if _swing_heavy else 0.0))
+	swing_landed.emit(hits, killed, wall)
+
+# --- The launcher ---------------------------------------------------------------------
+
+## Sends a rocket from just ahead of the eye along `dir` (pooled: two are kept).
+func _launch(origin: Vector3, dir: Vector3, d: WD) -> void:
+	var r: Node3D = null
+	for x in _rockets:
+		if not x.flying:
+			r = x
+			break
+	if r == null:
+		r = RocketScript.new()
+		r.name = "Rocket%d" % _rockets.size()
+		r.holder = self
+		var world := get_tree().current_scene if get_tree().current_scene != null else get_tree().root
+		world.add_child(r)
+		_rockets.append(r)
+	var spread := 0.0 if no_spread else (d.spread_ads if aiming else d.spread_hip)
+	r.fire(origin + dir * 0.6, _scatter(dir, spread * 0.3), d)
+
+## A rocket's blast at `at` (fx/Rocket.gd calls it): full damage at the middle down to a quarter at the edge for every
+## zombie in the radius not behind a wall, the one it struck taking it whole; the shooter takes up to self_damage.
+func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
+	_wounded.clear()
+	var radius := maxf(d.splash_radius, 0.5)
+	for z in get_tree().get_nodes_in_group("zombies"):
+		if not (z is Node3D) or not z.has_method("take_hit"):
+			continue
+		var c: Vector3 = (z as Node3D).global_position + Vector3(0.0, 0.9, 0.0)
+		var dist := c.distance_to(at)
+		if dist > radius + 0.6 and z != struck:
+			continue
+		var k := 1.0 if z == struck else clampf(1.0 - dist / (radius + 0.6), 0.25, 1.0)
+		var dir := (c - at).normalized() if dist > 0.05 else Vector3.UP
+		_hurt(z, "torso", d.damage * k, dir, d, false, c)
+		if is_instance_valid(z) and z.has_method("knock"):
+			z.knock(Vector3(dir.x, 0.6, dir.z).normalized() * 9.0 * k)
+	_pay_hits()
+	# Too close to your own rocket hurts.
+	if player != null and d.self_damage > 0.0:
+		var pd := (player.global_position + Vector3(0.0, 0.9, 0.0)).distance_to(at)
+		if pd < radius:
+			ZombieMode.player_hit(d.self_damage * (1.0 - pd / radius), at)
+	if feel != null:
+		var pd2 := player.global_position.distance_to(at) if player != null else 30.0
+		feel.add_trauma(clampf(1.0 - pd2 / 28.0, 0.15, 0.9))
+	exploded.emit(at, radius)
 
 # --- Aim ----------------------------------------------------------------------------
 

@@ -1,0 +1,62 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/amr_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "amr"
+display_name = "Bridge Burner"
+damage = 600.0
+head_mult = 3.0
+neck_mult = 2.0
+limb_mult = 0.9
+pellets = 1
+falloff_start = 200.0
+falloff_end = 300.0
+falloff_floor = 0.9
+splash_radius = 0.0
+rpm = 40.0
+auto = false
+mag_size = 5
+reserve_max = 25
+reload_time = 3.91
+reload_time_empty = 5.4
+chambers = false
+spread_hip = 7.0
+spread_ads = 0.02
+recoil = 8.0
+ads_zoom = 4.5
+swap_time = 0.8
+ads_time = 0.5
+sprint_fire_delay = 0.34
+handling = "ar"
+pierce = 2
+recoil_pattern = PackedVector2Array(0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78, 0.792, 3.78)
+recoil_recover = 11.0
+recoil_hold = 2.0
+recoil_first = 1.0
+recoil_ads = 0.85
+recoil_random = 0.08
+kick_back = 0.05
+kick_up = 6.0
+kick_roll = 0.06
+optic = "scope"
+optic_height = 0.008
+sound_set = "amr"
+foley = {
+"mag_out": ["common/mag_out_b"],
+"mag_in": ["common/mag_in_b"],
+"rack": ["common/charge_b"],
+"bolt": ["common/clip_tick"]
+}
+reload_cues_tactical = [[0.2, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.17, "mag_out"], [0.53, "mag_in"], [0.75, "bolt"], [0.8, "rack"]]
+price = 0
+ammo_price = 0
+in_box = true
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/amr/scene.gltf"
+model_yaw = 90.0
+model_length = 1.45
+model_hide = PackedStringArray("50 bmg_0", "50bmg_1", "10rnd mag_3")

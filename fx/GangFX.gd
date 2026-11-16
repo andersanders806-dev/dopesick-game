@@ -108,6 +108,17 @@ func _ready() -> void:
 		p.bus = "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
 		add_child(p)
 		_voices.append(p)
+	warm_guns()
+
+## Every crew gun's data and recordings, loaded now (a man's first shot of a kind used to load its set then).
+func warm_guns() -> void:
+	var gangster: Script = load("res://npc/Gangster3D.gd")
+	for gun in gangster.get_script_constant_map().get("GUNS", {}):
+		var path := "res://weapons/%s.tres" % gun
+		if not _gun_data.has(gun):
+			_gun_data[gun] = load(path) if ResourceLoader.exists(path) else null
+		if _gun_data[gun] != null:
+			GunSounds.warm(_gun_data[gun])
 
 func _process(delta: float) -> void:
 	suppression = maxf(suppression - delta * 0.9, 0.0)

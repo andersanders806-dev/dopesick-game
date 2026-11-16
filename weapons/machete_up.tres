@@ -1,0 +1,71 @@
+[gd_resource type="Resource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "machete_up"
+display_name = "Chop Shop"
+base_id = "machete"
+upgraded = true
+melee = true
+damage = 260.0
+head_mult = 2.5
+neck_mult = 2.0
+limb_mult = 0.8
+pellets = 1
+falloff_start = 60.0
+falloff_end = 150.0
+falloff_floor = 0.6
+splash_radius = 0.0
+rpm = 110.0
+auto = false
+mag_size = 1
+reserve_max = 0
+reload_time = 0.1
+reload_time_empty = 0.1
+chambers = false
+spread_hip = 0.0
+spread_ads = 0.0
+recoil = 0.0
+ads_zoom = 1.0
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.0
+handling = "melee"
+melee_range = 2.5
+melee_arc = 100.0
+melee_targets = 4
+swing_time = 0.36
+swing_hit = 0.4
+heavy_mult = 1.7
+heavy_time = 1.45
+lunge_range = 3.4
+knockback = 2.6
+recoil_pattern = PackedVector2Array(0.0, 0.0)
+recoil_recover = 17.0
+recoil_hold = 3.0
+recoil_first = 1.0
+recoil_ads = 0.75
+recoil_random = 0.1
+kick_back = 0.0
+kick_up = 0.0
+kick_roll = 0.0
+optic = "none"
+sound_set = ""
+foley = {
+"swing": ["common/machete_swing_1", "common/machete_swing_2", "common/swing_light_2"],
+"swing_heavy": ["common/swing_heavy_2", "common/swing_heavy_3"],
+"hit": ["common/machete_hit_1", "common/machete_hit_2", "common/machete_hit_3", "common/machete_hit_4"],
+"hit_wall": ["common/machete_hit_wall"],
+"kill": ["common/melee_kill_1", "common/melee_kill_2", "common/melee_kill_3"]
+}
+reload_cues_tactical = []
+reload_cues_empty = []
+price = 0
+ammo_price = 0
+in_box = false
+model = "res://assets/guns/machete/scene.gltf"
+model_yaw = 180.0
+model_length = 0.65
+tint = Color(0.9, 0.15, 0.1, 1)

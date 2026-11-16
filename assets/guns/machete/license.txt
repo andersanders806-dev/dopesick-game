@@ -1,0 +1,11 @@
+Model Information:
+* title:	Machete
+* source:	https://sketchfab.com/3d-models/machete-340a3bed238f48b0aa169c38e1e75066
+* author:	Belonosoff (https://sketchfab.com/Belonosoff)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Machete" (https://sketchfab.com/3d-models/machete-340a3bed238f48b0aa169c38e1e75066) by Belonosoff (https://sketchfab.com/Belonosoff) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

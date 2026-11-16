@@ -1,0 +1,11 @@
+Model Information:
+* title:	UZI
+* source:	https://sketchfab.com/3d-models/uzi-fde60adc8aff4c61b6a8bea1f9e0743f
+* author:	creationwasteland (https://sketchfab.com/creationwasteland)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "UZI" (https://sketchfab.com/3d-models/uzi-fde60adc8aff4c61b6a8bea1f9e0743f) by creationwasteland (https://sketchfab.com/creationwasteland) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

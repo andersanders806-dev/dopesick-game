@@ -1,4 +1,5 @@
 extends RefCounted
+const GunViews := preload("res://player/GunViews.gd")
 ## How each kind of gun is carried and worked: where it sits on the hip, how it is held when sprinting,
 ## and the hands' choreography for a reload (a tactical one with rounds left, an empty one that ends
 ## on the rack / slide release / pump / bolt) and for the first raise of a gun the first time you pick
@@ -28,6 +29,9 @@ const HIP := {
 	"shotgun": [Vector3(0.2, -0.185, -0.38), Vector3(0.0, 5.5, 0.0)],
 	"sniper": [Vector3(0.2, -0.19, -0.38), Vector3(0.0, 5.0, 0.0)],
 	"wonder": [Vector3(0.19, -0.185, -0.36), Vector3(0.0, 5.0, 0.0)],
+	"break": [Vector3(0.17, -0.17, -0.36), Vector3(0.0, 4.0, 0.0)],
+	"launcher": [Vector3(0.2, -0.16, -0.3), Vector3(0.0, 3.0, 0.0)],
+	"belt": [Vector3(0.215, -0.2, -0.38), Vector3(0.0, 7.0, 0.0)],
 }
 
 # --- The sprint pose, added to the hip's: [pos, rot degrees] ---------------------------------------------
@@ -40,12 +44,17 @@ const SPRINT := {
 	"shotgun": [Vector3(-0.07, 0.03, 0.05), Vector3(22.0, 24.0, -14.0)],
 	"sniper": [Vector3(-0.08, 0.0, 0.04), Vector3(-4.0, 34.0, -18.0)],
 	"wonder": [Vector3(-0.07, 0.0, 0.04), Vector3(-8.0, 30.0, -18.0)],
+	"break": [Vector3(-0.07, 0.03, 0.05), Vector3(22.0, 24.0, -14.0)],
+	"launcher": [Vector3(-0.06, -0.04, 0.06), Vector3(-14.0, 26.0, -10.0)],
+	"belt": [Vector3(-0.10, -0.03, 0.05), Vector3(-6.0, 38.0, -28.0)],
 }
 
 ## How heavy a gun feels: a multiple of the sway, the lag when strafing and the landing.
-const WEIGHT := {"pistol": 0.7, "magnum": 0.8, "smg": 0.85, "ar": 1.0, "lmg": 1.6, "shotgun": 1.1, "sniper": 1.3, "wonder": 1.0}
+const WEIGHT := {"pistol": 0.7, "magnum": 0.8, "smg": 0.85, "ar": 1.0, "lmg": 1.6, "shotgun": 1.1, "sniper": 1.3, "wonder": 1.0,
+	"break": 0.9, "launcher": 1.5, "belt": 1.6}
 ## Breathing of the sights when aimed (a multiple): a sniper's rises and falls the most.
-const ADS_BREATH := {"pistol": 0.8, "magnum": 0.9, "smg": 0.9, "ar": 1.0, "lmg": 1.2, "shotgun": 1.0, "sniper": 1.8, "wonder": 1.0}
+const ADS_BREATH := {"pistol": 0.8, "magnum": 0.9, "smg": 0.9, "ar": 1.0, "lmg": 1.2, "shotgun": 1.0, "sniper": 1.8, "wonder": 1.0,
+	"break": 1.0, "launcher": 1.3, "belt": 1.2}
 
 ## Where the vest is in camera space (the dump pouch the support hand fetches magazines from).
 const VEST := Vector3(-0.22, -0.42, -0.26)
@@ -62,7 +71,33 @@ const EJECT := {
 	"shotgun": {"port": Vector3(1.0, 0.62, 0.5), "lo": Vector3(1.2, 1.6, 0.2), "hi": Vector3(2.0, 2.6, 0.9), "spin": 24.0, "size": Vector2(0.0105, 0.07), "kind": 1},
 	"sniper": {"port": Vector3(1.0, 0.72, 0.58), "lo": Vector3(1.4, 1.8, 0.3), "hi": Vector3(2.2, 2.8, 1.0), "spin": 22.0, "size": Vector2(0.0062, 0.056), "kind": 0},
 	"wonder": {"port": Vector3(1.0, 0.8, 0.56), "lo": Vector3(0.0, 0.0, 0.0), "hi": Vector3(0.0, 0.0, 0.0), "spin": 0.0, "size": Vector2(0.005, 0.02), "kind": 0},
+	# A break-action throws its empties out of the open breech, up and back.
+	"break": {"port": Vector3(0.5, 0.6, 0.55), "lo": Vector3(-0.3, 1.6, 0.6), "hi": Vector3(0.3, 2.4, 1.2), "spin": 12.0, "size": Vector2(0.0105, 0.07), "kind": 1},
+	"belt": {"port": Vector3(1.0, 0.7, 0.58), "lo": Vector3(1.4, 0.2, 0.2), "hi": Vector3(2.2, 1.0, 0.8), "spin": 30.0, "size": Vector2(0.0056, 0.045), "kind": 0},
 }
+
+## A gun's own table where it has one (player/GunViews.gd), its family's otherwise.
+static func hip_for(vm) -> Array:
+	var v: Dictionary = GunViews.of(vm.data) if vm != null else {}
+	return v["hip"] if v.has("hip") else hip(family_of(vm))
+
+static func sprint_for(vm) -> Array:
+	var v: Dictionary = GunViews.of(vm.data) if vm != null else {}
+	return v["sprint"] if v.has("sprint") else SPRINT.get(family_of(vm), SPRINT["ar"])
+
+static func weight_for(d) -> float:
+	var v: Dictionary = GunViews.of(d)
+	if v.has("weight"):
+		return float(v["weight"])
+	var f: String = d.handling_family() if d != null else "ar"
+	return float(WEIGHT.get(f, 1.0))
+
+static func eject_for(d) -> Dictionary:
+	var v: Dictionary = GunViews.of(d)
+	if v.has("eject"):
+		return v["eject"]
+	var f: String = d.handling_family() if d != null else "ar"
+	return EJECT.get(f, EJECT["ar"])
 
 static func family_of(vm) -> String:
 	var f: String = vm.data.handling_family() if vm != null and vm.data != null else "ar"
@@ -163,11 +198,25 @@ static func eval(vm, def: Dictionary, p: float, base: Transform3D) -> Dictionary
 			cut = true
 	out["cut"] = cut
 	var parts := {}
-	for pn in ["slide", "bolt"]:
+	for pn in ["slide", "bolt", "charge", "shells"]:
 		if def.has(pn):
 			parts[pn] = Vector3(0.0, 0.0, _f(def[pn], p))
+	# Turns (degrees): a break-action's barrels on the hinge, the M249's feed cover.
+	for pn in ["hinge", "cover"]:
+		if def.has(pn):
+			parts[pn] = _f(def[pn], p)
+	if def.has("shells_shown"):
+		parts["shells_shown"] = _step(def["shells_shown"], p) > 0.5
 	out["parts"] = parts
 	return out
+
+## The value of the last key at or before p (no blending): something shown or not.
+static func _step(keys: Array, p: float) -> float:
+	var v := 0.0
+	for k in keys:
+		if p >= k[0]:
+			v = k[1]
+	return v
 
 static func _mag_point(vm, key: Array, hand_now: Vector3, xf: Transform3D) -> Vector3:
 	var off := Vector3(key[3], key[4], key[5])
@@ -179,8 +228,15 @@ static func _mag_point(vm, key: Array, hand_now: Vector3, xf: Transform3D) -> Ve
 
 ## Builds the choreography for a family. `empty`: the magazine ran dry (adds the rack / slide release / pump / bolt);
 ## `n`: how many shells a shotgun takes in.
-static func reload_plan(f: String, empty: bool, n := 4) -> Dictionary:
+static func reload_plan(f: String, empty: bool, n := 4, cant: Array = []) -> Dictionary:
+	_cant = cant
 	match f:
+		"break":
+			return _break(empty, n)
+		"launcher":
+			return _launcher()
+		"belt":
+			return _belt(empty)
 		"pistol", "magnum":
 			return _pistol(empty)
 		"shotgun":
@@ -202,11 +258,19 @@ const CANTS := {
 	"shotgun": [Vector3(-0.03, 0.1, -0.1), Vector3(18.0, 10.0, -20.0)],
 	"sniper": [Vector3(-0.04, 0.095, -0.08), Vector3(14.0, 10.0, -20.0)],
 	"wonder": [Vector3(-0.05, 0.12, -0.05), Vector3(16.0, 12.0, -22.0)],
+	# The sawn-off: broken open, the breech turned up to the eye and the muzzle down.
+	"break": [Vector3(-0.05, 0.13, 0.0), Vector3(30.0, 18.0, -26.0)],
+	# The launcher: the muzzle swung up and in so the new rocket goes in the front.
+	"launcher": [Vector3(-0.08, -0.02, 0.06), Vector3(26.0, 18.0, -10.0)],
+	"belt": [Vector3(-0.07, 0.07, -0.02), Vector3(8.0, 8.0, -16.0)],
 }
+
+## The gun's own cant for the plan being built (player/GunViews.gd), when it has one.
+static var _cant: Array = []
 
 ## A gun key at time t: the family's cant scaled by k.
 static func _g(t: float, f: String, k := 1.0) -> Array:
-	var c: Array = CANTS.get(f, CANTS["ar"])
+	var c: Array = _cant if not _cant.is_empty() else CANTS.get(f, CANTS["ar"])
 	var p: Vector3 = c[0] * k
 	var r: Vector3 = c[1] * k
 	return [t, p.x, p.y, p.z, r.x, r.y, r.z]
@@ -370,7 +434,8 @@ static func _lmg(empty: bool) -> Dictionary:
 # --- The first raise: what MW does the first time you get a gun ---------------------------------------------
 
 ## Seconds of the flourish for each family.
-const RAISE_TIME := {"pistol": 1.7, "magnum": 1.8, "smg": 1.8, "ar": 2.0, "lmg": 2.4, "shotgun": 2.0, "sniper": 2.2, "wonder": 1.8}
+const RAISE_TIME := {"pistol": 1.7, "magnum": 1.8, "smg": 1.8, "ar": 2.0, "lmg": 2.4, "shotgun": 2.0, "sniper": 2.2, "wonder": 1.8,
+	"break": 1.7, "launcher": 2.0, "belt": 2.4}
 
 ## The first raise: the gun comes up, is turned to show its side, and the support hand works the action.
 static func raise(f: String) -> Dictionary:
@@ -388,8 +453,16 @@ static func raise(f: String) -> Dictionary:
 		"sniper":
 			act = "grip_l"
 			snd = "bolt"
-		"lmg":
+		"lmg", "belt":
 			snd = "bolt"
+		"break":
+			act = "grip_l"
+			snd = "break_close"
+			pull = 0.0
+		"launcher":
+			act = "grip_l"
+			snd = "bolt"
+			pull = 0.0
 	d["hand"] = [[0.0, "grip_l", 0, 0, 0], [0.5, "grip_l", 0, 0, 0], [0.6, act, 0, 0, 0], [0.7, act, 0, 0, pull], [0.78, act, 0, 0, 0], [0.88, "grip_l", 0, 0, 0], [1.0, "grip_l", 0, 0, 0]]
 	d["open"] = [[0.0, 0.0], [0.52, 0.0], [0.58, 0.7], [0.72, 0.5], [0.8, 0.0], [1.0, 0.0]]
 	if f == "pistol" or f == "magnum":
@@ -398,4 +471,90 @@ static func raise(f: String) -> Dictionary:
 		d["bolt"] = [[0.0, 0.0], [0.58, 0.0], [0.66, 0.075], [0.78, 0.0], [1.0, 0.0]]
 		d["rhand"] = [[0.0, 0, 0, 0], [0.54, 0, 0, 0], [0.6, 0.0, 0.04, 0.0], [0.68, 0.0, 0.04, 0.09], [0.78, 0.0, 0.04, 0.0], [0.84, 0, 0, 0], [1.0, 0, 0, 0]]
 	d["ev"] = [[0.64, snd, ""]]
+	return d
+
+# --- The new guns' reloads (SHIP 16 B2) ----------------------------------------------------------------
+
+## A break-action (the sawn-off): the barrels drop on the hinge, the empties jump out of the breech, the hand brings
+## `n` shells from the vest and thumbs them in, and the barrels are snapped shut. Times match the data's cues.
+static func _break(empty: bool, n: int) -> Dictionary:
+	var d := {}
+	n = clampi(n, 1, 2)
+	var two := n >= 2
+	var t_open := 0.12 if two else 0.14
+	var t_close := 0.84 if two else 0.82
+	d["gun"] = [_g(0.0, "break", 0.0), _g(0.1, "break"), _g(t_close + 0.02, "break"), [t_close + 0.05, 0.0, 0.03, 0.0, -6.0, 0.0, 0.0], _g(1.0, "break", 0.0)]
+	d["hinge"] = [[0.0, 0.0], [t_open, 0.0], [t_open + 0.06, -40.0], [t_close - 0.02, -40.0], [t_close + 0.02, 0.0], [1.0, 0.0]]
+	# The fired shells ride the extractor back and fly out; the new ones are in from the first insert on.
+	d["shells"] = [[0.0, 0.0], [t_open + 0.05, 0.0], [t_open + 0.1, 0.035], [t_open + 0.11, 0.0], [1.0, 0.0]]
+	var first_in := 0.5 if not two else 0.4
+	d["shells_shown"] = [[0.0, 1.0], [t_open + 0.105, 0.0], [first_in, 1.0]]
+	var hand := [[0.0, "grip_l", 0, 0, 0], [t_open, "grip_l", 0, 0, 0]]
+	var op := [[0.0, 0.0], [t_open - 0.04, 0.0], [t_open, 0.6]]
+	var mag := [[0.0, 0, "magwell", 0, 0, 0, 0, 0, 0]]
+	var ev := [[t_open, "break_open", ""], [t_open + 0.1, "", "eject"]]
+	var ins: Array = [0.5] if not two else [0.4, 0.62]
+	var prev := t_open + 0.1
+	for t_in in ins:
+		var fetch: float = prev + (t_in - prev) * 0.3
+		hand.append([fetch, "belt", 0, 0, 0])
+		hand.append([fetch + 0.04, "belt", 0, 0, 0])
+		hand.append([t_in - 0.04, "magwell", 0, 0.02, 0.03])
+		hand.append([t_in, "magwell", 0, 0.0, 0.0])
+		op.append([fetch, 0.8])
+		op.append([fetch + 0.04, 0.0])
+		op.append([t_in + 0.02, 0.6])
+		mag.append([fetch + 0.04, 1, "hand", 0.0, 0.02, 0.0, 70, 0, 0])
+		mag.append([t_in - 0.01, 1, "magwell", 0.0, 0.0, 0.02, 0, 0, 0])
+		mag.append([t_in, 0, "magwell", 0.0, 0.0, 0.0, 0, 0, 0])
+		ev.append([t_in, "shell_in", ""])
+		prev = t_in
+	# The palm swings the barrels shut and goes back to the forend.
+	hand.append([t_close - 0.06, "magwell", 0, -0.03, -0.05])
+	hand.append([t_close, "grip_l", 0, -0.02, 0.0])
+	hand.append([1.0, "grip_l", 0, 0, 0])
+	op.append([t_close - 0.06, 0.5])
+	op.append([t_close + 0.04, 0.0])
+	ev.append([t_close, "break_close", ""])
+	d["hand"] = hand
+	d["open"] = op
+	d["mag"] = mag
+	d["ev"] = ev
+	return d
+
+## The launcher: the muzzle comes up, the hand brings a rocket from the back, slides it into the front of the tube
+## until it seats, and cocks the hammer. The gun's own rocket (Viewmodel part "mag") is what the hand carries.
+static func _launcher() -> Dictionary:
+	var d := {}
+	d["gun"] = [_g(0.0, "launcher", 0.0), _g(0.14, "launcher"), _g(0.74, "launcher"), _g(0.82, "launcher", 0.4), [0.88, 0.0, 0.0, 0.03, 2, 0, -2], _g(1.0, "launcher", 0.0)]
+	d["hand"] = [[0.0, "grip_l", 0, 0, 0], [0.12, "grip_l", 0, 0, 0], [0.22, "belt", 0, 0, 0], [0.3, "belt", 0, 0, 0],
+		[0.44, "magwell", 0.0, -0.05, -0.36], [0.5, "magwell", 0.0, -0.05, -0.3], [0.6, "magwell", 0.0, -0.05, -0.16], [0.66, "magwell", 0.0, -0.05, -0.14],
+		[0.76, "grip_l", 0, 0, 0], [0.84, "grip_l", 0, 0, 0], [1.0, "grip_l", 0, 0, 0]]
+	d["open"] = [[0.0, 0.0], [0.18, 0.8], [0.26, 0.0], [0.62, 0.0], [0.68, 0.8], [0.76, 0.0]]
+	d["mag"] = [[0.0, 0, "magwell", 0, 0, 0, 0, 0, 0], [0.3, 1, "hand", 0.0, 0.05, -0.14, 60, 0, 0], [0.44, 1, "magwell", 0.0, 0.0, -0.24, 0, 0, 0],
+		[0.5, 1, "magwell", 0.0, 0.0, -0.18, 0, 0, 0], [0.62, 1, "magwell", 0.0, 0.0, -0.01, 0, 0, 0], [0.66, 1, "magwell", 0.0, 0.0, 0.0, 0, 0, 0]]
+	d["ev"] = [[0.62, "rocket_in", ""], [0.86, "bolt", ""]]
+	return d
+
+## The belt-fed M249: the support hand lifts the feed cover, pulls the spent box off the side, fetches a new one,
+## seats it, lays the belt and slams the cover; an empty gun also has its charging handle hauled back.
+static func _belt(empty: bool) -> Dictionary:
+	var d := {}
+	d["gun"] = [_g(0.0, "belt", 0.0), _g(0.1, "belt"), _g(0.86, "belt"), _g(0.95, "belt", 0.0), _g(1.0, "belt", 0.0)]
+	d["cover"] = [[0.0, 0.0], [0.08, 0.0], [0.14, -70.0], [0.78, -70.0], [0.83, 0.0], [1.0, 0.0]]
+	d["hand"] = [[0.0, "grip_l", 0, 0, 0], [0.06, "cover", 0, 0.02, 0.0], [0.14, "cover", 0, 0.06, 0.03], [0.2, "magwell", 0, -0.06, 0.0],
+		[0.26, "magwell", 0, -0.06, 0.0], [0.32, "magwell", -0.04, -0.12, 0.03], [0.4, "belt", 0, 0, 0], [0.48, "belt", 0, 0, 0],
+		[0.56, "magwell", -0.04, -0.12, 0.03], [0.6, "magwell", 0, -0.06, 0.0], [0.66, "magwell", 0, -0.04, 0.0], [0.74, "cover", 0, 0.06, 0.03],
+		[0.8, "cover", 0, 0.03, 0.0], [0.88, "grip_l", 0, 0, 0], [1.0, "grip_l", 0, 0, 0]]
+	d["open"] = [[0.0, 0.0], [0.04, 0.7], [0.08, 0.2], [0.16, 0.7], [0.2, 0.0], [0.38, 0.0], [0.41, 0.8], [0.47, 0.6], [0.5, 0.0],
+		[0.66, 0.0], [0.7, 0.7], [0.78, 0.3], [0.86, 0.0]]
+	d["mag"] = [[0.0, 1, "magwell", 0, 0, 0, 0, 0, 0], [0.26, 1, "magwell", 0, 0, 0, 0, 0, 0], [0.38, 1, "hand", 0.0, 0.06, 0.0, 0, 0, 0],
+		[0.4, 0, "hand", 0.0, 0.06, 0.0, 0, 0, 0], [0.48, 0, "hand", 0.0, 0.06, 0.0, 0, 0, 0], [0.5, 1, "hand", 0.0, 0.06, 0.0, 0, 0, 0],
+		[0.6, 1, "magwell", 0, 0, 0, 0, 0, 0]]
+	d["ev"] = [[0.1, "cover_open", ""], [0.24, "mag_out", ""], [0.6, "mag_in", ""], [0.82, "cover_close", ""]]
+	if empty:
+		d["ev"].insert(2, [0.4, "", "drop"])
+		d["ev"].append([0.92, "bolt", ""])
+		d["rhand"] = [[0.0, 0, 0, 0], [0.86, 0, 0, 0], [0.89, 0.04, 0.0, 0.0], [0.93, 0.04, 0.0, 0.08], [0.97, 0.04, 0.0, 0.0], [1.0, 0, 0, 0]]
+		d["charge"] = [[0.0, 0.0], [0.89, 0.0], [0.93, 0.08], [0.97, 0.0], [1.0, 0.0]]
 	return d

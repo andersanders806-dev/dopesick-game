@@ -40,6 +40,10 @@ uniform bool use_emission_tex = false;
 uniform bool cut_on = false;
 uniform vec3 cut_lo = vec3(0.0);
 uniform vec3 cut_hi = vec3(0.0);
+// A box that is never drawn: the glass of a sight built into the model, so the eye looks through its tube.
+uniform bool hole_on = false;
+uniform vec3 hole_lo = vec3(0.0);
+uniform vec3 hole_hi = vec3(0.0);
 
 varying vec3 v_obj;
 varying vec3 v_cloth;
@@ -61,6 +65,9 @@ void fragment() {
 		discard;
 	}
 	if (cut_on && all(greaterThan(v_obj, cut_lo)) && all(lessThan(v_obj, cut_hi))) {
+		discard;
+	}
+	if (hole_on && all(greaterThan(v_obj, hole_lo)) && all(lessThan(v_obj, hole_hi))) {
 		discard;
 	}
 	vec4 tex = use_tex ? texture(albedo_tex, UV) : vec4(1.0);

@@ -1,0 +1,11 @@
+Model Information:
+* title:	RPG 7 ( Free Model )
+* source:	https://sketchfab.com/3d-models/rpg-7-free-model-99c0af8a1803490a86edc48cd3bfc700
+* author:	javadbayat (https://sketchfab.com/javadbayat)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "RPG 7 ( Free Model )" (https://sketchfab.com/3d-models/rpg-7-free-model-99c0af8a1803490a86edc48cd3bfc700) by javadbayat (https://sketchfab.com/javadbayat) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

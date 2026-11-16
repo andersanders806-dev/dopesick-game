@@ -1,0 +1,60 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://weapons/WeaponData.gd" id="1_wd"]
+[ext_resource type="Resource" path="res://weapons/glock_up.tres" id="2_up"]
+
+[resource]
+script = ExtResource("1_wd")
+id = "glock"
+display_name = "Street Nine"
+damage = 42.0
+head_mult = 4.0
+neck_mult = 2.0
+limb_mult = 0.75
+pellets = 1
+falloff_start = 15.0
+falloff_end = 50.0
+falloff_floor = 0.65
+splash_radius = 0.0
+rpm = 400.0
+auto = false
+mag_size = 17
+reserve_max = 136
+reload_time = 1.36
+reload_time_empty = 2.2
+chambers = true
+spread_hip = 2.3
+spread_ads = 0.3
+recoil = 0.9
+ads_zoom = 1.3
+swap_time = 0.4
+ads_time = 0.2
+sprint_fire_delay = 0.15
+handling = "pistol"
+recoil_pattern = PackedVector2Array(0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405, 0.0324, 0.405, -0.0194, 0.405)
+recoil_recover = 19.0
+recoil_hold = 4.0
+recoil_first = 1.0
+recoil_ads = 0.8
+recoil_random = 0.1
+kick_back = 0.0268
+kick_up = 2.9
+kick_roll = 0.0367
+optic = "none"
+sound_set = "glock"
+foley = {
+"mag_out": ["common/mag_out_pistol"],
+"mag_in": ["common/mag_in_pistol"],
+"rack": ["common/slide_rack"],
+"bolt": ["common/slide_rack"]
+}
+reload_cues_tactical = [[0.22, "mag_out"], [0.64, "mag_in"]]
+reload_cues_empty = [[0.19, "mag_out"], [0.49, "mag_in"], [0.69, "rack"]]
+price = 500
+ammo_price = 250
+in_box = false
+upgrade = ExtResource("2_up")
+model = "res://assets/guns/glock/scene.gltf"
+model_yaw = -90.0
+model_length = 0.2
+model_hide = PackedStringArray("shell_bullet", "bullet_bullet")

@@ -1,0 +1,11 @@
+Model Information:
+* title:	KRSV VECTOR
+* source:	https://sketchfab.com/3d-models/krsv-vector-609166faf8e5416f957c88e0af657e09
+* author:	h1ggs (https://sketchfab.com/h1ggs)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "KRSV VECTOR" (https://sketchfab.com/3d-models/krsv-vector-609166faf8e5416f957c88e0af657e09) by h1ggs (https://sketchfab.com/h1ggs) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

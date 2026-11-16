@@ -67,10 +67,12 @@ func _build() -> void:
 		fin.rotation.z = PI * 0.5 * i + PI * 0.25
 		fin.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_body.add_child(fin)
+	# The motor's glow: a small light that lights the street right round the rocket only (a wide one moving down the
+	# street relit every surface it passed).
 	_flame = OmniLight3D.new()
 	_flame.light_color = Color(1.0, 0.6, 0.25)
-	_flame.light_energy = 2.5
-	_flame.omni_range = 5.0
+	_flame.light_energy = 2.0
+	_flame.omni_range = 2.2
 	_flame.shadow_enabled = false
 	_flame.position = Vector3(0, 0, 0.5)
 	_body.add_child(_flame)
@@ -82,16 +84,16 @@ func _build() -> void:
 	# The motor's trail: a steady stream of puffs left hanging in the air.
 	_trail = CPUParticles3D.new()
 	_trail.emitting = false
-	_trail.amount = 90
-	_trail.lifetime = 1.6
+	_trail.amount = 48
+	_trail.lifetime = 1.3
 	_trail.local_coords = false
 	_trail.direction = Vector3(0, 0, 1)
 	_trail.spread = 12.0
 	_trail.initial_velocity_min = 0.4
 	_trail.initial_velocity_max = 1.2
 	_trail.gravity = Vector3(0, 0.35, 0)
-	_trail.scale_amount_min = 0.22
-	_trail.scale_amount_max = 0.42
+	_trail.scale_amount_min = 0.24
+	_trail.scale_amount_max = 0.46
 	var grow := Curve.new()
 	grow.add_point(Vector2(0.0, 0.35))
 	grow.add_point(Vector2(1.0, 1.0))

@@ -5,6 +5,7 @@ extends Control
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const PadFocus := preload("res://ui/PadFocus.gd")
+const TitleWarm := preload("res://fx/TitleWarm.gd")
 const U := preload("res://ui/UiStyle.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
 ## Backdrops, one picked at random each time.
@@ -108,6 +109,8 @@ void fragment() {
 	add_child(_music)
 	_music.play()
 	create_tween().tween_property(_music, "volume_db", -10.0, 3.0)
+	# The game's own shaders compile behind the menu, a couple a frame (fx/TitleWarm.gd).
+	TitleWarm.start(self)
 
 func _backdrop() -> Texture2D:
 	var ids := BACKDROPS.duplicate()
@@ -143,7 +146,26 @@ func _start_run() -> void:
 	SaveGame.delete()
 	GameState.start_run()
 	_fade_out()
+	if DisplayServer.get_name() != "headless":
+		# The apartment takes a second or more to build: the title goes to black first, so the screen never
+		# freezes on the menu while it loads.
+		await _go_black()
 	get_tree().change_scene_to_file(START_SCENE)
+
+## Fades the menu to black and holds it for two frames (so the black is what is on the screen when the load
+## blocks the next frame).
+func _go_black() -> void:
+	var black := ColorRect.new()
+	black.name = "GoBlack"
+	black.color = Color(0, 0, 0, 0)
+	black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	black.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(black)
+	var tw := create_tween()
+	tw.tween_property(black, "color:a", 1.0, 0.3)
+	await tw.finished
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 ## Dead Block: the block at night, the dead, and rounds (autoload/ZombieMode.gd).
 ## Its own save; the story's run is left as it is.

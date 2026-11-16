@@ -15,6 +15,11 @@ extends Node
 const PIPER_DIR := "res://tools/piper/"
 const MODEL := "en_US-libritts_r-medium.onnx"
 const VOICE_DIR := "res://assets/voice/"
+## Cast ids from here up are baked-only voices (the pre-baked set of the story and the street): they are
+## never sent to Piper, a line without a wav is silent text.
+const BAKED_ONLY_FROM := 1000
+## Decoded streams kept for lines heard again, oldest dropped first.
+const KEEP_STREAMS := 48
 
 ## speaker name -> Piper speaker id, speaking rate (length_scale: >1 is
 ## slower), and a playback pitch nudge. Ids chosen by measured median pitch
@@ -68,6 +73,14 @@ var _quit := false
 var _pending_key: String = ""
 var _pending_pitch: float = 1.0
 var _piper_ok: bool = false
+## key -> AudioStream already built (main thread only).
+var _streams := {}
+var _stream_order: Array = []
+## key -> the wav's bytes, read by the Piper worker the moment it wrote the file (guarded by _mutex): building the
+## stream from them is a copy, where reading the file was a disk wait on the frame that played the line.
+var _bytes := {}
+## Imported lines being read by the engine's own loader threads: key -> true.
+var _loading := {}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -97,7 +110,7 @@ func say(speaker: String, text: String) -> void:
 	var cast := cast_for(speaker)
 	var key := line_key(speaker, line)
 	if _have(key):
-		_play(key, cast["pitch"])
+		_speak_when_ready(key, cast["pitch"])
 		return
 	_pending_key = key
 	_pending_pitch = cast["pitch"]
@@ -113,7 +126,7 @@ func narrate(text: String) -> void:
 	var cast := cast_for("Narrator")
 	var key := line_key("Narrator", line)
 	if _have(key):
-		_play(key, cast["pitch"])
+		_speak_when_ready(key, cast["pitch"])
 		return
 	_pending_key = key
 	_pending_pitch = cast["pitch"]
@@ -122,6 +135,7 @@ func narrate(text: String) -> void:
 ## Generate lines ahead of time (e.g. an NPC's small talk as a room loads),
 ## so they play instantly when asked for.
 func prewarm(speaker: String, lines: Array) -> void:
+	warm(speaker, lines)
 	if not _piper_ok:
 		return
 	for text in lines:
@@ -131,6 +145,17 @@ func prewarm(speaker: String, lines: Array) -> void:
 		var key := line_key(speaker, line)
 		if not _have(key):
 			_queue(key, line, cast_for(speaker), false)
+
+## Lines that are already on disk, started loading on the engine's loader threads ahead of time (a room's small
+## talk), so they play on the frame they are asked for.
+func warm(speaker: String, lines: Array) -> void:
+	for text in lines:
+		var line := spoken_part(speaker, text)
+		if line == "":
+			continue
+		var key := line_key(speaker, line)
+		if _have(key) and not _streams.has(key):
+			_request_load(key)
 
 func stop() -> void:
 	_pending_key = ""
@@ -169,13 +194,64 @@ func _path(key: String) -> String:
 func _have(key: String) -> bool:
 	return FileAccess.file_exists(_path(key)) or ResourceLoader.exists(_path(key))
 
+## The stream for `key`, built without waiting on the disk when it can be: from the cache, from the bytes the
+## worker read, or from the loader thread's finished load; only a line nothing has touched is read here.
 func _load(key: String) -> AudioStream:
-	var disk := ProjectSettings.globalize_path(_path(key))
-	if FileAccess.file_exists(disk) and not OS.has_feature("template"):
-		return AudioStreamWAV.load_from_file(disk)
-	elif ResourceLoader.exists(_path(key)):
-		return load(_path(key))
-	return null
+	if _streams.has(key):
+		return _streams[key]
+	var made: AudioStream = null
+	_mutex.lock()
+	var bytes: PackedByteArray = _bytes.get(key, PackedByteArray())
+	_bytes.erase(key)
+	_mutex.unlock()
+	if not bytes.is_empty():
+		made = AudioStreamWAV.load_from_buffer(bytes)
+	if made == null and _loading.has(key) and ResourceLoader.load_threaded_get_status(_path(key)) == ResourceLoader.THREAD_LOAD_LOADED:
+		made = ResourceLoader.load_threaded_get(_path(key)) as AudioStream
+	_loading.erase(key)
+	if made == null:
+		var disk := ProjectSettings.globalize_path(_path(key))
+		if FileAccess.file_exists(disk) and not OS.has_feature("template"):
+			made = AudioStreamWAV.load_from_file(disk)
+		elif ResourceLoader.exists(_path(key)):
+			made = load(_path(key))
+	if made != null:
+		_streams[key] = made
+		_stream_order.erase(key)
+		_stream_order.append(key)
+		while _stream_order.size() > KEEP_STREAMS:
+			_streams.erase(_stream_order.pop_front())
+	return made
+
+## Imported (packed or editor-imported) lines go to the engine's loader threads; a loose wav (made this session,
+## not imported) has nothing to request and is read when played.
+func _request_load(key: String) -> void:
+	if _loading.has(key) or _streams.has(key):
+		return
+	var path := _path(key)
+	if ResourceLoader.exists(path) and ResourceLoader.load_threaded_request(path) == OK:
+		_loading[key] = true
+
+## Plays `key` now if it is built, else asks for it and plays it the frame the loader has it.
+func _speak_when_ready(key: String, pitch: float) -> void:
+	if _streams.has(key) or not _loading.has(key) and not ResourceLoader.exists(_path(key)):
+		_play(key, pitch)
+		return
+	_pending_key = key
+	_pending_pitch = pitch
+	_request_load(key)
+	set_process(true)
+
+func _process(_delta: float) -> void:
+	# Only a baked line waiting on a loader thread is this node's to play; a line Piper is making is played by
+	# _on_line_ready when it is done.
+	if _pending_key == "" or not _loading.has(_pending_key):
+		set_process(false)
+		return
+	if ResourceLoader.load_threaded_get_status(_path(_pending_key)) != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		var key := _pending_key
+		_pending_key = ""
+		_play(key, _pending_pitch)
 
 func _play(key: String, pitch: float) -> void:
 	var stream := _load(key)
@@ -196,7 +272,8 @@ func bark_stream(speaker: String, line: String) -> AudioStream:
 	return null
 
 func _queue(key: String, line: String, cast: Dictionary, urgent: bool) -> void:
-	if not _piper_ok:
+	# Baked-only voices (ids from 1000) are never made here, and Piper may not be installed at all.
+	if not _piper_ok or int(cast["id"]) >= BAKED_ONLY_FROM:
 		return
 	_mutex.lock()
 	for j in _jobs:
@@ -240,6 +317,13 @@ func _worker() -> void:
 		var cmd := "printf '%%s' '%s' | '%spiper' -m '%s%s' -s %d --length_scale %.2f --sentence_silence 0.15 -f '%s' >/dev/null 2>&1 && mv '%s' '%s'" % [
 			text, dir, dir, MODEL, job["id"], job["rate"], tmp, tmp, out_path]
 		OS.execute("sh", ["-c", cmd])
+		# The file's bytes are read here, on the worker, for the frame that plays the line.
+		if FileAccess.file_exists(out_path):
+			var data := FileAccess.get_file_as_bytes(out_path)
+			if not data.is_empty():
+				_mutex.lock()
+				_bytes[job["key"]] = data
+				_mutex.unlock()
 		line_ready.emit.call_deferred(job["key"])
 
 func _on_line_ready(key: String) -> void:

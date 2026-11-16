@@ -37,7 +37,8 @@ const MIN_SPAWN_DISTANCE := 22.0
 ## Whether the frame time moves the alive cap (the tests turn it off and set
 ## ZombieMode.max_alive themselves).
 var adaptive := true
-var budget := HordeBudget.new(32, ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX)
+## (An integrated GPU starts lower: it was at 45 FPS or worse with 32 of the dead out on this machine's UHD 620.)
+var budget := HordeBudget.new(24 if Graphics.lean() else 32, ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX)
 ## The entrances (built by the block: setup_entrances()); empty means the old spawn points.
 var entrances := Entrances.new()
 var _entrances_ready := false

@@ -22,11 +22,15 @@ func _ready() -> void:
 	super._ready()
 	name = "GangSpawner"
 	add_to_group("gang_spawner")
-	ZombieMode.max_alive = ZombieMode.GANG_MAX_ALIVE
-	adaptive = false
+	ZombieMode.max_alive = crew_budget.cap
 	var ls := LastStandScript.new()
 	ls.spawner = self
 	add_child(ls)
+
+## How many of the crew may be out at once, between 6 and GANG_MAX_ALIVE: the shooters, their lights and their
+## decals cost an integrated GPU more than the dead do (20 ms a frame at 12 of them on a UHD 620), so the same
+## frame-time rule as the horde's (npc/HordeBudget.gd) takes the crew down a step at a time when frames run long.
+var crew_budget := HordeBudget.new(10 if Graphics.lean() else ZombieMode.GANG_MAX_ALIVE, 6, ZombieMode.GANG_MAX_ALIVE)
 
 func alive() -> int:
 	return get_tree().get_nodes_in_group("gangsters").size()
@@ -40,7 +44,7 @@ func _on_round_started(r: int) -> void:
 	_break = -1.0
 	_timer = FIRST_DELAY * time_scale
 	_kinds = _plan_gang_kinds(r, total)
-	ZombieMode.max_alive = ZombieMode.GANG_MAX_ALIVE
+	ZombieMode.max_alive = crew_budget.cap
 
 func _plan_gang_kinds(r: int, n: int) -> Array[String]:
 	var out: Array[String] = []
@@ -59,6 +63,9 @@ func _plan_gang_kinds(r: int, n: int) -> Array[String]:
 func _process(delta: float) -> void:
 	if not enabled or not ZombieMode.active or ZombieMode.over or round_no == 0:
 		return
+	if adaptive and crew_budget.enabled:
+		crew_budget.feed(delta * 1000.0, alive(), delta)
+		ZombieMode.max_alive = crew_budget.cap
 	if released < total:
 		_timer -= delta
 		var room := ZombieMode.max_alive - alive()

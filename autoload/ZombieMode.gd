@@ -49,7 +49,7 @@ func _exit_tree() -> void:
 const START_POINTS := 500
 ## Alive at once; the rest of a round waits in reserve. The cap moves between these two with
 ## the frame time (npc/HordeBudget.gd, the spawner feeds it): `max_alive` is where it stands now.
-const MAX_ALIVE_MIN := 24
+const MAX_ALIVE_MIN := 16
 const MAX_ALIVE_MAX := 48
 ## What a round's zombies come to before round 6, which the formula takes
 ## over from: 2.5 times the first design (15 in round 1).

@@ -355,6 +355,8 @@ func _adapt_resolution(delta: float) -> void:
 	_frame_acc += delta
 	_frame_count += 1
 	_gpu_acc += RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+	for rid in extra_gpu_viewports:
+		_gpu_acc += RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	if _frame_acc < 0.5:
 		return
 	var fps := _frame_count / _frame_acc
@@ -378,6 +380,17 @@ const GPU_LOW_MS := 12.0
 const LEAN_GPU_HIGH_MS := 13.0
 const LEAN_GPU_LOW_MS := 10.0
 var _gpu_acc := 0.0
+## Other viewports that draw the game's 3D (the kart race has a world of its own): their GPU time counts in the
+## governor too, or it would never see the race's cost. Register with watch_viewport(), unregister with unwatch_viewport().
+var extra_gpu_viewports: Array[RID] = []
+
+func watch_viewport(rid: RID) -> void:
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	if not extra_gpu_viewports.has(rid):
+		extra_gpu_viewports.append(rid)
+
+func unwatch_viewport(rid: RID) -> void:
+	extra_gpu_viewports.erase(rid)
 
 func next_scale(current: float, fps: float, gpu_ms: float) -> float:
 	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
@@ -430,7 +443,9 @@ func watch_high(fps: float, window: float) -> bool:
 ## (-1.3 ms), the lightest soft-shadow filter (-1.1 ms), and resolution
 ## allowed down to 60%. Measured walking: street 53-56 FPS by night, ~50
 ## by day, the bar 58 (was ~40 on the street).
-const SCALE_RANGE_LEAN := [0.6, 1.0]
+## (The floor is 50%: a firefight or the horde at its peak on this GPU measured 19 ms at the old 60% floor,
+## with the governor already as low as it could go.)
+const SCALE_RANGE_LEAN := [0.5, 1.0]
 var _shadow_filter: int = RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
 const Facades := preload("res://world/Facades.gd")
 

@@ -145,10 +145,18 @@ func _begin_quake() -> void:
 	ZombieMode.surge_active = true
 	ZombieMode.surge_started.emit()
 
+## The surge may add SURGE_EXTRA to the alive cap the frame times have settled on, up to the hard cap: on a machine
+## that holds 48 it is the full 64, on one that has been taken down to 16 it is 32 (a surge of 62 on a UHD 620 ran
+## the block at 45 FPS and under).
+const SURGE_EXTRA := 16
+
+func surge_limit() -> int:
+	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + SURGE_EXTRA)
+
 ## Lets out everyone whose time has come, as far as the hard cap allows.
 func _release_due() -> void:
 	while released < total and times[released] <= _clock:
-		if spawner.alive() >= ZombieMode.SURGE_HARD_CAP:
+		if spawner.alive() >= surge_limit():
 			return
 		var kind := kinds[released]
 		var e: Dictionary = spawner._pick_entrance(spawner.Entrances.SURGE_WEIGHTS) if spawner._entrances_ready else {}

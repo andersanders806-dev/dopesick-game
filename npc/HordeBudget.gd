@@ -10,14 +10,15 @@ extends RefCounted
 
 ## Seconds of frames per verdict.
 const WINDOW := 3.0
-## Judged on the window's mean frame time and the share of frames over 33 ms.
-## Below GOOD_MS (about 54 fps) it can climb; above BAD_MS (about 45 fps) it must drop; in
+## Judged on the window's mean frame time and the share of frames over 25 ms (the perf gate: 60 fps, no frame
+## over 25 ms; a vsynced 60 Hz frame is 16.7 ms, so the mean is judged close to it).
+## Below GOOD_MS (about 58 fps) it can climb; above BAD_MS (about 54 fps) it must drop; in
 ## between it holds.
-const GOOD_MS := 18.5
-const BAD_MS := 22.0
-const SLOW_MS := 33.0
+const GOOD_MS := 17.3
+const BAD_MS := 18.6
+const SLOW_MS := 25.0
 const GOOD_SLOW_SHARE := 0.01
-const BAD_SLOW_SHARE := 0.06
+const BAD_SLOW_SHARE := 0.04
 ## Steps: down fast, up slow.
 const STEP_DOWN := 4
 const STEP_UP := 2

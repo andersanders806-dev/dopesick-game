@@ -44,7 +44,22 @@ var slow_visible := 0
 var hitches: Array = []
 var _prev := {}
 var _added := {}
+## When the last frame's drawing began and ended (RenderingServer signals): the frame splits into scripts and
+## physics (process_frame -> pre_draw), the draw (pre_draw -> post_draw), and the tail (vsync wait, present).
+var _t_pre := 0
+var _t_post := 0
 var phase := ""
+## exp=a,b,c: switch a cost off to measure it (a bisect, not part of any gate): nozombies, noshadowz (the dead and
+## the crew cast no shadow), nodecals, norain, nosun (no sun shadow), noparticles, nolights, nofog, nopost.
+## x=<metres>: the street scenario stands there (looking along the street, a slow sway) instead of walking.
+## scale=<0.3..1>: pins the 3D render scale (the governor is overridden every frame): a bisect for what is pixel-bound.
+var fixed_scale := 0.0
+var stand_x := INF
+## viatitle: the run starts the way the game does, on the title screen for 8 s (its prefetch and its shader warm-up run).
+var via_title := false
+var race: Node = null
+var _prev_fa := 0.0
+var exps: PackedStringArray = PackedStringArray()
 var shot_at_s := -1.0
 var shot_done := false
 
@@ -59,18 +74,36 @@ func _initialize() -> void:
 			tag = s.substr(4)
 		elif s == "night":
 			night = true
+		elif s.begins_with("scale="):
+			fixed_scale = float(s.substr(6))
+		elif s == "viatitle":
+			via_title = true
+		elif s.begins_with("x="):
+			stand_x = float(s.substr(2))
+		elif s.begins_with("exp="):
+			exps = s.substr(4).split(",")
 		elif not s.begins_with("--"):
 			scenario = s
 	out_dir = ProjectSettings.globalize_path("res://.pilot/ship4")
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	_run.call_deferred()
 
+## How black the screen is: SceneLoader's fade, the title's black ("GoBlack") and the kart race's veil.
 func _fade_alpha() -> float:
+	var a := 0.0
 	var sl := root.get_node_or_null("SceneLoader")
-	if sl == null:
-		return 0.0
-	var b: ColorRect = sl.get("_black")
-	return b.color.a if b != null else 0.0
+	if sl != null:
+		var b: ColorRect = sl.get("_black")
+		a = b.color.a if b != null else 0.0
+	if current_scene != null:
+		var gb := current_scene.get_node_or_null("GoBlack") as ColorRect
+		if gb != null:
+			a = maxf(a, gb.color.a)
+	if race != null and is_instance_valid(race) and race.get("_veil") != null and is_instance_valid(race.get("_veil")):
+		var rb := (race.get("_veil") as CanvasLayer).get_child(0) as ColorRect
+		if rb != null:
+			a = maxf(a, rb.color.a)
+	return a
 
 func _info(i: int) -> int:
 	return RenderingServer.get_rendering_info(i as RenderingServer.RenderingInfo)
@@ -96,17 +129,26 @@ func _begin_recording() -> void:
 	vp = root.get_viewport_rid()
 	RenderingServer.viewport_set_measure_render_time(vp, true)
 	node_added.connect(_on_node_added)
+	RenderingServer.frame_pre_draw.connect(func(): _t_pre = Time.get_ticks_usec())
+	RenderingServer.frame_post_draw.connect(func(): _t_post = Time.get_ticks_usec())
 	_prev = _snapshot()
+	_apply_exps()
 	recording = true
 	t0_us = Time.get_ticks_usec()
 	last_us = t0_us
-	shot_at_s = secs * 0.5
+	shot_at_s = secs * (0.9 if scenario.begins_with("go:") else 0.5)
 	print("== %s [%s] %.0f s, nodes %d" % [scenario, tag, secs, _prev["nodes"]])
 
 ## Call once per frame after `await process_frame` while recording. Returns this frame's ms.
 func _tick() -> float:
+	if fixed_scale > 0.0 and gfx != null:
+		gfx.render_scale = fixed_scale
+		root.scaling_3d_scale = fixed_scale
 	var now := Time.get_ticks_usec()
 	var dt := (now - last_us) / 1000.0
+	var seg_script := (_t_pre - last_us) / 1000.0
+	var seg_draw := (_t_post - _t_pre) / 1000.0
+	var seg_tail := (now - _t_post) / 1000.0
 	last_us = now
 	if not recording:
 		return dt
@@ -119,9 +161,12 @@ func _tick() -> float:
 	fades.append(fa)
 	scales += root.scaling_3d_scale
 	var cur := _snapshot()
+	var fa_before := _prev_fa
+	_prev_fa = fa
 	if dt > SLOW_MS:
 		slow_n += 1
-		if fa < 0.5:
+		# What was on the screen while the frame stalled is what the previous frame left there.
+		if fa_before < 0.5:
 			slow_visible += 1
 		var proc: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 		var phys: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
@@ -155,8 +200,8 @@ func _tick() -> float:
 		var vj := 0
 		if voice != null and voice.get("_jobs") != null:
 			vj = (voice.get("_jobs") as Array).size()
-		var line := "  SLOW %.1f ms t=%.1f s [%s] fade %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s" % [
-			dt, (now - t0_us) / 1e6, phase, fa, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause]
+		var line := "  SLOW %.1f ms (scripts+physics %.1f, draw %.1f, tail %.1f) t=%.1f s [%s] black %.2f gpu %.1f proc %.1f phys %.1f nav %.1f | pipes +%d (draw +%d) res %+d nodes %+d mem %+.1f MB voice-jobs %d | added: %s=> %s" % [
+			dt, seg_script, seg_draw, seg_tail, (now - t0_us) / 1e6, phase, fa_before, g, proc, phys, nav, d_pipes, d_draw, d_res, d_nodes, d_mem / 1e6, vj, added, cause]
 		print(line)
 		hitches.append(line)
 	_added.clear()
@@ -222,6 +267,67 @@ func _setup_story(hour: int) -> void:
 	gs.intro_pending = false
 	gs.clock_running = false
 	gs.clock = hour * 60
+	if via_title:
+		change_scene_to_file("res://ui/TitleScreen.tscn")
+		var w0 := Time.get_ticks_usec()
+		while Time.get_ticks_usec() - w0 < 8e6:
+			await process_frame
+
+func _apply_exps() -> void:
+	if exps.is_empty() or current_scene == null:
+		return
+	if "norain" in exps:
+		gfx.rain_fx = false
+	if "noocc" in exps:
+		root.use_occlusion_culling = false
+	if "nohud" in exps:
+		for l in root.find_children("*", "CanvasLayer", true, false):
+			if l.name != "SceneLoader" and l.get_parent() != root.get_node_or_null("SceneLoader"):
+				(l as CanvasLayer).visible = false
+	if "nopostfx" in exps:
+		for c in root.find_children("PostFX", "", true, false):
+			c.visible = false
+	if "nofsr" in exps:
+		root.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	if "noaa" in exps:
+		root.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+		root.msaa_3d = Viewport.MSAA_DISABLED
+	for we in current_scene.find_children("*", "WorldEnvironment", true, false):
+		var env := (we as WorldEnvironment).environment
+		if env == null:
+			continue
+		if "noglow" in exps:
+			env.glow_enabled = false
+		if "noadj" in exps:
+			env.adjustment_enabled = false
+		if "notonemap" in exps:
+			env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
+		if "nosky" in exps:
+			env.background_mode = Environment.BG_COLOR
+			env.sky = null
+	for n in current_scene.find_children("*", "", true, false):
+		if "nodecals" in exps and n is Decal:
+			n.visible = false
+		elif "noparticles" in exps and (n is GPUParticles3D or n is CPUParticles3D):
+			n.visible = false
+		elif "nolights" in exps and n is Light3D and not n is DirectionalLight3D:
+			n.visible = false
+		elif "nofade" in exps and n is GeometryInstance3D:
+			(n as GeometryInstance3D).visibility_range_begin = 0.0
+			(n as GeometryInstance3D).visibility_range_end = 0.0
+			(n as GeometryInstance3D).visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+		elif "nosun" in exps and n is DirectionalLight3D:
+			n.shadow_enabled = false
+		elif "noshadowz" in exps and n is MeshInstance3D and (n.is_in_group("zombies") or n.get_parent() != null and (n.get_parent().is_in_group("zombies") or n.get_parent().is_in_group("gangsters"))):
+			n.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if "nofog" in exps:
+		var we := current_scene.find_children("*", "WorldEnvironment", true, false)
+		for w in we:
+			(w as WorldEnvironment).environment.fog_enabled = false
+			(w as WorldEnvironment).environment.volumetric_fog_enabled = false
+	if "nozombies" in exps:
+		for z in get_nodes_in_group("zombies"):
+			z.queue_free()
 
 func _frames(n: int) -> void:
 	for i in n:
@@ -277,6 +383,20 @@ func _street(sick: bool) -> void:
 	# The title screen's time lets SceneLoader's background prefetch finish: standing still starts it.
 	await _wait_prefetch()
 	phase = "walk"
+	if stand_x != INF:
+		player.global_position = Vector3(stand_x, 0, -2.6)
+		player.reset_physics_interpolation()
+		await _frames(60)
+		_begin_recording()
+		var k := 0
+		while (Time.get_ticks_usec() - t0_us) < secs * 1e6:
+			player.set_look(-PI / 2 + 0.5 * sin(k * 0.02), -0.1)
+			k += 1
+			await process_frame
+			_tick()
+			phase = "stand x=%d" % int(stand_x)
+			_maybe_shot()
+		return
 	_begin_recording()
 	var dir := 1.0
 	var last_x := player.global_position.x
@@ -322,6 +442,8 @@ func _shop() -> void:
 	player.set_look(PI, 0.0)
 	player.reset_physics_interpolation()
 	await _frames(180)
+	# (As in a real session: the title and the first minutes have let the background prefetch finish.)
+	await _wait_prefetch()
 	phase = "stand"
 	_begin_recording()
 	var i := 0
@@ -353,6 +475,7 @@ func _room(room: String) -> void:
 	player.set_look(yaw, 0.0)
 	player.reset_physics_interpolation()
 	await _frames(120)
+	await _wait_prefetch()
 	phase = "stand"
 	_begin_recording()
 	var i := 0
@@ -381,6 +504,7 @@ func _fight(gangs: bool) -> void:
 		await process_frame
 		w += 1
 	await _frames(60)
+	await _wait_prefetch()
 	var player := get_first_node_in_group("player") as Node3D
 	player.dialogue_active = false
 	var holder: Node = player.get_node_or_null("WeaponHolder")
@@ -413,6 +537,19 @@ func _fight(gangs: bool) -> void:
 		player.global_position = Vector3(-10.0 + (u if u < 30.0 else 60.0 - u), 0.0, -1.0)
 		player.velocity = Vector3.ZERO
 		phase = "alive %d" % get_nodes_in_group(group).size()
+		if Engine.get_process_frames() % 300 == 0:
+			var sp = city.get_node("ZombieBlock").spawner
+			print("  STAT t=%.0f s alive(group) %d spawner.alive %d max_alive %d round %d released %d/%d surge %s scale %.2f" % [t, get_nodes_in_group(group).size(), sp.alive(), zm.max_alive, zm.round, sp.released, sp.total, zm.surge_busy, root.scaling_3d_scale])
+		if not exps.is_empty() and Engine.get_process_frames() % 30 == 0:
+			_apply_exps()
+		if gangs and get_nodes_in_group(group).size() < 5:
+			# The street is held by a crew of 5 to 8 at all times (the story's waves are 6 and 8 strong): the
+			# set's own call for a crowd.
+			var pp := player.global_position
+			var pts: Array = []
+			for k in 4:
+				pts.append(Vector3(pp.x + (14.0 + k * 2.0) * (1.0 if k % 2 == 0 else -1.0), 0.0, -1.0 + (k % 3) * 1.2))
+			root.get_node("GhettoMode").spawn_wave({"count": 4, "weapons": ["ar", "smg", "shotgun", "pistol", "lmg"], "from_points": pts})
 		if holder != null:
 			shoot_in -= dt / 1000.0
 			if shoot_in <= 0.0:
@@ -438,21 +575,24 @@ func _kart() -> void:
 	await _setup_story(20)
 	change_scene_to_file("res://world/KartCenter3D.tscn")
 	await _frames(200)
+	await _wait_prefetch()
 	var player := get_first_node_in_group("player") as Node3D
 	player.dialogue_active = true
 	phase = "start()"
 	_begin_recording()
 	await process_frame
 	_tick()
-	var race = load("res://ui/KartRace.gd").new()
+	race = load("res://ui/KartRace.gd").new()
 	root.add_child(race)
 	race.start("player", {})
-	extra_vp = race._vp.get_viewport_rid()
-	RenderingServer.viewport_set_measure_render_time(extra_vp, true)
+	# (Windowed, the race is built a few frames later behind its veil: its viewport is read when it exists.)
 	var pressed := false
 	while (Time.get_ticks_usec() - t0_us) < secs * 1e6:
 		await process_frame
 		_tick()
+		if not extra_vp.is_valid() and race.get("_vp") != null:
+			extra_vp = (race.get("_vp") as SubViewport).get_viewport_rid()
+			RenderingServer.viewport_set_measure_render_time(extra_vp, true)
 		var t := (Time.get_ticks_usec() - t0_us) / 1e6
 		phase = "race t=%.0f" % t
 		if not pressed and t > 6.0:

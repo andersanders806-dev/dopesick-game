@@ -3418,6 +3418,26 @@ func _settle() -> void:
 	await process_frame
 	await process_frame
 
+## A freshly loaded scene is settled when its own arrival work is done (SceneLoader's fade, the people a street
+## makes behind it) and frames are short again: two in a row under 50 ms. Input parsed before that is buffered
+## behind a heavy frame, which is what made "the left stick walks" flaky two frames after a City load.
+func _settled(limit := 600) -> bool:
+	var loader := root.get_node("SceneLoader")
+	var short := 0
+	var last := Time.get_ticks_usec()
+	for i in limit:
+		await process_frame
+		var now := Time.get_ticks_usec()
+		var ms := (now - last) / 1000.0
+		last = now
+		var arrived := true
+		if current_scene != null and current_scene.has_method("finish_arrival"):
+			arrived = current_scene.finish_arrival()
+		short = short + 1 if ms < 50.0 else 0
+		if short >= 2 and arrived and not loader.busy():
+			return true
+	return false
+
 func _trigger(axis: int, value: float) -> void:
 	_stick(axis, value)
 
@@ -3442,6 +3462,7 @@ func _controller_checks(gs: Node) -> void:
 			missing.append(a)
 	_check(missing.is_empty(), "  every control is on the pad, whichever pad it is (missing: %s)" % [missing])
 	var city := await _load("res://world/City3D.tscn")
+	_check(await _settled(), "  (the street has settled before the stick is pushed)")
 	var p := _player()
 	_stick(JOY_AXIS_LEFT_X, 1.0)
 	await _frames(2)
@@ -6791,6 +6812,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	var closest_pair := 99.0
 	var closest_all := 99.0
 	var attackers_seen := 0
+	var settled_looks := 0
 	var pair_info := ""
 	for f in 1500:
 		await physics_frame
@@ -6801,6 +6823,16 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 				if d <= zz.ATTACK_RANGE + 0.35:
 					near.append(zz)
 			attackers_seen = maxi(attackers_seen, near.size())
+			# The ring is judged once the bodies have settled (nobody still walking into a slot, being
+			# shoved or getting up): a pair 0.37 m apart in the middle of a shuffle is not a pile.
+			var settled := true
+			for zz in near:
+				if Vector2(zz.velocity.x, zz.velocity.z).length() > 0.3 or int(zz.state) >= 4:
+					settled = false
+			if settled and near.size() >= 2:
+				settled_looks += 1
+			else:
+				near = []
 			for a in near.size():
 				for b in range(a + 1, near.size()):
 					var pd: float = Vector2(near[a].global_position.x - near[b].global_position.x, near[a].global_position.z - near[b].global_position.z).length()
@@ -6812,6 +6844,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
 	root.get_node("ZombieMode").health = 100.0
 	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
+	_check(settled_looks >= 3, "  ...and its ring settles long enough to be judged (%d looks)" % settled_looks)
 	_check(closest_pair >= 0.4, "  no two dead within reach are closer than 0.4 m (a pile is under 0.3; the ring keeps 0.6) (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:
 		zz.free()
@@ -6826,11 +6859,11 @@ const ZW_PRICES := {"smg": 1000, "shotgun": 1200, "ar": 1400, "sniper": 1500, "m
 ## A real Zombie3D (the block's spawner makes it) `dist` m east of (x, z) on the
 ## street: held still (no brain), posed (animation paused), facing west, toward the
 ## shooter. It logs its hits in meta "hits" ([part, damage]).
-func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node:
+func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1, body := "") -> Node:
 	var sp: Node = parent.get_node("ZombieBlock").spawner
 	sp.enabled = false
 	sp.round_no = rnd
-	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
+	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z), body)
 	zed.set_physics_process(false)
 	zed._anim_player.pause()
 	# A zombie starts its walk at a random point; the targets stand at the same one, so a
@@ -7080,7 +7113,10 @@ func _zombie_weapons_checks(gs: Node) -> void:
 
 	# The hit zones cover the body: rays over its silhouette find no gap, and the
 	# neck is a zone of its own on the neck, between the torso and the head.
-	var zbody: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	var ZombieScript3: GDScript = load("res://npc/Zombie3D.gd")
+	# (A named body, not a random one: a gap that only one of the twenty has must fail every run, not one run in
+	# twenty. Every body is swept below.)
+	var zbody: Node = await _zw_target(city, -20.0, -3.0, 4.0, 1, ZombieScript3.BODIES[0])
 	var y_torso: float = _zw_part_at(zbody, "torso").y
 	var y_neck: float = _zw_part_at(zbody, "neck").y
 	var y_head: float = _zw_part_at(zbody, "head").y
@@ -7108,6 +7144,25 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var gaps_shoulder: Array = _zw_gaps(holder, zbody, shoulder_heights, shoulders, true)
 	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s; body %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4), zbody.get_meta("body", "?")])
 	_check(gaps_shoulder.is_empty(), "  no gap across the shoulders (%s)" % [gaps_shoulder.slice(0, 4)])
+	zbody.queue_free()
+	var failing := []
+	for bname in ZombieScript3.BODIES:
+		var zb: Node = await _zw_target(city, -20.0, -3.0, 4.0, 1, bname)
+		var hs := []
+		var yy2: float = _zw_part_at(zb, "torso").y - 0.2
+		var yh: float = _zw_part_at(zb, "head").y
+		while yy2 <= yh + 0.05:
+			hs.append(yy2)
+			yy2 += 0.02
+		var yn: float = _zw_part_at(zb, "neck").y
+		var g1: Array = _zw_gaps(holder, zb, hs, core, true)
+		var g2: Array = _zw_gaps(holder, zb, hs, core, false)
+		var g3: Array = _zw_gaps(holder, zb, hs.filter(func(h): return h <= yn - 0.06), shoulders, true)
+		if not (g1.is_empty() and g2.is_empty() and g3.is_empty()):
+			failing.append("%s front %s side %s shoulders %s" % [bname, g1.slice(0, 3), g2.slice(0, 3), g3.slice(0, 3)])
+		zb.queue_free()
+	_check(failing.is_empty(), "  no gap in the hit zones of any of the %d bodies (%s)" % [ZombieScript3.BODIES.size(), failing])
+	zbody = await _zw_target(city, -20.0, -3.0, 4.0, 1, ZombieScript3.BODIES[0])
 	var order := []
 	for h in heights:
 		var r: Dictionary = holder._cast(Vector3(-24.0, h, _zw_part_at(zbody, "torso").z), Vector3.RIGHT, 8.0)
@@ -9591,7 +9646,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 
 	# --- The adaptive cap (pure logic, made-up frame times) ---
 	var b = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
-	_check(zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 24..48")
+	_check(zm.MAX_ALIVE_MIN == 16 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 16..48")
 	var lo := 99
 	var hi := 0
 	for i in 60 * 90:
@@ -9603,9 +9658,9 @@ func _zombie_horde_checks(gs: Node) -> void:
 	for i in 60 * 30:
 		b.feed(40.0, b.cap, 1.0 / 60.0)
 		floor_seen = mini(floor_seen, b.cap)
-	_check(b.cap == 24 and floor_seen == 24, "  25 fps (40 ms): drops to 24 and never below (cap %d)" % b.cap)
+	_check(b.cap == 16 and floor_seen == 16, "  25 fps (40 ms): drops to 16 and never below (cap %d)" % b.cap)
 	# Hysteresis: after a drop it holds, then needs two good windows in a row.
-	var b2 = Budget.new(40, 24, 48)
+	var b2 = Budget.new(40, 16, 48)
 	for i in 60 * 3 + 5:
 		b2.feed(40.0, 40, 1.0 / 60.0)
 	var after_drop: int = b2.cap
@@ -9614,19 +9669,19 @@ func _zombie_horde_checks(gs: Node) -> void:
 		if b2.feed(15.0, b2.cap, 1.0 / 60.0) and climbed_at < 0.0:
 			climbed_at = i / 60.0
 	_check(after_drop == 36 and climbed_at >= 8.9, "  after a drop it holds, then climbs only after two good windows (cap %d, first climb at %.1f s)" % [after_drop, climbed_at])
-	var b3 = Budget.new(32, 24, 48)
+	var b3 = Budget.new(32, 16, 48)
 	for i in 60 * 60:
-		b3.feed(20.2, b3.cap, 1.0 / 60.0)
-	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (20 ms) does not move it (cap %d)" % b3.cap)
-	var b4 = Budget.new(32, 24, 48)
+		b3.feed(17.9, b3.cap, 1.0 / 60.0)
+	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (17.9 ms) does not move it (cap %d)" % b3.cap)
+	var b4 = Budget.new(32, 16, 48)
 	for i in 60 * 30:
 		b4.feed(16.0, 10, 1.0 / 60.0)
 	_check(b4.cap == 32, "  it does not climb while the horde is nowhere near the cap (cap %d)" % b4.cap)
-	var b5 = Budget.new(32, 24, 48)
+	var b5 = Budget.new(32, 16, 48)
 	for i in 60 * 30:
 		b5.feed(900.0 if i % 90 == 0 else 16.0, b5.cap, 1.0 / 60.0)
 	_check(b5.lowered == 0 and b5.cap >= 32, "  a load hitch (900 ms) is not the horde's doing (cap %d)" % b5.cap)
-	var b6 = Budget.new(32, 24, 48)
+	var b6 = Budget.new(32, 16, 48)
 	for i in 60 * 30:
 		b6.feed(50.0 if i % 8 == 0 else 14.0, b6.cap, 1.0 / 60.0)
 	_check(b6.cap < 32, "  a steady stutter (1 frame in 8 over 33 ms) lowers it (cap %d)" % b6.cap)

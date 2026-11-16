@@ -51,6 +51,7 @@ var holder: Node3D
 var round_no := 0
 ## How many the round owes, how many are out so far, and their kinds.
 var total := 0
+var _patience := 0
 var released := 0
 var _kinds: Array[String] = []
 var _timer := 0.0
@@ -126,8 +127,13 @@ func _process(delta: float) -> void:
 	if released < total:
 		_timer -= delta
 		if _timer <= 0.0 and alive() < ZombieMode.max_alive:
-			_release()
-			_timer = _gap() * time_scale
+			# Not on the frame after a slow one (a spawn is 5-8 ms; up to 4 frames of patience).
+			if delta > 0.028 and _patience < 4:
+				_patience += 1
+			else:
+				_patience = 0
+				_release()
+				_timer = _gap() * time_scale
 	elif alive() <= LAST_HURRY and alive() > 0:
 		_hurry_last()
 	if released >= total and alive() == 0:

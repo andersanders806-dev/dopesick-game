@@ -128,7 +128,7 @@ func _process(delta: float) -> void:
 				_begin_quake()
 		Phase.QUAKE:
 			_clock += delta
-			_release_due()
+			_release_due(delta)
 			var window := (SURGE_TIME + GRACE) * time_scale
 			if released >= total or _clock >= window:
 				_end_quake()
@@ -149,15 +149,26 @@ func _begin_quake() -> void:
 ## that holds 48 it is the full 64, on one that has been taken down to 16 it is 32 (a surge of 62 on a UHD 620 ran
 ## the block at 45 FPS and under).
 const SURGE_EXTRA := 16
+## A frame this long (s) or longer holds the next spawn back a frame.
+const SLOW_FRAME := 0.028
+var _skipped := 0
 
 func surge_limit() -> int:
 	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + SURGE_EXTRA)
 
 ## Lets out everyone whose time has come, as far as the hard cap allows.
-func _release_due() -> void:
-	while released < total and times[released] <= _clock:
+func _release_due(delta := 0.0) -> void:
+	# One a frame, and none on the frame after a slow one (up to 4 in a row): a spawn costs 5-8 ms, and a surge
+	# that caught up on a late frame by spawning four made the late frame later (the spiral of 40-80 ms frames).
+	if delta > SLOW_FRAME and _skipped < 4:
+		_skipped += 1
+		return
+	_skipped = 0
+	var made := 0
+	while released < total and times[released] <= _clock and made < 1:
 		if spawner.alive() >= surge_limit():
 			return
+		made += 1
 		var kind := kinds[released]
 		var e: Dictionary = spawner._pick_entrance(spawner.Entrances.SURGE_WEIGHTS) if spawner._entrances_ready else {}
 		var z: CharacterBody3D

@@ -341,6 +341,57 @@ func _piece(parent: Node3D, kit: String, piece: String, x: float, y: float, sx :
 	mi.position = Vector3(x - b.position.x * sx, y - b.position.y, FACE_Z - b.end.z - inset)
 	return mi
 
+## The pieces of a front that repeat (base, bay, window, band, crown) are drawn as one MultiMesh per piece and
+## look: a front was 100+ separate objects, and on a UHD 620 every object is ~8 us of GPU whatever it draws (a
+## night street was ~800 draw calls, 370 of them facades). `_batch` collects [front, kit, piece, lit] ->
+## transforms while a front is built, `_flush_batch` makes the MultiMeshInstance3Ds.
+var _batch := {}
+static var _variants := {}
+
+## The kit mesh with its glass surfaces on the street's glass (and the lit glass of a window with someone home).
+func _window_variant(kit: String, piece: String, lit: bool) -> Mesh:
+	var key := "%s/%s/%s" % [kit, piece, lit]
+	if _variants.has(key):
+		return _variants[key]
+	var mesh := _mesh(kit, piece).duplicate() as Mesh
+	for i in mesh.get_surface_count():
+		var m := mesh.surface_get_material(i) as BaseMaterial3D
+		if m and m.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
+			mesh.surface_set_material(i, _lit_glass() if lit else _glass())
+	_variants[key] = mesh
+	return mesh
+
+## Queues one kit piece, placed exactly as _piece() places it (left edge at x, bottom at y, face on FACE_Z).
+func _piece_b(front: Node3D, kit: String, piece: String, x: float, y: float, sx := 1.0, inset := 0.0, lit := false) -> void:
+	var mesh := _mesh(kit, piece)
+	var b: AABB = mesh.get_aabb()
+	var xf := Transform3D(Basis.from_scale(Vector3(sx, 1.0, 1.0)), Vector3(x - b.position.x * sx, y - b.position.y, FACE_Z - b.end.z - inset))
+	var key := [front, kit, piece, lit]
+	if not _batch.has(key):
+		_batch[key] = []
+	_batch[key].append(xf)
+
+func _flush_batch() -> void:
+	for key in _batch:
+		var front: Node3D = key[0]
+		var kit: String = key[1]
+		var piece: String = key[2]
+		var lit: bool = key[3]
+		var xfs: Array = _batch[key]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _window_variant(kit, piece, lit) if piece.begins_with("window_") else _mesh(kit, piece)
+		mm.instance_count = xfs.size()
+		for i in xfs.size():
+			mm.set_instance_transform(i, xfs[i])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.name = "%s_%s%s" % [piece, kit, "_lit" if lit else ""]
+		mmi.multimesh = mm
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.lod_bias = 0.25
+		front.add_child(mmi)
+	_batch.clear()
+
 ## Percent of upper-floor windows with a light on after dark.
 const LIT_WINDOWS := 32
 ## Shared by every lit window; its glow follows the daylight (refresh()).
@@ -386,23 +437,21 @@ func _build_front(f: Array) -> void:
 	else:
 		_flat_wall(front, x0, width, MODULE, kit)
 		for i in bays:
-			_piece(front, kit, p["base"], x0 + i * bay_w, 0.0, sx)
+			_piece_b(front, kit, p["base"], x0 + i * bay_w, 0.0, sx)
 	# Upper floors: window bays, a band between floors, the crown on top.
 	var win: AABB = _mesh(kit, p["window"]).get_aabb()
 	for floor_i in range(1, f[4]):
 		var y := floor_i * MODULE
 		for i in bays:
 			var bx := x0 + i * bay_w
-			_piece(front, kit, p["bay"], bx, y, sx)
-			var w := _piece(front, kit, p["window"], bx + (bay_w - win.size.x) / 2.0, y + (MODULE - win.size.y) / 2.0)
+			_piece_b(front, kit, p["bay"], bx, y, sx)
 			# Someone's home behind about a third of the windows: lit at night.
-			if absi(("%s%d%d" % [f[0], floor_i, i]).hash()) % 100 < LIT_WINDOWS:
-				for k in w.mesh.get_surface_count():
-					if w.get_surface_override_material(k) == _glass():
-						w.set_surface_override_material(k, _lit_glass())
-			_piece(front, kit, p["band"], bx, y - 0.1, sx)
+			var lit: bool = absi(("%s%d%d" % [f[0], floor_i, i]).hash()) % 100 < LIT_WINDOWS
+			_piece_b(front, kit, p["window"], bx + (bay_w - win.size.x) / 2.0, y + (MODULE - win.size.y) / 2.0, 1.0, 0.0, lit)
+			_piece_b(front, kit, p["band"], bx, y - 0.1, sx)
 	for i in bays:
-		_piece(front, kit, p["crown"], x0 + i * bay_w, f[4] * MODULE, sx)
+		_piece_b(front, kit, p["crown"], x0 + i * bay_w, f[4] * MODULE, sx)
+	_flush_batch()
 	front.set_meta("place", f[5])
 	if f[5] != "":
 		_storefront(front, x0, width, walk_in)

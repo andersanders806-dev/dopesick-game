@@ -277,7 +277,7 @@ func upgrade_current() -> bool:
 
 func swap() -> bool:
 	var other := 1 - active
-	if slots[other] == null:
+	if slots[other] == null or lethal_active():
 		return false
 	_switch_to(other)
 	return true
@@ -320,7 +320,7 @@ func _process(delta: float) -> void:
 			_fire_queued = true
 	_trigger_down = down
 	# A melee swing hides the gun: no aim (the scope circle) while it lasts, as in Call of Duty's knife.
-	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting() and _swing_t < 0.0 and not _sliding()
+	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting() and _swing_t < 0.0 and not _sliding() and not lethal_active()
 
 ## The one-shot buttons (a press is an event: the mouse wheel has no "held").
 func _unhandled_input(event: InputEvent) -> void:
@@ -349,7 +349,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("melee"):
 		# A melee weapon with a heavy hit waits to see whether the button is held; the knife goes at once.
 		if melee_data != null and melee_data.heavy_mult > 0.0 and melee_data.melee_arc > 0.0:
-			if _swing_t < 0.0 and _melee_cd <= 0.0:
+			if _swing_t < 0.0 and _melee_cd <= 0.0 and not lethal_active():
 				_melee_hold = 0.0
 		else:
 			melee()
@@ -361,7 +361,7 @@ func _purchase_in_reach() -> bool:
 
 ## The gun in slot `i`, if there is one there and it isn't in your hands.
 func select(i: int) -> bool:
-	if i < 0 or i >= MAX_SLOTS or i == active or slots[i] == null:
+	if i < 0 or i >= MAX_SLOTS or i == active or slots[i] == null or lethal_active():
 		return false
 	_switch_to(i)
 	return true
@@ -430,7 +430,7 @@ func advance(delta: float) -> void:
 
 func reload() -> bool:
 	var d := current
-	if d == null or reloading or mag >= d.mag_size or reserve <= 0 or _swing_t >= 0.0:
+	if d == null or reloading or mag >= d.mag_size or reserve <= 0 or _swing_t >= 0.0 or lethal_active():
 		_reload_resume = false
 		return false
 	reloading = true
@@ -768,7 +768,7 @@ func has_melee(base: String) -> bool:
 ## of you at once. A swing's blow lands a moment in (advance()), on up to melee_targets zombies in its arc; a zombie
 ## out of reach but within lunge_range is lunged at first.
 func melee(heavy := false) -> bool:
-	if _melee_cd > 0.0 or melee_data == null or _swing_t >= 0.0:
+	if _melee_cd > 0.0 or melee_data == null or _swing_t >= 0.0 or lethal_active():
 		return false
 	var d := melee_data
 	if d.melee_arc > 0.0:
@@ -931,6 +931,10 @@ func _strike(d: WD) -> void:
 	swing_landed.emit(hits, killed, wall)
 
 # --- The lethal slot: the Mk 2 frag (player/Lethal.gd does the throwing) ----------------------
+
+## The pin is out or the grenade is being drawn or thrown: the gun is out of the way (no reload, swing, swap or sights).
+func lethal_active() -> bool:
+	return lethal != null and lethal.has_method("active") and lethal.active()
 
 func set_grenades(n: int) -> void:
 	var c := clampi(n, 0, GRENADE_MAX)
@@ -1150,7 +1154,10 @@ func _gib(z: Node, at: Vector3, dir: Vector3, k: float) -> void:
 	var gore := Gore.of(z)
 	if gore == null:
 		return
-	gore.burst(z, at, dir, 1.0 + k, 3)
+	# Seen from far the bits are small: more of them, and a bigger cloud, the further the camera is.
+	var cam := get_viewport().get_camera_3d() if get_viewport() != null else null
+	var far := clampf(cam.global_position.distance_to(at) / 24.0, 0.0, 1.0) if cam != null else 0.0
+	gore.burst(z, at, dir, 1.0 + k + 1.2 * far, 3 + int(6.0 * far))
 	var limbs := ["arm_l", "arm_r", "leg_l", "leg_r"]
 	gore.sever(z, limbs[rng.randi() % limbs.size()], dir)
 	if k > 0.7:

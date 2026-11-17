@@ -49,6 +49,8 @@ var _spoon: Node3D
 var _spoon_v := Vector3.ZERO
 var _spoon_t := -1.0
 var _shape := SphereShape3D.new()
+var _mats: Array = []
+var _blinking := false
 var _exclude: Array[RID] = []
 var _spin_axis := Vector3.RIGHT
 var _spin_rate := SPIN
@@ -82,6 +84,7 @@ func _ready() -> void:
 		_spoon.add_child(copy)
 		_spoon_xf_from = sw.transform
 		sw.visible = false
+	_make_glint()
 	for i in 3:
 		var a := AudioStreamPlayer3D.new()
 		a.unit_size = 6.0
@@ -96,6 +99,48 @@ func _ready() -> void:
 	add_child(_roll_voice)
 
 var _spoon_xf_from := Transform3D.IDENTITY
+
+## The warm self-lit rim of the thrown model (a faint emission from its own texture) so it can be seen in a night street,
+## and its red blink in the last second of the fuse. The materials are this node's own copies.
+const GLINT := 0.45
+const GLINT_COLOR := Color(1.0, 0.72, 0.45)
+const BLINK_COLOR := Color(1.0, 0.1, 0.05)
+
+func _make_glint() -> void:
+	for mi in _model.find_children("*", "MeshInstance3D", true, false):
+		var m := mi as MeshInstance3D
+		if m.mesh == null:
+			continue
+		for i in m.mesh.get_surface_count():
+			var src := m.get_active_material(i) as StandardMaterial3D
+			if src == null:
+				continue
+			var d := src.duplicate() as StandardMaterial3D
+			d.emission_enabled = true
+			d.emission = GLINT_COLOR
+			d.emission_energy_multiplier = GLINT
+			if d.albedo_texture != null:
+				d.emission_texture = d.albedo_texture
+			m.set_surface_override_material(i, d)
+			_mats.append(d)
+
+## The rim and the blink for a fuse with `left` seconds to go: steady glint, then a red pulse (6 Hz, quicker to 14) in the last second.
+func _glow(left: float) -> void:
+	var blink := left < 1.0
+	if not blink and not _blinking:
+		return
+	_blinking = blink
+	var on := false
+	if blink:
+		var f := 1.0 - clampf(left, 0.0, 1.0)
+		on = sin(left * lerpf(6.0, 14.0, f) * TAU) > 0.0
+	for m in _mats:
+		(m as StandardMaterial3D).emission = BLINK_COLOR if on else GLINT_COLOR
+		(m as StandardMaterial3D).emission_energy_multiplier = 3.0 if on else GLINT
+
+## Whether the blink is lit now (the tests).
+func blink_lit() -> bool:
+	return _mats.size() > 0 and (_mats[0] as StandardMaterial3D).emission_energy_multiplier > 1.0
 
 ## Loads the bounce and roll sounds now (the title's warm-up and the level's), so the first bounce reads no file.
 static func warm_files() -> void:
@@ -129,6 +174,8 @@ func launch(from: Vector3, vel: Vector3, fuse_s: float, who: Node = null, ignore
 	v = vel
 	fuse = fuse_s
 	state = "air"
+	_blinking = true
+	_glow(fuse)
 	bounces = 0
 	rolling_time = 0.0
 	last_surface = ""
@@ -182,6 +229,7 @@ func step(delta: float) -> void:
 		return
 	fuse -= delta
 	_spoon_fly(delta)
+	_glow(fuse)
 	if fuse <= 0.0:
 		detonate()
 		return

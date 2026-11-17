@@ -334,4 +334,123 @@ func _scene_checks() -> void:
 	fx.detonate(player.global_position + Vector3(2, 0.1, 0), Vector3.UP, 1.0)
 	_check(fx.last_sound.has("ring") and fx.last_sound["muffle_hold"] > 0.5 and fx.last_sound.has("duck") and fx.last_sound.has("slap"), "a blast at 2 m rings the ears, muffles and ducks the rest, with the street's slapback (%s)" % [fx.last_sound])
 	await _frames(3)
+	await _fix2_checks(city, holder, lethal, player, zm, ghud)
 	zm.leave()
+
+# --- Fix round 2 -------------------------------------------------------------------------------------
+
+func _fix2_checks(city: Node, holder: Node, lethal: Node, player: Node3D, zm: Node, ghud: Node) -> void:
+	_section("Grenade fix round 2: locks, hint, empty pouch, fuse, danger radius, voices, far blast, glint, audio release")
+	var S = lethal.S
+	holder._swap_left = 0.0
+	holder.set_grenades(4)
+	holder.give(_wd("ar"))
+	holder.refill_all()
+	holder._swap_left = 0.0
+	holder._cooldown = 0.0
+	holder.aiming = false
+	var slot_before: int = holder.active
+	# While a grenade is out: no reload, melee, swap, select, heavy hold or sights.
+	holder.mag = 5
+	lethal.press()
+	for i in 20:
+		lethal.advance(1.0 / 60.0)
+	_check(lethal.state == S.HELD and holder.lethal_active(), "the pin is out and the holder knows (lethal_active)")
+	_check(not holder.reload() and not holder.reloading, "R during a cook does nothing")
+	_check(not holder.melee() and holder._swing_t < 0.0, "V during a cook does nothing")
+	_check(not holder.swap() and not holder.select(1 - holder.active) and holder.active == slot_before, "Q, 1 and 2 during a cook do nothing")
+	Input.action_press("aim")
+	holder._process(0.016)
+	_check(holder.aiming == false, "with the aim button down the sights stay down (aiming false)")
+	Input.action_release("aim")
+	var swap_hold: float = 0.7
+	holder._swap_left = swap_hold
+	lethal.release()
+	for i in 60:
+		lethal.advance(1.0 / 60.0)
+	_check(lethal.state == S.IDLE and holder._swap_left <= swap_hold and holder._swap_left > 0.0 or holder._swap_left == 0.0, "a swap clock that was running is not zeroed by the throw's end (%.2f)" % holder._swap_left)
+	for g in lethal.live_grenades():
+		g.stop()
+	holder._swap_left = 0.0
+	holder._melee_hold = 0.0
+	_check(not lethal.can_start(), "a pending heavy-melee hold keeps the grenade in the pouch")
+	holder._melee_hold = -1.0
+	_check(lethal.can_start() and not holder.lethal_active(), "and with it gone G starts and the gun is free")
+
+	# The fuse: what the cook leaves is thrown, less the wind-up that did not count.
+	lethal.press()
+	for i in 90:
+		lethal.advance(1.0 / 60.0)
+	var cook_at: float = lethal.cook
+	lethal.release()
+	while lethal.state != S.FOLLOW and lethal.state != S.IDLE:
+		lethal.advance(1.0 / 60.0)
+	var gl: Node3D = lethal.live_grenades()[0]
+	_check(absf(gl.fuse_left() - (3.5 - lethal.last_cook - lethal.WIND_TIME)) < 0.03, "fuse thrown = 3.5 - cook - wind-up (%.2f, cooked %.2f)" % [gl.fuse_left(), lethal.last_cook])
+	# The glint and the last-second blink.
+	var lit_early := false
+	gl.fuse = 2.0
+	gl.step(1.0 / 60.0)
+	lit_early = gl.blink_lit()
+	var lit_late := false
+	var unlit_late := false
+	gl.fuse = 0.9
+	for i in 30:
+		gl.step(1.0 / 120.0)
+		if gl.blink_lit():
+			lit_late = true
+		else:
+			unlit_late = true
+	_check(not lit_early and lit_late and unlit_late, "the thrown grenade has a rim and blinks red in its last second")
+	gl.stop()
+	for g in lethal.live_grenades():
+		g.stop()
+	for i in 40:
+		lethal.advance(1.0 / 60.0)
+
+	# The empty pouch answers; the key and the name are on the HUD.
+	holder.set_grenades(0)
+	var pulsed := [false]
+	lethal.empty_pressed.connect(func(): pulsed[0] = true)
+	var glyphs: Script = load("res://ui/Glyphs.gd")
+	_check(glyphs.KEY.get("lethal", "") == "G" and glyphs.PAD.get("lethal", ["", ""])[0] == "R1", "the glyph table names G and R1")
+	_check(not lethal.press() and pulsed[0], "G with none left clicks and tells the HUD")
+	if ghud != null:
+		ghud._process(0.016)
+		_check(ghud.pulse_t > 0.3, "the HUD pulses its red 0 (%.2f s)" % ghud.pulse_t)
+		ghud.hint_t = 0.0
+		holder.set_grenades(2)
+		ghud._on_count(2)
+		_check(ghud.hint_t > 2.0, "a restock shows '[G] MK 2 FRAG' again (%.1f s)" % ghud.hint_t)
+
+	# Crews' radius; M7: four sets of voices; M2 the veil; far blast visible; audio released on leaving the scene.
+	var crew: Node3D = load("res://fx/GangGrenade.gd").new()
+	crew.kind = "frag"
+	_check(absf(crew.danger_radius() - 4.5) < 0.01, "a crew's frag has its own danger radius (%.1f m)" % crew.danger_radius())
+	crew.free()
+	var fx: Node3D = Explosion.of(holder)
+	_check(fx._vsets.size() == 4, "the explosion has four sets of sound voices (%d)" % fx._vsets.size())
+	var sets_used := {}
+	for k in 4:
+		fx.detonate(player.global_position + Vector3(30 + k, 0.1, 0), Vector3.UP, 1.0)
+		sets_used[fx._vsets[(fx._vset_next + 3) % 4]] = true
+	_check(sets_used.size() == 4, "four blasts in a row take four different sets (none cuts another's boom)")
+	fx._veil_a = 0.0
+	fx.detonate(player.global_position + Vector3(1.0, 0.1, 0), Vector3.UP, 1.0)
+	_check(fx.veil_alpha() > 0.5, "a blast inside 4 m flashes the screen (%.2f)" % fx.veil_alpha())
+	fx._veil_a = 0.0
+	fx.detonate(player.global_position + Vector3(30, 0.1, 0), Vector3.UP, 1.0)
+	_check(fx.veil_alpha() == 0.0 and fx._flash.omni_range > 20.0, "and one at 30 m does not, but its light reaches %.0f m" % fx._flash.omni_range)
+	# Left mid-ring: the buses are released.
+	fx.detonate(player.global_position + Vector3(2, 0.1, 0), Vector3.UP, 1.0)
+	for i in 6:
+		await physics_frame
+	var lows: Array = Explosion._lows
+	_check(not lows.is_empty() and AudioServer.is_bus_effect_enabled(lows[0][0], lows[0][1]), "a close blast is muffling the buses")
+	var sfxn: Node = root.get_node("SFX")
+	_check(sfxn.ear_hz < 20000.0, "and the autoload's muffle (%.0f Hz)" % sfxn.ear_hz)
+	fx.get_parent().remove_child(fx)
+	fx.free()
+	_check(not AudioServer.is_bus_effect_enabled(lows[0][0], lows[0][1]) and sfxn.ear_hz >= 20400.0, "leaving the scene releases the low-pass and the muffle (%.0f Hz)" % sfxn.ear_hz)
+	for e in Explosion._amps:
+		_check(not AudioServer.is_bus_effect_enabled(e[0], e[1]), "and the duck on bus %d" % e[0])

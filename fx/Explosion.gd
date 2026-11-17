@@ -22,6 +22,8 @@ const GunSounds := preload("res://weapons/GunSounds.gd")
 const PadRumble := preload("res://player/PadRumble.gd")
 
 const SLOTS := 2
+## Sets of sound voices (the close and far booms, the slapback, the debris): one set per blast, in turn.
+const VOICE_SETS := 4
 const DECALS := 6
 const FIRE_LIFE := 1.5
 const FIRE_SIZE := 5.5
@@ -67,16 +69,14 @@ class Blast:
 	var dust_mat: ShaderMaterial
 	var sparks: CPUParticles3D
 	var grit: CPUParticles3D
-	var boom_a: AudioStreamPlayer3D
-	var boom_c: AudioStreamPlayer3D
-	var slap: AudioStreamPlayer3D
-	var debris: AudioStreamPlayer3D
 
 ## Off, the cards, particles, light and decal are not drawn (the sound, the shake and the counts stay): the perf probe uses it to
 ## measure another blast's picture alone (dev-tools/perf_16g.gd).
 var draw_enabled := true
 var rng := RandomNumberGenerator.new()
 var _blasts: Array[Blast] = []
+var _vsets: Array = []
+var _vset_next := 0
 var _decals: Array[Decal] = []
 var _decal_age: Array[float] = []
 var _decal_next := 0
@@ -99,6 +99,8 @@ var _duck_amt := 0.0
 var _duck_on := false
 ## For the tests: blasts made, the last one's place, power, and what the sound did.
 var blasts := 0
+var _veil: ColorRect
+var _veil_a := 0.0
 var last_at := Vector3.INF
 var last_power := 0.0
 var last_sound := {}
@@ -135,6 +137,31 @@ static func warm_files() -> void:
 	for n in ["explosion_a_5x5", "explosion_b_5x5", "smoke_wispy_8x8", "dust_cloud_8x8", "sparks_4x1", "grit_4x2", "scorch_albedo_1", "scorch_albedo_2", "scorch_normal_1", "scorch_normal_2"]:
 		texture(n)
 
+## Leaving the scene while a close blast is still dulling the world must not leave the buses dull: the low-pass, the duck and the
+## sickness-muffle override are the audio server's and the autoload's, and this node is what releases them.
+func _exit_tree() -> void:
+	release_audio()
+
+## Everything the ear muffle and the duck did to the buses, undone at once (also what the node does when it is freed).
+func release_audio() -> void:
+	if _ear_on or _duck_on or not _pending.is_empty():
+		for e in _lows:
+			AudioServer.set_bus_effect_enabled(e[0], e[1], false)
+			(e[2] as AudioEffectLowPassFilter).cutoff_hz = 20500.0
+		for e in _amps:
+			AudioServer.set_bus_effect_enabled(e[0], e[1], false)
+			(e[2] as AudioEffectAmplify).volume_db = 0.0
+		var sfx: Node = (Engine.get_main_loop() as SceneTree).root.get_node_or_null("SFX") if Engine.get_main_loop() is SceneTree else null
+		if sfx != null and sfx.has_method("set_ear_muffle"):
+			sfx.set_ear_muffle(20500.0)
+	_ear_on = false
+	_duck_on = false
+	_ear_hold = 0.0
+	_duck_amt = 0.0
+	_pending.clear()
+	if is_instance_valid(_ring):
+		_ring.stop()
+
 func _ready() -> void:
 	add_to_group("explosion_fx")
 	name = "Explosion"
@@ -159,11 +186,10 @@ func _build() -> void:
 		b.dust.rotation.x = -PI * 0.5
 		b.sparks = _sparks()
 		b.grit = _grit()
-		b.boom_a = _voice()
-		b.boom_c = _voice()
-		b.slap = _voice()
-		b.debris = _voice()
 		_blasts.append(b)
+	# The sound has its own pool: four sets of voices taken in turn (a third blast inside 2.7 s no longer cuts the first one's boom).
+	for i in VOICE_SETS:
+		_vsets.append({"a": _voice(), "c": _voice(), "slap": _voice(), "debris": _voice()})
 	for i in DECALS:
 		var d := Decal.new()
 		d.texture_albedo = texture("scorch_albedo_1" if i % 2 == 0 else "scorch_albedo_2")
@@ -339,6 +365,8 @@ func detonate(at: Vector3, normal := Vector3.UP, power := 1.0) -> void:
 	_flash_t = 0.0
 	_scorch(b, big)
 	var d := listener_distance(at)
+	# A far flash lights the street round it: the light reaches further the further the blast is from the eye.
+	_flash.omni_range = FLASH_RANGE + 0.4 * minf(d, 40.0)
 	_sound(b, at, d, power)
 	_shake(d, power)
 
@@ -410,9 +438,17 @@ func _update(b: Blast, _delta: float) -> void:
 	var u := b.age / FIRE_LIFE
 	# The fireball: lifted off the surface by 0.55 of its half size, and never wider than the screen is tall where it is.
 	var side := FIRE_SIZE * big
+	var far_k := 0.0
 	if cam != null:
 		var d := cam.global_position.distance_to(b.at + b.normal)
-		side = minf(side, maxf(2.0 * d * tan(deg_to_rad(cam.fov) * 0.5), 0.8))
+		var screen_h := 2.0 * d * tan(deg_to_rad(cam.fov) * 0.5)
+		side = minf(side, maxf(screen_h, 0.8))
+		# Far away it must still be seen: from 15 m the card is at least 0.22 of the screen's height (but never more than 6 times
+		# its size near) and blooms brighter, as a real flash does against a dark street.
+		if d > 15.0:
+			side = maxf(side, minf(0.22 * screen_h, FIRE_SIZE * big * 6.0))
+			far_k = clampf((d - 15.0) / 25.0, 0.0, 1.0)
+	b.fire_mat.set_shader_parameter("brightness", 1.0 + 0.7 * far_k)
 	b.fire.visible = u < 1.0
 	var gy := b.floor_y if b.floor_y != -INF else b.at.y - 0.05
 	var ground := b.normal.y > 0.7
@@ -467,6 +503,11 @@ func _process(delta: float) -> void:
 				_decals[i].modulate.a = clampf(1.0 - over / SCORCH_FADE, 0.0, 1.0)
 				if over >= SCORCH_FADE:
 					_decals[i].visible = false
+	if _veil_a > 0.0:
+		_veil_a = maxf(_veil_a - delta * 3.2, 0.0)
+		_veil.modulate.a = _veil_a
+		if _veil_a <= 0.0:
+			_veil.visible = false
 	_run_pending(delta)
 	_run_ears(delta)
 
@@ -497,22 +538,24 @@ func _sound(b: Blast, at: Vector3, d: float, power: float) -> void:
 		return
 	var m := mix_at(d, power)
 	var delay: float = m["delay"]
-	b.boom_a.global_position = at
-	b.boom_c.global_position = at
-	b.slap.global_position = at
-	b.debris.global_position = at + Vector3(0, 2.5, 0)
+	var vs: Dictionary = _vsets[_vset_next]
+	_vset_next = (_vset_next + 1) % _vsets.size()
+	(vs["a"] as Node3D).global_position = at
+	(vs["c"] as Node3D).global_position = at
+	(vs["slap"] as Node3D).global_position = at
+	(vs["debris"] as Node3D).global_position = at + Vector3(0, 2.5, 0)
 	var pitch := rng.randf_range(0.97, 1.03)
 	if m["a_db"] > -INF:
-		_queue(b.boom_a, delay, sound("real_A_taet"), m["a_db"], pitch)
+		_queue(vs["a"], delay, sound("real_A_taet"), m["a_db"], pitch)
 		last_sound["a_db"] = m["a_db"]
 	if m["c_db"] > -INF:
-		_queue(b.boom_c, delay, sound("real_C_fjern"), m["c_db"], pitch)
+		_queue(vs["c"], delay, sound("real_C_fjern"), m["c_db"], pitch)
 		last_sound["c_db"] = m["c_db"]
 	last_sound["delay"] = delay
 	var roll := -clampf((d - CLOSE_M) * 0.1, 0.0, 14.0)
 	# The street's echo, outdoors only: 0.12 s behind the crack, softer the further you are.
 	if not GunSounds.indoors(self):
-		_queue(b.slap, delay + 0.12, sound("slapback_street"), (-9.0 if d < 20.0 else -16.0) + roll * 0.5, pitch)
+		_queue(vs["slap"], delay + 0.12, sound("slapback_street"), (-9.0 if d < 20.0 else -16.0) + roll * 0.5, pitch)
 		last_sound["slap"] = true
 	# Rubble coming down, for anyone within earshot of it; dull and low when far.
 	if d < FAR_M:
@@ -520,7 +563,7 @@ func _sound(b: Blast, at: Vector3, d: float, power: float) -> void:
 		var db := lerpf(-14.0, -4.0, near) + (2.0 if power > 1.0 else 0.0)
 		var k := 1 + (rng.randi() + _last_debris + 1) % 3
 		_last_debris = k
-		_queue(b.debris, 0.35 + delay, sound("debris_%d" % k), db, rng.randf_range(0.9, 1.05) * (0.85 if d > 20.0 else 1.0))
+		_queue(vs["debris"], 0.35 + delay, sound("debris_%d" % k), db, rng.randf_range(0.9, 1.05) * (0.85 if d > 20.0 else 1.0))
 		last_sound["debris"] = true
 	# Very close: the ears ring and the world goes dull for a while.
 	if d < MUFFLE_M:
@@ -645,6 +688,9 @@ func duck_now() -> float:
 # --- Shake and rumble ----------------------------------------------------------------------------
 
 func _shake(d: float, power: float) -> void:
+	# Inside 4 m the cards are faded out (they would fill the lens): the blast is a white-orange flash over the screen instead.
+	if d < 4.0:
+		_blind(0.8 * (1.0 - clampf(d / 4.0, 0.0, 1.0) * 0.5))
 	var k := clampf(1.0 - d / SHAKE_REACH, 0.0, 1.0)
 	last_shake = 0.0
 	if k <= 0.0:
@@ -657,6 +703,26 @@ func _shake(d: float, power: float) -> void:
 	var gfx: Node = get_tree().root.get_node_or_null("Graphics")
 	if gfx != null and bool(gfx.get("rumble")):
 		PadRumble.vibrate(0.6 * k, 0.9 * k, 0.25 + 0.45 * k, "explosion")
+
+## The screen flash of a blast inside 4 m (alpha, decaying over 0.25 s).
+func _blind(alpha: float) -> void:
+	if _veil == null:
+		var layer := CanvasLayer.new()
+		layer.layer = 40
+		add_child(layer)
+		_veil = ColorRect.new()
+		_veil.color = Color(1.0, 0.86, 0.62, 1.0)
+		_veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_veil.visible = false
+		layer.add_child(_veil)
+	_veil_a = maxf(_veil_a, alpha)
+	_veil.modulate.a = _veil_a
+	_veil.visible = true
+
+## The flash's alpha now (the tests).
+func veil_alpha() -> float:
+	return _veil_a
 
 ## Draws every part of the pool once, as a blast would (fx/Prewarm.gd): the light on, the cards and particles are
 ## shown by the pool walk (Prewarm._collect).

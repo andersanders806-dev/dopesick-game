@@ -31,6 +31,8 @@ signal state_changed(s: int)
 signal pin_pulled
 signal thrown(cooked: float, underhand: bool)
 signal went_off_in_hand
+## G pressed with the pouch empty: the HUD pulses its red 0.
+signal empty_pressed
 
 var holder: Node
 var hands: Node
@@ -95,11 +97,18 @@ func _process(delta: float) -> void:
 
 func can_start() -> bool:
 	return state == S.IDLE and int(holder.get("grenades")) > 0 and holder.call("_can_act") \
-		and float(holder.get("_swing_t")) < 0.0
+		and float(holder.get("_swing_t")) < 0.0 and float(holder.get("_melee_hold")) < 0.0
 
 ## The button went down: draws the grenade. False if it can't (none left, mid-throw, mid-swing).
 func press() -> bool:
 	if not can_start():
+		# An empty pouch answers: a dry click, a tick of the pad and the HUD's red 0 pulses.
+		if state == S.IDLE and int(holder.get("grenades")) <= 0 and holder.call("_can_act") and float(holder.get("_swing_t")) < 0.0:
+			var dry := load("res://weapons/GunSounds.gd").file("dry_click") as AudioStream
+			if dry != null:
+				_play_stream(dry, -4.0, 1.25)
+			load("res://player/PadRumble.gd").vibrate(0.1, 0.0, 0.04, "frag_empty")
+			empty_pressed.emit()
 		return false
 	# A reload under way is cut (and begins again when the throw is done), as a swap does.
 	_cut_reload = false
@@ -305,7 +314,8 @@ func _throw() -> void:
 		inherit = pl.get("velocity")
 	var vel := dir * speed + inherit
 	var g := _next_grenade()
-	g.launch(h[0], vel, maxf(FUSE - cook, 0.05), holder, pl)
+	# (The wind-up took WIND_TIME of the fuse too: the cook did not advance in it.)
+	g.launch(h[0], vel, maxf(FUSE - cook - WIND_TIME, 0.05), holder, pl)
 	last_cook = cook
 	last_velocity = vel
 	last_origin = h[0]
@@ -328,6 +338,6 @@ func _finish() -> void:
 	if _cut_reload:
 		holder.set("_reload_resume", true)
 		_cut_reload = false
-	holder.set("_swap_left", 0.0)
+	# (The swap clock this node held at 0.05 s decays by itself: a longer one that was running is not cut.)
 	if holder.has_signal("ammo_changed"):
 		holder.emit_signal("ammo_changed")

@@ -145,7 +145,7 @@ func _on_state(s: int) -> void:
 		# The spoon flies at the release.
 		_spoon.reparent(vm, true)
 		_spoon_t = 0.0
-		_spoon_v = Vector3(0.25, 0.55, -0.9)
+		_spoon_v = Vector3(0.25, 0.55, -1.4)
 
 func _on_pin() -> void:
 	if _pin != null and is_instance_valid(vm) and _model != null and _model.visible:
@@ -221,7 +221,7 @@ func advance(delta: float) -> void:
 		_spoon_v.y -= 4.0 * delta
 		_spoon.position += _spoon_v * delta
 		_spoon.rotate_x(14.0 * delta)
-		if _spoon_t > 0.4:
+		if _spoon_t > 0.3:
 			_spoon.visible = false
 			_spoon_t = -1.0
 	_dip_gun(dip)

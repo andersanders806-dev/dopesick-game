@@ -40,6 +40,10 @@ func fuse_left() -> float:
 			return maxf(FUSE - _t, 0.0)
 	return INF
 
+## The blast's reach, for the HUD's arrow (a crew's frag reaches its ring, not the player's 6 m).
+func danger_radius() -> float:
+	return radius()
+
 ## Where the danger is, for the HUD.
 func danger_at() -> Vector3:
 	return global_position

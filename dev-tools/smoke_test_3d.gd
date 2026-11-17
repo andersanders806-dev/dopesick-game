@@ -297,6 +297,14 @@ func _fp_only_checks(gs: Node) -> void:
 	while waited < 1800 and not (pusher.state == pusher.State.POST and pusher.global_position.distance_to(Vector3(14.0, 0, -3.5)) < 3.0):
 		await _frames(10)
 		waited += 10
+	# He is judged standing still on his post (a few more frames of his walk into it moved him under the test before).
+	var still := 0
+	var last_at := pusher.global_position
+	while still < 40 and waited < 2400:
+		await _frames(2)
+		waited += 2
+		still = still + 2 if pusher.global_position.distance_to(last_at) < 0.01 else 0
+		last_at = pusher.global_position
 	p = _player()
 	p.global_position = pusher.global_position + Vector3(-6.0, 0.0, 0.0)
 	p.velocity = Vector3.ZERO
@@ -314,7 +322,7 @@ func _fp_only_checks(gs: Node) -> void:
 	await _frames(3)
 	p.nearby.erase(null)
 	p._try_interact()
-	await _frames(45)
+	await _frames(100)
 	var to_d: Vector3 = pusher.global_position + Vector3(0, 1.45, 0) - p.camera.global_position
 	var dealer_fwd: Vector3 = -p.camera.global_transform.basis.z
 	_check(dealer_fwd.dot(to_d.normalized()) > 0.95, "  talking to the dealer turns the view to him (%.3f)" % dealer_fwd.dot(to_d.normalized()))
@@ -6814,6 +6822,8 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	# Twenty claws would put the player down long before the ring forms.
 	root.get_node("ZombieMode").health = 1e9
 	var horde := []
+	# (The same twenty bodies and gaits every run.)
+	spawner._rng.seed = 21
 	for i in 20:
 		var at := ring_at + Vector3(4.0 + (i % 5) * 1.0, 0.0, -1.5 + (i / 5) * 1.0)
 		horde.append(spawner.spawn_one("runner" if i % 2 == 0 else "walker", at))
@@ -6822,8 +6832,11 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	var attackers_seen := 0
 	var settled_looks := 0
 	var pair_info := ""
-	for f in 1500:
+	# 1500 frames, and more (to 2700) until the ring has settled for six looks: the horde's physics is not the test's subject.
+	for f in 2700:
 		await physics_frame
+		if f >= 1500 and settled_looks >= 6:
+			break
 		if f >= 900 and f % 30 == 0:
 			var near: Array = []
 			for zz in horde:
@@ -6871,6 +6884,9 @@ func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1, body :=
 	var sp: Node = parent.get_node("ZombieBlock").spawner
 	sp.enabled = false
 	sp.round_no = rnd
+	# The same body, gait and walk clip every time (the spawner's draws were unseeded: a head leaning off the aim line at
+	# frame 0 failed "the shot goes where the crosshair points" about one run in four).
+	sp._rng.seed = 7
 	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z), body)
 	zed.set_physics_process(false)
 	zed._anim_player.pause()

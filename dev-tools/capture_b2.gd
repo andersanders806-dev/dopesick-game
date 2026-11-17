@@ -258,7 +258,7 @@ func _melee(ids: Array) -> void:
 		while h.swing_time() >= 0.0:
 			await _run(1)
 			n += 1
-			if n % 3 == 0:
+			if n % 3 == 0 or (OS.get_environment("SNAPALL") != "" and n >= 17 and n <= 26):
 				await _snap("%s_swing_%02d" % [id, n])
 			if not hit_snapped and h.swing_time() >= h.swing_length() * d.swing_hit + 0.02:
 				hit_snapped = true

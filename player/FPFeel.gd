@@ -547,8 +547,8 @@ const SWING_BAT := [
 	[0.0, Vector3(0.36, -0.16, -0.36), Vector3(50.0, -30.0, -22.0)],
 	[0.18, Vector3(0.38, -0.08, -0.34), Vector3(66.0, -26.0, -26.0)],
 	[0.42, Vector3(0.18, -0.14, -0.46), Vector3(-8.0, 40.0, -10.0)],
-	[0.62, Vector3(-0.1, -0.26, -0.4), Vector3(-30.0, 78.0, 6.0)],
-	[1.0, Vector3(-0.3, -0.58, -0.22), Vector3(-30.0, 100.0, 20.0)],
+	[0.62, Vector3(-0.08, -0.26, -0.46), Vector3(-30.0, 66.0, 6.0)],
+	[1.0, Vector3(-0.12, -0.6, -0.5), Vector3(-34.0, 78.0, 20.0)],
 ]
 ## The machete: a forehand slash from high on the right down across to the left, the blade's flat to the eye.
 const SWING_BLADE := [
@@ -556,7 +556,7 @@ const SWING_BLADE := [
 	[0.16, Vector3(0.34, -0.14, -0.4), Vector3(44.0, -62.0, -62.0)],
 	[0.4, Vector3(0.1, -0.22, -0.52), Vector3(-10.0, 30.0, -62.0)],
 	[0.62, Vector3(-0.16, -0.3, -0.44), Vector3(-28.0, 66.0, -40.0)],
-	[1.0, Vector3(-0.3, -0.58, -0.22), Vector3(-50.0, 90.0, -20.0)],
+	[1.0, Vector3(-0.3, -0.58, -0.42), Vector3(-50.0, 90.0, -20.0)],
 ]
 
 func _pose_swing() -> bool:

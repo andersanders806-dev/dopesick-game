@@ -13,6 +13,8 @@ uniform vec4 blank_rect = vec4(0.0);
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform float roughness = 0.7;
 uniform float metallic = 0.0;
+// How hard the lamps' highlight shows on it (a flat top plate seen from above can turn to a white sheet).
+uniform float spec = 0.5;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform bool use_normal = false;
 uniform sampler2D orm_tex : hint_default_white, filter_linear_mipmap, repeat_enable;
@@ -110,6 +112,7 @@ void fragment() {
 			r = mix(r, mix(0.62, 0.3, wet), skin_m);
 		}
 	}
+	SPECULAR = spec;
 	if (procedural == 1) {
 		// Blued steel: dark with a soft sheen along the barrel.
 		float brush = 0.5 + 0.5 * sin(v_obj.z * 90.0 + sin(v_obj.x * 25.0) * 1.2);

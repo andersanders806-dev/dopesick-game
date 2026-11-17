@@ -23,6 +23,8 @@ extends RefCounted
 
 const VIEW := {
 	"glock": {
+		# (The slide and frame textures are pale: darkened toward the real gun's black.)
+		"look": {"albedo": 0.3, "rough_mul": 1.0},
 		"sight_pts": [Vector3(0.001, 0.0705, -0.124), Vector3(0.001, 0.0705, 0.024)],
 		"parts": {"slide": ["glockslide"], "mag": ["glockmag"]},
 		"muzzle": Vector3(0.002, 0.057, -0.137),
@@ -86,6 +88,8 @@ const VIEW := {
 		"hands": [Vector3(0.5, 0.1, 0.09), Vector3(0.5, 0.42, 0.65), 0.0, 0.0, 1.0, 1.0, "pistol_r", "pump_l", 0.95],
 	},
 	"aa12": {
+		# (Flat steel colours that the lamps turn to a white plate: darker and less mirror.)
+		"look": {"albedo": 0.2, "metal_mul": 0.0, "rough_mul": 1.0, "spec": 0.06},
 		"sights": [0.0, 0.12, 0.62, 0.76, 0.2, false, 0.0],
 		"parts": {"mag": ["drum mag empty_12"], "charge": ["reload handle_10"], "carrier": ["bolt carrier_6"]},
 		"carrier_back": 0.05,

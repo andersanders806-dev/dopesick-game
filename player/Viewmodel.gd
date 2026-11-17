@@ -272,10 +272,34 @@ func _convert(node: Node, cut := 0.05, is_arms := false) -> void:
 					kind = PLAIN_KIT[data.handling_family()].get("*", 0)
 				if kind != 0:
 					mat.set_shader_parameter("procedural", kind)
+			if not is_arms:
+				_apply_look(mat, src)
 			if data != null and data.tint.a > 0.0:
 				mat.set_shader_parameter("glow_color", Color(data.tint.r, data.tint.g, data.tint.b))
 				mat.set_shader_parameter("glow_amount", 0.9)
 			m.set_surface_override_material(s, mat)
+
+## The gun's own paint, from its GunViews "look" row (a model whose flat colours or pale texture blow out under the
+## street's lamps): albedo (a multiplier), rough_mul, metal_mul, spec (the highlight, 0..1), and by_name {material name: the same keys} for one
+## part of the model (the barrel against the stock). Review I5: the AA-12, the Glock and the machete read white.
+func _apply_look(mat: ShaderMaterial, src: Material) -> void:
+	var look: Dictionary = GunViews.pick(data, "look", {})
+	if look.is_empty():
+		return
+	var k := {}
+	k.merge(look)
+	var per: Dictionary = (look.get("by_name", {}) as Dictionary).get(String(src.resource_name), {})
+	k.merge(per, true)
+	if k.has("albedo"):
+		var c: Color = mat.get_shader_parameter("albedo")
+		var f := float(k["albedo"])
+		mat.set_shader_parameter("albedo", Color(c.r * f, c.g * f, c.b * f, c.a))
+	if k.has("spec"):
+		mat.set_shader_parameter("spec", float(k["spec"]))
+	if k.has("rough_mul"):
+		mat.set_shader_parameter("roughness", float(mat.get_shader_parameter("roughness")) * float(k["rough_mul"]))
+	if k.has("metal_mul"):
+		mat.set_shader_parameter("metallic", float(mat.get_shader_parameter("metallic")) * float(k["metal_mul"]))
 
 ## Every material the viewmodel draws with (the tests check each is on the shader).
 func materials() -> Array:

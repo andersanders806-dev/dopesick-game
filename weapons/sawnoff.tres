@@ -42,7 +42,7 @@ kick_up = 6.0
 kick_roll = 0.06
 optic = "none"
 optic_height = 0.024
-eye_relief = 0.62
+eye_relief = 0.3
 sound_set = "sawnoff"
 foley = {
 "break_open": ["common/break_open"],

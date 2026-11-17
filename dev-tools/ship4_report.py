@@ -127,7 +127,7 @@ def pairs(paths):
         for r in (1, 2):
             a = runs.get((s, "p%d" % r))
             f = runs.get((s.replace(":", "-") + "-floor", "pf%d" % r)) or runs.get(("floor", "pf%d_%s" % (r, s.replace(":", "-"))))
-            if not a:
+            if not a or not f:
                 continue
             x = a[-1]
             secs = SECS.get(s, 60.0)

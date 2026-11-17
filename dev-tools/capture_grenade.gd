@@ -15,7 +15,7 @@ var side_cam: Camera3D
 
 func _initialize() -> void:
 	Engine.set_meta("sandbox", true)
-	out = ProjectSettings.globalize_path("res://.pilot/ship16g/cap")
+	out = ProjectSettings.globalize_path("res://.pilot/ship16g_fix2/cap")
 	DirAccess.make_dir_recursive_absolute(out)
 	await process_frame
 	var gfx := root.get_node("Graphics")
@@ -49,7 +49,11 @@ func _initialize() -> void:
 	block.spawner.round_no = 3
 	for i in 90:
 		await process_frame
+	await _run(2)
+	await _snap("hud_key_hint_name")
 	await _hands()
+	await _flight_in_the_dark()
+	await _empty()
 	await _arc()
 	await _blasts()
 	await _gib()
@@ -110,6 +114,33 @@ func _hands() -> void:
 	await _run(30)
 	_clear()
 
+func _flight_in_the_dark() -> void:
+	# The throw as the thrower sees it in the night street: the grenade's rim, then its red blink before the bang.
+	h.set_grenades(4)
+	h._swap_left = 0.0
+	lethal.press()
+	await _run(20)
+	lethal.release()
+	await _run(14)
+	await _snap("night_throw_in_air")
+	await _run(24)
+	await _snap("night_throw_on_street")
+	var g: Node3D = lethal.live_grenades()[0]
+	g.fuse = 0.62
+	await _run(8)
+	await _snap("night_throw_blink")
+	await _run(40)
+	_clear()
+	await _run(60)
+
+func _empty() -> void:
+	h.set_grenades(0)
+	lethal.press()
+	await _run(5)
+	await _snap("hud_empty_pouch_pulse")
+	await _run(40)
+	h.set_grenades(4)
+
 func _arc() -> void:
 	# From the side: the throw and its first bounces.
 	side_cam = Camera3D.new()
@@ -156,22 +187,23 @@ func _blasts() -> void:
 	# Far: forty metres down the street.
 	var far := Vector3(cam.global_position.x + 40.0, 0.05, -3.0)
 	fx.detonate(far, Vector3.UP, 1.0)
-	for k in [3, 10, 25]:
+	for k in [2, 6, 12, 25]:
 		await _run(k)
 		await _snap("blast_far_40m_f%02d" % k)
 	await _run(150)
 
 func _gib() -> void:
-	var crowd := _zombies(6, Vector3(-14.0, 0.0, -5.0), Vector3(0.7, 0.0, 0.7))
+	# A group 16 to 19 m out: the blast must still read, with bodies in the air.
+	var crowd := _zombies(7, Vector3(-4.5, 0.0, -5.0), Vector3(0.6, 0.0, 0.5))
 	var cam: Camera3D = p.get("camera")
-	var at := Vector3(-12.4, 0.1, -3.0)
+	var at := Vector3(-3.0, 0.1, -3.0)
 	await _run(10)
 	await _snap("group_before")
 	load("res://fx/Explosion.gd").of(current_scene).detonate(at, Vector3.UP, 1.0)
 	h.explode(at, h.grenade_spec())
-	for k in [3, 6, 12, 30]:
+	for k in [2, 5, 9, 14, 30]:
 		await _run(k)
-		await _snap("group_gibbed_f%02d" % k)
+		await _snap("group_16m_gibbed_f%02d" % k)
 	var dead := 0
 	for z in crowd:
 		if is_instance_valid(z) and not z.is_alive():

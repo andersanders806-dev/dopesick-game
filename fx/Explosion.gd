@@ -443,10 +443,10 @@ func _update(b: Blast, _delta: float) -> void:
 		var d := cam.global_position.distance_to(b.at + b.normal)
 		var screen_h := 2.0 * d * tan(deg_to_rad(cam.fov) * 0.5)
 		side = minf(side, maxf(screen_h, 0.8))
-		# Far away it must still be seen: from 15 m the card is at least 0.22 of the screen's height (but never more than 6 times
+		# Far away it must still be seen: from 15 m the card is at least 0.30 of the screen's height (but never more than 8 times
 		# its size near) and blooms brighter, as a real flash does against a dark street.
 		if d > 15.0:
-			side = maxf(side, minf(0.22 * screen_h, FIRE_SIZE * big * 6.0))
+			side = maxf(side, minf(0.30 * screen_h, FIRE_SIZE * big * 8.0))
 			far_k = clampf((d - 15.0) / 25.0, 0.0, 1.0)
 	b.fire_mat.set_shader_parameter("brightness", 1.0 + 0.7 * far_k)
 	b.fire.visible = u < 1.0

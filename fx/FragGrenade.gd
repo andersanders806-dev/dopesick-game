@@ -50,6 +50,8 @@ var _spoon_v := Vector3.ZERO
 var _spoon_t := -1.0
 var _shape := SphereShape3D.new()
 var _mats: Array = []
+var _halo: MeshInstance3D
+var _halo_mat: StandardMaterial3D
 var _blinking := false
 var _exclude: Array[RID] = []
 var _spin_axis := Vector3.RIGHT
@@ -85,6 +87,7 @@ func _ready() -> void:
 		_spoon_xf_from = sw.transform
 		sw.visible = false
 	_make_glint()
+	_make_halo()
 	for i in 3:
 		var a := AudioStreamPlayer3D.new()
 		a.unit_size = 6.0
@@ -102,7 +105,7 @@ var _spoon_xf_from := Transform3D.IDENTITY
 
 ## The warm self-lit rim of the thrown model (a faint emission from its own texture) so it can be seen in a night street,
 ## and its red blink in the last second of the fuse. The materials are this node's own copies.
-const GLINT := 0.45
+const GLINT := 0.8
 const GLINT_COLOR := Color(1.0, 0.72, 0.45)
 const BLINK_COLOR := Color(1.0, 0.1, 0.05)
 
@@ -124,6 +127,26 @@ func _make_glint() -> void:
 			m.set_surface_override_material(i, d)
 			_mats.append(d)
 
+## A small warm glow round the grenade (a soft additive card facing the camera): a 7 cm dark thing in a night street is a speck
+## from 5 m on, this is what a thrower follows; it blinks red with the rim.
+func _make_halo() -> void:
+	_halo_mat = StandardMaterial3D.new()
+	_halo_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_halo_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_halo_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_halo_mat.no_depth_test = false
+	_halo_mat.albedo_texture = load("res://fx/ImpactFX.gd")._soft_texture()
+	_halo_mat.albedo_color = Color(1.0, 0.62, 0.3, 0.38)
+	_halo = MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(0.55, 0.55)
+	_halo.mesh = q
+	_halo.material_override = _halo_mat
+	_halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_halo.visible = false
+	add_child(_halo)
+
 ## The rim and the blink for a fuse with `left` seconds to go: steady glint, then a red pulse (6 Hz, quicker to 14) in the last second.
 func _glow(left: float) -> void:
 	var blink := left < 1.0
@@ -137,6 +160,8 @@ func _glow(left: float) -> void:
 	for m in _mats:
 		(m as StandardMaterial3D).emission = BLINK_COLOR if on else GLINT_COLOR
 		(m as StandardMaterial3D).emission_energy_multiplier = 3.0 if on else GLINT
+	if _halo_mat != null:
+		_halo_mat.albedo_color = Color(1.0, 0.12, 0.06, 0.8) if on else Color(1.0, 0.62, 0.3, 0.38)
 
 ## Whether the blink is lit now (the tests).
 func blink_lit() -> bool:
@@ -187,6 +212,8 @@ func launch(from: Vector3, vel: Vector3, fuse_s: float, who: Node = null, ignore
 		_exclude.append((ignore as CollisionObject3D).get_rid())
 	visible = true
 	_model.visible = true
+	if _halo != null:
+		_halo.visible = true
 	_model.position = Vector3.ZERO
 	_model.basis = Basis.IDENTITY
 	var side := vel.cross(Vector3.UP)
@@ -435,6 +462,8 @@ func detonate() -> void:
 	went_off_at = at
 	remove_from_group("live_grenade")
 	_model.visible = false
+	if _halo != null:
+		_halo.visible = false
 	if _roll_voice != null:
 		_roll_voice.stop()
 	var fx := Explosion.of(self)
@@ -456,6 +485,8 @@ func go_off_at(at: Vector3, who: Node) -> void:
 func _park() -> void:
 	state = "off"
 	visible = false
+	if _halo != null:
+		_halo.visible = false
 	if _spoon != null:
 		_spoon.visible = false
 	_spoon_t = -1.0
@@ -470,6 +501,8 @@ func show_for_warm(at: Vector3) -> void:
 	global_position = at
 	visible = true
 	_model.visible = true
+	if _halo != null:
+		_halo.visible = true
 	_model.position = Vector3.ZERO
 	if _spoon != null:
 		_spoon.visible = true

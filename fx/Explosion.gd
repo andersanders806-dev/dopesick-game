@@ -72,6 +72,9 @@ class Blast:
 	var slap: AudioStreamPlayer3D
 	var debris: AudioStreamPlayer3D
 
+## Off, the cards, particles, light and decal are not drawn (the sound, the shake and the counts stay): the perf probe uses it to
+## measure another blast's picture alone (dev-tools/perf_16g.gd).
+var draw_enabled := true
 var rng := RandomNumberGenerator.new()
 var _blasts: Array[Blast] = []
 var _decals: Array[Decal] = []
@@ -303,6 +306,13 @@ func detonate(at: Vector3, normal := Vector3.UP, power := 1.0) -> void:
 	b.normal = n
 	b.floor_y = _floor_below(at)
 	var big := 1.35 if power > 1.0 else 1.0
+	if not draw_enabled:
+		b.fire.visible = false
+		var d0 := listener_distance(at)
+		_sound(b, at, d0, power)
+		_shake(d0, power)
+		b.active = false
+		return
 	# Which sheet (and which way round) it is this time.
 	_flip_next += 1
 	b.fire_mat.set_shader_parameter("flipbook", texture("explosion_a_5x5" if (_flip_next + rng.randi()) % 2 == 0 else "explosion_b_5x5"))
@@ -601,8 +611,9 @@ func _run_ears(delta: float) -> void:
 			if not done:
 				(e[2] as AudioEffectLowPassFilter).cutoff_hz = hz
 		# The rest of the world (music, room tone) takes the lower of this and the sickness's own muffle (autoload/SFX.gd).
-		if SFX.has_method("set_ear_muffle"):
-			SFX.set_ear_muffle(20500.0 if done else hz)
+		var sfx: Node = get_tree().root.get_node_or_null("SFX")
+		if sfx != null and sfx.has_method("set_ear_muffle"):
+			sfx.set_ear_muffle(20500.0 if done else hz)
 		if done:
 			_ear_on = false
 			_ear_hold = 0.0
@@ -637,7 +648,8 @@ func _shake(d: float, power: float) -> void:
 	var holder := get_tree().get_first_node_in_group("weapon_holder")
 	if holder != null and holder.get("feel") != null:
 		holder.feel.add_trauma(trauma)
-	if Graphics.rumble:
+	var gfx: Node = get_tree().root.get_node_or_null("Graphics")
+	if gfx != null and bool(gfx.get("rumble")):
 		PadRumble.vibrate(0.6 * k, 0.9 * k, 0.25 + 0.45 * k, "explosion")
 
 ## Draws every part of the pool once, as a blast would (fx/Prewarm.gd): the light on, the cards and particles are

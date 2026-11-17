@@ -32,7 +32,7 @@ func _run() -> void:
 		if mi < marks.size() and Time.get_ticks_msec() - t0 > marks[mi]:
 			await _shot(out + "/card_%d.png" % (mi + 2))
 			mi += 1
-	print("CARD held %d ms" % _TW.card_ms)
+	print("CARD held %d ms, warm took %d ms" % [_TW.card_ms, _TW.took_ms])
 	await _frames(90)
 	await _shot(out + "/menu.png")
 	quit()

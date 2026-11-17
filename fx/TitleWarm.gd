@@ -39,6 +39,13 @@ const GUN_SFX := "res://assets/sfx/guns/"
 const GunSounds := preload("res://weapons/GunSounds.gd")
 const WD := preload("res://weapons/WeaponData.gd")
 const SOUNDS_IN_FLIGHT := 4
+## SHIP 16 B2: the sixteen new guns' models are built here too (the viewmodel with its arms and optic, and the gun
+## as the box and the wall show it), so the first buy, swap or box pull does not compile their materials in a fight.
+const NEW_GUNS := ["glock", "tec9", "uzi", "mp5", "vector", "ak", "m16", "sawnoff", "deagle", "aa12", "dmr", "amr", "saw", "rpg", "bat", "machete"]
+## Sounds no gun names in its foley (the rocket's flight and blast): read with the rest, kept by GunSounds.
+const EXTRA_SOUNDS := ["common/rocket_flight", "common/rpg_explode"]
+const ViewmodelScript := preload("res://player/Viewmodel.gd")
+const GunModelScript := preload("res://weapons/GunModel.gd")
 
 static var started := false
 ## True once the last shader has been drawn (the title's opening card waits for it).
@@ -144,6 +151,12 @@ func _request_guns() -> void:
 ## with no set (the wonder weapon).
 func _gun_files(d: WD) -> PackedStringArray:
 	var out := PackedStringArray()
+	if d.melee:
+		# A swung weapon has no shots, only its swing, hit and kill foley.
+		for cue in d.foley:
+			for stem in d.foley[cue]:
+				out.append(GUN_SFX + String(stem) + ".wav")
+		return out
 	if d.sound_set != "":
 		var dir := GUN_SFX + d.sound_set + "/"
 		for f in ResourceLoader.list_directory(dir):
@@ -166,12 +179,14 @@ func _warm_guns() -> void:
 		while ResourceLoader.load_threaded_get_status(p) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			await get_tree().process_frame
 		var d := ResourceLoader.load_threaded_get(p) as WD
-		if d == null or d.melee:
+		if d == null:
 			continue
 		guns.append(d)
 		for f in _gun_files(d):
 			if not files.has(f) and ResourceLoader.exists(f):
 				files.append(f)
+	for stem in EXTRA_SOUNDS:
+		files.append(GUN_SFX + stem + ".wav")
 	# Read a few at a time and kept here until GunSounds has them (its load() then finds them in the cache).
 	var hold: Array = []
 	var flight: Array = []
@@ -189,9 +204,58 @@ func _warm_guns() -> void:
 					hold.append(r)
 				flight.erase(f)
 	for d in guns:
-		GunSounds.warm(d)
+		if d.melee:
+			for cue in d.foley:
+				for stem in d.foley[cue]:
+					GunSounds.file(String(stem))
+		else:
+			GunSounds.warm(d)
 		await get_tree().process_frame
+	for stem in EXTRA_SOUNDS:
+		GunSounds.file(stem)
 	hold.clear()
+	await _warm_models(guns)
+
+## The new guns' models and materials, a gun a frame in the hidden viewport (a viewmodel and a world model each, a
+## few frames up so their pipelines compile), loaded from worker threads first.
+func _warm_models(guns: Array) -> void:
+	var todo: Array = []
+	for d in guns:
+		if NEW_GUNS.has(d.id) and d.model != "":
+			todo.append(d)
+	var scenes: Array = []
+	for d in todo:
+		if ResourceLoader.exists(d.model) and not scenes.has(d.model):
+			scenes.append(d.model)
+			ResourceLoader.load_threaded_request(d.model)
+	for path in scenes:
+		while ResourceLoader.load_threaded_get_status(path) == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			await get_tree().process_frame
+		var ps := ResourceLoader.load_threaded_get(path) as PackedScene
+		if ps != null:
+			GunModelScript.keep(path, ps)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	var n := 0
+	for d in todo:
+		var vm: Node3D = ViewmodelScript.new().setup(d)
+		_vp.add_child(vm)
+		vm.position = Vector3(-0.15, -0.1, -0.35)
+		if vm.has_method("show_flash"):
+			vm.show_flash(rng, 1.6)
+		_live.append([vm, HOLD])
+		var plain: Node3D = GunModelScript.build(d)
+		_vp.add_child(plain)
+		plain.position = Vector3(0.25, 0.0, -1.2)
+		_live.append([plain, HOLD])
+		n += 1
+		progress = 0.95 + 0.05 * float(n) / float(maxi(todo.size(), 1))
+		await get_tree().process_frame
+		_expire(false)
+	for k in HOLD + 1:
+		await get_tree().process_frame
+		_expire(false)
+	_expire(true)
 
 func _build() -> void:
 	var main := get_tree().root

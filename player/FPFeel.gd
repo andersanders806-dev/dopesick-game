@@ -463,9 +463,12 @@ func _on_weapon_changed(d: WD) -> void:
 	recoil = Vector2.ZERO
 	_sound("draw", -4.0, rng.randf_range(0.97, 1.03))
 
-func _on_view_changed(_on: bool) -> void:
+func _on_view_changed(on: bool) -> void:
 	# Leaving first person (or coming back) drops every first-person-only state.
 	reset_state()
+	# The melee weapon's viewmodel is rebuilt now (the camera is new), not on the first swing in a fight.
+	if on and holder != null and holder.get("melee_data") != null and (holder.get("melee_data") as WD).melee_arc > 0.0:
+		_build_melee_vm.call_deferred(holder.get("melee_data"))
 
 func _on_melee(_hit: bool) -> void:
 	# (A melee weapon's swing is its own: _on_swing_started.)
@@ -490,7 +493,8 @@ var _melee_vm_of: Resource
 var _swing_n := 0
 
 func _on_melee_changed(d: WD) -> void:
-	_build_melee_vm(d)
+	# Not in the frame of the purchase (the interact frame already pays and plays the sound): the next one.
+	_build_melee_vm.call_deferred(d)
 
 func _build_melee_vm(d: WD) -> void:
 	if is_instance_valid(_melee_vm):

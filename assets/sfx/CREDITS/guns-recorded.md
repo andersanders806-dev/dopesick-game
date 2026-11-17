@@ -54,3 +54,21 @@ magazine/rack/pump/bolt/shell cues of the arc caster.
 | Metal Interactions | qubodup | CC0 | https://opengameart.org/content/metal-interactions |
 
 The rocket's blast also plays the Ghetto Wars grenade's synthesised boom (assets/sfx/guns/grenade_boom.wav, dev-tools/gen_gang_sfx.py, ours).
+
+### Where each B2 common file comes from (recipe: the arsenal pass's build_foley.py in the staging folder; raw packs are in the table above)
+| files | made from |
+|---|---|
+| mag_out_b, mag_in_b, charge_b | Shotgun Shoot / Reload (Mike Koenig, CC BY 3.0): Ejecting Magazine, Pop Clip In, Chambering A Round |
+| shell_chamber, shell_insert_1..2, pump_2 | Shotgun Reload Sound Effects (zer0_sol, CC0): Shell in Chamber, First Shell, Subsequent Shells, Rack |
+| shell_insert_3, clip_tick | Shotgun Reload Sound Effects (zer0_sol, CC0): singlebullet1, clipload2 |
+| break_open, break_close, lmg_cover_open, lmg_cover_close, rocket_load | Metal Interactions (qubodup, CC0): metal_interaction1/2, metal_swing1, metal_button_press1 (rocket_load slowed to 0.8) |
+| swing_light_1..3, swing_heavy_1..3, bat_swing_1..2, machete_swing_1..2 | Swishes Sound Pack (artisticdude, CC0): swish-2, -3, -7, -9, -12, -13, pitched and filtered per weapon |
+| bat_hit_1..3 | Fleshy Fight Sounds (will_leamon, OGA-BY 3.0): hammer-1a, hammer-1b, hammer-arm-2a, with a low Metal Interactions thump under them |
+| machete_hit_1..4 | Fleshy Fight Sounds (will_leamon, OGA-BY 3.0): sword-1a, sword-1b, sword-arm-2a, piercing-1a |
+| bat_hit_wall, machete_hit_wall | Metal Interactions (qubodup, CC0): metal_interaction2 (lowered) and metal_interaction1 |
+| melee_kill_1..3 | 37 Hits/Punches (Independent.nu, CC0): hits 05, 08, 11, slowed to 0.8 |
+| rpg_fire | Rocket Launch Pack (dklon, CC BY 3.0) rocket_launch_1, with the low end of Muffled Distant Explosion (NenadSimic, CC0) and 2 Metal Weapon Clicks weapload (Michel Baradari, CC BY 3.0) |
+| rocket_flight | Rocket Launch Pack (dklon, CC BY 3.0) rocket_launch_3, 0.6 s to 3.1 s |
+| rpg_explode | Chunky Explosion (Joth, CC0) with Muffled Distant Explosion (NenadSimic, CC0), low-passed |
+| rpg_dry | the synthesised dry click (dev-tools/gen_gun_sfx.py, ours), slowed to 0.7 |
+| rpg/ shot set | fire_1 is rpg_fire (same length and peak), fire_2..3 and fire_up_1..3 are its speed and tail variants, distant_*, tail_* and mech_* are cut from rpg_explode, rocket_flight and rocket_load; dry.wav is rpg_dry. Built by the first B2 agent from those files; no other source. |

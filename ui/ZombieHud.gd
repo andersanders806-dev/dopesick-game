@@ -15,6 +15,7 @@ const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
 const SeismographScript := preload("res://ui/Seismograph.gd")
 const DOUBLE_GOLD := Color(0.96, 0.74, 0.16)
 const U := preload("res://ui/UiStyle.gd")
+const Glyphs := preload("res://ui/Glyphs.gd")
 
 var round_label: Label
 var points_label: Label
@@ -153,6 +154,9 @@ func _process(_delta: float) -> void:
 	# Keep the banner off the sight picture while aimed.
 	banner.self_modulate.a = 0.15 if (is_instance_valid(_holder) and _holder.aiming) else 1.0
 
+var _mode_hint_gun: Resource
+var _mode_hint_until := 0
+
 func _update_gun() -> void:
 	if not is_instance_valid(_holder):
 		_holder = get_tree().get_first_node_in_group("weapon_holder")
@@ -168,6 +172,12 @@ func _update_gun() -> void:
 	var mode := ""
 	if d.fire_modes.size() > 1 and _holder.has_method("fire_mode"):
 		mode = "  " + String(_holder.fire_mode()).to_upper()
+		# The selector's key, shown for the first seconds after the gun is drawn.
+		if _mode_hint_gun != d:
+			_mode_hint_gun = d
+			_mode_hint_until = Time.get_ticks_msec() + 4000
+		if Time.get_ticks_msec() < _mode_hint_until:
+			mode += "  [%s]" % Glyphs.name_of("fire_mode")
 	gun_label.text = String(d.display_name).to_upper() + mode + ("  RELOADING" if _holder.reloading else "")
 
 func _update_prompt() -> void:

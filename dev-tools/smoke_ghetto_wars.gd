@@ -363,14 +363,14 @@ func _ghetto_checks(gs: Node) -> void:
 	_free_all()
 	await _frames(3)
 	# A slow machine (every frame over 30 ms) still gets the whole queued wave, and the queued men count as alive.
-	var spq: Node = get_tree().get_first_node_in_group("gang_spawner")
+	var spq: Node = root.get_tree().get_first_node_in_group("gang_spawner")
 	spq.enabled = false
 	for qi in 3:
 		spq._wave_queue.append({"kind": "grunt", "at": Vector3.INF, "gun": "", "crew": "Dock Boys", "drive_by": false})
 	_check(spq.pending() == 3 and spq.alive() == 3 and gm.alive() == 3, "  queued wave men count as alive (%d / %d)" % [spq.alive(), gm.alive()])
 	for qf in 30:
 		spq._process(0.05)
-	_check(spq.pending() == 0 and get_tree().get_nodes_in_group("gangsters").size() == 3, "  a wave queued behind 50 ms frames still comes out whole (%d men)" % get_tree().get_nodes_in_group("gangsters").size())
+	_check(spq.pending() == 0 and get_nodes_in_group("gangsters").size() == 3, "  a wave queued behind 50 ms frames still comes out whole (%d men)" % get_nodes_in_group("gangsters").size())
 	spq.enabled = true
 	_free_all()
 	await _frames(3)

@@ -326,7 +326,7 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 		var door_loads := _prefetch_near_doors() > 0
 		var budget := DRAIN_MSEC
 		if door_loads:
-			budget = DOOR_DRAIN_FIRST_MSEC if _door_drains == 0 else DOOR_DRAIN_MSEC
+			budget = DOOR_DRAIN_FIRST_MSEC if _door_drains == 0 and DisplayServer.get_name() != "headless" else DOOR_DRAIN_MSEC
 			_door_drains += 1
 		await _drain(budget)
 		await _settle()

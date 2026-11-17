@@ -834,6 +834,27 @@ func _b2_system_checks(holder: Node, feel: Node, player: Node, block: Node) -> v
 		holder.advance(2.0)
 		if is_instance_valid(far):
 			far.free()
+	# Review I2: a melee swing hides the gun, so the gun neither fires, reloads nor holds ADS while it lasts.
+	holder.melee_data = _wd("bat")
+	holder.slots = [null, null]
+	holder.give(_wd("m16"))
+	holder.advance(2.0)
+	holder._melee_cd = 0.0
+	holder.mag = 10
+	holder.reserve = 60
+	holder.melee(false)
+	_check(not holder.fire() and not holder.reload() and not holder.can_fire(), "  during a swing the gun does not fire or reload")
+	holder.advance(10.0)
+	holder._melee_cd = 0.0
+	holder.reloading = false
+	holder.mag = 10
+	holder.reload()
+	var was_reloading: bool = holder.reloading
+	holder.melee(false)
+	_check(was_reloading and not holder.reloading, "  a swing cuts a reload short (it resumes after)")
+	holder.advance(holder.melee_data.swing_time + 0.1)
+	holder.advance(2.0)
+	_check(holder.mag > 10 or holder.reloading, "  the reload resumes once the swing is over")
 	holder.melee_data = load(holder.KNIFE)
 	_check(not holder.lunging, "  the lunge ends")
 
@@ -854,6 +875,19 @@ func _b2_venue_checks(holder: Node, block: Node) -> void:
 				spaced = false
 		spaced = spaced and a.global_position.distance_to(block.upgrade_machine.global_position) > 2.0
 	_check(spaced, "  no two boards (or a board and the machine) on top of each other")
+	# Review I3: every board and its label can be read from a metre in front (no cabinet, door slab or pillar in the way).
+	var hidden_names: Array = []
+	for b in block.wall_buys:
+		var hp: int = block.board_hidden_points(b.global_transform)
+		if hp > 0:
+			hidden_names.append("%s(%d)" % [b.data.id, hp])
+	_check(hidden_names.is_empty(), "  every board is clear of props in front of it %s" % [hidden_names])
+	# Every gun carries its real name.
+	var old_names := ["Street Nine", "Spray Can", "Corner Store", "Night Shift", "Needle", "Rust Bucket", "Beat Cop", "Back Porch", "Sledge", "Broom", "Pawnbroker", "Bridge Burner", "Iron Hog", "Landlord", "Slugger", "Cane Cutter", "Service Pistol", "Pump Shotgun", "Bolt Rifle", "Magnum", "Assault Rifle", "Submachine Gun", "Light Machine Gun"]
+	var named := true
+	for id in ["glock", "tec9", "uzi", "mp5", "vector", "ak", "m16", "sawnoff", "deagle", "aa12", "dmr", "amr", "saw", "rpg", "bat", "machete", "pistol", "smg", "shotgun", "ar", "sniper", "magnum", "lmg"]:
+		named = named and not old_names.has(_wd(id).display_name)
+	_check(named and _wd("glock").display_name == "Glock 19" and _wd("dmr").display_name == "M14" and _wd("saw").display_name == "M249 SAW" and _wd("rpg").display_name == "RPG-7" and _wd("pistol").display_name == "Walther P38" and _wd("sniper").display_name == "Mosin-Nagant M91/30" and _wd("magnum").display_name == "Colt Python", "  every gun shows the real gun's name")
 	var pool: Array = []
 	for d in block.mystery_box.pool():
 		pool.append(d.id)

@@ -79,8 +79,8 @@ const WALL_BUYS := [
 	["uzi", Vector3(-48, 1.3, -3), Vector3(0, 0, -1)],
 	["sawnoff", Vector3(44, 1.3, -3), Vector3(0, 0, -1)],
 	["mp5", Vector3(54, 1.3, -3), Vector3(0, 0, -1)],
-	["bat", Vector3(-60, 1.3, -3), Vector3(0, 0, -1)],
-	["m16", Vector3(72, 1.3, -44), Vector3(1, 0, 0)],
+	["bat", Vector3(-64, 1.3, -3), Vector3(0, 0, -1)],
+	["m16", Vector3(72, 1.3, -40), Vector3(1, 0, 0)],
 	["ak", Vector3(-72, 1.3, -52), Vector3(-1, 0, 0)],
 	["dmr", Vector3(72, 1.3, -84), Vector3(1, 0, 0)],
 	["machete", Vector3(-72, 1.3, -84), Vector3(-1, 0, 0)],
@@ -293,6 +293,47 @@ func _build_purchases() -> void:
 	city.add_child(upgrade_machine)
 	upgrade_machine.transform = _snap(MACHINE_SPOT[0], MACHINE_SPOT[1], MACHINE_GAP)
 	purchases_ready = true
+
+## How many of a board's points (the board's corners, edge middles and centre, the label under it) cannot be seen from a metre in front of it:
+## something other than the wall (a cabinet, a door slab, a pillar) stands between, by collision or because a prop's
+## box (street props have no collision) crosses the sight line. `at` is the board's transform. Zero is a board the
+## player can read whole. Buildings and ground (boxes over 8 m) are the wall itself. (Review I3: the Slugger's board
+## hid behind a cabinet, the Beat Cop's behind a door slab.)
+func board_hidden_points(at: Transform3D) -> int:
+	var space := city.get_world_3d().direct_space_state
+	var board := WallBuyScript.BOARD
+	var eye := at * Vector3(0.0, 1.5, 1.0)
+	var points: Array = []
+	for ix in [-0.5, 0.0, 0.5]:
+		for iy in [-0.5, 0.0, 0.5]:
+			points.append(at * Vector3(board.x * ix, 1.45 + board.y * iy, 0.06))
+	# The name and the price under the board (a label at 0.78 m): its two ends and its middle, two lines.
+	for ix in [-0.55, 0.0, 0.55]:
+		for y in [0.62, 0.9]:
+			points.append(at * Vector3(ix, y, 0.08))
+	var box := AABB(eye, Vector3.ZERO)
+	for p in points:
+		box = box.expand(p)
+	var props: Array[AABB] = []
+	for n in city.find_children("*", "MeshInstance3D", true, false):
+		var m := n as MeshInstance3D
+		if m.mesh == null or not m.is_visible_in_tree() or String(m.get_path()).contains("/WallBuy_"):
+			continue
+		var ab: AABB = m.global_transform * m.get_aabb()
+		if ab.size.length() < 8.0 and ab.intersects(box):
+			props.append(ab)
+	var hidden := 0
+	for p in points:
+		var q := PhysicsRayQueryParameters3D.create(eye, p)
+		q.collision_mask = 1
+		var blocked := not space.intersect_ray(q).is_empty()
+		for ab in props:
+			if blocked:
+				break
+			blocked = ab.intersects_segment(eye, p) != null
+		if blocked:
+			hidden += 1
+	return hidden
 
 ## The spot `gap` metres in front of the first wall met looking from `from`
 ## along `dir`, turned so +Z faces back along the ray (the street). With no wall

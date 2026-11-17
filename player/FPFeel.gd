@@ -544,19 +544,19 @@ func _on_swing_landed(hits: int, killed: bool, wall: bool) -> void:
 ## The swing's pose: a light swing sweeps right to left across the view; a heavy one winds back first. Each key is
 ## [u, pos, rot degrees] in camera space. True while a swing is on (the gun is out of sight).
 const SWING_BAT := [
-	[0.0, Vector3(0.3, -0.34, -0.24), Vector3(40.0, -70.0, -40.0)],
-	[0.18, Vector3(0.28, 0.04, -0.3), Vector3(62.0, -62.0, -34.0)],
-	[0.42, Vector3(0.02, -0.06, -0.44), Vector3(6.0, -4.0, -16.0)],
-	[0.62, Vector3(-0.22, -0.14, -0.34), Vector3(-8.0, 64.0, 2.0)],
-	[1.0, Vector3(-0.3, -0.5, -0.18), Vector3(-30.0, 90.0, 20.0)],
+	[0.0, Vector3(0.36, -0.16, -0.36), Vector3(50.0, -30.0, -22.0)],
+	[0.18, Vector3(0.38, -0.08, -0.34), Vector3(66.0, -26.0, -26.0)],
+	[0.42, Vector3(0.18, -0.14, -0.46), Vector3(-8.0, 40.0, -10.0)],
+	[0.62, Vector3(-0.1, -0.26, -0.4), Vector3(-30.0, 78.0, 6.0)],
+	[1.0, Vector3(-0.3, -0.58, -0.22), Vector3(-30.0, 100.0, 20.0)],
 ]
 ## The machete: a forehand slash from high on the right down across to the left, the blade's flat to the eye.
 const SWING_BLADE := [
-	[0.0, Vector3(0.32, -0.34, -0.26), Vector3(30.0, -80.0, -50.0)],
-	[0.16, Vector3(0.28, 0.0, -0.32), Vector3(42.0, -72.0, -62.0)],
-	[0.4, Vector3(0.02, -0.1, -0.42), Vector3(-12.0, 28.0, -62.0)],
-	[0.62, Vector3(-0.2, -0.22, -0.34), Vector3(-30.0, 70.0, -40.0)],
-	[1.0, Vector3(-0.3, -0.52, -0.16), Vector3(-50.0, 90.0, -20.0)],
+	[0.0, Vector3(0.36, -0.26, -0.4), Vector3(30.0, -70.0, -50.0)],
+	[0.16, Vector3(0.34, -0.14, -0.4), Vector3(44.0, -62.0, -62.0)],
+	[0.4, Vector3(0.1, -0.22, -0.52), Vector3(-10.0, 30.0, -62.0)],
+	[0.62, Vector3(-0.16, -0.3, -0.44), Vector3(-28.0, 66.0, -40.0)],
+	[1.0, Vector3(-0.3, -0.58, -0.22), Vector3(-50.0, 90.0, -20.0)],
 ]
 
 func _pose_swing() -> bool:

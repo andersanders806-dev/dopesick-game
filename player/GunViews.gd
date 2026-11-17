@@ -131,7 +131,9 @@ const VIEW := {
 	},
 	# Melee: both hands choked up on the bat's handle; the machete in the right hand alone.
 	"bat": {"hands": [Vector3(0.5, 0.5, 0.05), Vector3(0.5, 0.5, 0.16), 0.0, 0.0, 1.0, 1.0, "pump_l", "pump_l", 1.0]},
-	"machete": {"hands": [Vector3(0.5, 0.45, 0.1), Vector3(0.5, 0.45, 0.1), 0.0, 0.0, 1.0, 1.0, "pump_l", "pump_l", 1.0]},
+	"machete": {"hands": [Vector3(0.5, 0.45, 0.1), Vector3(0.5, 0.45, 0.1), 0.0, 0.0, 1.0, 1.0, "pump_l", "pump_l", 1.0],
+		# (Pale grey steel and handle: darker, and less mirror, so they read against the street.)
+		"look": {"albedo": 0.45, "metal_mul": 0.7, "spec": 0.25}},
 }
 
 ## The table of `d`'s gun ({} if it has none): looked up by its base id, so an upgraded gun has its plain one's.

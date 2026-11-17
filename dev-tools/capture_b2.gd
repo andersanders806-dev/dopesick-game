@@ -156,6 +156,10 @@ func _views(ids: Array) -> void:
 		await _snap("%s_hip" % id)
 		h.aiming = true
 		await _run(40)
+		if OS.get_environment("VM_HIDE") != "":
+			for n in h.viewmodel.find_children("*" + OS.get_environment("VM_HIDE") + "*", "Node3D", true, false):
+				n.visible = false
+			await _run(3)
 		await _snap("%s_ads" % id)
 		var vm: Node3D = h.viewmodel
 		var cam: Camera3D = p.get("camera")
@@ -254,7 +258,7 @@ func _melee(ids: Array) -> void:
 		while h.swing_time() >= 0.0:
 			await _run(1)
 			n += 1
-			if n % 4 == 0:
+			if n % 3 == 0:
 				await _snap("%s_swing_%02d" % [id, n])
 			if not hit_snapped and h.swing_time() >= h.swing_length() * d.swing_hit + 0.02:
 				hit_snapped = true

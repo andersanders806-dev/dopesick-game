@@ -202,6 +202,9 @@ func give(data: WD) -> void:
 			i = active
 	slots[i] = {"data": data, "mag": data.mag_size, "reserve": data.reserve_max, "mode": 0}
 	_switch_to(i)
+	# The gun in the other slot gets its viewmodel built, out of sight, a couple of frames on (not in this one), so
+	# the first swap is a show and a hide (the launcher's cost a 60 ms frame).
+	_prebuild_wait = 2
 
 func _switch_to(i: int) -> void:
 	# A reload that a swap cuts short is remembered by its gun, and begins again when you are back on it.
@@ -264,6 +267,10 @@ func swap() -> bool:
 # --- Time ---------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if _prebuild_wait >= 0:
+		_prebuild_wait -= 1
+		if _prebuild_wait < 0:
+			_prebuild_other_viewmodel()
 	if not _can_act():
 		_trigger_down = false
 		_melee_hold = -1.0
@@ -972,6 +979,7 @@ func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
 
 ## Viewmodels of the guns in your slots not in your hands (WD -> Viewmodel), kept out of sight for the swap back.
 var _vm_kept := {}
+var _prebuild_wait := -1
 
 func _in_slots(d: WD) -> bool:
 	for sl in slots:
@@ -1073,8 +1081,13 @@ func _rebuild_viewmodel() -> void:
 		viewmodel.position = FPFeel.HIP_POS
 		viewmodel.visible = true
 		return
-	viewmodel = Viewmodel.new().setup(d)
-	viewmodel.position = FPFeel.HIP_POS
+	viewmodel = _make_viewmodel(d)
+	cam.add_child(viewmodel)
+
+## A gun's viewmodel with the little light it carries, not yet on the camera.
+func _make_viewmodel(d: WD) -> Viewmodel:
+	var vm: Viewmodel = Viewmodel.new().setup(d)
+	vm.position = FPFeel.HIP_POS
 	# The night is red-dark; the gun gets a little light of its own.
 	var lamp := OmniLight3D.new()
 	lamp.name = "GunLamp"
@@ -1083,5 +1096,19 @@ func _rebuild_viewmodel() -> void:
 	lamp.shadow_enabled = false
 	lamp.light_color = Color(1.0, 0.92, 0.85)
 	lamp.position = Vector3(-0.1, 0.25, 0.3)
-	viewmodel.add_child(lamp)
-	cam.add_child(viewmodel)
+	vm.add_child(lamp)
+	return vm
+
+## The other slot's gun, built and hidden on the camera (kept like any put-away gun by _rebuild_viewmodel).
+func _prebuild_other_viewmodel() -> void:
+	var cam := player.get("camera") as Camera3D if player != null else null
+	var o := 1 - active
+	if cam == null or not Graphics.first_person or o < 0 or o >= slots.size() or slots[o] == null:
+		return
+	var d: WD = slots[o].data
+	if _vm_kept.has(d) and is_instance_valid(_vm_kept[d]):
+		return
+	var vm := _make_viewmodel(d)
+	vm.visible = false
+	cam.add_child(vm)
+	_vm_kept[d] = vm

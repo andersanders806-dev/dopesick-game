@@ -266,6 +266,7 @@ func swap() -> bool:
 func _process(delta: float) -> void:
 	if not _can_act():
 		_trigger_down = false
+		_melee_hold = -1.0
 		_release_sprint()
 		return
 	var down := Input.is_action_pressed("fire")
@@ -290,10 +291,11 @@ func _process(delta: float) -> void:
 	if down and current != null and (is_auto() or not _trigger_down):
 		# A press that comes while the gun can't answer yet (the sprint-out, the cooldown, a swap) is kept until it
 		# can, as long as the trigger stays down (a semi gun would lose it).
-		if not fire() and mag > 0 and not reloading:
+		if not fire() and mag > 0 and not reloading and _swing_t < 0.0:
 			_fire_queued = true
 	_trigger_down = down
-	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting()
+	# A melee swing hides the gun: no aim (the scope circle) while it lasts, as in Call of Duty's knife.
+	aiming = Input.is_action_pressed("aim") and not reloading and not _sprinting() and _swing_t < 0.0 and not _sliding()
 
 ## The one-shot buttons (a press is an event: the mouse wheel has no "held").
 func _unhandled_input(event: InputEvent) -> void:
@@ -365,7 +367,7 @@ func advance(delta: float) -> void:
 			_fire_queued = false
 		elif fire():
 			_fire_queued = false
-	if _reload_resume and not reloading and _swap_left <= 0.0 and _sprint_hold <= 0.0:
+	if _reload_resume and not reloading and _swap_left <= 0.0 and _sprint_hold <= 0.0 and _swing_t < 0.0:
 		_reload_resume = false
 		reload()
 	# The rest of a burst, at the gun's rate.
@@ -403,7 +405,7 @@ func advance(delta: float) -> void:
 
 func reload() -> bool:
 	var d := current
-	if d == null or reloading or mag >= d.mag_size or reserve <= 0:
+	if d == null or reloading or mag >= d.mag_size or reserve <= 0 or _swing_t >= 0.0:
 		_reload_resume = false
 		return false
 	reloading = true
@@ -459,6 +461,9 @@ func _exit_tree() -> void:
 	_release_sprint()
 
 ## Whether the player is running (the sights and the trigger wait for it).
+func _sliding() -> bool:
+	return player != null and player.has_method("is_sliding") and player.is_sliding()
+
 func _sprinting() -> bool:
 	return player != null and player.has_method("is_sprinting") and player.is_sprinting()
 
@@ -468,13 +473,13 @@ func reload_left() -> float:
 # --- Firing -------------------------------------------------------------------------
 
 func can_fire() -> bool:
-	return current != null and not reloading and _cooldown <= 0.0 and _swap_left <= 0.0 and _sprint_hold <= 0.0 and mag > 0
+	return current != null and not reloading and _cooldown <= 0.0 and _swap_left <= 0.0 and _sprint_hold <= 0.0 and mag > 0 and _swing_t < 0.0
 
 ## Pulls the trigger once. False if nothing came out (cooling, reloading,
 ## swapping, or empty: which starts a reload while there is anything to load).
 func fire() -> bool:
 	var d := current
-	if d == null or reloading or _cooldown > 0.0 or _swap_left > 0.0 or _sprint_hold > 0.0:
+	if d == null or reloading or _cooldown > 0.0 or _swap_left > 0.0 or _sprint_hold > 0.0 or _swing_t >= 0.0:
 		return false
 	if mag <= 0:
 		if reserve > 0:
@@ -746,6 +751,11 @@ func melee(heavy := false) -> bool:
 		_swing_len = d.swing_time * (d.heavy_time if _swing_heavy else 1.0)
 		_swing_t = 0.0
 		_swing_done = false
+		# The gun is out of sight for the swing: its trigger, burst and reload stop (a reload resumes after).
+		_fire_queued = false
+		_burst_left = 0
+		if reloading:
+			_reload_resume = not _cut_reload()
 		_melee_cd = maxf(_swing_len, d.swing_interval())
 		var lunged := _try_lunge(d)
 		swing_started.emit(_swing_heavy, lunged)

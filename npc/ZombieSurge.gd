@@ -128,7 +128,7 @@ func _process(delta: float) -> void:
 				_begin_quake()
 		Phase.QUAKE:
 			_clock += delta
-			_release_due()
+			_release_due(delta)
 			var window := (SURGE_TIME + GRACE) * time_scale
 			if released >= total or _clock >= window:
 				_end_quake()
@@ -145,11 +145,49 @@ func _begin_quake() -> void:
 	ZombieMode.surge_active = true
 	ZombieMode.surge_started.emit()
 
+## On a desktop GPU the surge lets out everyone up to the hard cap (64), whatever the frame-time cap says.
+## (Kept for the tests: the old "cap + SURGE_EXTRA" rule of fix round 1 is gone, it cut a desktop's surge to 48.)
+const SURGE_EXTRA := 16
+## On laptop graphics at Low/Medium (Graphics.lean()) the surge adds this many instead: 38 alive round the
+## player at round 15 drew 17-21 ms frames on a UHD 620 for as long as they lived (the city at night is
+## already 14 ms there); 8 more than the frame-time cap keeps it a flood without a stutter.
+const SURGE_EXTRA_LEAN := 8
+## A frame this long (s) or longer holds the next spawn back a frame.
+const SLOW_FRAME := 0.028
+var _skipped := 0
+var _headless := DisplayServer.get_name() == "headless"
+
+func surge_limit() -> int:
+	if surge_extra() == SURGE_EXTRA:
+		return ZombieMode.SURGE_HARD_CAP
+	return mini(ZombieMode.SURGE_HARD_CAP, ZombieMode.max_alive + surge_extra())
+
+func surge_extra() -> int:
+	var gfx := get_node_or_null("/root/Graphics") if is_inside_tree() else null
+	if gfx != null and gfx.has_method("lean") and bool(gfx.call("lean")):
+		return SURGE_EXTRA_LEAN
+	return SURGE_EXTRA
+
 ## Lets out everyone whose time has come, as far as the hard cap allows.
-func _release_due() -> void:
-	while released < total and times[released] <= _clock:
-		if spawner.alive() >= ZombieMode.SURGE_HARD_CAP:
+func _release_due(delta := 0.0) -> void:
+	# One a frame, and none on the frame after a slow one (up to 4 in a row): a spawn costs 5-8 ms, and a surge
+	# that caught up on a late frame by spawning four made the late frame later (the spiral of 40-80 ms frames).
+	# (only where frames are seen: headless, a slow machine's frames would just make the surge's window close early)
+	if delta > SLOW_FRAME and _skipped < 4 and not _headless:
+		_skipped += 1
+		return
+	_skipped = 0
+	var made := 0
+	# (A schedule far behind catches up by a sixth of its backlog a frame, with a window; headless - the tests'
+	# compressed clock, whose quake is over in a few frames - lets out everything that is due.)
+	var due := 0
+	while released + due < total and times[released + due] <= _clock:
+		due += 1
+	var allowed := due if _headless else maxi(1, due / 6)
+	while released < total and times[released] <= _clock and made < allowed:
+		if spawner.alive() >= surge_limit():
 			return
+		made += 1
 		var kind := kinds[released]
 		var e: Dictionary = spawner._pick_entrance(spawner.Entrances.SURGE_WEIGHTS) if spawner._entrances_ready else {}
 		var z: CharacterBody3D

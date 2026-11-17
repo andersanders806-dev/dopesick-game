@@ -214,6 +214,8 @@ func _build_flash(slot: Marker3D) -> void:
 	l.light_energy = 0.0
 	l.omni_range = 7.0
 	l.shadow_enabled = false
+	# (hidden while dark: a light at zero energy is still shaded by the renderer)
+	l.visible = false
 	slot.add_child(l)
 
 ## A muzzle flash at window `i` (the core calls this when its shooter there fires).
@@ -225,6 +227,7 @@ func flash_slot(i: int) -> void:
 	(s.get_node("Flash") as Node3D).visible = true
 	(s.get_node("Flash") as Node3D).rotation.z = randf() * TAU
 	(s.get_node("Light") as OmniLight3D).light_energy = 3.5
+	(s.get_node("Light") as OmniLight3D).visible = true
 
 func _drive(delta: float) -> void:
 	var len := _curve.get_baked_length()
@@ -244,6 +247,7 @@ func _drive(delta: float) -> void:
 			if _slot_t[i] <= 0.0:
 				(drive_slots[i].get_node("Flash") as Node3D).visible = false
 				(drive_slots[i].get_node("Light") as OmniLight3D).light_energy = 0.0
+				(drive_slots[i].get_node("Light") as OmniLight3D).visible = false
 	if auto_fire:
 		_burst_gap -= delta
 		if _burst_gap <= 0.0:
@@ -566,6 +570,7 @@ func _process(delta: float) -> void:
 		var l := lb[2] as OmniLight3D
 		l.light_color = Color(1.0, 0.08, 0.06) if r else Color(0.12, 0.25, 1.0)
 		l.light_energy = 5.0 if (r or b) else 0.0
+		l.visible = r or b
 		var car := lb[4] as Node3D
 		var glow := car.get_meta("glow") as Decal
 		glow.modulate = Color(1.0, 0.1, 0.08) if r else (Color(0.15, 0.3, 1.0) if b else Color(0, 0, 0))

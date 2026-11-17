@@ -3418,6 +3418,26 @@ func _settle() -> void:
 	await process_frame
 	await process_frame
 
+## A freshly loaded scene is settled when its own arrival work is done (SceneLoader's fade, the people a street
+## makes behind it) and frames are short again: two in a row under 50 ms. Input parsed before that is buffered
+## behind a heavy frame, which is what made "the left stick walks" flaky two frames after a City load.
+func _settled(limit := 600) -> bool:
+	var loader := root.get_node("SceneLoader")
+	var short := 0
+	var last := Time.get_ticks_usec()
+	for i in limit:
+		await process_frame
+		var now := Time.get_ticks_usec()
+		var ms := (now - last) / 1000.0
+		last = now
+		var arrived := true
+		if current_scene != null and current_scene.has_method("finish_arrival"):
+			arrived = current_scene.finish_arrival()
+		short = short + 1 if ms < 50.0 else 0
+		if short >= 2 and arrived and not loader.busy():
+			return true
+	return false
+
 func _trigger(axis: int, value: float) -> void:
 	_stick(axis, value)
 
@@ -3442,6 +3462,7 @@ func _controller_checks(gs: Node) -> void:
 			missing.append(a)
 	_check(missing.is_empty(), "  every control is on the pad, whichever pad it is (missing: %s)" % [missing])
 	var city := await _load("res://world/City3D.tscn")
+	_check(await _settled(), "  (the street has settled before the stick is pushed)")
 	var p := _player()
 	_stick(JOY_AXIS_LEFT_X, 1.0)
 	await _frames(2)
@@ -3989,8 +4010,8 @@ func _polish_checks(gs: Node) -> void:
 	gs.clock_running = false
 	gs.clock = 14 * 60
 	var city := await _load("res://world/City3D.tscn")
-	var piece := _kit_piece(city)
-	var mesh_id := piece.mesh.get_instance_id()
+	var piece := _kit_mesh(city)
+	var mesh_id := piece.get_instance_id()
 	var dressing := func(c: Node) -> Array:
 		return ["FireEscapeHome", "AirCon", "Camera", "Shutter"].map(func(n): return c.get_node("Facades").find_child(n + "*", true, false).find_children("*", "MeshInstance3D", true, false)[0].mesh.get_instance_id())
 	var dress_ids: Array = dressing.call(city)
@@ -4003,8 +4024,8 @@ func _polish_checks(gs: Node) -> void:
 	var t0 := Time.get_ticks_msec()
 	city = await _load("res://world/City3D.tscn")
 	var reentry := Time.get_ticks_msec() - t0
-	var again := _kit_piece(city)
-	_check(again.mesh.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
+	var again := _kit_mesh(city)
+	_check(again.get_instance_id() == mesh_id, "  facade kit pieces are loaded once per session")
 	_check(dressing.call(city) == dress_ids, "  ...and so are fire escapes, air-con units, cameras and shutters")
 	_check(Cast.scene_for(booster).get_instance_id() == cast_id
 		and Cast.scene_for(booster) is PackedScene, "  character models are loaded once per session")
@@ -4031,6 +4052,14 @@ func _kit_piece(city: Node) -> MeshInstance3D:
 	for mi in city.get_node("Facades").find_children("*", "MeshInstance3D", true, false):
 		if not (mi.mesh is PrimitiveMesh):
 			return mi
+	return null
+
+## The mesh of the first facade piece (the fronts' repeating pieces are MultiMeshes: world/Facades.gd _flush_batch).
+func _kit_mesh(city: Node) -> Mesh:
+	for mmi in city.get_node("Facades").find_children("*", "MultiMeshInstance3D", true, false):
+		var m: Mesh = (mmi as MultiMeshInstance3D).multimesh.mesh
+		if m != null and not (m is PrimitiveMesh):
+			return m
 	return null
 
 ## Interacts with a door and waits for the room change (fade and all).
@@ -4257,7 +4286,7 @@ func _lean_checks(gs: Node) -> void:
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(20)
 	var env: Environment = city.get_node("WorldEnvironment").environment
-	var kit_mat: BaseMaterial3D = _kit_piece(city).get_active_material(0)
+	var kit_mat: BaseMaterial3D = _kit_mesh(city).surface_get_material(0)
 	var shadows: int = city.find_children("*", "OmniLight3D", true, false).filter(func(l): return l.shadow_enabled).size() \
 		+ city.find_children("*", "SpotLight3D", true, false).filter(func(l): return l.shadow_enabled).size()
 	_check(gfx.lean() and not env.ssao_enabled and env.glow_enabled and not env.get_glow_level(4) and not kit_mat.normal_enabled and shadows <= 1,
@@ -4301,7 +4330,7 @@ func _low_checks(gs: Node) -> void:
 	gfx.set_preset(gfx.Preset.LOW)
 	var city := await _load("res://world/City3D.tscn")
 	await _frames(5)
-	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_piece(city).get_active_material(0).normal_enabled,
+	_check(gfx.lean() and root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA and not _kit_mesh(city).surface_get_material(0).normal_enabled,
 		"  Low on laptop graphics is lean too: FXAA, flat facades")
 	var post: ColorRect = get_first_node_in_group("hud").get_node("PostFX")
 	gs.craving = 100.0
@@ -6791,6 +6820,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 	var closest_pair := 99.0
 	var closest_all := 99.0
 	var attackers_seen := 0
+	var settled_looks := 0
 	var pair_info := ""
 	for f in 1500:
 		await physics_frame
@@ -6801,6 +6831,16 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 				if d <= zz.ATTACK_RANGE + 0.35:
 					near.append(zz)
 			attackers_seen = maxi(attackers_seen, near.size())
+			# The ring is judged once the bodies have settled (nobody still walking into a slot, being
+			# shoved or getting up): a pair 0.37 m apart in the middle of a shuffle is not a pile.
+			var settled := true
+			for zz in near:
+				if Vector2(zz.velocity.x, zz.velocity.z).length() > 0.3 or int(zz.state) >= 4:
+					settled = false
+			if settled and near.size() >= 2:
+				settled_looks += 1
+			else:
+				near = []
 			for a in near.size():
 				for b in range(a + 1, near.size()):
 					var pd: float = Vector2(near[a].global_position.x - near[b].global_position.x, near[a].global_position.z - near[b].global_position.z).length()
@@ -6812,6 +6852,7 @@ func _zombie_fix1_checks(city: Node3D, block: Node, spawner: Node, zm: Node, pla
 					closest_all = minf(closest_all, Vector2(horde[a].global_position.x - horde[b].global_position.x, horde[a].global_position.z - horde[b].global_position.z).length())
 	root.get_node("ZombieMode").health = 100.0
 	_check(attackers_seen >= 8, "  the horde closes on the player (%d within claw reach)" % attackers_seen)
+	_check(settled_looks >= 3, "  ...and its ring settles long enough to be judged (%d looks)" % settled_looks)
 	_check(closest_pair >= 0.4, "  no two dead within reach are closer than 0.4 m (a pile is under 0.3; the ring keeps 0.6) (closest %.2f m; any two of the 20: %.2f m; %s)" % [closest_pair, closest_all, pair_info])
 	for zz in horde:
 		zz.free()
@@ -6826,11 +6867,11 @@ const ZW_PRICES := {"smg": 1000, "shotgun": 1200, "ar": 1400, "sniper": 1500, "m
 ## A real Zombie3D (the block's spawner makes it) `dist` m east of (x, z) on the
 ## street: held still (no brain), posed (animation paused), facing west, toward the
 ## shooter. It logs its hits in meta "hits" ([part, damage]).
-func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1) -> Node:
+func _zw_target(parent: Node, x: float, z: float, dist: float, rnd := 1, body := "") -> Node:
 	var sp: Node = parent.get_node("ZombieBlock").spawner
 	sp.enabled = false
 	sp.round_no = rnd
-	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z))
+	var zed: Node = sp.spawn_one("walker", Vector3(x + dist, 0.0, z), body)
 	zed.set_physics_process(false)
 	zed._anim_player.pause()
 	# A zombie starts its walk at a random point; the targets stand at the same one, so a
@@ -7080,7 +7121,10 @@ func _zombie_weapons_checks(gs: Node) -> void:
 
 	# The hit zones cover the body: rays over its silhouette find no gap, and the
 	# neck is a zone of its own on the neck, between the torso and the head.
-	var zbody: Node = await _zw_target(city, -20.0, -3.0, 4.0)
+	var ZombieScript3: GDScript = load("res://npc/Zombie3D.gd")
+	# (A named body, not a random one: a gap that only one of the twenty has must fail every run, not one run in
+	# twenty. Every body is swept below.)
+	var zbody: Node = await _zw_target(city, -20.0, -3.0, 4.0, 1, ZombieScript3.BODIES[0])
 	var y_torso: float = _zw_part_at(zbody, "torso").y
 	var y_neck: float = _zw_part_at(zbody, "neck").y
 	var y_head: float = _zw_part_at(zbody, "head").y
@@ -7108,6 +7152,25 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	var gaps_shoulder: Array = _zw_gaps(holder, zbody, shoulder_heights, shoulders, true)
 	_check(gaps_front.is_empty() and gaps_side.is_empty(), "  no gap over the body's core from belly to crown, front or side (%s %s; body %s)" % [gaps_front.slice(0, 4), gaps_side.slice(0, 4), zbody.get_meta("body", "?")])
 	_check(gaps_shoulder.is_empty(), "  no gap across the shoulders (%s)" % [gaps_shoulder.slice(0, 4)])
+	zbody.queue_free()
+	var failing := []
+	for bname in ZombieScript3.BODIES:
+		var zb: Node = await _zw_target(city, -20.0, -3.0, 4.0, 1, bname)
+		var hs := []
+		var yy2: float = _zw_part_at(zb, "torso").y - 0.2
+		var yh: float = _zw_part_at(zb, "head").y
+		while yy2 <= yh + 0.05:
+			hs.append(yy2)
+			yy2 += 0.02
+		var yn: float = _zw_part_at(zb, "neck").y
+		var g1: Array = _zw_gaps(holder, zb, hs, core, true)
+		var g2: Array = _zw_gaps(holder, zb, hs, core, false)
+		var g3: Array = _zw_gaps(holder, zb, hs.filter(func(h): return h <= yn - 0.06), shoulders, true)
+		if not (g1.is_empty() and g2.is_empty() and g3.is_empty()):
+			failing.append("%s front %s side %s shoulders %s" % [bname, g1.slice(0, 3), g2.slice(0, 3), g3.slice(0, 3)])
+		zb.queue_free()
+	_check(failing.is_empty(), "  no gap in the hit zones of any of the %d bodies (%s)" % [ZombieScript3.BODIES.size(), failing])
+	zbody = await _zw_target(city, -20.0, -3.0, 4.0, 1, ZombieScript3.BODIES[0])
 	var order := []
 	for h in heights:
 		var r: Dictionary = holder._cast(Vector3(-24.0, h, _zw_part_at(zbody, "torso").z), Vector3.RIGHT, 8.0)
@@ -9601,8 +9664,9 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var EntrancesScript := preload("res://npc/Entrances.gd")
 
 	# --- The adaptive cap (pure logic, made-up frame times) ---
-	var b = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
-	_check(zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 24..48")
+	# (laptop graphics: 16..48 and the tight thresholds; every other GPU 24..48 and the trunk thresholds, below)
+	var b = Budget.new(32, zm.MAX_ALIVE_MIN_LEAN, zm.MAX_ALIVE_MAX, true)
+	_check(zm.MAX_ALIVE_MIN_LEAN == 16 and zm.MAX_ALIVE_MIN == 24 and zm.MAX_ALIVE_MAX == 48 and b.cap == 32, "  the cap starts at 32 inside 16..48 (laptop) and 24..48 elsewhere")
 	var lo := 99
 	var hi := 0
 	for i in 60 * 90:
@@ -9614,9 +9678,9 @@ func _zombie_horde_checks(gs: Node) -> void:
 	for i in 60 * 30:
 		b.feed(40.0, b.cap, 1.0 / 60.0)
 		floor_seen = mini(floor_seen, b.cap)
-	_check(b.cap == 24 and floor_seen == 24, "  25 fps (40 ms): drops to 24 and never below (cap %d)" % b.cap)
+	_check(b.cap == 16 and floor_seen == 16, "  25 fps (40 ms): drops to 16 and never below (cap %d)" % b.cap)
 	# Hysteresis: after a drop it holds, then needs two good windows in a row.
-	var b2 = Budget.new(40, 24, 48)
+	var b2 = Budget.new(40, 16, 48, true)
 	for i in 60 * 3 + 5:
 		b2.feed(40.0, 40, 1.0 / 60.0)
 	var after_drop: int = b2.cap
@@ -9625,22 +9689,41 @@ func _zombie_horde_checks(gs: Node) -> void:
 		if b2.feed(15.0, b2.cap, 1.0 / 60.0) and climbed_at < 0.0:
 			climbed_at = i / 60.0
 	_check(after_drop == 36 and climbed_at >= 8.9, "  after a drop it holds, then climbs only after two good windows (cap %d, first climb at %.1f s)" % [after_drop, climbed_at])
-	var b3 = Budget.new(32, 24, 48)
+	var b3 = Budget.new(32, 16, 48, true)
 	for i in 60 * 60:
-		b3.feed(20.2, b3.cap, 1.0 / 60.0)
-	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (20 ms) does not move it (cap %d)" % b3.cap)
-	var b4 = Budget.new(32, 24, 48)
+		b3.feed(17.9, b3.cap, 1.0 / 60.0)
+	_check(b3.cap == 32 and b3.raised == 0 and b3.lowered == 0, "  the middle band (17.9 ms) does not move it (cap %d)" % b3.cap)
+	var b4 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b4.feed(16.0, 10, 1.0 / 60.0)
 	_check(b4.cap == 32, "  it does not climb while the horde is nowhere near the cap (cap %d)" % b4.cap)
-	var b5 = Budget.new(32, 24, 48)
+	var b5 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b5.feed(900.0 if i % 90 == 0 else 16.0, b5.cap, 1.0 / 60.0)
 	_check(b5.lowered == 0 and b5.cap >= 32, "  a load hitch (900 ms) is not the horde's doing (cap %d)" % b5.cap)
-	var b6 = Budget.new(32, 24, 48)
+	var b6 = Budget.new(32, 16, 48, true)
 	for i in 60 * 30:
 		b6.feed(50.0 if i % 8 == 0 else 14.0, b6.cap, 1.0 / 60.0)
 	_check(b6.cap < 32, "  a steady stutter (1 frame in 8 over 33 ms) lowers it (cap %d)" % b6.cap)
+
+	# Desktop GPUs: trunk thresholds (18.5 / 22 ms, 33 ms slow frames) and a floor of 24; a healthy 60 Hz frame
+	# (16.7 on the clock, 9 ms of render cost) never lowers it, and a vsync-bound 17.9 ms mean does not either.
+	var d1 = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	for i in 60 * 30:
+		d1.feed(40.0, d1.cap, 1.0 / 60.0)
+	_check(d1.cap == 24, "  desktop: 25 fps drops to 24 and never below (cap %d)" % d1.cap)
+	var d2 = Budget.new(32, zm.MAX_ALIVE_MIN, zm.MAX_ALIVE_MAX)
+	for i in 60 * 30:
+		d2.feed(18.2 if i % 2 == 0 else 17.0, 10, 1.0 / 60.0)
+	_check(d2.cap == 32 and d2.lowered == 0, "  desktop: a 60 Hz frame with some jitter (17.6 ms mean) does not lower it (cap %d)" % d2.cap)
+	var d3 = Budget.new(32, 16, zm.MAX_ALIVE_MAX, true)
+	for i in 60 * 30:
+		d3.feed(16.9, d3.cap, 1.0 / 60.0, 9.0)
+	_check(d3.lowered == 0 and d3.cap > 32, "  laptop: a vsync-bound frame that cost 9 ms is healthy (cap %d)" % d3.cap)
+	var d4 = Budget.new(32, 16, zm.MAX_ALIVE_MAX, true)
+	for i in 60 * 30:
+		d4.feed(16.9, d4.cap, 1.0 / 60.0, 21.0)
+	_check(d4.cap == 16, "  laptop: a frame that cost 21 ms lowers it (cap %d)" % d4.cap)
 
 	# --- Round sizes: 2.5x ---
 	var old := [6, 8, 13, 18, 24]
@@ -9836,6 +9919,16 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var made := []
 	var on_surge := func(zz): made.append(zz)
 	surge.spawned.connect(on_surge)
+	# On laptop graphics at Low/Medium the surge adds SURGE_EXTRA_LEAN over the frame-time cap, elsewhere SURGE_EXTRA.
+	var sgfx := root.get_node("Graphics")
+	var spreset_was: int = sgfx.preset
+	sgfx.preset = sgfx.Preset.LOW
+	var lean_extra: int = surge.surge_extra()
+	sgfx.preset = sgfx.Preset.HIGH
+	_check(surge.surge_extra() == surge.SURGE_EXTRA and lean_extra == (surge.SURGE_EXTRA_LEAN if sgfx._integrated else surge.SURGE_EXTRA),
+		"  the surge adds %d over the cap on a desktop GPU, %d at Low here (integrated %s)" % [surge.surge_extra(), lean_extra, sgfx._integrated])
+	_check(surge.surge_limit() == zm.SURGE_HARD_CAP, "  on a desktop GPU the surge goes up to the hard cap (%d) whatever the frame-time cap says" % surge.surge_limit())
+	# (the 32 below is the desktop rule)
 	_check(surge.trigger(32) and zm.surge_busy and not zm.surge_active and surge.phase == surge.Phase.WARNING, "  trigger(): the warning first, no double points yet")
 	_check(not surge.trigger(10), "  ...and not another while one is on")
 	var pay_warn: int = zm.points
@@ -9866,6 +9959,7 @@ func _zombie_horde_checks(gs: Node) -> void:
 	var from_ground_air := int(types.get("rise", 0)) + int(types.get("drop", 0)) + int(types.get("smash", 0))
 	_check(from_ground_air >= 26 and types.size() >= 3, "  from the ground, the fire escapes and the shop fronts (%s)" % [types])
 	_check(surge.entrance_counts.size() >= 3 and max_alive_seen <= zm.SURGE_HARD_CAP, "  hard cap respected (peak %d of %d)" % [max_alive_seen, zm.SURGE_HARD_CAP])
+	sgfx.preset = spreset_was
 	_check(zm.surge_active and not zm.surge_busy, "  after the last one is out the round may end, double points linger")
 	var f3 := 0
 	while zm.surge_active and f3 < 2000:

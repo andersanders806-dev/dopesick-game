@@ -691,7 +691,8 @@ func _apply_lights() -> void:
 func _set_light(entry: Array) -> void:
 	var on: float = _lamps_on * float(entry[3])
 	(entry[0] as Light3D).light_energy = entry[1] * on
-	(entry[0] as Light3D).visible = on > 0.01
+	# (a lamp shot out or cut off has no energy: hidden, it costs the renderer nothing; at zero it still did)
+	(entry[0] as Light3D).visible = on > 0.01 and float(entry[1]) > 0.0
 
 func _wake_goal(entry: Array) -> float:
 	var cell: Node3D = entry[2]

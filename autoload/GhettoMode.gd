@@ -33,6 +33,11 @@ func spawn_wave(def: Dictionary) -> Array:
 		return []
 	return sp.spawn_wave(def)
 
-## How many of the crew are alive.
+## How many of the crew are alive (men of a wave still queued to come out count: a wave is not cleared while
+## they wait).
 func alive() -> int:
-	return get_tree().get_nodes_in_group("gangsters").size()
+	var n := get_tree().get_nodes_in_group("gangsters").size()
+	var sp := get_tree().get_first_node_in_group("gang_spawner")
+	if sp != null and sp.has_method("pending"):
+		n += int(sp.pending())
+	return n

@@ -182,14 +182,26 @@ func start(player_role := "player", deal: Dictionary = {}) -> void:
 	_player_role = player_role
 	_deal = deal
 	_room_hud = get_tree().get_first_node_in_group("hud") as CanvasLayer
+	# The day, the craving and closing time wait, like they do for pool.
+	GameState.set_process(false)
+	if DisplayServer.get_name() == "headless" or Engine.has_meta("kart_sync"):
+		# Tests and tools want the race standing when start() returns.
+		_hide_room()
+		_build_all()
+		_reset_race()
+		_built = true
+		return
+	_start_behind_black()
+
+## Nothing renders the room behind a full-screen race.
+func _hide_room() -> void:
 	if _room_hud:
 		_room_hud.visible = false
-	# Nothing renders the room behind a full-screen race.
 	_hidden_scene = get_tree().current_scene as Node3D
 	if _hidden_scene:
 		_hidden_scene.visible = false
-	# The day, the craving and closing time wait, like they do for pool.
-	GameState.set_process(false)
+
+func _build_all() -> void:
 	_build_track_samples()
 	_build_viewport()
 	_build_world()
@@ -197,9 +209,77 @@ func start(player_role := "player", deal: Dictionary = {}) -> void:
 	_build_hands()
 	_build_hud()
 	_build_sound()
+
+## False until the race is built (and, windowed, warmed behind the black): input, physics and drawing wait.
+var _built := false
+var _veil: CanvasLayer
+## Frames the finished race is drawn behind the black before it is shown: every material, particle system and
+## the cockpit's hands compile their pipelines here instead of in the first seconds of the race.
+const WARM_FRAMES := 18
+const VEIL_FADE := 0.45
+
+## The race takes ~0.6 s to build and ~1 s of frames to compile what it draws first: both happen under a black
+## layer, a few steps over several frames, and the veil lifts when the first picture is ready.
+func _start_behind_black() -> void:
+	_veil = CanvasLayer.new()
+	_veil.layer = 200
+	var black := ColorRect.new()
+	black.color = Color.BLACK
+	black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	black.mouse_filter = Control.MOUSE_FILTER_STOP
+	_veil.add_child(black)
+	add_child(_veil)
+	# (Two frames so the black is on the screen before any of the building starts.)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_hide_room()
+	_build_track_samples()
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_build_viewport()
+	_build_world()
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_build_karts()
+	_build_hands()
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	_build_hud()
+	_build_sound()
 	_reset_race()
+	_warm_particles(true)
+	for i in WARM_FRAMES:
+		await get_tree().process_frame
+		if not is_inside_tree():
+			return
+	_warm_particles(false)
+	_built = true
+	_phase = Phase.INTRO
+	_t = 0.0
+	var tw := create_tween()
+	tw.tween_property(black, "color:a", 0.0, VEIL_FADE)
+	await tw.finished
+	if is_instance_valid(_veil):
+		_veil.queue_free()
+		_veil = null
+
+## Every kart's dust, flame and sparks switched on for the warm-up frames (their pipelines compile on the first
+## draw, which would otherwise be the first drift or boost), and off again.
+func _warm_particles(on: bool) -> void:
+	for kart in _karts:
+		for k in ["dust", "flame", "sparks"]:
+			var p := kart[k] as GPUParticles3D
+			if p != null:
+				p.emitting = on
 
 func _exit_tree() -> void:
+	if is_instance_valid(_vp):
+		Graphics.unwatch_viewport(_vp.get_viewport_rid())
 	GameState.set_process(true)
 	if is_instance_valid(_hidden_scene):
 		_hidden_scene.visible = true
@@ -309,6 +389,7 @@ func _build_viewport() -> void:
 	_vp.audio_listener_enable_3d = true
 	_vp.handle_input_locally = false
 	container.add_child(_vp)
+	Graphics.watch_viewport(_vp.get_viewport_rid())
 	_world = Node3D.new()
 	_world.name = "Speedway"
 	_vp.add_child(_world)
@@ -1398,7 +1479,7 @@ func _reset_race() -> void:
 	_set_start_lights(0)
 
 func _physics_process(delta: float) -> void:
-	if _karts.is_empty() or _paused_confirm:
+	if not _built or _karts.is_empty() or _paused_confirm:
 		return
 	_t += delta
 	match _phase:
@@ -1915,8 +1996,13 @@ const WHEEL_GRIP_R := 0.145
 const HAND_ROLL_R := -35.0
 const HAND_ROLL_L := 215.0
 
+## The wheel grip's finger shape and the (empty) aim options, built once: they were rebuilt every frame.
+var _hold_shape: Dictionary = {}
+const _NO_OPTIONS := {}
+
 ## Your own arms (the same rig and skin as the story's hands, player/Viewmodel.gd), on the camera.
 func _build_hands() -> void:
+	_hold_shape = Viewmodel.blend_shape("relaxed", "hold", 1.0)
 	_hands = Viewmodel.new().setup_hands_only() as Viewmodel
 	_hands.position = Vector3.ZERO
 	_camera.add_child(_hands)
@@ -1936,10 +2022,10 @@ func _hands_on_wheel(kart_node: Node3D, steer: float) -> void:
 	var wheel := kart_node.get_meta("steering_wheel") as Node3D
 	var to_cam := _camera.global_transform.affine_inverse()
 	var wt := wheel.global_transform
-	_hands.set_hand("R", Viewmodel.blend_shape("relaxed", "hold", 1.0), HAND_ROLL_R, 0.9)
-	_hands.set_hand("L", Viewmodel.blend_shape("relaxed", "hold", 1.0), HAND_ROLL_L, 0.9)
+	_hands.set_hand("R", _hold_shape, HAND_ROLL_R, 0.9)
+	_hands.set_hand("L", _hold_shape, HAND_ROLL_L, 0.9)
 	_hands.grip_r = to_cam * (wt * Vector3(WHEEL_GRIP_R, 0.0, 0.0))
-	_hands.aim_hands(to_cam * (wt * Vector3(-WHEEL_GRIP_R, 0.0, 0.0)))
+	_hands.aim_hands(to_cam * (wt * Vector3(-WHEEL_GRIP_R, 0.0, 0.0)), _NO_OPTIONS)
 
 ## First person, the only view: a driver's-eye camera riding the player's kart. A slight head
 ## lean and look into the turns, the road's rumble and crash shake on top. No chase cam.
@@ -2010,7 +2096,8 @@ func _process(delta: float) -> void:
 	_hud.queue_redraw()
 	_minimap.queue_redraw()
 	_speedo.queue_redraw()
-	_feed_engine()
+	if _built:
+		_feed_engine()
 
 func _show_banner(text: String, col: Color, secs: float) -> void:
 	_banner_text = text
@@ -2231,6 +2318,9 @@ func _player_throttle() -> float:
 	return clampf(t, -1.0, 1.0)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not _built:
+		get_viewport().set_input_as_handled()
+		return
 	# A pad button stands in for the key it means: options or circle for
 	# Esc, cross or square for E. Anything else on the pad is still yours.
 	if event is InputEventJoypadButton and event.pressed:

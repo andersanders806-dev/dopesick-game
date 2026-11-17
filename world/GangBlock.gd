@@ -56,6 +56,7 @@ func setup(block: Node3D) -> void:
 	gang_fx = GangFXScript.new()
 	add_child(gang_fx)
 	prewarm_gang_bodies()
+	prewarm_gang_render()
 	_arm_player()
 	spawner = GangSpawnerScript.new()
 	spawner.holder = city
@@ -135,6 +136,62 @@ func prewarm_gang_bodies() -> void:
 	for b in GangsterScript.GANG_BODIES:
 		CharacterCastScript.scene_for(GangsterScript.MODEL_DIR + b + ".glb")
 		prewarmed += 1
+
+## Draws every body once, under the street, for a few frames, behind the loading black: the body's gore
+## tables, rot/skin materials, gun and gear models and the skin's first upload happen here and not as a
+## 100-200 ms frame when the first crew steps out (SHIP 4: the worst Ghetto Wars frame, 195 ms).
+## The men are not in the "gangsters" group and don't think (Gangster3D reads meta "prewarm").
+func prewarm_gang_render() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var bay := Node3D.new()
+	bay.name = "GangPrewarm"
+	city.add_child(bay)
+	var player := city.get_tree().get_first_node_in_group("player") as Node3D
+	var at: Vector3 = player.global_position if player else Vector3.ZERO
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var crews: Array = GangsterScript.CREW_LOOK.keys()
+	var guns: Array = GangsterScript.GUNS.keys()
+	for i in maxi(GangsterScript.GANG_BODIES.size(), crews.size() * 2):
+		var g: CharacterBody3D = GangsterScript.new()
+		# Every crew's look and every gun's model once (a gun model's first build was 20-60 ms on the first man to carry it).
+		g.crew = crews[i % crews.size()]
+		g.configure("grunt", 1, rng)
+		g.gun_id = guns[i % guns.size()]
+		g.gun = GangsterScript.GUNS[g.gun_id]
+		g.mag = int(g.gun["mag"])
+		g.set_meta("body", GangsterScript.GANG_BODIES[i])
+		g.set_meta("prewarm", true)
+		bay.add_child(g)
+		g.global_position = at + Vector3(-5.0 + i * 0.5, -4.0, 0.0)
+		_in_front_of_camera(g, i, maxi(GangsterScript.GANG_BODIES.size(), crews.size() * 2))
+	_free_prewarm(bay)
+
+## Behind the loading black nothing shows: the bodies stand 3 m in front of the camera so every one is drawn
+## (under the street the occluders hide them and their pipelines compile on the first real man).
+func _in_front_of_camera(body: Node3D, i: int, n: int) -> void:
+	var cam := city.get_viewport().get_camera_3d()
+	if cam == null or not cam.is_inside_tree():
+		return
+	var f := -cam.global_transform.basis.z
+	f.y = 0.0
+	f = f.normalized() if f.length() > 0.01 else Vector3.FORWARD
+	var side := f.cross(Vector3.UP)
+	body.global_position = Vector3(cam.global_position.x, cam.global_position.y - 1.6, cam.global_position.z) + f * 3.0 + side * (float(i) - float(n) * 0.5) * 0.35
+
+func _free_prewarm(bay: Node3D) -> void:
+	for i in 3:
+		if not is_inside_tree():
+			break
+		await get_tree().process_frame
+	# fx/Prewarm.gd cuts every body's limbs from these, a couple a frame, behind the same black.
+	var w := 0
+	while is_inside_tree() and is_instance_valid(bay) and bay.get_meta("busy", false) and w < 120:
+		await get_tree().process_frame
+		w += 1
+	if is_instance_valid(bay):
+		bay.queue_free()
 
 ## The navmesh is baked once the first frames have passed, so cover is built a couple of physics frames in.
 func _build_cover() -> void:

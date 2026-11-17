@@ -193,6 +193,37 @@ func muzzle_flash(pos: Vector3, dir: Vector3) -> void:
 		light.visible = true
 		l["t"] = 0.06
 
+## Behind the black (fx/Prewarm.gd): every stream a fight plays is loaded, and each voice plays one of them (the
+## bus is muted then), so the first volley does not load a dozen sounds and start a dozen players on its frame.
+func warm_sounds() -> void:
+	var streams: Array = []
+	for i in 3:
+		streams.append(_stream("bullet_crack_%d" % (i + 1)))
+		streams.append(_stream("bullet_whizz_%d" % (i + 1)))
+	for gun in ["pistol", "smg", "ar", "shotgun", "lmg"]:
+		var path := "res://weapons/%s.tres" % gun
+		if not _gun_data.has(gun):
+			_gun_data[gun] = load(path) if ResourceLoader.exists(path) else null
+		var d = _gun_data[gun]
+		if d != null:
+			streams.append(GunSounds.shot(d, 1))
+			streams.append(GunSounds.distant(d, 1))
+	var i := 0
+	for v in _voices:
+		var st: AudioStream = null
+		while st == null and i < streams.size() * 2:
+			st = streams[i % streams.size()]
+			i += 1
+		if st != null:
+			v.stream = st
+			v.volume_db = -80.0
+			v.play()
+
+func unwarm_sounds() -> void:
+	for v in _voices:
+		v.stop()
+		v.volume_db = 0.0
+
 func _stream(n: String) -> AudioStream:
 	if not _streams.has(n):
 		var path := SFX_DIR + n + ".wav"

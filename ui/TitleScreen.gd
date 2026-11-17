@@ -353,6 +353,8 @@ Gun sounds (OpenGameArt): The Free Firearm Sound Library by Still North Media (C
 SpringySpringo, BMacZero, zer0_sol, LFA, kurt (CC0), layered and level-matched for this game. Lists: assets/sfx/CREDITS/guns-recorded.md.
 Launcher and melee sounds (OpenGameArt): dklon -- Rocket Launch Pack, CGEffex -- Punch Slap n Kick (CC BY 3.0); will_leamon -- Fleshy Fight Sounds (OGA-BY 3.0);
 Joth, NenadSimic, artisticdude, Independent.nu, qubodup (CC0).
+Frag grenade: LonesomeDucky -- Mk2 Grenade (CC0). Explosion and smoke flipbooks: Unity Labs Paris, Thomas Iche (CC0). Blast recordings: USC Sound Effect Archive (CC0).
+Grenade pin pull and toss onto cement: CGEffex (freesound.org, CC BY 4.0, creativecommons.org/licenses/by/4.0); bounces, whooshes, debris: Sonniss GDC bundles. Lists: assets/sfx/CREDITS/grenade.md.
 Animation: Quaternius -- Universal Animation Library 1 and 2 (CC0), retargeted onto the Rocketbox rig.
 Zombie and kick animations: generated with NVIDIA Kimodo (NVIDIA Open Model License) through kimodo.cpp (Apache-2.0); built with Meta Llama 3.
 Cutscenes: real footage from Mixkit (Mixkit free licence), cut and regraded.

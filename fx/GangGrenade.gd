@@ -4,6 +4,8 @@ extends Node3D
 ## can read it and run; a grenade then lies there with the ring shrinking to its fuse ("cooking"), a bottle bursts
 ## on landing and leaves a pool of fire.
 
+const Explosion := preload("res://fx/Explosion.gd")
+const Mk2 := preload("res://fx/Mk2.gd")
 const RADIUS := {"frag": 4.5, "molotov": 3.2}
 const FUSE := 1.5
 const FIRE_TIME := 4.5
@@ -19,13 +21,28 @@ var _from := Vector3.ZERO
 var _t := 0.0
 var _dur := 1.0
 var _ring: MeshInstance3D
-var _body: MeshInstance3D
+var _body: Node3D
 var _light: OmniLight3D
 var _fire_t := 0.0
 var _hurt_cd := 0.0
 ## For the tests.
 var exploded := false
 var damage_dealt := 0.0
+
+## Seconds until it goes off (a live frag: its flight and its fuse; a bottle has none): the HUD's danger arrow reads it.
+func fuse_left() -> float:
+	if kind != "frag" or exploded:
+		return INF
+	match phase:
+		"flight":
+			return maxf(_dur - _t, 0.0) + FUSE
+		"fuse":
+			return maxf(FUSE - _t, 0.0)
+	return INF
+
+## Where the danger is, for the HUD.
+func danger_at() -> Vector3:
+	return global_position
 
 func radius() -> float:
 	return float(RADIUS[kind])
@@ -36,23 +53,27 @@ func launch(from: Vector3, to: Vector3, who: Node) -> void:
 	landing = Vector3(to.x, 0.02, to.z)
 	_dur = maxf(from.distance_to(landing) / FLIGHT_SPEED, 0.8)
 	global_position = from
-	_body = MeshInstance3D.new()
-	var m: Mesh = SphereMesh.new() if kind == "frag" else CylinderMesh.new()
 	if kind == "frag":
-		(m as SphereMesh).radius = 0.05
-		(m as SphereMesh).height = 0.1
+		# The Mk 2 of the player's own (real size), whole: its spoon is still on.
+		_body = Mk2.build()
+		add_child(_body)
+		add_to_group("live_grenade")
 	else:
-		(m as CylinderMesh).top_radius = 0.035
-		(m as CylinderMesh).bottom_radius = 0.045
-		(m as CylinderMesh).height = 0.26
-	_body.mesh = m
-	var bm := StandardMaterial3D.new()
-	bm.albedo_color = Color(0.2, 0.28, 0.14) if kind == "frag" else Color(0.35, 0.5, 0.25, 0.85)
-	bm.emission_enabled = kind == "molotov"
-	bm.emission = Color(1.0, 0.45, 0.1)
-	bm.emission_energy_multiplier = 1.5
-	_body.material_override = bm
-	add_child(_body)
+		_body = Node3D.new()
+		var mi := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.035
+		cyl.bottom_radius = 0.045
+		cyl.height = 0.26
+		mi.mesh = cyl
+		var bm := StandardMaterial3D.new()
+		bm.albedo_color = Color(0.35, 0.5, 0.25, 0.85)
+		bm.emission_enabled = true
+		bm.emission = Color(1.0, 0.45, 0.1)
+		bm.emission_energy_multiplier = 1.5
+		mi.material_override = bm
+		_body.add_child(mi)
+		add_child(_body)
 	# The ring on the ground: where it will reach.
 	_ring = MeshInstance3D.new()
 	var disc := CylinderMesh.new()
@@ -163,18 +184,11 @@ func _flames() -> void:
 
 func _explode() -> void:
 	exploded = true
-	var fx := get_tree().get_first_node_in_group("gang_fx")
-	if fx != null and fx.has_method("_play_at"):
-		fx._play_at(landing, "grenade_boom", 2.0, randf_range(0.95, 1.05))
-	var flash := OmniLight3D.new()
-	flash.light_color = Color(1.0, 0.7, 0.4)
-	flash.light_energy = 8.0
-	flash.omni_range = 14.0
-	add_child(flash)
-	flash.position.y = 1.0
-	get_tree().create_timer(0.12).timeout.connect(func():
-		if is_instance_valid(flash):
-			flash.queue_free())
+	remove_from_group("live_grenade")
+	# The game's one explosion (fx/Explosion.gd): the picture, the A/C pair of recordings, the shake and rumble by distance.
+	var fx := Explosion.of(self)
+	if fx != null:
+		fx.detonate(landing + Vector3(0, 0.05, 0), Vector3.UP, 1.0)
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player != null:
 		var d := Vector2(player.global_position.x - landing.x, player.global_position.z - landing.z).length()
@@ -187,9 +201,6 @@ func _explode() -> void:
 				dmg *= 0.35
 			damage_dealt += dmg
 			ZombieMode.player_hit(dmg, landing)
-		var holder := get_tree().get_first_node_in_group("weapon_holder")
-		if holder != null and holder.get("feel") != null:
-			holder.feel.add_trauma(clampf(1.0 - d / 18.0, 0.0, 1.0) * 0.7)
 	# Hurts the dead too: whatever of the crews' enemies is in it.
 	for z in get_tree().get_nodes_in_group("gangsters"):
 		pass

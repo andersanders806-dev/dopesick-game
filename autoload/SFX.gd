@@ -516,8 +516,15 @@ func _ensure_muffles() -> void:
 func muffle_cutoff() -> float:
 	return lerpf(MUFFLE_HZ.x, MUFFLE_HZ.y, pow(GameState.sickness(), 1.3))
 
+## A very close blast (fx/Explosion.gd) dulls the world for a few seconds: the lower of its cutoff and the sickness's wins.
+var ear_hz := 20500.0
+
+func set_ear_muffle(hz: float) -> void:
+	ear_hz = hz
+	_apply_muffle()
+
 func _apply_muffle() -> void:
-	var hz := muffle_cutoff()
+	var hz := minf(muffle_cutoff(), ear_hz)
 	for f in _muffles:
 		f.cutoff_hz = hz
 

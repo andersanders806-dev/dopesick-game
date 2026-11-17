@@ -37,6 +37,8 @@ const DELAY := 1.2
 const GUN_DIR := "res://weapons/"
 const GUN_SFX := "res://assets/sfx/guns/"
 const GunSounds := preload("res://weapons/GunSounds.gd")
+const Mk2 := preload("res://fx/Mk2.gd")
+const Lethal := preload("res://player/Lethal.gd")
 const WD := preload("res://weapons/WeaponData.gd")
 const SOUNDS_IN_FLIGHT := 4
 ## SHIP 16 B2: the sixteen new guns' models are built here too (the viewmodel with its arms and optic, and the gun
@@ -134,6 +136,7 @@ func _run() -> void:
 	_expire(true)
 	progress = 0.95
 	await _warm_guns()
+	await _warm_grenade()
 	took_ms = Time.get_ticks_msec() - t0
 	progress = 1.0
 	finished = true
@@ -256,6 +259,38 @@ func _warm_models(guns: Array) -> void:
 		await get_tree().process_frame
 		_expire(false)
 	_expire(true)
+
+## The Mk 2 frag, its throw and the shared explosion (SHIP 16G): the model, the flipbooks and every sound they play, read a few
+## at a time on worker threads and then handed to their own loaders (which find them in the cache), as the guns are.
+func _warm_grenade() -> void:
+	var files := PackedStringArray([Mk2.MODEL])
+	for n in ["real_A_taet", "real_C_fjern", "slapback_street", "ear_ring", "debris_1", "debris_2", "debris_3", "pin_pull", "roll_concrete",
+			"spoon_ping_1", "spoon_ping_2", "spoon_ping_3", "throw_whoosh_1", "throw_whoosh_2", "throw_whoosh_3"]:
+		files.append("res://assets/sfx/grenade/%s.wav" % n)
+	for k in ["concrete", "metal", "wood"]:
+		for j in 3:
+			files.append("res://assets/sfx/grenade/bounce_%s_%d.wav" % [k, j + 1])
+	for n in ["explosion_a_5x5", "explosion_b_5x5", "smoke_wispy_8x8", "dust_cloud_8x8", "sparks_4x1", "grit_4x2", "scorch_albedo_1", "scorch_albedo_2", "scorch_normal_1", "scorch_normal_2"]:
+		files.append("res://assets/fx/explosion/%s.png" % n)
+	var hold: Array = []
+	var flight: Array = []
+	var i := 0
+	while i < files.size() or not flight.is_empty():
+		while i < files.size() and flight.size() < SOUNDS_IN_FLIGHT:
+			if ResourceLoader.exists(files[i]) and ResourceLoader.load_threaded_request(files[i]) == OK:
+				flight.append(files[i])
+			i += 1
+		await get_tree().process_frame
+		for f in flight.duplicate():
+			if ResourceLoader.load_threaded_get_status(f) != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				var r := ResourceLoader.load_threaded_get(f)
+				if r != null:
+					hold.append(r)
+				flight.erase(f)
+	Mk2.warm()
+	await get_tree().process_frame
+	Lethal.warm_files()
+	hold.clear()
 
 func _build() -> void:
 	var main := get_tree().root

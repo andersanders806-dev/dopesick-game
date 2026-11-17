@@ -26,6 +26,8 @@ const AimAssist := preload("res://player/AimAssist.gd")
 const PadRumble := preload("res://player/PadRumble.gd")
 const GunSounds := preload("res://weapons/GunSounds.gd")
 const RocketScript := preload("res://fx/Rocket.gd")
+const LethalScript := preload("res://player/Lethal.gd")
+const Gore := preload("res://fx/gore/Gore.gd")
 ## A shotgun this close throws a zombie back.
 const KNOCK_RANGE := 4.5
 
@@ -52,8 +54,17 @@ signal swing_landed(hits: int, killed: bool, wall: bool)
 signal melee_changed(data: WD)
 ## A rocket went off: where, and its blast radius.
 signal exploded(at: Vector3, radius: float)
+## The frag count changed (the HUD's).
+signal grenades_changed(count: int)
 
 const MAX_SLOTS := 2
+## The Mk 2 frag: the blast's reach (m), the player's damage at the middle, and the rest of its blast table (DESIGN.md section 3).
+const GRENADE_RADIUS := 6.0
+## Mk 2 frags carried: the start, the most, and what a new round (Dead Block, +2) or wave (Ghetto Wars, +1) brings.
+const GRENADE_START := 2
+const GRENADE_MAX := 4
+const GRENADE_INNER := 1.5
+const GRENADE_SELF := 110.0
 const START_WEAPON := "res://weapons/pistol.tres"
 const KNIFE := "res://weapons/knife.tres"
 const POOL_IDS := ["smg", "shotgun", "ar", "sniper", "magnum", "lmg", "wonder", "mp5", "vector", "ak", "m16", "deagle", "aa12", "dmr",
@@ -133,6 +144,9 @@ var _lunge_v := Vector3.ZERO
 var _lunge_left := 0.0
 ## Rockets in flight and at rest (pooled: a launcher's shot makes none).
 var _rockets: Array = []
+## The Mk 2 frags in the pouch, and the lethal slot's node (player/Lethal.gd).
+var grenades := GRENADE_START
+var lethal: Node
 
 var current: WD:
 	get: return slots[active].data if slots[active] != null else null
@@ -163,6 +177,9 @@ func _ready() -> void:
 	# The pad: aim assist on the look (first person) and rumble from this node's signals.
 	add_child(AimAssist.new())
 	add_child(PadRumble.new())
+	lethal = LethalScript.new()
+	add_child(lethal)
+	ZombieMode.round_started.connect(_restock_grenades)
 
 # --- The guns you hold -------------------------------------------------------------
 
@@ -240,6 +257,7 @@ func refill_all() -> void:
 			s.mag = maxi(int(s.mag), s.data.mag_size)
 			s.reserve = s.data.reserve_max
 	ammo_changed.emit()
+	set_grenades(GRENADE_MAX)
 
 func is_full() -> bool:
 	return current != null and mag >= current.mag_size and reserve >= current.reserve_max
@@ -912,6 +930,41 @@ func _strike(d: WD) -> void:
 			gore.screen_blood(0.35 + 0.15 * hits + (0.2 if _swing_heavy else 0.0))
 	swing_landed.emit(hits, killed, wall)
 
+# --- The lethal slot: the Mk 2 frag (player/Lethal.gd does the throwing) ----------------------
+
+func set_grenades(n: int) -> void:
+	var c := clampi(n, 0, GRENADE_MAX)
+	if c != grenades:
+		grenades = c
+		grenades_changed.emit(grenades)
+
+## One out of the pouch (the pin is out).
+func take_grenade() -> void:
+	set_grenades(grenades - 1)
+
+## A new round of Dead Block gives two, a new wave of Ghetto Wars one, to four at most (the first round gives none: you start with two).
+## Wall-buys and the box do not sell them; Max Ammo refills to four (refill_all).
+func _restock_grenades(r: int) -> void:
+	if r <= 1:
+		return
+	set_grenades(grenades + (1 if ZombieMode.gangs else 2))
+
+## The blast table of the frag (DESIGN.md section 3): kills everything inside 1.5 m up to round 9, down to 20 % at 6 m, a wall leaves 35 %;
+## the player takes 110 x (1 - d/6), lethal inside 1.5 m.
+func grenade_spec() -> Dictionary:
+	var big := maxf(1000.0, 0.55 * float(ZombieMode.zombie_health(ZombieMode.round)))
+	return {"radius": GRENADE_RADIUS, "inner": GRENADE_INNER, "damage": big, "falloff_min": 0.2, "self_damage": GRENADE_SELF,
+		"weapon": frag_data(), "knock": 9.0, "gib_m": 2.5, "cover": 0.35}
+
+## The grenade pool and the hands made now (fx/Prewarm.gd, behind the loading black), shown at `at`, and put away.
+func warm_grenades(at: Vector3) -> void:
+	if lethal != null:
+		lethal.warm(at)
+
+func unwarm_grenades() -> void:
+	if lethal != null:
+		lethal.unwarm()
+
 # --- The launcher ---------------------------------------------------------------------
 
 ## Sends a rocket from just ahead of the eye along `dir` (pooled: two are kept).
@@ -949,33 +1002,108 @@ func unwarm_rockets() -> void:
 
 ## A rocket's blast at `at` (fx/Rocket.gd calls it): full damage at the middle down to a quarter at the edge for every
 ## zombie in the radius not behind a wall, the one it struck taking it whole; the shooter takes up to self_damage.
+## (A thin wrapper: the damage is explode()'s, the picture and the sound are fx/Explosion.gd's.)
 func rocket_blast(at: Vector3, d: WD, struck: Node) -> void:
-	var radius := maxf(d.splash_radius, 0.5)
+	explode(at, {"radius": maxf(d.splash_radius, 0.5), "inner": 0.0, "damage": d.damage, "falloff_min": 0.25,
+		"self_damage": d.self_damage, "weapon": d, "knock": 9.0, "gib_m": 2.0}, struck)
+
+## The Mk 2 frag as a weapon (for the kill credit and the way a body is thrown), built once.
+static var _frag: WD = null
+
+static func frag_data() -> WD:
+	if _frag == null:
+		_frag = WD.new()
+		_frag.id = "frag"
+		_frag.display_name = "Mk 2 Frag"
+		_frag.damage = 1000.0
+		_frag.splash_radius = GRENADE_RADIUS
+		_frag.self_damage = GRENADE_SELF
+		_frag.projectile = "grenade"
+		_frag.in_box = false
+	return _frag
+
+## One blast, every kind: `spec` = {radius (m, the reach), inner (m, full damage inside), damage (at the middle), falloff_min
+## (share left at the radius), self_damage (the player's, up to, falling to 0 at the radius), cover (share left behind a wall,
+## 0.35), weapon (WD), knock (m/s), gib_m (a kill this close, or of 1.5 x its health, bursts the body)}.
+## Zombies and crew men in reach are hurt nearest first, two a frame (a crowd dying in one frame, their gore and their bodies
+## all at once, was the launcher's worst frame); loose props are shoved; the shooter takes the same curve. Returns how many.
+func explode(at: Vector3, spec: Dictionary, struck: Node = null) -> int:
+	var radius: float = float(spec.get("radius", 4.0))
+	var inner: float = float(spec.get("inner", 0.0))
+	var dmg: float = float(spec.get("damage", 100.0))
+	var fmin: float = float(spec.get("falloff_min", 0.25))
+	var cover: float = float(spec.get("cover", 0.35))
+	var weapon: WD = spec.get("weapon", null)
+	var knock: float = float(spec.get("knock", 9.0))
+	var gib_m: float = float(spec.get("gib_m", 2.5))
+	var space := get_viewport().world_3d.direct_space_state if get_viewport() != null else null
+	var from := at + Vector3(0.0, 0.3, 0.0)
 	var hits: Array = []
 	for z in get_tree().get_nodes_in_group("zombies"):
-		if not (z is Node3D) or not z.has_method("take_hit"):
+		if not (z is Node3D) or not z.has_method("take_hit") or (z.has_method("is_alive") and not z.is_alive()):
 			continue
 		var c: Vector3 = (z as Node3D).global_position + Vector3(0.0, 0.9, 0.0)
 		var dist := c.distance_to(at)
 		if dist > radius + 0.6 and z != struck:
 			continue
-		var k := 1.0 if z == struck else clampf(1.0 - dist / (radius + 0.6), 0.25, 1.0)
+		var k := 1.0
+		if z != struck and dist > inner:
+			k = clampf(lerpf(1.0, fmin, (dist - inner) / maxf(radius - inner, 0.1)), fmin * 0.5, 1.0)
+		if z != struck and _blast_blocked(space, from, c):
+			k *= cover
 		var dir := (c - at).normalized() if dist > 0.05 else Vector3.UP
-		hits.append({"z": z, "dmg": d.damage * k, "dir": dir, "at": c, "k": k, "d": d, "dist": -1.0 if z == struck else dist})
-	# The shock goes out from the middle: the nearest first, a couple a frame (a crowd dying in one frame, their gore and
-	# their bodies all at once, was the launcher's worst frame).
+		hits.append({"z": z, "dmg": dmg * k, "dir": dir, "at": c, "k": k, "d": weapon, "dist": -1.0 if z == struck else dist,
+			"knock": knock, "gib": dist <= gib_m or dmg * k >= 1.5 * float(z.get("max_health") if z.get("max_health") != null else 100.0)})
 	hits.sort_custom(func(a, b): return a.dist < b.dist)
 	_blast_queue.append_array(hits)
 	_blast_step()
-	# Too close to your own rocket hurts.
-	if player != null and d.self_damage > 0.0:
-		var pd := (player.global_position + Vector3(0.0, 0.9, 0.0)).distance_to(at)
+	_shove_props(space, at, radius, knock)
+	# The shooter takes the same curve: lethal inside the inner circle for a grenade, up to self_damage for the rocket.
+	var sd: float = float(spec.get("self_damage", 0.0))
+	if player != null and sd > 0.0:
+		var chest := player.global_position + Vector3(0.0, 0.9, 0.0)
+		var pd := chest.distance_to(at)
 		if pd < radius:
-			ZombieMode.player_hit(d.self_damage * (1.0 - pd / radius), at)
-	if feel != null:
-		var pd2 := player.global_position.distance_to(at) if player != null else 30.0
-		feel.add_trauma(clampf(1.0 - pd2 / 28.0, 0.15, 0.9))
+			var hurt_k := 1.0 if pd <= inner and inner > 0.0 else 1.0 - pd / radius
+			if _blast_blocked(space, from, chest):
+				hurt_k *= cover
+			if hurt_k > 0.0:
+				ZombieMode.player_hit(sd * hurt_k, at)
 	exploded.emit(at, radius)
+	return hits.size()
+
+## Whether the world (layer 1) stands between the blast and `to`.
+func _blast_blocked(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> bool:
+	if space == null:
+		return false
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.collision_mask = 1 | 16
+	return not space.intersect_ray(q).is_empty()
+
+## Loose props (rigid bodies) in reach are thrown away from the middle, the lightest first, twelve at most.
+func _shove_props(space: PhysicsDirectSpaceState3D, at: Vector3, radius: float, knock: float) -> void:
+	if space == null:
+		return
+	var sph := SphereShape3D.new()
+	sph.radius = radius
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sph
+	q.transform = Transform3D(Basis.IDENTITY, at)
+	q.collision_mask = 0x7FFFFFFF
+	var bodies: Array = []
+	for r in space.intersect_shape(q, 32):
+		var c = r.get("collider")
+		if c is RigidBody3D and not (c as RigidBody3D).freeze and not bodies.has(c):
+			bodies.append(c)
+	if bodies.is_empty():
+		return
+	bodies.sort_custom(func(a, b): return (a as RigidBody3D).mass < (b as RigidBody3D).mass)
+	for i in mini(bodies.size(), 12):
+		var rb := bodies[i] as RigidBody3D
+		var off := rb.global_position - at
+		var k := clampf(1.0 - off.length() / maxf(radius, 0.1), 0.15, 1.0)
+		var dir := (off.normalized() if off.length() > 0.05 else Vector3.UP) + Vector3(0.0, 0.6, 0.0)
+		rb.apply_central_impulse(dir.normalized() * knock * k * sqrt(maxf(rb.mass, 0.1)))
 
 ## Viewmodels of the guns in your slots not in your hands (WD -> Viewmodel), kept out of sight for the swap back.
 var _vm_kept := {}
@@ -1001,10 +1129,32 @@ func _blast_step() -> void:
 		if not is_instance_valid(z):
 			continue
 		var dir: Vector3 = h.dir
+		var k: float = float(h.k)
+		# How hard a body that dies of this is thrown (npc/Zombie3D.gd reads it once).
+		z.set_meta("blast_power", 4.0 + 6.0 * k)
 		_hurt(z, "torso", h.dmg, dir, h.d, false, h.at)
-		if is_instance_valid(z) and z.has_method("knock"):
-			z.knock(Vector3(dir.x, 0.6, dir.z).normalized() * 9.0 * float(h.k))
+		if is_instance_valid(z):
+			if z.has_meta("blast_power"):
+				z.remove_meta("blast_power")
+			var dead: bool = z.has_method("is_alive") and not z.is_alive()
+			if dead and bool(h.get("gib", false)):
+				_gib(z, h.at, dir, k)
+			elif z.has_method("knock"):
+				z.knock(Vector3(dir.x, 0.6, dir.z).normalized() * float(h.get("knock", 9.0)) * k)
 	_pay_hits()
+
+## A body killed in the middle of a blast bursts: a cloud of blood and chunks, and a limb or two torn off.
+func _gib(z: Node, at: Vector3, dir: Vector3, k: float) -> void:
+	if not ZombieMode.gore_enabled:
+		return
+	var gore := Gore.of(z)
+	if gore == null:
+		return
+	gore.burst(z, at, dir, 1.0 + k, 3)
+	var limbs := ["arm_l", "arm_r", "leg_l", "leg_r"]
+	gore.sever(z, limbs[rng.randi() % limbs.size()], dir)
+	if k > 0.7:
+		gore.sever(z, limbs[rng.randi() % limbs.size()], dir)
 
 # --- Aim ----------------------------------------------------------------------------
 

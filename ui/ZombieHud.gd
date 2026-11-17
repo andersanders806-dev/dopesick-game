@@ -12,6 +12,7 @@ const POP_TIME := 1.1
 const HitmarkerScript := preload("res://ui/Hitmarker.gd")
 const PointsPopupScript := preload("res://ui/PointsPopup.gd")
 const GlyphLabelScript := preload("res://ui/GlyphLabel.gd")
+const GrenadeHudScript := preload("res://ui/GrenadeHud.gd")
 const SeismographScript := preload("res://ui/Seismograph.gd")
 const DOUBLE_GOLD := Color(0.96, 0.74, 0.16)
 const U := preload("res://ui/UiStyle.gd")
@@ -88,6 +89,8 @@ func _ready() -> void:
 	_pin_bottom_left(double_label, U.SAFE_X + 4.0, U.SAFE_Y + 130.0)
 	double_label.text = "DOUBLE POINTS"
 	double_label.visible = false
+	# The Mk 2 frag count by the ammo and the danger arrows for live grenades.
+	add_child(GrenadeHudScript.new())
 	ZombieMode.round_started.connect(_on_round_started)
 	ZombieMode.points_changed.connect(_on_points_changed)
 	ZombieMode.game_over_started.connect(_on_game_over)

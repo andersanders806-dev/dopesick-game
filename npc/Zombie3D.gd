@@ -1112,6 +1112,12 @@ func _hit_fx(part: String, dmg: float, dir: Vector3, at: Vector3, killed: bool, 
 ## How hard a kill throws the body (m/s), 0 for one that just plays its death clip: a real hit
 ## (15 % of its health or more), a headless one, or a shotgun close up (thrown hard).
 func _ragdoll_power(dmg: float, weapon: Resource, melee: bool) -> float:
+	# A blast (fx/Explosion.gd via WeaponHolder.explode) names how hard it throws this body, once.
+	if has_meta("blast_power"):
+		var bp := float(get_meta("blast_power"))
+		remove_meta("blast_power")
+		if bp > 0.0 and not melee:
+			return bp
 	if weapon == null or melee:
 		return 0.0
 	var close := -1.0

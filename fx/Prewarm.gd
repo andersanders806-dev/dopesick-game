@@ -18,6 +18,7 @@ extends Node
 const ZombieScript := preload("res://npc/Zombie3D.gd")
 const GoreScript := preload("res://fx/gore/Gore.gd")
 const ImpactFXScript := preload("res://fx/ImpactFX.gd")
+const Explosion := preload("res://fx/Explosion.gd")
 const EntranceFXScript := preload("res://fx/EntranceFX.gd")
 const ViewmodelScript := preload("res://player/Viewmodel.gd")
 const DrownedScript := preload("res://npc/Drowned.gd")
@@ -161,6 +162,10 @@ func _run() -> void:
 	_collect(gore, items)
 	_collect(fx, items)
 	_collect(entrance, items)
+	# The shared explosion's pool (cards, sparks, grit, scorch decals) and its light, drawn once.
+	var boom: Node3D = Explosion.of(city)
+	_collect(boom, items)
+	boom.warm_light(true)
 	var feel := _feel()
 	if feel != null:
 		items.append_array(feel.warm(_bay_pos))
@@ -172,6 +177,7 @@ func _run() -> void:
 	_reveal(items)
 	await _frames(HOLD)
 	_restore(items)
+	boom.warm_light(false)
 	if gang_fx != null and is_instance_valid(gang_fx):
 		gang_fx.unwarm_sounds()
 	if feel != null:
@@ -568,11 +574,16 @@ func _viewmodels() -> void:
 	# The launcher's rockets, trail and blast with them.
 	if holder.has_method("warm_rockets"):
 		holder.warm_rockets(_bay_pos + Vector3(-0.6, 1.0, 0.0))
+	# The Mk 2 frag: its pool of four, the hands and the pin, ring and spoon.
+	if holder.has_method("warm_grenades"):
+		holder.warm_grenades(_bay_pos + Vector3(0.0, 1.0, 0.6))
 	# All drawn together for a couple of frames, then put away.
 	_begin_step()
 	await _frames(2)
 	if holder.has_method("unwarm_rockets"):
 		holder.unwarm_rockets()
+	if holder.has_method("unwarm_grenades"):
+		holder.unwarm_grenades()
 	for vm in made:
 		if is_instance_valid(vm):
 			if vm.has_method("hide_flash"):

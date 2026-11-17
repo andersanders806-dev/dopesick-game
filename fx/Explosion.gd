@@ -359,7 +359,7 @@ func _stop(b: Blast) -> void:
 ## The floor under `at` (y), -INF if there is none within 1.5 m.
 func _floor_below(at: Vector3) -> float:
 	var q := PhysicsRayQueryParameters3D.create(at + Vector3(0, 0.25, 0), at + Vector3(0, -1.5, 0))
-	q.collision_mask = 1
+	q.collision_mask = 1 | 16
 	var r := get_world_3d().direct_space_state.intersect_ray(q)
 	if r.is_empty() or (r.normal as Vector3).y < 0.7:
 		return -INF

@@ -26,6 +26,7 @@ const AimAssist := preload("res://player/AimAssist.gd")
 const PadRumble := preload("res://player/PadRumble.gd")
 const GunSounds := preload("res://weapons/GunSounds.gd")
 const RocketScript := preload("res://fx/Rocket.gd")
+const LethalScript := preload("res://player/Lethal.gd")
 const Gore := preload("res://fx/gore/Gore.gd")
 ## A shotgun this close throws a zombie back.
 const KNOCK_RANGE := 4.5
@@ -53,10 +54,15 @@ signal swing_landed(hits: int, killed: bool, wall: bool)
 signal melee_changed(data: WD)
 ## A rocket went off: where, and its blast radius.
 signal exploded(at: Vector3, radius: float)
+## The frag count changed (the HUD's).
+signal grenades_changed(count: int)
 
 const MAX_SLOTS := 2
 ## The Mk 2 frag: the blast's reach (m), the player's damage at the middle, and the rest of its blast table (DESIGN.md section 3).
 const GRENADE_RADIUS := 6.0
+## Mk 2 frags carried: the start, the most, and what a new round (Dead Block, +2) or wave (Ghetto Wars, +1) brings.
+const GRENADE_START := 2
+const GRENADE_MAX := 4
 const GRENADE_INNER := 1.5
 const GRENADE_SELF := 110.0
 const START_WEAPON := "res://weapons/pistol.tres"
@@ -138,6 +144,9 @@ var _lunge_v := Vector3.ZERO
 var _lunge_left := 0.0
 ## Rockets in flight and at rest (pooled: a launcher's shot makes none).
 var _rockets: Array = []
+## The Mk 2 frags in the pouch, and the lethal slot's node (player/Lethal.gd).
+var grenades := GRENADE_START
+var lethal: Node
 
 var current: WD:
 	get: return slots[active].data if slots[active] != null else null
@@ -168,6 +177,9 @@ func _ready() -> void:
 	# The pad: aim assist on the look (first person) and rumble from this node's signals.
 	add_child(AimAssist.new())
 	add_child(PadRumble.new())
+	lethal = LethalScript.new()
+	add_child(lethal)
+	ZombieMode.round_started.connect(_restock_grenades)
 
 # --- The guns you hold -------------------------------------------------------------
 
@@ -242,6 +254,7 @@ func refill_all() -> void:
 			s.mag = maxi(int(s.mag), s.data.mag_size)
 			s.reserve = s.data.reserve_max
 	ammo_changed.emit()
+	set_grenades(GRENADE_MAX)
 
 func is_full() -> bool:
 	return current != null and mag >= current.mag_size and reserve >= current.reserve_max
@@ -900,6 +913,41 @@ func _strike(d: WD) -> void:
 			gore.screen_blood(0.35 + 0.15 * hits + (0.2 if _swing_heavy else 0.0))
 	swing_landed.emit(hits, killed, wall)
 
+# --- The lethal slot: the Mk 2 frag (player/Lethal.gd does the throwing) ----------------------
+
+func set_grenades(n: int) -> void:
+	var c := clampi(n, 0, GRENADE_MAX)
+	if c != grenades:
+		grenades = c
+		grenades_changed.emit(grenades)
+
+## One out of the pouch (the pin is out).
+func take_grenade() -> void:
+	set_grenades(grenades - 1)
+
+## A new round of Dead Block gives two, a new wave of Ghetto Wars one, to four at most (the first round gives none: you start with two).
+## Wall-buys and the box do not sell them; Max Ammo refills to four (refill_all).
+func _restock_grenades(r: int) -> void:
+	if r <= 1:
+		return
+	set_grenades(grenades + (1 if ZombieMode.gangs else 2))
+
+## The blast table of the frag (DESIGN.md section 3): kills everything inside 1.5 m up to round 9, down to 20 % at 6 m, a wall leaves 35 %;
+## the player takes 110 x (1 - d/6), lethal inside 1.5 m.
+func grenade_spec() -> Dictionary:
+	var big := maxf(1000.0, 0.55 * float(ZombieMode.zombie_health(ZombieMode.round)))
+	return {"radius": GRENADE_RADIUS, "inner": GRENADE_INNER, "damage": big, "falloff_min": 0.2, "self_damage": GRENADE_SELF,
+		"weapon": frag_data(), "knock": 9.0, "gib_m": 2.5, "cover": 0.35}
+
+## The grenade pool and the hands made now (fx/Prewarm.gd, behind the loading black), shown at `at`, and put away.
+func warm_grenades(at: Vector3) -> void:
+	if lethal != null:
+		lethal.warm(at)
+
+func unwarm_grenades() -> void:
+	if lethal != null:
+		lethal.unwarm()
+
 # --- The launcher ---------------------------------------------------------------------
 
 ## Sends a rocket from just ahead of the eye along `dir` (pooled: two are kept).
@@ -999,7 +1047,7 @@ func explode(at: Vector3, spec: Dictionary, struck: Node = null) -> int:
 		var chest := player.global_position + Vector3(0.0, 0.9, 0.0)
 		var pd := chest.distance_to(at)
 		if pd < radius:
-			var hurt_k := 1.0 - pd / radius
+			var hurt_k := 1.0 if pd <= inner and inner > 0.0 else 1.0 - pd / radius
 			if _blast_blocked(space, from, chest):
 				hurt_k *= cover
 			if hurt_k > 0.0:
@@ -1012,7 +1060,7 @@ func _blast_blocked(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3
 	if space == null:
 		return false
 	var q := PhysicsRayQueryParameters3D.create(from, to)
-	q.collision_mask = 1
+	q.collision_mask = 1 | 16
 	return not space.intersect_ray(q).is_empty()
 
 ## Loose props (rigid bodies) in reach are thrown away from the middle, the lightest first, twelve at most.

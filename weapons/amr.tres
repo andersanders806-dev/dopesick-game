@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "amr"
-display_name = "Bridge Burner"
+display_name = "Barrett M82A1"
 damage = 600.0
 head_mult = 3.0
 neck_mult = 2.0

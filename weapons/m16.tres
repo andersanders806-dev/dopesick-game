@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "m16"
-display_name = "Beat Cop"
+display_name = "M16A4"
 damage = 50.0
 head_mult = 4.5
 neck_mult = 2.2

@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "sniper"
-display_name = "Bolt Rifle"
+display_name = "Mosin-Nagant M91/30"
 damage = 250.0
 head_mult = 5.0
 neck_mult = 2.5

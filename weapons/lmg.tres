@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "lmg"
-display_name = "Light Machine Gun"
+display_name = "DP-28"
 damage = 38.0
 head_mult = 3.0
 neck_mult = 1.8

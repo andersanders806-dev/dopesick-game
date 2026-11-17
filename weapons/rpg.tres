@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "rpg"
-display_name = "Landlord"
+display_name = "RPG-7"
 damage = 900.0
 head_mult = 1.0
 neck_mult = 1.0

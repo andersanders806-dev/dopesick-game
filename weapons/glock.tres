@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "glock"
-display_name = "Street Nine"
+display_name = "Glock 19"
 damage = 42.0
 head_mult = 4.0
 neck_mult = 2.0

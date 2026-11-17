@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "machete"
-display_name = "Cane Cutter"
+display_name = "Machete"
 melee = true
 damage = 130.0
 head_mult = 2.5

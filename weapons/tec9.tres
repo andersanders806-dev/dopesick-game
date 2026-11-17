@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "tec9"
-display_name = "Spray Can"
+display_name = "TEC-9"
 damage = 24.0
 head_mult = 3.0
 neck_mult = 1.6

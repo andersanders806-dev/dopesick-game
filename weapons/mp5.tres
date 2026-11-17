@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "mp5"
-display_name = "Night Shift"
+display_name = "MP5"
 damage = 30.0
 head_mult = 3.5
 neck_mult = 1.8

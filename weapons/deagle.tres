@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "deagle"
-display_name = "Sledge"
+display_name = "Desert Eagle"
 damage = 150.0
 head_mult = 3.5
 neck_mult = 2.0

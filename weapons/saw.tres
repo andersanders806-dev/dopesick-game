@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "saw"
-display_name = "Iron Hog"
+display_name = "M249 SAW"
 damage = 42.0
 head_mult = 3.0
 neck_mult = 1.8

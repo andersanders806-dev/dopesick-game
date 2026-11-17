@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "bat"
-display_name = "Slugger"
+display_name = "Baseball Bat"
 melee = true
 damage = 200.0
 head_mult = 2.0

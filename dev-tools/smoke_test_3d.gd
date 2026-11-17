@@ -7566,7 +7566,7 @@ func _zombie_weapons_checks(gs: Node) -> void:
 	zm.double_points = true
 	_check(mach.try_upgrade(holder) == "upgraded" and zm.points == 0 and holder.current.id == "pistol_up", "  5000 under Double Points still costs 5000 and swaps to the upgraded data")
 	zm.double_points = false
-	_check(holder.mag == holder.current.mag_size and holder.reserve == holder.current.reserve_max and holder.current.display_name != "Service Pistol",
+	_check(holder.mag == holder.current.mag_size and holder.reserve == holder.current.reserve_max and holder.current.display_name != "Walther P38",
 		"  the upgraded gun is full with its bigger mag and reserve (%d + %d)" % [holder.mag, holder.reserve])
 	zm.points = 5000
 	_check(mach.try_upgrade(holder) == "already" and zm.points == 5000, "  an upgraded gun can't be upgraded again, for free")

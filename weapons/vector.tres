@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "vector"
-display_name = "Needle"
+display_name = "KRISS Vector"
 damage = 22.0
 head_mult = 3.0
 neck_mult = 1.7

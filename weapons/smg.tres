@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "smg"
-display_name = "Submachine Gun"
+display_name = "SIG MPX"
 damage = 28.0
 head_mult = 3.0
 neck_mult = 1.8

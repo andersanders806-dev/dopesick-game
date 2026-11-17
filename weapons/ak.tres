@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_wd")
 id = "ak"
-display_name = "Rust Bucket"
+display_name = "AK-47"
 damage = 55.0
 head_mult = 3.5
 neck_mult = 1.9

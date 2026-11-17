@@ -22,14 +22,24 @@ func _ready() -> void:
 	super._ready()
 	name = "GangSpawner"
 	add_to_group("gang_spawner")
-	ZombieMode.max_alive = ZombieMode.GANG_MAX_ALIVE
-	adaptive = false
+	ZombieMode.max_alive = crew_budget.cap
 	var ls := LastStandScript.new()
 	ls.spawner = self
 	add_child(ls)
 
+## How many of the crew may be out at once, between 6 and GANG_MAX_ALIVE: the shooters, their lights and their
+## decals cost an integrated GPU more than the dead do (20 ms a frame at 12 of them on a UHD 620), so the same
+## frame-time rule as the horde's (npc/HordeBudget.gd) takes the crew down a step at a time when frames run long.
+var crew_budget := HordeBudget.new(10 if Graphics.lean() else ZombieMode.GANG_MAX_ALIVE, 6 if Graphics.lean() else ZombieMode.GANG_MAX_ALIVE, ZombieMode.GANG_MAX_ALIVE, Graphics.lean())
+
+## The crew on the street plus the men of a wave still queued to come out (so a wave never reads as cleared
+## while men are waiting).
 func alive() -> int:
-	return get_tree().get_nodes_in_group("gangsters").size()
+	return get_tree().get_nodes_in_group("gangsters").size() + _wave_queue.size()
+
+## Men of a wave queued to come out.
+func pending() -> int:
+	return _wave_queue.size()
 
 func _on_round_started(r: int) -> void:
 	round_no = r
@@ -40,7 +50,7 @@ func _on_round_started(r: int) -> void:
 	_break = -1.0
 	_timer = FIRST_DELAY * time_scale
 	_kinds = _plan_gang_kinds(r, total)
-	ZombieMode.max_alive = ZombieMode.GANG_MAX_ALIVE
+	ZombieMode.max_alive = crew_budget.cap
 
 func _plan_gang_kinds(r: int, n: int) -> Array[String]:
 	var out: Array[String] = []
@@ -56,9 +66,32 @@ func _plan_gang_kinds(r: int, n: int) -> Array[String]:
 		out[0] = "heavy"
 	return out
 
+## Men of a wave still to come out: one a frame (a man costs 5-20 ms to build, a wave of 8 in one frame was
+## 100-200 ms of the screen standing still). Tests and headless runs build the whole wave at once.
+var _wave_queue: Array = []
+## Frames the queue has waited on a slow frame: after WAVE_PATIENCE it comes out anyway, so a machine that
+## never gets a frame under 30 ms still gets the whole wave.
+var _wave_patience := 0
+const WAVE_PATIENCE := 4
+
 func _process(delta: float) -> void:
+	if not _wave_queue.is_empty():
+		if delta >= 0.03 and _wave_patience < WAVE_PATIENCE:
+			_wave_patience += 1
+		else:
+			_wave_patience = 0
+			var w: Dictionary = _wave_queue.pop_front()
+			var old := crew_name
+			crew_name = w["crew"]
+			var g := spawn_one(w["kind"], w["at"], "", w["gun"])
+			crew_name = old
+			if g != null and w["drive_by"]:
+				g.drive_by()
 	if not enabled or not ZombieMode.active or ZombieMode.over or round_no == 0:
 		return
+	if adaptive and crew_budget.enabled:
+		crew_budget.feed(delta * 1000.0, alive(), delta, HordeBudget.render_cost_ms())
+		ZombieMode.max_alive = crew_budget.cap
 	if released < total:
 		_timer -= delta
 		var room := ZombieMode.max_alive - alive()
@@ -203,6 +236,7 @@ func spawn_wave(def: Dictionary) -> Array:
 	if def.has("crew"):
 		crew_name = String(def["crew"])
 	var out: Array = []
+	var stagger := DisplayServer.get_name() != "headless" and not Engine.has_meta("sync_waves")
 	for i in count:
 		var at := Vector3.INF
 		if not points.is_empty():
@@ -211,6 +245,9 @@ func spawn_wave(def: Dictionary) -> Array:
 		var kind := "grunt"
 		if def.get("heavy", false) and i == 0:
 			kind = "heavy"
+		if stagger and i >= 1:
+			_wave_queue.append({"kind": kind, "at": at, "gun": gun, "crew": crew_name, "drive_by": bool(def.get("drive_by", false))})
+			continue
 		var g := spawn_one(kind, at, "", gun)
 		if g != null:
 			if bool(def.get("drive_by", false)):

@@ -35,6 +35,7 @@ enum Preset { LOW, MEDIUM, HIGH, PS5 }
 const PRESET_NAMES := ["Low", "Medium", "High", "PS5"]
 const SETTINGS_PATH := "user://settings.cfg"
 const Sandbox := preload("res://autoload/Sandbox.gd")
+const TitleWarm := preload("res://fx/TitleWarm.gd")
 const LUT_SIZE := 32
 
 ## Grade, applied at every preset.
@@ -177,6 +178,10 @@ func _process(delta: float) -> void:
 	if show_fps:
 		_fps_label.text = "%d FPS  (%s, %d%%)" % [Engine.get_frames_per_second(), PRESET_NAMES[preset], roundi(render_scale * 100.0)]
 	if _toast_timer > 0.0:
+		# Not over the title's loading card (it waits until the menu is up, in the subtitle area at the bottom).
+		if TitleWarm.card_up:
+			_toast.modulate.a = 0.0
+			return
 		_toast_timer -= delta
 		_toast.modulate.a = clampf(_toast_timer, 0.0, 1.0)
 
@@ -355,6 +360,8 @@ func _adapt_resolution(delta: float) -> void:
 	_frame_acc += delta
 	_frame_count += 1
 	_gpu_acc += RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+	for rid in extra_gpu_viewports:
+		_gpu_acc += RenderingServer.viewport_get_measured_render_time_gpu(rid)
 	if _frame_acc < 0.5:
 		return
 	var fps := _frame_count / _frame_acc
@@ -378,6 +385,17 @@ const GPU_LOW_MS := 12.0
 const LEAN_GPU_HIGH_MS := 13.0
 const LEAN_GPU_LOW_MS := 10.0
 var _gpu_acc := 0.0
+## Other viewports that draw the game's 3D (the kart race has a world of its own): their GPU time counts in the
+## governor too, or it would never see the race's cost. Register with watch_viewport(), unregister with unwatch_viewport().
+var extra_gpu_viewports: Array[RID] = []
+
+func watch_viewport(rid: RID) -> void:
+	RenderingServer.viewport_set_measure_render_time(rid, true)
+	if not extra_gpu_viewports.has(rid):
+		extra_gpu_viewports.append(rid)
+
+func unwatch_viewport(rid: RID) -> void:
+	extra_gpu_viewports.erase(rid)
 
 func next_scale(current: float, fps: float, gpu_ms: float) -> float:
 	var r: Array = SCALE_RANGE_LEAN if lean() else SCALE_RANGE[preset]
@@ -430,7 +448,9 @@ func watch_high(fps: float, window: float) -> bool:
 ## (-1.3 ms), the lightest soft-shadow filter (-1.1 ms), and resolution
 ## allowed down to 60%. Measured walking: street 53-56 FPS by night, ~50
 ## by day, the bar 58 (was ~40 on the street).
-const SCALE_RANGE_LEAN := [0.6, 1.0]
+## (The floor is 50%: a firefight or the horde at its peak on this GPU measured 19 ms at the old 60% floor,
+## with the governor already as low as it could go.)
+const SCALE_RANGE_LEAN := [0.5, 1.0]
 var _shadow_filter: int = RenderingServer.SHADOW_QUALITY_SOFT_MEDIUM
 const Facades := preload("res://world/Facades.gd")
 
@@ -567,7 +587,7 @@ func _apply_light(light: Light3D) -> void:
 		light.omni_range = float(light.get_meta("built_range")) * k
 	if preset == Preset.LOW:
 		light.distance_fade_enabled = true
-		light.distance_fade_begin = LOW_LIGHT_FADE
+		light.distance_fade_begin = low_light_fade(light)
 		light.distance_fade_length = 4.0
 	else:
 		light.distance_fade_enabled = light.get_meta("built_fade")
@@ -575,6 +595,25 @@ func _apply_light(light: Light3D) -> void:
 		light.distance_fade_length = light.get_meta("built_fade_length")
 
 const LOW_LIGHT_FADE := 14.0
+## Low: how far a light reaches decides how far off it still shows. A street lamp's pool (7 m) reads from
+## LOW_LIGHT_FADE; a shop's ceiling lamp seen through its window (3-5 m) from LOW_LIGHT_FADE_MID; a sign glow
+## or a cooler's light (under 3 m: a tint on the wall) from LOW_LIGHT_FADE_SMALL. At the horde's peak on
+## the Dead Block 31 lights were inside the 18 m, 2.2 ms on a UHD 620; the small ones are most of them and
+## past 9 m each is a few pixels of tint.
+const LOW_LIGHT_FADE_MID := 11.0
+const LOW_LIGHT_FADE_SMALL := 8.0
+
+func low_light_fade(light: Light3D) -> float:
+	var reach := 0.0
+	if light is OmniLight3D:
+		reach = (light as OmniLight3D).omni_range
+	elif light is SpotLight3D:
+		reach = (light as SpotLight3D).spot_range
+	if reach < 3.0:
+		return LOW_LIGHT_FADE_SMALL
+	if reach < 5.0:
+		return LOW_LIGHT_FADE_MID
+	return LOW_LIGHT_FADE
 
 ## The sun (the City's "Moon" by day): four cascades out to 100 m cost
 ## 5.8 ms on a UHD 620 for a camera that sees ~30 m. Lean: two out to 35 m
@@ -752,6 +791,9 @@ func _draw_graph() -> void:
 	g.draw_string(ThemeDB.fallback_font, Vector2(6, 14), "worst %.0f ms" % worst, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.85))
 
 func _show_toast(text: String, time := 2.0) -> void:
+	# On the title it sits in the subtitle area at the bottom, never across the logo.
+	var scene := get_tree().current_scene if is_inside_tree() else null
+	_toast.position.y = 610.0 if scene != null and scene.name == "TitleScreen" else 140.0
 	_toast.text = text
 	_toast_timer = time
 

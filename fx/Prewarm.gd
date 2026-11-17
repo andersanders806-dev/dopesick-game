@@ -122,6 +122,11 @@ func _run() -> void:
 	_body_tables()
 	_end_step("gore tables of the bodies")
 	_begin_step()
+	await _body_limbs()
+	_end_step("gore limbs of the bodies")
+	if not _alive():
+		return
+	_begin_step()
 	_load_everything()
 	_end_step("load sounds, textures, guns")
 	await _slice()
@@ -156,9 +161,16 @@ func _run() -> void:
 	var feel := _feel()
 	if feel != null:
 		items.append_array(feel.warm(_bay_pos))
+	# Ghetto Wars: the tracers and muzzle flashes (hidden until the first shot), and the fight's sounds.
+	var gang_fx := city.get_tree().get_first_node_in_group("gang_fx")
+	if gang_fx != null:
+		_collect(gang_fx, items)
+		gang_fx.warm_sounds()
 	_reveal(items)
 	await _frames(HOLD)
 	_restore(items)
+	if gang_fx != null and is_instance_valid(gang_fx):
+		gang_fx.unwarm_sounds()
 	if feel != null:
 		feel.unwarm()
 	_end_step("pools drawn")
@@ -167,6 +179,13 @@ func _run() -> void:
 	_end_step("collect loads")
 	# 3. every gun's viewmodel and muzzle flash
 	await _viewmodels()
+	if not _alive():
+		return
+	# 4. the walk-in shops' rooms (built and drawn the first time you pass a shop window) and, in Ghetto Wars, the cars
+	await _walk_in_rooms()
+	if not _alive():
+		return
+	await _ghetto_cars()
 	if not _alive():
 		return
 	critical_ms = Time.get_ticks_msec() - _t0
@@ -189,13 +208,129 @@ func _run() -> void:
 ## The skin table of every body for the gore (reading the mesh back from the renderer: 17 to 75 ms the
 ## first time a wound or a limb of that body is wanted), from the dummies world/ZombieBlock.gd draws for
 ## the same reason (they are freed three frames after setup; this runs in the first).
+## The bays of bodies the blocks draw behind the black: the dead (world/ZombieBlock.gd), the crews (world/GangBlock.gd).
+const BAYS := ["ZombiePrewarm", "GangPrewarm"]
+
 func _body_tables() -> void:
-	var bay := city.get_node_or_null("ZombiePrewarm")
-	if bay == null:
+	for bay_name in BAYS:
+		var bay := city.get_node_or_null(bay_name)
+		if bay == null:
+			continue
+		for z in bay.get_children():
+			if z.get("_skeleton") != null:
+				GoreRigScript.table(z)
+		# (the bay stays until the limbs below are cut: the block waits for this)
+		bay.set_meta("busy", true)
+
+## Every body's severed-limb meshes (GoreRig.limb), a couple of bodies a frame behind the black: built on the
+## spawn of the first zombie of each body they were 40-60 ms of main-thread work spread over its first nine
+## frames, the spawn frames of the horde (0.6 s in the first 12 s of round 15).
+const LIMB_BODIES_PER_FRAME := 2
+
+func _body_limbs() -> void:
+	for bay_name in BAYS:
+		var bay := city.get_node_or_null(bay_name)
+		if bay == null:
+			continue
+		var n := 0
+		for z in bay.get_children():
+			if not is_instance_valid(z) or z.get("_skeleton") == null:
+				continue
+			# (gore off in the settings: the bodies were never prepared, there is nothing to cut)
+			if not ZombieMode.gore_enabled or GoreRigScript.body_mesh(z.get("_skeleton")) == null:
+				continue
+			for name_ in GoreRigScript.LIMBS:
+				GoreRigScript.limb(z, name_)
+			n += 1
+			if n % LIMB_BODIES_PER_FRAME == 0:
+				await _frames(1)
+				if not _alive():
+					return
+				if not is_instance_valid(bay):
+					break
+		if is_instance_valid(bay):
+			bay.set_meta("busy", false)
+
+## The four walk-in shops on Main Street build their room when the player comes within 30 m and show it through the
+## window from the first frame he is near: the floor, walls, ceiling, fixtures and stock were 38 pipelines, 70-90 ms,
+## in the first second of a round that starts near them (they read as "the first two men's pipelines"). Each room is
+## built here (behind the black, a shop a frame) and every distinct mesh-and-material of it is drawn in front of the
+## camera for a few frames, then the copies are freed.
+func _walk_in_rooms() -> void:
+	var shops: Array = city.find_children("WalkIn_*", "", true, false).filter(func(n): return n.has_method("ensure_loaded"))
+	if shops.is_empty():
 		return
-	for z in bay.get_children():
-		if z.get("_skeleton") != null:
-			GoreRigScript.table(z)
+	_begin_step()
+	var seen := {}
+	var copies: Array = []
+	var at := _bay_pos + Vector3(0.0, BAY_DEPTH, 0.0)
+	for shop in shops:
+		shop.call("ensure_loaded")
+		for mi in shop.find_children("*", "MeshInstance3D", true, false):
+			var m := mi as MeshInstance3D
+			if m.mesh == null or not m.visible:
+				continue
+			var key := str(m.mesh.get_instance_id())
+			for i in m.mesh.get_surface_count():
+				var mat := m.get_active_material(i)
+				key += "/" + (str(mat.get_instance_id()) if mat != null else "0")
+			if seen.has(key):
+				continue
+			seen[key] = true
+			var c := MeshInstance3D.new()
+			c.mesh = m.mesh
+			c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			for i in m.mesh.get_surface_count():
+				c.set_surface_override_material(i, m.get_active_material(i))
+			_bay.add_child(c)
+			c.global_position = at + Vector3(fmod(copies.size() * 0.31, 6.0) - 3.0, 0.0, fmod(copies.size() * 0.17, 3.0) - 1.5)
+			copies.append(c)
+		await _slice()
+		if not _alive():
+			return
+	await _frames(HOLD)
+	for c in copies:
+		if is_instance_valid(c):
+			c.queue_free()
+	_end_step("walk-in rooms (%d meshes)" % copies.size())
+
+## Ghetto Wars: the story's first beat is a drive-by (a generic car, loaded and dressed on the spot: 63 resources and 34
+## pipelines, a 65-80 ms frame in the first second after the black) and later the police cars and the van. Each is made
+## the way the story makes it (GhettoVehicles.make_car) and drawn in front of the camera for a few frames, then freed.
+const GHETTO_CARS := ["sedan_generic", "hatch_generic", "wagon_generic", "suv_generic", "police_crownvic", "van_shvan92"]
+
+func _ghetto_cars() -> void:
+	var gs: Node = block.get("ghetto_set")
+	var v: Node = gs.get("vehicles") if gs != null else null
+	if v == null or not ZombieMode.gangs:
+		return
+	_begin_step()
+	var cam := get_viewport().get_camera_3d()
+	var fwd := Vector3.FORWARD
+	if cam != null:
+		fwd = -cam.global_transform.basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3.FORWARD
+	var side := fwd.cross(Vector3.UP)
+	var base := _bay_pos + Vector3(0.0, BAY_DEPTH, 0.0) + fwd * 4.0
+	var cars: Array = []
+	var i := 0
+	for kind in GHETTO_CARS:
+		var car: Node3D = v.call("make_car", kind, 1)
+		if car == null:
+			continue
+		_bay.add_child(car)
+		car.global_position = base + side * (float(i) - 2.5) * 2.6 + fwd * float(i % 2) * 5.0
+		cars.append(car)
+		i += 1
+		await _slice()
+		if not _alive():
+			return
+	await _frames(HOLD)
+	for car in cars:
+		if is_instance_valid(car):
+			car.queue_free()
+	_end_step("ghetto cars")
 
 ## Sounds, decal pictures, the guns' data and models: requested on worker threads now and kept (the
 ## first fight would otherwise load them one by one on the main thread, 40 to 500 ms for a gun model).

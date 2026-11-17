@@ -782,6 +782,8 @@ func _build_dressing() -> void:
 	_flash.light_energy = 0.0
 	_flash.omni_range = 18.0
 	_flash.shadow_enabled = false
+	# (hidden while dark: an 18 m light at zero energy was still shaded over the whole front)
+	_flash.visible = false
 	add_child(_flash)
 	_flash.global_position = Vector3(DOOR_X, 1.6, Z_FRONT + 1.0)
 	_bust_nodes.append(dressing)
@@ -842,6 +844,7 @@ func _process(delta: float) -> void:
 	if _flash and _flash_t > 0.0:
 		_flash_t = maxf(0.0, _flash_t - delta)
 		_flash.light_energy = 40.0 * (_flash_t / 0.45) * (_flash_t / 0.45)
+		_flash.visible = _flash_t > 0.0
 	if sign_node and sign_node is Label3D:
 		var pulse := 1.0
 		if stash_on:

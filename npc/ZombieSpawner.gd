@@ -37,7 +37,8 @@ const MIN_SPAWN_DISTANCE := 22.0
 ## Whether the frame time moves the alive cap (the tests turn it off and set
 ## ZombieMode.max_alive themselves).
 var adaptive := true
-var budget := HordeBudget.new(32, ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX)
+## (An integrated GPU starts lower: it was at 45 FPS or worse with 32 of the dead out on this machine's UHD 620.)
+var budget := HordeBudget.new(24 if Graphics.lean() else 32, ZombieMode.MAX_ALIVE_MIN_LEAN if Graphics.lean() else ZombieMode.MAX_ALIVE_MIN, ZombieMode.MAX_ALIVE_MAX, Graphics.lean())
 ## The entrances (built by the block: setup_entrances()); empty means the old spawn points.
 var entrances := Entrances.new()
 var _entrances_ready := false
@@ -50,6 +51,7 @@ var holder: Node3D
 var round_no := 0
 ## How many the round owes, how many are out so far, and their kinds.
 var total := 0
+var _patience := 0
 var released := 0
 var _kinds: Array[String] = []
 var _timer := 0.0
@@ -117,7 +119,7 @@ func _process(delta: float) -> void:
 	if not enabled or not ZombieMode.active or ZombieMode.over or round_no == 0:
 		return
 	if adaptive and budget.enabled:
-		budget.feed(delta * 1000.0, alive(), delta)
+		budget.feed(delta * 1000.0, alive(), delta, HordeBudget.render_cost_ms())
 		ZombieMode.max_alive = budget.cap
 	# The surge is the horde while it lasts: the round's own wait.
 	if ZombieMode.surge_busy:
@@ -125,8 +127,13 @@ func _process(delta: float) -> void:
 	if released < total:
 		_timer -= delta
 		if _timer <= 0.0 and alive() < ZombieMode.max_alive:
-			_release()
-			_timer = _gap() * time_scale
+			# Not on the frame after a slow one (a spawn is 5-8 ms; up to 4 frames of patience).
+			if delta > 0.028 and _patience < 4 and DisplayServer.get_name() != "headless":
+				_patience += 1
+			else:
+				_patience = 0
+				_release()
+				_timer = _gap() * time_scale
 	elif alive() <= LAST_HURRY and alive() > 0:
 		_hurry_last()
 	if released >= total and alive() == 0:

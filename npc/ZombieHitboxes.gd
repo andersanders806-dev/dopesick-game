@@ -23,7 +23,7 @@ const PARTS := ["head", "neck", "torso", "upper_arm_l", "upper_arm_r", "lower_ar
 const LAYOUT := {
 	"head": ["Bip01 Head", "Bip01 Head", "eyes_up", 0.11],
 	"neck": ["Bip01 Neck", "Bip01 Neck", "Bip01 Head", 0.06],
-	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Neck", 0.17, "cylinder"],
+	"torso": ["Bip01 Spine1", "Bip01 Pelvis", "Bip01 Neck", 0.18, "cylinder"],
 	"upper_arm_l": ["Bip01 L UpperArm", "Bip01 L UpperArm", "Bip01 L Forearm", 0.055],
 	"upper_arm_r": ["Bip01 R UpperArm", "Bip01 R UpperArm", "Bip01 R Forearm", 0.055],
 	"lower_arm_l": ["Bip01 L Forearm", "Bip01 L Forearm", "Bip01 L Hand", 0.05],

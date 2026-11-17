@@ -85,6 +85,10 @@ func _once(id: String) -> bool:
 # --- The clock -----------------------------------------------------------------
 
 func hourly() -> void:
+	# The clock runs behind the title too, but nothing of the story happens (or is shown: the voicemail's toast
+	# was drawn over the logo) until a run is on.
+	if is_inside_tree() and get_tree().current_scene != null and get_tree().current_scene.name == "TitleScreen":
+		return
 	var s := state()
 	if s["ended"]:
 		return

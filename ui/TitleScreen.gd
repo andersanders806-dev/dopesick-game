@@ -5,6 +5,7 @@ extends Control
 
 const SettingsMenu := preload("res://ui/SettingsMenu.gd")
 const PadFocus := preload("res://ui/PadFocus.gd")
+const TitleWarm := preload("res://fx/TitleWarm.gd")
 const U := preload("res://ui/UiStyle.gd")
 const START_SCENE := "res://world/Apartment3D.tscn"
 ## Backdrops, one picked at random each time.
@@ -108,6 +109,132 @@ void fragment() {
 	add_child(_music)
 	_music.play()
 	create_tween().tween_property(_music, "volume_db", -10.0, 3.0)
+	# The game's own shaders compile a couple a frame (fx/TitleWarm.gd). The first time, that happens behind an
+	# opening card, so the menu never stutters on screen: it shows (and takes input) once the card lifts.
+	if TitleWarm.pending():
+		_opening_card()
+		TitleWarm.start(self, 0.2)
+	else:
+		TitleWarm.start(self)
+
+## The loading card holds until everything the menu would otherwise stream in behind it is in (the street, the
+## cast, the cars, the shops, the shader pass, the guns' sounds), but never longer than CARD_MAX; it shows at
+## least CARD_MIN so it reads as a card and not a flicker.
+const CARD_MAX := 25.0
+const CARD_MIN := 1.5
+const BAR_X := 90.0
+const BAR_W := 1100.0
+const BAR_Y := 698.0
+const WARNING := [
+	"Dope Sick is about addiction and withdrawal.",
+	"It shows drug use, violence and a city that does not care.",
+]
+const HELP_LINE := "If you or someone you know is struggling, you are not alone."
+
+var _card_fill: ColorRect
+var _starting := false
+
+## Black with the game's name, a content warning and a thin bar that follows the real loading, while the shaders
+## compile and the background loads finish (autoload/SceneLoader.gd drains them). The menu underneath takes no
+## input until it lifts. The card is named GoBlack like the black of a scene change, so the perf probe reads it as
+## "nothing visible". It shows once per process: back on the title later, everything is already in.
+func _opening_card() -> void:
+	var card := ColorRect.new()
+	card.name = "GoBlack"
+	card.color = Color.BLACK
+	card.set_anchors_preset(Control.PRESET_FULL_RECT)
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(card)
+	# (The card itself is opaque from the first frame; only its words and bar fade in.)
+	var content := Control.new()
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(content)
+	var logo := Label.new()
+	U.style_label(logo, U.BUNGEE, U.FS_TITLE, U.PINK, 2)
+	logo.text = "DOPE SICK"
+	logo.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	logo.set_anchors_preset(Control.PRESET_FULL_RECT)
+	logo.offset_top = -150.0
+	logo.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	content.add_child(logo)
+	var warn := VBoxContainer.new()
+	warn.set_anchors_preset(Control.PRESET_FULL_RECT)
+	warn.offset_top = 372.0
+	warn.offset_left = 200.0
+	warn.offset_right = -200.0
+	warn.add_theme_constant_override("separation", 6)
+	warn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(warn)
+	for line in WARNING:
+		warn.add_child(_card_line(line, U.FS_BODY, Color(0.82, 0.79, 0.72)))
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 12)
+	warn.add_child(gap)
+	warn.add_child(_card_line(HELP_LINE, U.FS_SMALL, Color(0.62, 0.58, 0.58)))
+	var word := Label.new()
+	U.style_label(word, U.BODY, U.FS_SMALL, Color(0.55, 0.52, 0.5), 2)
+	word.text = "Loading"
+	word.position = Vector2(BAR_X, BAR_Y - 26.0)
+	content.add_child(word)
+	var track := ColorRect.new()
+	track.color = Color(1, 1, 1, 0.09)
+	track.position = Vector2(BAR_X, BAR_Y)
+	track.size = Vector2(BAR_W, 3.0)
+	content.add_child(track)
+	_card_fill = ColorRect.new()
+	_card_fill.color = U.PINK
+	_card_fill.size = Vector2(0.0, 3.0)
+	track.add_child(_card_fill)
+	content.modulate.a = 0.0
+	create_tween().tween_property(content, "modulate:a", 1.0, 0.5)
+	_buttons.process_mode = Node.PROCESS_MODE_DISABLED
+	TitleWarm.card_up = true
+	_lift_card(card)
+
+func _card_line(text: String, size: int, color: Color) -> Label:
+	var l := Label.new()
+	U.style_label(l, U.BODY, size, color, 0)
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+## How far the card's loading is, 0..1: the queued loads, and the shader pass counted as one more of them.
+func _card_progress() -> float:
+	var loads := SceneLoader.load_progress()
+	var peak := float(maxi(SceneLoader._peak, 1))
+	return clampf((loads * peak + TitleWarm.progress) / (peak + 1.0), 0.0, 1.0)
+
+func _loaded() -> bool:
+	return TitleWarm.finished and SceneLoader.pending_count() == 0
+
+func _lift_card(card: ColorRect) -> void:
+	var t0 := Time.get_ticks_msec()
+	SceneLoader.drain_in_black(int(CARD_MAX * 1000.0))
+	var shown := 0.0
+	while is_inside_tree() and (Time.get_ticks_msec() - t0 < CARD_MIN * 1000.0 or \
+			(not _loaded() and Time.get_ticks_msec() - t0 < CARD_MAX * 1000.0)):
+		await get_tree().process_frame
+		# Never backwards, and eased so a big load landing does not jump the bar.
+		shown = maxf(shown, minf(_card_progress(), shown + 0.12))
+		_card_fill.size.x = BAR_W * shown
+	TitleWarm.card_ms = Time.get_ticks_msec() - t0
+	if not is_inside_tree():
+		TitleWarm.card_up = false
+		return
+	_card_fill.size.x = BAR_W
+	await get_tree().create_timer(0.25).timeout
+	var tw := create_tween()
+	tw.tween_property(card, "color:a", 0.0, 0.6)
+	tw.parallel().tween_property(card.get_child(0), "modulate:a", 0.0, 0.4)
+	await tw.finished
+	card.queue_free()
+	TitleWarm.card_up = false
+	_buttons.process_mode = Node.PROCESS_MODE_INHERIT
+	if _buttons.get_child_count() > 0:
+		(_buttons.get_child(0) as Control).grab_focus()
 
 func _backdrop() -> Texture2D:
 	var ids := BACKDROPS.duplicate()
@@ -139,19 +266,53 @@ func _label(text: String, size: int, color: Color) -> Label:
 func _on_new_run() -> void:
 	_start_run()
 
+## From the first press until the scene changes the menu takes no more input (a second click or Enter in the
+## black would start the run twice, or a second mode on top).
+func _lock_menu() -> bool:
+	if _starting:
+		return false
+	_starting = true
+	_buttons.process_mode = Node.PROCESS_MODE_DISABLED
+	return true
+
 func _start_run() -> void:
+	if not _lock_menu():
+		return
 	SaveGame.delete()
 	GameState.start_run()
 	_fade_out()
+	if DisplayServer.get_name() != "headless":
+		# The apartment takes a second or more to build: the title goes to black first, so the screen never
+		# freezes on the menu while it loads.
+		await _go_black()
 	get_tree().change_scene_to_file(START_SCENE)
+
+## Fades the menu to black and holds it for two frames (so the black is what is on the screen when the load
+## blocks the next frame).
+func _go_black() -> void:
+	var black := ColorRect.new()
+	black.name = "GoBlack"
+	black.color = Color(0, 0, 0, 0)
+	black.set_anchors_preset(Control.PRESET_FULL_RECT)
+	black.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(black)
+	var tw := create_tween()
+	tw.tween_property(black, "color:a", 1.0, 0.3)
+	await tw.finished
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 ## Dead Block: the block at night, the dead, and rounds (autoload/ZombieMode.gd).
 ## Its own save; the story's run is left as it is.
 func _start_zombies() -> void:
+	if not _lock_menu():
+		return
 	_fade_out()
 	ZombieMode.start()
 
 func _start_gangs() -> void:
+	if not _lock_menu():
+		return
 	_fade_out()
 	ZombieMode.start_gangs()
 

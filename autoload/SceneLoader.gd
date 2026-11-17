@@ -10,6 +10,20 @@ const FADE_IN := 0.35
 ## in black, to make them: nobody blinks in once the screen is clear.
 const ARRIVAL_HOLD_MSEC := 1500
 const CARD_TIME := 2.5
+## The fade is held in black until this many frames in a row came in under SETTLE_FRAME_MSEC, for at most
+## SETTLE_MAX_MSEC more: the first frames of a room compile and stream things, and nobody should watch that.
+const SETTLE_FRAMES := 10
+const SETTLE_FRAME_MSEC := 20.0
+const SETTLE_MAX_MSEC := 2000
+## Behind the black, the background loads that are still queued get this long to finish (_drain).
+const DRAIN_MSEC := 800
+## The same when the rooms behind the doors next to the arrival point are among them (a one-off per room: loaded
+## rooms are kept for the session).
+const DOOR_DRAIN_MSEC := 2500
+## The first time in a session (KartCenter3D, the biggest room beside the corner shop, outlasted 2.5 s and landed as
+## one 54 ms frame after the fade): up to this long, once.
+const DOOR_DRAIN_FIRST_MSEC := 4500
+var _door_drains := 0
 ## How close (m) the player gets to a door before its room starts loading.
 const PREFETCH_RANGE := 4.0
 const NAMES := {
@@ -34,6 +48,12 @@ var _warmed := false
 ## [path, spawn] asked for while a change was running.
 var _next: Array = []
 var _scan := 0.0
+## Seconds the last frame took (the frame the fade-hold judges), and whether loads may run whatever the player
+## is doing (behind black: nothing shows).
+var _last_delta := 0.016
+## How many drains are running (a scene change's, the title card's): loads run whatever the player is doing
+## while any is.
+var _forced := 0
 var _layer: CanvasLayer
 var _black: ColorRect
 var _card: Label
@@ -47,6 +67,8 @@ func _ready() -> void:
 	_black = ColorRect.new()
 	_black.name = "Fade"
 	_black.color = Color(0, 0, 0, 0)
+	# Hidden while clear: a full-screen rect is a full-screen pass on the GPU even at alpha 0.
+	_black.visible = false
 	_black.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_black.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_layer.add_child(_black)
@@ -160,11 +182,11 @@ const STILL_BEFORE_LOAD := 0.75
 var _still := 0.0
 
 func may_start() -> bool:
-	return _still >= STILL_BEFORE_LOAD
+	return _forced > 0 or _still >= STILL_BEFORE_LOAD
 
 ## Taking a finished load off the loader waits only until you're not walking.
 func may_finish() -> bool:
-	return not _player_walking()
+	return _forced > 0 or not _player_walking()
 
 func _player_walking() -> bool:
 	var player := get_tree().get_first_node_in_group("player") as CharacterBody3D if is_inside_tree() else null
@@ -185,6 +207,7 @@ func _start_next() -> void:
 			_failed[path] = true
 
 func _process(delta: float) -> void:
+	_last_delta = delta
 	_still = 0.0 if _player_walking() else _still + delta
 	for path in _loading.keys():
 		var status := ResourceLoader.load_threaded_get_status(path)
@@ -209,7 +232,8 @@ func _process(delta: float) -> void:
 		_scan = 0.25
 		_prefetch_near_doors()
 
-func _prefetch_near_doors() -> void:
+## Returns how many rooms behind the doors in reach are not loaded yet (they are queued, at the front).
+func _prefetch_near_doors() -> int:
 	# The street is where every door leads: start on it, and on the facade
 	# kits it builds itself from, as soon as the game is up -- the title
 	# screen's time is enough for the whole block to be in before "Continue"
@@ -233,10 +257,14 @@ func _prefetch_near_doors() -> void:
 			prefetch(path)
 	var player := get_tree().get_first_node_in_group("player") as Node3D
 	if player == null:
-		return
+		return 0
+	var pending := 0
 	for door in get_tree().get_nodes_in_group("doors"):
 		if door.global_position.distance_to(player.global_position) < PREFETCH_RANGE:
 			prefetch(door.target_scene, true)
+			if _queue.has(door.target_scene) or _loading.has(door.target_scene):
+				pending += 1
+	return pending
 
 ## The scene at `path`, waiting for (or doing) the load if it isn't in yet;
 ## null if it won't load.
@@ -274,6 +302,7 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 	if packed == null:
 		push_error("SceneLoader: can't load %s" % path)
 		_black.color.a = 0.0
+		_black.visible = false
 		tree.paused = paused
 		_busy = false
 		_go_next()
@@ -290,6 +319,17 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 		var hold: int = int(room.call("arrival_hold_msec")) if room.has_method("arrival_hold_msec") else ARRIVAL_HOLD_MSEC
 		while not room.finish_arrival() and Time.get_ticks_msec() - t_hold < hold:
 			await tree.process_frame
+	if not hidden:
+		# The rooms behind the doors round where you arrive are what the loader would start next, the moment you
+		# stand still (Apartment3D and KartCenter3D landed as 7 seen 25-65 ms frames in the first 5 s after the
+		# corner shop): queued now and drained in this black, with a longer budget when they are among the loads.
+		var door_loads := _prefetch_near_doors() > 0
+		var budget := DRAIN_MSEC
+		if door_loads:
+			budget = DOOR_DRAIN_FIRST_MSEC if _door_drains == 0 and DisplayServer.get_name() != "headless" else DOOR_DRAIN_MSEC
+			_door_drains += 1
+		await _drain(budget)
+		await _settle()
 	_card.text = NAMES.get(path.get_file().get_basename(), "").to_upper()
 	_when.text = "Day %d  ·  %s" % [GameState.day, GameState.clock_text()]
 	# The room holds still until you can see it: a cop who followed you
@@ -304,6 +344,57 @@ func go(path: String, spawn := "", fade_out := FADE_OUT) -> void:
 		_show_card()
 	_go_next()
 
+## Behind the black, finishes the queued background loads for up to `max_msec` (a load that lands on a frame
+## someone can see is a 25-45 ms stall; here it is nobody's). One at a time, as ever.
+func _drain(max_msec: int) -> void:
+	if _queue.is_empty() and _loading.is_empty():
+		return
+	var t0 := Time.get_ticks_msec()
+	_forced += 1
+	while (not _queue.is_empty() or not _loading.is_empty()) and Time.get_ticks_msec() - t0 < max_msec:
+		await get_tree().process_frame
+	_forced -= 1
+
+## Holds the black until SETTLE_FRAMES frames in a row took under SETTLE_FRAME_MSEC (at most SETTLE_MAX_MSEC).
+func _settle() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var t0 := Time.get_ticks_msec()
+	var calm := 0
+	while calm < SETTLE_FRAMES and Time.get_ticks_msec() - t0 < SETTLE_MAX_MSEC:
+		await get_tree().process_frame
+		calm = calm + 1 if _last_delta * 1000.0 < SETTLE_FRAME_MSEC else 0
+	settled_ms = Time.get_ticks_msec() - t0
+
+## How long the last room change held the black for the frames to settle (the probe prints it).
+var settled_ms := 0
+
+## Background loads not finished yet (queued plus in flight).
+func pending_count() -> int:
+	return _queue.size() + _loading.size()
+
+var _peak := 0
+
+## How far the queued loads are, 0..1: finished of all that were queued at once, plus the fraction of the one in
+## flight (the loader's own progress for it). 1 when nothing is waiting.
+func load_progress() -> float:
+	var remaining := pending_count()
+	_peak = maxi(_peak, remaining)
+	if remaining == 0 or _peak == 0:
+		return 1.0
+	var part := 0.0
+	for path in _loading:
+		var p := []
+		ResourceLoader.load_threaded_get_status(path, p)
+		if not p.is_empty():
+			part = maxf(part, float(p[0]))
+	return clampf((float(_peak - remaining) + part) / float(_peak), 0.0, 1.0)
+
+## The title's opening card: the same drain, awaited from outside.
+func drain_in_black(max_msec: int) -> void:
+	_prefetch_near_doors()  # (the first call queues the street, the kits, the cast and the shops)
+	await _drain(max_msec)
+
 func _go_next() -> void:
 	if _next.is_empty():
 		return
@@ -312,9 +403,11 @@ func _go_next() -> void:
 	go(next[0], next[1])
 
 func _fade(to: float, time: float) -> void:
+	_black.visible = true
 	var tw := create_tween()
 	tw.tween_property(_black, "color:a", to, time)
 	await tw.finished
+	_black.visible = _black.color.a > 0.0
 
 func _show_card() -> void:
 	if _card.text.strip_edges() == "":

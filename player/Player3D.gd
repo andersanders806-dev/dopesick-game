@@ -821,13 +821,25 @@ var _aim_result: Node3D
 ## Each reachable area's collision shapes, found once (find_children on an NPC walks its whole model).
 var _shape_cache := {}
 
+## The collision shapes under `area`, found once and kept. A shape added to (or taken out of) the area's
+## children later (a door that gets its second box, a shop that dresses its counter) drops the entry so the
+## next look finds it; an area with no shapes is remembered as empty rather than searched every frame.
 func _shapes_of(area: Node) -> Array:
 	var id := area.get_instance_id()
-	var shapes: Array = _shape_cache.get(id, [])
-	if shapes.is_empty() or not is_instance_valid(shapes[0]):
-		shapes = area.find_children("*", "CollisionShape3D", true, false)
-		_shape_cache[id] = shapes
+	if _shape_cache.has(id):
+		var kept: Array = _shape_cache[id]
+		if kept.is_empty() or is_instance_valid(kept[0]):
+			return kept
+	var shapes: Array = area.find_children("*", "CollisionShape3D", true, false)
+	_shape_cache[id] = shapes
+	var forget := _forget_shapes.bind(id)
+	if not area.child_order_changed.is_connected(forget):
+		area.child_order_changed.connect(forget)
+		area.tree_exiting.connect(forget, CONNECT_ONE_SHOT)
 	return shapes
+
+func _forget_shapes(id: int) -> void:
+	_shape_cache.erase(id)
 
 func _aimed_uncached() -> Node3D:
 	var from := camera.global_position

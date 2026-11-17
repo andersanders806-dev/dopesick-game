@@ -506,6 +506,15 @@ func _build_melee_vm(d: WD) -> void:
 	_melee_vm = Viewmodel.new().setup(d)
 	_melee_vm.name = "MeleeViewmodel"
 	_melee_vm.visible = false
+	# The red night turned the blade to a black slab: a lamp of its own on the weapon, as the guns carry.
+	var lamp := OmniLight3D.new()
+	lamp.name = "GunLamp"
+	lamp.light_energy = 1.8
+	lamp.omni_range = 2.0
+	lamp.shadow_enabled = false
+	lamp.light_color = Color(1.0, 0.92, 0.85)
+	lamp.position = Vector3(-0.1, 0.3, 0.3)
+	_melee_vm.add_child(lamp)
 	camera.add_child(_melee_vm)
 
 func _on_swing_started(heavy: bool, lunged: bool) -> void:
@@ -556,9 +565,9 @@ const SWING_BAT := [
 ]
 ## The machete: a forehand slash from high on the right down across to the left, the blade's flat to the eye.
 const SWING_BLADE := [
-	[0.0, Vector3(0.36, -0.26, -0.4), Vector3(30.0, -70.0, -50.0)],
-	[0.16, Vector3(0.34, -0.14, -0.4), Vector3(44.0, -62.0, -62.0)],
-	[0.4, Vector3(0.1, -0.22, -0.52), Vector3(-10.0, 30.0, -62.0)],
+	[0.0, Vector3(0.36, -0.26, -0.52), Vector3(30.0, -70.0, -50.0)],
+	[0.16, Vector3(0.34, -0.14, -0.52), Vector3(44.0, -62.0, -62.0)],
+	[0.4, Vector3(0.2, -0.12, -0.52), Vector3(-10.0, 30.0, -62.0)],
 	[0.62, Vector3(-0.16, -0.3, -0.44), Vector3(-28.0, 66.0, -40.0)],
 	[1.0, Vector3(-0.3, -0.58, -0.42), Vector3(-50.0, 90.0, -20.0)],
 ]
@@ -889,7 +898,7 @@ func _pose(_delta: float) -> void:
 	var hip: Array = GH.hip_for(vm)
 	var hip_rot: Vector3 = hip[1]
 	var pos: Vector3 = (hip[0] as Vector3).lerp(vm.ads_position, ease)
-	var rot := Vector3(vm.ads_pitch * ease, 0.0, 0.0) + Vector3(deg_to_rad(hip_rot.x), deg_to_rad(hip_rot.y), deg_to_rad(hip_rot.z)) * (1.0 - ease)
+	var rot := Vector3(vm.ads_pitch * ease, 0.0, vm.ads_roll * ease) + Vector3(deg_to_rad(hip_rot.x), deg_to_rad(hip_rot.y), deg_to_rad(hip_rot.z)) * (1.0 - ease)
 	# Breathing at the hip, a slow weight shift and a hand's faint tremor; while aimed the sights
 	# rise and fall with the breath (a sniper's the most) and drift.
 	var breath_ph := sin(_t * 1.45)

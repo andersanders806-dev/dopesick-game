@@ -373,6 +373,8 @@ const SIGHTS := {
 ## node's space, and the pitch that levels the line with the view.
 var sight_point := Vector3.ZERO
 var ads_pitch := 0.0
+## A turn about the sights' line at ADS (a sawn-off is canted to show both barrels): GunViews "ads_roll".
+var ads_roll := 0.0
 var optic: Node3D
 var has_optic := false
 static var _sight_cache := {}
@@ -466,7 +468,10 @@ func _measure_sights(f: String) -> void:
 			optic_dot = Vector3.ZERO
 			_add_dot()
 			has_optic = true
-	var rot := Basis(Vector3.RIGHT, ads_pitch)
+	# (A gun that wants its muzzles seen at ADS is tipped a few degrees: GunViews "ads_tilt".)
+	ads_pitch += deg_to_rad(float(view.get("ads_tilt", 0.0)))
+	ads_roll = deg_to_rad(float(view.get("ads_roll", 0.0)))
+	var rot := Basis.from_euler(Vector3(ads_pitch, 0.0, ads_roll))
 	ads_position = Vector3(0.0, 0.0, -relief) - rot * sight_point
 	muzzle = Vector3(0.0, muzzle.y, muzzle.z)
 
@@ -648,6 +653,30 @@ func _blank_logo(model: Node) -> void:
 			var sm := inst.get_surface_override_material(sidx) as ShaderMaterial
 			if sm != null and sm.shader == SHADER:
 				sm.set_shader_parameter("blank_rect", OPTIC_LOGO)
+
+func _add_bead(on: MeshInstance3D, in_gun: Transform3D, at: Vector3) -> void:
+	var bead := MeshInstance3D.new()
+	bead.name = "Bead"
+	var sph := SphereMesh.new()
+	sph.radius = 0.0045
+	sph.height = 0.009
+	sph.radial_segments = 8
+	sph.rings = 4
+	bead.mesh = sph
+	var m := ShaderMaterial.new()
+	m.shader = SHADER
+	m.set_shader_parameter("viewmodel_fov", VM_FOV)
+	m.set_shader_parameter("albedo", Color(0.95, 0.75, 0.3))
+	m.set_shader_parameter("metallic", 0.3)
+	m.set_shader_parameter("roughness", 0.5)
+	m.set_shader_parameter("emission_color", Color(1.0, 0.7, 0.25))
+	m.set_shader_parameter("emission_amount", 0.6)
+	m.set_shader_parameter("near_cut", 0.05)
+	bead.material_override = m
+	bead.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bead.position = in_gun.affine_inverse() * at
+	bead.scale = Vector3.ONE / in_gun.basis.get_scale()
+	on.add_child(bead)
 
 func _add_dot() -> void:
 	var dot := MeshInstance3D.new()
@@ -1022,6 +1051,10 @@ func _find_parts() -> void:
 				pivot = view["hinge"][0]
 			parts[pname] = {"nodes": nodes, "rest": rest, "rest_xf": rest_xf, "to_vm": to_vm, "to_local": basis_in.inverse(),
 				"amount": Vector3.ZERO, "centre": span.get_center(), "size": span.size, "pivot": pivot, "hinged": hinged}
+			# A front bead on the muzzle (GunViews "bead", in the gun's space), carried by the first of the part's meshes so it
+			# goes with the barrels when they break open.
+			if pname == "barrels" and view.has("bead"):
+				_add_bead(nodes[0] as MeshInstance3D, (to_vm[0] as Transform3D) * (nodes[0] as Node3D).transform, view["bead"])
 	# A rigged model's moving parts are bones.
 	var bones: Dictionary = view.get("bones", {})
 	if not bones.is_empty():

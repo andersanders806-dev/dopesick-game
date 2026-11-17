@@ -81,7 +81,9 @@ const VIEW := {
 	"sawnoff": {
 		# HenRi's double barrel (the alt pick: the "extremely" sawn-off's 10 cm barrels hide behind its own grip in first
 		# person). Barrels and forend are one part that drops on the hinge pin; the two shells sit in its chambers.
-		"sight_pts": [Vector3(0.0, 0.044, -0.268), Vector3(0.0, 0.044, -0.045)],
+		"sight_pts": [Vector3(0.0, 0.054, -0.268), Vector3(0.0, 0.044, -0.045)],
+		"bead": Vector3(0.0, 0.058, -0.262),
+		"ads_roll": 22.0, "ads_tilt": -3.0,
 		"parts": {"barrels": ["cube_009"], "shells": ["bullet1", "bullet2"]},
 		"hinge": [Vector3(0.0, -0.004, -0.045), Vector3(1.0, 0.0, 0.0)],
 		# (Held out at arm's length when aimed, the hand low on the grip with the thumb along the frame, the rib clear.)
@@ -133,7 +135,7 @@ const VIEW := {
 	"bat": {"hands": [Vector3(0.5, 0.5, 0.05), Vector3(0.5, 0.5, 0.16), 0.0, 0.0, 1.0, 1.0, "pump_l", "pump_l", 1.0]},
 	"machete": {"hands": [Vector3(0.5, 0.45, 0.1), Vector3(0.5, 0.45, 0.1), 0.0, 0.0, 1.0, 1.0, "pump_l", "pump_l", 1.0],
 		# (Pale grey steel and handle: darker, and less mirror, so they read against the street.)
-		"look": {"albedo": 0.45, "metal_mul": 0.7, "spec": 0.25}},
+		"look": {"albedo": 0.8, "metal_mul": 0.5, "spec": 0.6}},
 }
 
 ## The table of `d`'s gun ({} if it has none): looked up by its base id, so an upgraded gun has its plain one's.

@@ -122,13 +122,17 @@ func _arc() -> void:
 	lethal.release()
 	await _run(26)
 	side_cam.make_current()
-	await _run(8)
+	side_cam.global_position = Vector3(-5.0, 1.2, 2.5)
+	side_cam.look_at(Vector3(-5.0, 1.0, -3.0))
+	await _run(2)
 	await _snap("throw_arc_side")
 	var g: Node3D = lethal.live_grenades()[0]
 	var shots := 0
-	var last_b := g.bounces
+	var last_b: int = g.bounces
 	for i in 80:
 		await _run(1)
+		side_cam.global_position = g.global_position + Vector3(-0.3, 0.35, 0.9)
+		side_cam.look_at(g.global_position)
 		if g.bounces != last_b and shots < 2:
 			last_b = g.bounces
 			shots += 1

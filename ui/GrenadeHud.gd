@@ -17,7 +17,7 @@ var _font: Font
 
 func _ready() -> void:
 	name = "GrenadeHud"
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = U.font(U.COND_BOLD, 1)
 

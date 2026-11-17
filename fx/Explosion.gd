@@ -414,7 +414,13 @@ func _update(b: Blast, _delta: float) -> void:
 		var d := cam.global_position.distance_to(b.at + b.normal)
 		side = minf(side, maxf(2.0 * d * tan(deg_to_rad(cam.fov) * 0.5), 0.8))
 	b.fire.visible = u < 1.0
-	b.fire.global_position = b.at + b.normal * (side * 0.5 * 0.55)
+	var gy := b.floor_y if b.floor_y != -INF else b.at.y - 0.05
+	var ground := b.normal.y > 0.7
+	b.fire_mat.set_shader_parameter("floor_y", gy if ground else -1000.0)
+	b.fire_mat.set_shader_parameter("floor_fade", 0.4 if ground else 0.0)
+	b.smoke_mat.set_shader_parameter("floor_y", gy if ground else -1000.0)
+	b.smoke_mat.set_shader_parameter("floor_fade", 0.4 if ground else 0.0)
+	b.fire.global_position = b.at + b.normal * (side * 0.5 * 0.62)
 	b.fire.scale = Vector3(side, side, 1.0)
 	b.fire_mat.set_shader_parameter("progress", clampf(u, 0.0, 1.0))
 	# The smoke that stays: starts when the fire is dying, rises a little, fades in and out.

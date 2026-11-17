@@ -7,6 +7,8 @@ extends SceneTree
 ##   flock -x .perf.lock flock .gpu.lock flatpak run org.godotengine.Godot --path . --resolution 1280x720 --windowed \
 ##     -s res://dev-tools/perf_16g.gd -- --no-sick [--secs=60] [--grenades]
 ## --grenades: a Mk 2 frag thrown into the horde every 6 s instead of the rocket (new explosion only).
+## --ring: the rocket goes into the street 2, 6 and 15 m in front of the camera in turn (the blast near the lens is what the
+##         old build's fill cost was about), instead of into the horde.
 const RPG_EVERY := 6.0
 var _legacy: Array = []
 var _legacy_flash: OmniLight3D
@@ -40,6 +42,8 @@ func _initialize() -> void:
 	var secs := 60.0
 	var grenades := false
 	for a in OS.get_cmdline_user_args():
+		if a == "--ring":
+			ring = true
 		if a.begins_with("--secs="):
 			secs = float(a.substr(7))
 		if a == "--grenades":
@@ -49,9 +53,16 @@ func _initialize() -> void:
 	h.exploded.connect(func(at: Vector3, _r: float): _legacy_blast(at))
 	Input.action_press("fire")
 	var t0 := Time.get_ticks_usec()
+	var warmed := false
 	while float(Time.get_ticks_usec() - t0) < 8.0e6:
 		await process_frame
 		_keep_alive(zm, h)
+		# The old blast's materials drawn once ahead of the clock (the B2 build's Prewarm did the same), the new one is warmed by the level's.
+		if not warmed and float(Time.get_ticks_usec() - t0) > 3.0e6:
+			warmed = true
+			_legacy_on = true
+			_legacy_blast(p.global_position + Vector3(0, 0, 8.0))
+			boom.detonate(p.global_position + Vector3(8, 0, 0), Vector3.UP, 1.4)
 	var out := ""
 	for phase in (["new"] if grenades else ["new", "old"]):
 		boom.draw_enabled = phase == "new"
@@ -62,12 +73,14 @@ func _initialize() -> void:
 	Input.action_release("fire")
 	var dir := ProjectSettings.globalize_path("res://.pilot/ship16g")
 	DirAccess.make_dir_recursive_absolute(dir)
-	var f := FileAccess.open(dir + ("/perf_16g_grenades.txt" if grenades else "/perf_16g.txt"), FileAccess.WRITE)
+	var f := FileAccess.open(dir + ("/perf_16g_grenades.txt" if grenades else ("/perf_16g_ring.txt" if ring else "/perf_16g.txt")), FileAccess.WRITE)
 	f.store_string(out)
 	f.close()
 	quit()
 
 var _legacy_on := false
+var ring := false
+var _ring_i := 0
 
 func _phase(phase: String, secs: float, h: Node, p: Node3D, zm: Node, grenades: bool) -> String:
 	var frames: Array = []
@@ -95,6 +108,15 @@ func _phase(phase: String, secs: float, h: Node, p: Node3D, zm: Node, grenades: 
 				h.set_grenades(4)
 				h.lethal.press()
 				h.lethal.release()
+			elif ring:
+				var d: float = [2.0, 6.0, 15.0][_ring_i % 3]
+				_ring_i += 1
+				var fwd := -cam.global_transform.basis.z
+				fwd.y = 0.0
+				fwd = fwd.normalized()
+				var to := cam.global_position + fwd * d
+				to.y = 0.0
+				h._launch(cam.global_position, (to - cam.global_position).normalized(), h.slot_data(1))
 			else:
 				h._launch(cam.global_position, -cam.global_transform.basis.z, h.slot_data(1))
 			rockets += 1
@@ -108,8 +130,8 @@ func _phase(phase: String, secs: float, h: Node, p: Node3D, zm: Node, grenades: 
 			slow += 1
 	var sorted := frames.duplicate()
 	sorted.sort()
-	return "[%s blast] %s, round-12 horde, AA-12 + %s every %.0f s, Low, windowed: %d frames in %.0f s, %d blasts, up to %d zombies, mean %.2f ms, p95 %.2f ms, p99 %.2f ms, max %.1f ms, frames > 25 ms: %d (gate <= 7 per minute, max <= 40 ms); slow at %s\n" % [
-		phase, "frags" if grenades else "RPG", "a frag" if grenades else "a rocket", RPG_EVERY, frames.size(), secs, rockets, zmax, sum / frames.size(), sorted[int(sorted.size() * 0.95)], sorted[int(sorted.size() * 0.99)], worst, slow, slow_at]
+	return "[%s blast] %s%s, round-12 horde, AA-12 + %s every %.0f s, Low, windowed: %d frames in %.0f s, %d blasts, up to %d zombies, mean %.2f ms, p95 %.2f ms, p99 %.2f ms, max %.1f ms, frames > 25 ms: %d (gate <= 7 per minute, max <= 40 ms); slow at %s\n" % [
+		phase, "frags" if grenades else "RPG", " into the street at 2/6/15 m" if ring else "", "a frag" if grenades else "a rocket", RPG_EVERY, frames.size(), secs, rockets, zmax, sum / frames.size(), sorted[int(sorted.size() * 0.95)], sorted[int(sorted.size() * 0.99)], worst, slow, slow_at]
 
 func _keep_alive(zm: Node, h: Node) -> void:
 	zm.health = 100.0

@@ -15,7 +15,12 @@ uniform float fade_near = 1.5;   // metres from the camera: fully faded at this 
 uniform float fade_far = 4.0;    // fully visible from here out
 uniform float flip = 0.0;        // 1.0 mirrors the picture
 uniform bool billboard = true;
+// The card fades out over `floor_fade` metres above `floor_y` (0 = off), so a fireball that reaches below the street dissolves
+// there instead of being cut off in a hard line by the floor.
+uniform float floor_y = -1000.0;
+uniform float floor_fade = 0.0;
 varying float v_fade;
+varying float v_world_y;
 
 void vertex() {
 	if (billboard) {
@@ -24,6 +29,7 @@ void vertex() {
 		bb = bb * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
 		MODELVIEW_MATRIX = VIEW_MATRIX * bb;
 	}
+	v_world_y = (INV_VIEW_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).y;
 	float d = length((MODELVIEW_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz);
 	v_fade = smoothstep(fade_near, fade_far, d);
 }
@@ -40,5 +46,6 @@ void fragment() {
 	vec4 b = texture(flipbook, (vec2(mod(i1, float(cols)), floor(i1 / float(cols))) + u) * cell);
 	vec4 c = mix(a, b, k);
 	ALBEDO = c.rgb * tint.rgb * brightness;
-	ALPHA = c.a * tint.a * v_fade;
+	float lift = floor_fade > 0.0 ? smoothstep(floor_y, floor_y + floor_fade, v_world_y) : 1.0;
+	ALPHA = c.a * tint.a * v_fade * lift;
 }

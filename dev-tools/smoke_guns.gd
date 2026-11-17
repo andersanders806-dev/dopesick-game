@@ -907,6 +907,15 @@ func _b2_venue_checks(holder: Node, block: Node) -> void:
 	holder.slots = [null, null]
 	holder.give(_wd("pistol_up"))
 	_check(block.upgrade_machine.try_upgrade(holder) == "upgraded" and holder.melee_data.id == "bat_up", "  the machine upgrades the bat (the gun in hand already is)")
+	# Review M10: the 600-point machete off the wall does not replace the upgraded bat.
+	var mach_buy: Node = null
+	for b in block.wall_buys:
+		if b.data.id == "machete":
+			mach_buy = b
+	zm.points = 20000
+	_check(mach_buy != null and mach_buy.try_buy(holder) == "full" and holder.melee_data.id == "bat_up" and zm.points == 20000, "  the upgraded bat is not swapped for a plain machete (and nothing is charged)")
+	# Review M1: the selector's key is named.
+	_check(root.get_node_or_null("GameState") != null and load("res://ui/Glyphs.gd").name_of("fire_mode") != "fire_mode", "  the fire-mode key has a name for the prompts (%s)" % load("res://ui/Glyphs.gd").name_of("fire_mode"))
 	# A wall refill keeps the chambered round (WallBuy.gd).
 	holder.slots = [null, null]
 	holder.give(_wd("ak"))
@@ -917,6 +926,16 @@ func _b2_venue_checks(holder: Node, block: Node) -> void:
 	holder.mag = _wd("ak").mag_cap(true)
 	holder.reserve = 10
 	_check(ak_buy.try_buy(holder) == "ammo" and holder.mag == _wd("ak").mag_cap(true) and holder.reserve == _wd("ak").reserve_max, "  ammo off the wall keeps the round in the chamber (%d + %d)" % [holder.mag, holder.reserve])
+	# The other slot's viewmodel is built hidden a couple of frames after a purchase (the first swap is a show and a hide).
+	holder.slots = [null, null]
+	holder.give(_wd("pistol"))
+	holder.give(_wd("rpg"))
+	await _frames(5)
+	var pre: Node = holder._vm_kept.get(_wd("pistol"))
+	_check(pre != null and is_instance_valid(pre) and not (pre as Node3D).visible, "  the pistol put away has its viewmodel built and hidden after the RPG is bought")
+	var vm_before: Node = pre
+	holder.swap()
+	_check(holder.viewmodel == vm_before and holder.viewmodel.visible, "  the first swap back shows that viewmodel (no build)")
 	holder.melee_data = load(holder.KNIFE)
 	holder.slots = [null, null]
 	holder.give(_wd("pistol"))

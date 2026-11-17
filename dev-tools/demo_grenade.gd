@@ -24,38 +24,62 @@ func _initialize() -> void:
 	p.set_look(-PI / 2.0, 0.0)
 	var h: Node = p.get_node("WeaponHolder")
 	h.set_grenades(4)
-	block.spawner.round_no = 8
-	block.spawner.enabled = true
-	# Let the dead come: the film starts when the first of them is within 22 m.
-	for i in 1200:
+	block.spawner.enabled = false
+	for old in get_nodes_in_group("zombies"):
+		old.free()
+	# A group of the dead coming down the street from 15 m out, walked in by the script (a steady pace, so the film is the same
+	# every time): they stop 7 m short of the player.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var crowd: Array = []
+	for k in 11:
+		var z = block.spawner.spawn_one("walker", Vector3(-4.5 + rng.randf_range(0.0, 5.0), 0.0, -3.0 + rng.randf_range(-3.0, 3.0)))
+		z.set_physics_process(false)
+		z.max_health = 700.0
+		z.health = 700.0
+		z._model_root.rotation.y = -PI / 2.0
+		crowd.append(z)
+	for i in 20:
 		await process_frame
-		zm.health = 100.0
-		var near := 0
-		for z in get_nodes_in_group("zombies"):
-			if (z as Node3D).global_position.distance_to(p.global_position) < 22.0:
-				near += 1
-		if near >= 6:
-			break
+		zm.health = 1000.0
+		_walk(crowd, p)
 	print("FILM START frame ", Engine.get_process_frames())
-	# A beat of the empty street, then G held: the cook.
-	for i in 40:
+	# A beat of the street, then G held: the cook (2 s), let go.
+	for i in 24:
 		await process_frame
-		zm.health = 100.0
+		zm.health = 1000.0
+		_walk(crowd, p)
 	Input.action_press("lethal")
-	for i in 78:
+	for i in 60:
 		await process_frame
-		zm.health = 100.0
+		zm.health = 1000.0
+		_walk(crowd, p)
 	Input.action_release("lethal")
-	for i in 120:
+	for i in 130:
 		await process_frame
-		zm.health = 100.0
-	# The second one is a tap.
-	Input.action_press("lethal")
-	for i in 3:
+		zm.health = 1000.0
+		_walk(crowd, p)
+	# The second one is a tap, if the street still holds a few at a safe distance.
+	var nearest2 := 1000.0
+	for z in get_nodes_in_group("zombies"):
+		nearest2 = minf(nearest2, (z as Node3D).global_position.distance_to(p.global_position))
+	print("second throw, nearest ", nearest2)
+	if nearest2 > 7.0:
+		Input.action_press("lethal")
+		for i in 3:
+			await process_frame
+		Input.action_release("lethal")
+	for i in 170:
 		await process_frame
-	Input.action_release("lethal")
-	for i in 200:
-		await process_frame
-		zm.health = 100.0
+		zm.health = 1000.0
+		_walk(crowd, p)
 	print("FILM END frame ", Engine.get_process_frames())
 	quit()
+
+func _walk(crowd: Array, p: Node3D) -> void:
+	for z in crowd:
+		if is_instance_valid(z) and z.is_alive():
+			var d := p.global_position - (z as Node3D).global_position
+			d.y = 0.0
+			if d.length() > 7.5:
+				(z as Node3D).global_position += d.normalized() * 1.2 / 30.0

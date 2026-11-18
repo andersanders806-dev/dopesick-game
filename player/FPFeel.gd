@@ -578,6 +578,7 @@ func _pose_swing() -> bool:
 	var t := float(holder.call("swing_time")) if holder.has_method("swing_time") else -1.0
 	if t < 0.0:
 		_melee_vm.visible = false
+		_clear_streak()
 		return false
 	var len := maxf(float(holder.call("swing_length")), 0.05)
 	var d = holder.get("melee_data")
@@ -611,7 +612,75 @@ func _pose_swing() -> bool:
 	if String(d.family()) != "bat":
 		left = _melee_vm.transform.affine_inverse() * Vector3(-0.3, -0.62, 0.05)
 	_melee_vm.aim_hands(left, {"trig": 0.0})
+	_update_streak(float(d.swing_hit), u)
 	return true
+
+# --- The swing's streak: one pooled crescent (an ImmediateMesh strip), the blade's last few frames ------------
+
+const STREAK_FRAMES := 4
+var _streak_mi: MeshInstance3D
+var _streak_mesh: ImmediateMesh
+var _streak_hist: Array = []
+
+func _ensure_streak() -> void:
+	if is_instance_valid(_streak_mi) and _streak_mi.get_parent() == camera:
+		return
+	if is_instance_valid(_streak_mi):
+		_streak_mi.queue_free()
+	_streak_mesh = ImmediateMesh.new()
+	_streak_mi = MeshInstance3D.new()
+	_streak_mi.name = "SwingStreak"
+	_streak_mi.mesh = _streak_mesh
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.no_depth_test = true
+	m.render_priority = 10
+	_streak_mi.material_override = m
+	_streak_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_streak_mi.visible = false
+	camera.add_child(_streak_mi)
+
+func _clear_streak() -> void:
+	_streak_hist.clear()
+	if is_instance_valid(_streak_mi):
+		_streak_mi.visible = false
+
+## The blade's tip and a point 60 percent of the way out, for the last frames of the stroke: a strip that fades with age
+## and from the tip inwards, so the arc of the blow reads (the bat and the machete are fast).
+func _update_streak(hit: float, u: float) -> void:
+	_ensure_streak()
+	if not is_instance_valid(_streak_mi) or not is_instance_valid(_melee_vm):
+		return
+	var b: AABB = _melee_vm.box
+	var tip := Vector3(b.get_center().x, b.get_center().y, b.position.z)
+	var mid := Vector3(b.get_center().x, b.get_center().y, b.position.z * 0.75)
+	var xf: Transform3D = _melee_vm.transform
+	# Only the stroke itself (from the wind-up's end to just past the blow), not the wind-up or the recovery.
+	var live := u > hit * 0.35 and u < hit + 0.3
+	if not live:
+		_streak_hist.clear()
+		_streak_mi.visible = false
+		return
+	_streak_hist.append([xf * tip, xf * mid])
+	while _streak_hist.size() > STREAK_FRAMES:
+		_streak_hist.pop_front()
+	if _streak_hist.size() < 2:
+		_streak_mi.visible = false
+		return
+	_streak_mesh.clear_surfaces()
+	_streak_mesh.surface_begin(Mesh.PRIMITIVE_TRIANGLE_STRIP)
+	var n := _streak_hist.size()
+	for i in n:
+		var age := float(i + 1) / float(n)
+		_streak_mesh.surface_set_color(Color(1.0, 0.93, 0.8, 0.2 * age * age))
+		_streak_mesh.surface_add_vertex(_streak_hist[i][0])
+		_streak_mesh.surface_set_color(Color(1.0, 0.93, 0.8, 0.0))
+		_streak_mesh.surface_add_vertex(_streak_hist[i][1])
+	_streak_mesh.surface_end()
+	_streak_mi.visible = true
 
 func _on_traced(from: Vector3, to: Vector3) -> void:
 	var d := _data()

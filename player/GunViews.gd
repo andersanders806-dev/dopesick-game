@@ -77,6 +77,8 @@ const VIEW := {
 		"parts": {"mag": ["magazine_3"], "charge": ["charging_handle_16"]},
 		"muzzle": Vector3(-0.001, 0.056, -0.674),
 		"hands": [Vector3(0.5, 0.36, 0.29), Vector3(-0.35, 0.68, 0.72), 0.0, 0.0, 1.0, 1.0, "rifle_r", "cgrip_l", 1.0],
+		# (The magazine's own paint is pale grey against the dark gun: tinted to match when the hand pulls it out.)
+		"look": {"by_name": {"material": {"albedo": 0.3, "spec": 0.2}}},
 	},
 	"sawnoff": {
 		# HenRi's double barrel (the alt pick: the "extremely" sawn-off's 10 cm barrels hide behind its own grip in first
@@ -128,7 +130,11 @@ const VIEW := {
 		"sight_pts": [Vector3(-0.065, 0.075, -0.3), Vector3(-0.065, 0.075, -0.05)],
 		"parts": {"mag": ["pcylinder8"]},
 		"muzzle": Vector3(-0.02, 0.0, -0.66),
-		"hands": [Vector3(0.34, 0.13, 0.52), Vector3(0.5, 0.13, 0.6), 0.0, 0.0, 1.0, 1.0, "rifle_r", "vert_l", 1.0],
+		# (The left hand cups the wooden shroud from below, as on the real launcher, not the pistol grip's air.)
+		"hands": [Vector3(0.34, 0.13, 0.52), Vector3(0.0, 0.5, 0.66), 0.0, 0.0, 1.0, 1.0, "rifle_r", "pump_l", 1.0],
+		# (The shroud and its tape were a saturated orange pipe: weathered wood and grey tape; carried lower and nearer.)
+		"look": {"by_name": {"wood": {"albedo": 0.42, "sat": 0.4, "spec": 0.2}, "bast": {"albedo": 0.55, "sat": 0.15, "spec": 0.2}, "plastek": {"albedo": 0.6}}},
+		"hip": [Vector3(0.19, -0.2, -0.2), Vector3(0.0, 4.0, 0.0)],
 		"weight": 1.5,
 	},
 	# Melee: both hands choked up on the bat's handle; the machete in the right hand alone.

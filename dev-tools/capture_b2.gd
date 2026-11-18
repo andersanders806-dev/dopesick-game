@@ -250,6 +250,12 @@ func _melee(ids: Array) -> void:
 		z._model_root.rotation.y = -PI / 2.0
 		h.give_melee(load("res://weapons/%s.tres" % id))
 		await _run(20)
+		if OS.get_environment("WARMSWING") != "":
+			# One swing first (the viewmodel's pipelines compile on their first draw: the picture of it is a placeholder).
+			h._melee_cd = 0.0
+			h.melee(false)
+			await _run(60)
+			h.advance(2.0)
 		h._melee_cd = 0.0
 		h.melee(false)
 		var n := 0

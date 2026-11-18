@@ -280,7 +280,7 @@ func _convert(node: Node, cut := 0.05, is_arms := false) -> void:
 			m.set_surface_override_material(s, mat)
 
 ## The gun's own paint, from its GunViews "look" row (a model whose flat colours or pale texture blow out under the
-## street's lamps): albedo (a multiplier), rough_mul, metal_mul, spec (the highlight, 0..1), and by_name {material name: the same keys} for one
+## street's lamps): albedo (a multiplier), rough_mul, metal_mul, spec (the highlight, 0..1), sat (0 grey .. 1 as painted), and by_name {material name: the same keys} for one
 ## part of the model (the barrel against the stock). Review I5: the AA-12, the Glock and the machete read white.
 func _apply_look(mat: ShaderMaterial, src: Material) -> void:
 	var look: Dictionary = GunViews.pick(data, "look", {})
@@ -294,6 +294,11 @@ func _apply_look(mat: ShaderMaterial, src: Material) -> void:
 		var c: Color = mat.get_shader_parameter("albedo")
 		var f := float(k["albedo"])
 		mat.set_shader_parameter("albedo", Color(c.r * f, c.g * f, c.b * f, c.a))
+	if k.has("sat"):
+		var c2: Color = mat.get_shader_parameter("albedo")
+		var g := (c2.r + c2.g + c2.b) / 3.0
+		var f2 := float(k["sat"])
+		mat.set_shader_parameter("albedo", Color(lerpf(g, c2.r, f2), lerpf(g, c2.g, f2), lerpf(g, c2.b, f2), c2.a))
 	if k.has("spec"):
 		mat.set_shader_parameter("spec", float(k["spec"]))
 	if k.has("rough_mul"):
